@@ -12,17 +12,25 @@
   --accent: #a96133;
   --good: #28704b;
   --warn: #936a23;
+  --danger: #a62a2a;
 }
 
 * {
   box-sizing: border-box;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+    Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 a {
@@ -31,13 +39,25 @@ a {
 
 input,
 textarea,
-button {
+button,
+select {
   font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
 }
 
 .shell {
   min-height: 100vh;
-  padding: 24px;
+  padding: 20px;
+}
+
+@media (min-width: 640px) {
+  .shell {
+    padding: 28px;
+  }
 }
 
 .page {
@@ -47,7 +67,7 @@ button {
 
 .panel {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--panel);
   box-shadow: 0 12px 30px rgba(31, 37, 43, 0.06);
 }
@@ -67,6 +87,8 @@ button {
   background: #fff;
   padding: 0.8rem 0.9rem;
   color: var(--foreground);
+  font-size: 16px; /* prevent iOS zoom on focus */
+  min-height: 44px;
 }
 
 .field:focus {
@@ -84,6 +106,18 @@ button {
   padding: 0.7rem 1rem;
   font-weight: 700;
   text-decoration: none;
+  transition: background 120ms ease, border-color 120ms ease, transform 80ms ease;
+}
+
+.button-primary:active,
+.button-secondary:active {
+  transform: translateY(1px);
+}
+
+.button-primary:focus-visible,
+.button-secondary:focus-visible {
+  outline: 3px solid rgba(31, 95, 91, 0.35);
+  outline-offset: 2px;
 }
 
 .button-primary {
@@ -96,10 +130,22 @@ button {
   background: var(--brand-dark);
 }
 
+.button-primary[disabled],
+.button-primary[aria-disabled="true"] {
+  background: #8a9d99;
+  border-color: #8a9d99;
+  cursor: not-allowed;
+}
+
 .button-secondary {
   border: 1px solid var(--line);
   background: #fff;
   color: var(--foreground);
+}
+
+.button-secondary:hover {
+  border-color: var(--brand);
+  color: var(--brand);
 }
 
 .status-dot {
@@ -113,6 +159,212 @@ button {
 code {
   border-radius: 4px;
   background: #eee9df;
-  padding: 0.12rem 0.28rem;
+  padding: 0.12rem 0.32rem;
   font-size: 0.92em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* ---------- Leads page ---------- */
+
+.scroll-row {
+  scrollbar-width: thin;
+}
+
+.scroll-row::-webkit-scrollbar {
+  height: 6px;
+}
+
+.scroll-row::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 999px;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+  padding: 0.5rem 0.9rem;
+  min-height: 40px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--foreground);
+  font-size: 0.92rem;
+  font-weight: 600;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.filter-chip:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.filter-chip__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.filter-chip--active {
+  background: var(--brand);
+  color: #fff;
+  border-color: var(--brand);
+}
+
+.filter-chip--active .filter-chip__count {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.filter-chip--attention {
+  border-color: rgba(166, 42, 42, 0.4);
+  color: var(--danger);
+}
+
+.filter-chip--attention .filter-chip__count {
+  background: rgba(166, 42, 42, 0.1);
+  color: var(--danger);
+}
+
+.filter-chip--attention.filter-chip--active {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+
+.filter-chip--attention.filter-chip--active .filter-chip__count {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.lead-card {
+  position: relative;
+  transition: border-color 120ms ease;
+}
+
+.lead-card--new {
+  border-left: 4px solid var(--brand);
+}
+
+.lead-card--attention {
+  border-color: rgba(166, 42, 42, 0.4);
+  box-shadow: 0 12px 30px rgba(166, 42, 42, 0.08);
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: 1px solid transparent;
+}
+
+.status-pill--new {
+  background: #e6f0ee;
+  color: var(--brand);
+  border-color: #cfe0dc;
+}
+
+.status-pill--contacted {
+  background: #fdf2de;
+  color: var(--warn);
+  border-color: #f1e3c0;
+}
+
+.status-pill--booked {
+  background: #e4f0e8;
+  color: var(--good);
+  border-color: #cde3d3;
+}
+
+.status-pill--dead {
+  background: #eee9df;
+  color: var(--muted);
+  border-color: var(--line);
+}
+
+.source-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.sms-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.sms-badge--sent {
+  background: #e4f0e8;
+  color: var(--good);
+}
+
+.sms-badge--pending {
+  background: #eee9df;
+  color: var(--muted);
+}
+
+.sms-badge--failed {
+  background: #fbe4e4;
+  color: var(--danger);
+}
+
+.sms-badge--optout {
+  background: #fdf2de;
+  color: var(--warn);
+}
+
+/* ---------- Intake page ---------- */
+
+.honeypot {
+  position: absolute;
+  left: -9999px;
+  top: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.alert {
+  display: flex;
+  gap: 0.75rem;
+  padding: 1rem 1rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  line-height: 1.5;
+}
+
+.alert--success {
+  background: #e8f2ec;
+  border-color: #bcd7c4;
+  color: #1f5134;
+}
+
+.alert--error {
+  background: #fbe4e4;
+  border-color: #e9bdbd;
+  color: #7a1f1f;
 }

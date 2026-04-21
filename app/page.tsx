@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { env } from "@/lib/env";
 import { missedCallSmsBody } from "@/lib/twilio";
+import { CopyButton } from "@/app/copy-button";
 
 export default function HomePage() {
-  const webhookUrl = "/api/twilio/voice";
+  const voiceWebhookUrl = `${env.appBaseUrl}/api/twilio/voice`;
+  const smsWebhookUrl = `${env.appBaseUrl}/api/twilio/sms`;
   const missedCallStatuses = ["no-answer", "busy", "failed", "canceled"];
 
   return (
@@ -65,16 +67,37 @@ export default function HomePage() {
           <aside className="space-y-6">
             <div className="panel p-6">
               <p className="eyebrow">Connect Twilio</p>
-              <h2 className="mt-2 text-2xl font-semibold">Voice webhook</h2>
+              <h2 className="mt-2 text-2xl font-semibold">Webhooks</h2>
               <p className="mt-3 leading-7 text-[var(--muted)]">
-                In Twilio, set the phone number&apos;s incoming call webhook to your public app URL
-                plus this path.
+                In your Twilio phone number settings, paste these URLs into the matching webhook
+                fields. Use method <code>POST</code>.
               </p>
-              <div className="mt-4 rounded-md border border-[var(--line)] bg-[var(--panel-soft)] p-4">
-                <code>{webhookUrl}</code>
+
+              <div className="mt-4 space-y-3">
+                <div className="rounded-md border border-[var(--line)] bg-[var(--panel-soft)] p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
+                      Voice: A call comes in
+                    </p>
+                    <CopyButton value={voiceWebhookUrl} />
+                  </div>
+                  <p className="mt-2 break-all font-mono text-sm">{voiceWebhookUrl}</p>
+                </div>
+
+                <div className="rounded-md border border-[var(--line)] bg-[var(--panel-soft)] p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
+                      Messaging: A message comes in
+                    </p>
+                    <CopyButton value={smsWebhookUrl} />
+                  </div>
+                  <p className="mt-2 break-all font-mono text-sm">{smsWebhookUrl}</p>
+                </div>
               </div>
+
               <p className="mt-4 text-sm leading-6 text-[var(--muted)]">
-                For local testing, use ngrok so Twilio can reach your computer.
+                For local testing, run <code>ngrok http 3000</code> and set{" "}
+                <code>APP_BASE_URL</code> to the ngrok URL.
               </p>
             </div>
 
@@ -84,9 +107,7 @@ export default function HomePage() {
                 {missedCallStatuses.map((status) => (
                   <li key={status} className="flex items-center justify-between gap-3">
                     <span>{status}</span>
-                    <span className="rounded-full bg-[#e4f0e8] px-3 py-1 text-sm font-semibold text-[var(--good)]">
-                      text sent
-                    </span>
+                    <span className="sms-badge sms-badge--sent">text sent</span>
                   </li>
                 ))}
               </ul>
@@ -106,10 +127,10 @@ export default function HomePage() {
             <p className="eyebrow">Test checklist</p>
             <ol className="mt-4 grid gap-3 text-[var(--muted)] sm:grid-cols-2">
               <li>1. Run the Supabase SQL.</li>
-              <li>2. Fill in `.env.local`.</li>
-              <li>3. Start `npm run dev`.</li>
-              <li>4. Run `ngrok http 3000`.</li>
-              <li>5. Add the ngrok webhook in Twilio.</li>
+              <li>2. Fill in <code>.env.local</code>.</li>
+              <li>3. Start <code>npm run dev</code>.</li>
+              <li>4. Run <code>ngrok http 3000</code>.</li>
+              <li>5. Paste the webhook URLs in Twilio.</li>
               <li>6. Call the Twilio number and let it ring.</li>
             </ol>
           </div>
