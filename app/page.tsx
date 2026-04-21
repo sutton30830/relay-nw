@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { env } from "@/lib/env";
+import { missedCallSmsBody } from "@/lib/twilio";
 
 export default function HomePage() {
   const webhookUrl = "/api/twilio/voice";
@@ -51,7 +52,7 @@ export default function HomePage() {
               {[
                 ["Twilio number", env.twilioPhoneNumber],
                 ["Owner phone", env.ownerPhoneNumber],
-                ["Ring time", "20 seconds"],
+                ["Ring time", `${env.dialTimeoutSeconds} seconds`],
               ].map(([label, value]) => (
                 <div key={label} className="panel p-4">
                   <p className="text-sm font-semibold text-[var(--muted)]">{label}</p>
@@ -97,9 +98,7 @@ export default function HomePage() {
           <div className="panel p-6">
             <p className="eyebrow">SMS preview</p>
             <p className="mt-4 rounded-md border border-[var(--line)] bg-white p-4 leading-7">
-              Hi, this is {env.businessName}. Sorry we missed your call. You can fill out our
-              intake form here: {env.intakeUrl} or book here: {env.schedulingUrl}. Reply STOP to
-              opt out.
+              {missedCallSmsBody()}
             </p>
           </div>
 

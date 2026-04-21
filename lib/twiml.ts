@@ -20,10 +20,11 @@ export function dialForwardTwiml(input: {
   ownerPhoneNumber: string;
   callerId: string;
   actionUrl: string;
+  timeoutSeconds: number;
 }) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Dial timeout="20" action="${escapeXml(input.actionUrl)}" method="POST" callerId="${escapeXml(input.callerId)}">
+  <Dial timeout="${input.timeoutSeconds}" action="${escapeXml(input.actionUrl)}" method="POST" callerId="${escapeXml(input.callerId)}">
     <Number>${escapeXml(input.ownerPhoneNumber)}</Number>
   </Dial>
 </Response>`;

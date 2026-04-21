@@ -1,75 +1,99 @@
 # Relay NW
 
-Relay NW is a very small MVP for one local home services business. It forwards calls from a Twilio number to the owner, sends one automatic SMS when the call is missed, saves the lead in Supabase, and provides a simple password-protected leads page.
+Relay NW is a small missed-call SMS follow-up MVP for one local home services business.
 
-This version intentionally does not include user accounts, billing, CRM features, business hours, deduplication, or multi-tenant logic.
+When a customer calls the business's Twilio number, Relay NW forwards the call to the owner's real phone. If the owner misses the call, Relay NW sends one automatic SMS with the intake link and saves the lead in Supabase.
 
-## What It Does
+This app is intentionally single-business. No accounts, billing, CRM, shared inbox, business-hours logic, or multi-tenant support.
 
-1. A customer calls the Twilio business number.
-2. Twilio asks this app what to do with the call.
-3. The app returns TwiML that forwards the call to the owner's real phone number.
-4. If the owner answers, the call connects normally.
-5. If the owner does not answer, is busy, fails, or the call is canceled, the app sends this SMS:
+## Day-One Setup Checklist
 
-```text
-Hi, this is {BUSINESS_NAME}. Sorry we missed your call. You can fill out our intake form here: {INTAKE_URL} or book here: {SCHEDULING_URL}. Reply STOP to opt out.
-```
+1. Create a Supabase project and run `supabase.sql` in the Supabase SQL Editor.
+2. Create a Twilio account and buy or choose one Twilio phone number.
+3. Create `.env.local` from `.env.example` and fill in every required value.
+4. Run locally with `npm install` and `npm run dev`.
+5. For local Twilio testing, run `ngrok http 3000`.
+6. Set `APP_BASE_URL` and `INTAKE_URL` to the ngrok or deployed public URL.
+7. In Twilio, configure the phone number's Voice webhook to `APP_BASE_URL/api/twilio/voice`.
+8. Use HTTP `POST` for the Twilio webhook.
+9. Make a real test call from a separate phone.
+10. Let the owner's phone ring without answering.
+11. Confirm the caller receives the SMS and the lead appears in `/leads`.
 
-6. The app saves the missed call as a lead.
-7. The public intake form also saves leads to the same table.
+## Core Flow
 
-## Pages
+1. Customer calls the Twilio business number.
+2. Twilio posts to `/api/twilio/voice`.
+3. Relay NW validates the Twilio signature.
+4. Relay NW returns TwiML with `<Dial>` to forward the call to `OWNER_PHONE_NUMBER`.
+5. `<Dial>` times out after `DIAL_TIMEOUT_SECONDS`, defaulting to 18 seconds.
+6. Twilio posts the dial result to `/api/twilio/dial-status`.
+7. If `DialCallStatus` is `no-answer`, `busy`, `failed`, or `canceled`, Relay NW creates a missed-call lead and sends the SMS.
+8. If `DialCallStatus` is `completed` or `answered`, Relay NW does nothing.
+9. The owner reviews leads at `/leads`.
 
-- `/` public home page
+## Pages And Routes
+
+- `/` setup/status home page
 - `/intake` public intake form
-- `/leads` internal password-protected leads page
+- `/leads` password-protected lead inbox
+- `/api/intake` intake form submission
+- `/api/leads/[id]` lead status update
 - `/api/twilio/voice` Twilio incoming call webhook
-- `/api/twilio/dial-status` Twilio dial status webhook
-- `/api/intake` intake form submission route
-
-## Database Setup
-
-Create a Supabase project, open the SQL editor, and run the SQL in `supabase.sql`.
-
-The table is:
-
-```sql
-create table if not exists public.leads (
-  id uuid primary key default gen_random_uuid(),
-  name text,
-  phone text not null,
-  message text,
-  source text not null check (source in ('missed_call', 'intake_form')),
-  status text not null default 'new' check (status in ('new')),
-  created_at timestamptz not null default now()
-);
-```
+- `/api/twilio/dial-status` Twilio dial result webhook
 
 ## Environment Variables
 
-Create a file named `.env.local` and copy the values from `.env.example`.
+Required:
 
-```bash
-cp .env.example .env.local
-```
+- `BUSINESS_NAME`: business name used in the missed-call SMS
+- `INTAKE_URL`: public URL for `/intake`
+- `SCHEDULING_URL`: existing scheduling link for the business
+- `LEADS_PASSWORD`: shared password for `/leads`
+- `APP_BASE_URL`: public app URL used for Twilio callbacks and signature validation
+- `TWILIO_ACCOUNT_SID`: Twilio account SID
+- `TWILIO_AUTH_TOKEN`: Twilio auth token, server-only
+- `TWILIO_PHONE_NUMBER`: Twilio-owned number customers call
+- `OWNER_PHONE_NUMBER`: owner's real phone number
+- `SUPABASE_URL`: Supabase project URL
+- `NEXT_PUBLIC_SUPABASE_URL`: same Supabase project URL, kept for Next.js compatibility
+- `SUPABASE_SERVICE_ROLE_KEY`: Supabase service role key, server-only
 
-Then fill in:
+Optional:
 
-- `BUSINESS_NAME`: the business name shown in the missed-call text
-- `INTAKE_URL`: the public URL for `/intake`
-- `SCHEDULING_URL`: the business scheduling link
-- `LEADS_PASSWORD`: the simple password for `/leads`
-- `TWILIO_ACCOUNT_SID`: from Twilio Console
-- `TWILIO_AUTH_TOKEN`: from Twilio Console
-- `TWILIO_PHONE_NUMBER`: the Twilio number customers call
-- `OWNER_PHONE_NUMBER`: the owner's real phone number
-- `NEXT_PUBLIC_SUPABASE_URL`: from Supabase project settings
-- `SUPABASE_SERVICE_ROLE_KEY`: from Supabase API settings
+- `SMS_TEMPLATE`: overrides the default SMS template
+- `DIAL_TIMEOUT_SECONDS`: defaults to `18`
 
 Use phone numbers in E.164 format, like `+12065551234`.
 
-## Run Locally
+Default SMS template:
+
+```text
+Hi, this is {BUSINESS_NAME} - sorry we missed your call. Book or reply here: {INTAKE_URL}. Reply STOP to opt out.
+```
+
+Supported template variables:
+
+- `{BUSINESS_NAME}`
+- `{INTAKE_URL}`
+- `{SCHEDULING_URL}`
+
+## Database Setup
+
+Open Supabase SQL Editor and run:
+
+```sql
+-- See supabase.sql for the complete current schema.
+```
+
+The schema includes:
+
+- `leads`: intake and missed-call leads
+- `webhook_events`: basic Twilio webhook logs for debugging
+
+`leads.call_sid` is unique when present. This prevents Twilio retries from creating duplicate missed-call leads or sending duplicate SMS messages.
+
+## Local Development
 
 Install dependencies:
 
@@ -89,88 +113,82 @@ Open:
 http://localhost:3000
 ```
 
-## What You Can Test Locally
+You can test these locally without Twilio:
 
-You can test these pieces locally:
+- Home page
+- Intake form
+- Supabase lead saving from `/intake`
+- Leads page password gate
+- Lead status changes
 
-- Home page at `http://localhost:3000`
-- Intake form at `http://localhost:3000/intake`
-- Leads page at `http://localhost:3000/leads`
-- Supabase lead saving from the intake form
-- Password gate for `/leads`
+## Twilio Local Testing With Ngrok
 
-## What Needs A Public Webhook URL
-
-Twilio cannot call `localhost` directly. These need a public URL:
-
-- Incoming call webhook: `/api/twilio/voice`
-- Dial status action webhook: `/api/twilio/dial-status`
-
-## Simplest Twilio Webhook Test During Development
-
-The simplest local testing path is ngrok:
+Twilio cannot call `localhost` directly. Use ngrok:
 
 ```bash
 ngrok http 3000
 ```
 
-Ngrok will give you a public HTTPS URL, like:
+If ngrok gives:
 
 ```text
 https://abc123.ngrok-free.app
 ```
 
-In Twilio Console, set your Twilio phone number's voice webhook to:
+Set these in `.env.local`:
+
+```env
+APP_BASE_URL="https://abc123.ngrok-free.app"
+INTAKE_URL="https://abc123.ngrok-free.app/intake"
+```
+
+Restart `npm run dev`.
+
+In Twilio Console, set the phone number's Voice webhook to:
 
 ```text
 https://abc123.ngrok-free.app/api/twilio/voice
 ```
 
-Use `HTTP POST`.
+Use method `POST`.
 
-Also update `.env.local` while testing:
+## Twilio Notes
 
-```text
-INTAKE_URL="https://abc123.ngrok-free.app/intake"
-```
-
-Restart `npm run dev` after changing `.env.local`.
-
-## Twilio Setup
-
-1. Buy or choose a Twilio phone number.
-2. Go to the phone number's configuration page.
-3. Under voice incoming calls, choose webhook.
-4. Set the webhook URL to your public app URL plus `/api/twilio/voice`.
-5. Set the method to `POST`.
-6. Save.
-7. Call the Twilio number from another phone.
-8. Let the owner's phone ring without answering.
-9. Confirm the caller receives the SMS and a new lead appears in `/leads`.
+- `DIAL_TIMEOUT_SECONDS` defaults to 18 seconds to reduce the chance that the owner's carrier voicemail answers first.
+- Shorter timeout means more false missed calls.
+- Longer timeout means voicemail is more likely to answer, causing Twilio to report a connected call.
+- Relay NW tries to show the original caller as the forwarded caller ID. Twilio/carrier caller ID rules may affect what the owner actually sees.
+- Before using this for real US business texting, complete Twilio A2P 10DLC brand/campaign registration. Use a customer-care style use case and include a sample message matching the app's SMS template.
 
 ## Deployment
 
 The simplest deployment path is Vercel:
 
-1. Push this project to GitHub.
-2. Import the GitHub repo into Vercel.
-3. Add all environment variables from `.env.example` in Vercel Project Settings.
+1. Push this repo to GitHub.
+2. Import the repo into Vercel.
+3. Add all `.env.example` variables in Vercel Project Settings.
 4. Deploy.
-5. Set `INTAKE_URL` to your deployed intake page, like `https://your-app.vercel.app/intake`.
-6. In Twilio, set the voice webhook to `https://your-app.vercel.app/api/twilio/voice`.
+5. Set `APP_BASE_URL` to the deployed app URL, like `https://relay-nw.vercel.app`.
+6. Set `INTAKE_URL` to `https://relay-nw.vercel.app/intake`.
+7. Set Twilio's Voice webhook to `https://relay-nw.vercel.app/api/twilio/voice`.
 
 ## Security Notes
 
-- This app uses one password for `/leads`.
-- There are no user accounts.
-- The Supabase service role key is used only on the server.
-- Do not expose `SUPABASE_SERVICE_ROLE_KEY` in browser code.
+- `/leads` uses one shared password.
+- There is no auth system.
+- Twilio webhooks validate `X-Twilio-Signature`.
+- Supabase writes happen server-side with the service role key.
+- `.env.local` must never be committed.
 - This MVP is intended for non-healthcare businesses only.
 - The intake form includes consent language.
 - The SMS includes opt-out language.
 
-## Next 3 Upgrades To Consider Later
+## Not In V1
 
-1. Add a real login system for the leads page.
-2. Add business-hours rules so after-hours calls get different handling.
-3. Add duplicate lead detection so repeat callers do not create too many rows.
+- Billing
+- CRM automation
+- Shared inbox
+- Business-hours logic
+- Scheduling engine
+- Multi-business support
+- User accounts

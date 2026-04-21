@@ -1,13 +1,7 @@
 import { cookies } from "next/headers";
 import { getLeads } from "@/lib/supabase";
 import { env } from "@/lib/env";
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
+import { LeadsList } from "@/app/leads/leads-list";
 
 export default async function LeadsPage() {
   const cookieStore = await cookies();
@@ -35,8 +29,6 @@ export default async function LeadsPage() {
   }
 
   const leads = await getLeads();
-  const missedCallCount = leads.filter((lead) => lead.source === "missed_call").length;
-  const intakeCount = leads.filter((lead) => lead.source === "intake_form").length;
 
   return (
     <main className="shell">
@@ -54,60 +46,7 @@ export default async function LeadsPage() {
           </form>
         </div>
 
-        <div className="mt-6 grid gap-4 sm:grid-cols-3">
-          {[
-            ["Total leads", String(leads.length)],
-            ["Missed calls", String(missedCallCount)],
-            ["Intake forms", String(intakeCount)],
-          ].map(([label, value]) => (
-            <div key={label} className="panel p-5">
-              <p className="text-sm font-semibold text-[var(--muted)]">{label}</p>
-              <p className="mt-2 text-3xl font-semibold">{value}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="panel mt-6 overflow-x-auto">
-          <table className="w-full min-w-[760px] border-collapse text-left">
-            <thead>
-              <tr className="border-b border-[var(--line)] bg-[#f1eee7] text-sm text-[var(--muted)]">
-                <th className="p-4">Created</th>
-                <th className="p-4">Name</th>
-                <th className="p-4">Phone</th>
-                <th className="p-4">Source</th>
-                <th className="p-4">Status</th>
-                <th className="p-4">Message</th>
-              </tr>
-            </thead>
-            <tbody>
-              {leads.map((lead) => (
-                <tr key={lead.id} className="border-b border-[var(--line)] align-top">
-                  <td className="p-4 text-sm text-[var(--muted)]">{formatDate(lead.created_at)}</td>
-                  <td className="p-4">{lead.name || "-"}</td>
-                  <td className="p-4 font-semibold">{lead.phone}</td>
-                  <td className="p-4">
-                    <span className="rounded-full bg-[#eee9df] px-3 py-1 text-sm font-semibold">
-                      {lead.source.replace("_", " ")}
-                    </span>
-                  </td>
-                  <td className="p-4">
-                    <span className="rounded-full bg-[#e4f0e8] px-3 py-1 text-sm font-semibold text-[var(--good)]">
-                      {lead.status}
-                    </span>
-                  </td>
-                  <td className="max-w-sm p-4 text-[var(--muted)]">{lead.message || "-"}</td>
-                </tr>
-              ))}
-              {leads.length === 0 ? (
-                <tr>
-                  <td className="p-6 text-[var(--muted)]" colSpan={6}>
-                    No leads yet.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
+        <LeadsList leads={leads} />
       </section>
     </main>
   );

@@ -1,36 +1,94 @@
-import { createLead } from "@/lib/supabase";
+import { createMissedCallLeadIfNew, logWebhookEvent } from "@/lib/supabase";
 import { env } from "@/lib/env";
-import { missedCallSmsBody, twilioClient } from "@/lib/twilio";
+import {
+  formDataToRecord,
+  missedCallSmsBody,
+  twilioClient,
+  twilioWebhookUrl,
+  validateTwilioRequest,
+} from "@/lib/twilio";
 import { emptyTwiml, twimlResponse } from "@/lib/twiml";
-
-const MISSED_STATUSES = new Set(["no-answer", "busy", "failed", "canceled"]);
 
 export async function POST(request: Request) {
   const formData = await request.formData();
-  const dialCallStatus = String(formData.get("DialCallStatus") || "");
-  const callerPhone = String(formData.get("From") || "").trim();
+  const payload = formDataToRecord(formData);
+  const requestUrl = twilioWebhookUrl(request);
+  const isValid = validateTwilioRequest({
+    url: requestUrl,
+    params: payload,
+    signature: request.headers.get("x-twilio-signature"),
+  });
 
-  if (MISSED_STATUSES.has(dialCallStatus) && callerPhone) {
-    try {
-      await twilioClient.messages.create({
-        to: callerPhone,
-        from: env.twilioPhoneNumber,
-        body: missedCallSmsBody(),
-      });
-    } catch (error) {
-      console.error("Failed to send missed call SMS", error);
-    }
+  if (!isValid) {
+    await logWebhookEvent({
+      source: "twilio_dial_status",
+      payload,
+      responseStatus: 403,
+      responseBody: "Forbidden",
+      error: "Invalid Twilio signature",
+    });
 
-    try {
-      await createLead({
-        phone: callerPhone,
-        message: `Missed call. Dial status: ${dialCallStatus}.`,
-        source: "missed_call",
-      });
-    } catch (error) {
-      console.error("Failed to save missed call lead", error);
-    }
+    return new Response("Forbidden", { status: 403 });
   }
 
-  return twimlResponse(emptyTwiml());
+  const dialCallStatus = String(formData.get("DialCallStatus") || "");
+  const callerPhone = String(formData.get("From") || "").trim();
+  const callSid = String(formData.get("CallSid") || "").trim();
+  const xml = emptyTwiml();
+
+  try {
+    switch (dialCallStatus) {
+      case "no-answer":
+      case "busy":
+      case "failed":
+      case "canceled": {
+        if (!callerPhone || !callSid) {
+          throw new Error("Missing caller phone or CallSid on missed call webhook.");
+        }
+
+        const leadResult = await createMissedCallLeadIfNew({
+          callSid,
+          phone: callerPhone,
+          message: `Missed call. Dial status: ${dialCallStatus}.`,
+        });
+
+        if (leadResult.inserted) {
+          await twilioClient.messages.create({
+            to: callerPhone,
+            from: env.twilioPhoneNumber,
+            body: missedCallSmsBody(),
+          });
+        }
+
+        break;
+      }
+      case "completed":
+      case "answered":
+        break;
+      default:
+        console.warn(`Unhandled DialCallStatus: ${dialCallStatus}`);
+        break;
+    }
+
+    await logWebhookEvent({
+      source: "twilio_dial_status",
+      payload,
+      responseStatus: 200,
+      responseBody: xml,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown dial-status error";
+
+    await logWebhookEvent({
+      source: "twilio_dial_status",
+      payload,
+      responseStatus: 500,
+      responseBody: xml,
+      error: message,
+    });
+
+    console.error("Failed to handle Twilio dial status", error);
+  }
+
+  return twimlResponse(xml);
 }
