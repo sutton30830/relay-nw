@@ -189,6 +189,10 @@ export function LeadsList({ leads }: { leads: Lead[] }) {
       return <span className="sms-badge sms-badge--optout">opted out</span>;
     }
 
+    if (lead.sms_status === "skipped_recent") {
+      return <span className="sms-badge sms-badge--skipped">recently texted</span>;
+    }
+
     if (lead.sms_status === "sent") {
       return <span className="sms-badge sms-badge--sent">SMS sent</span>;
     }

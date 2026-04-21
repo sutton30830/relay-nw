@@ -1,5 +1,6 @@
 import {
   createMissedCallLeadIfNew,
+  hasRecentMissedCallSms,
   isOptedOut,
   logWebhookEvent,
   updateLeadSmsStatus,
@@ -58,6 +59,19 @@ export async function POST(request: Request) {
         });
 
         if (leadResult.inserted) {
+          const cooldownSince = new Date(
+            Date.now() - env.missedCallSmsCooldownHours * 60 * 60 * 1000,
+          );
+          const alreadyTextedRecently = await hasRecentMissedCallSms(callerPhone, cooldownSince);
+
+          if (leadResult.leadId && alreadyTextedRecently) {
+            await updateLeadSmsStatus({
+              id: leadResult.leadId,
+              smsStatus: "skipped_recent",
+            });
+            break;
+          }
+
           if (leadResult.leadId && (await isOptedOut(callerPhone))) {
             await updateLeadSmsStatus({
               id: leadResult.leadId,

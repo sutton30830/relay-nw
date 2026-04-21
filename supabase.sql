@@ -7,7 +7,7 @@ create table if not exists public.leads (
   notes text,
   source text not null check (source in ('missed_call', 'intake_form')),
   status text not null default 'new' check (status in ('new', 'contacted', 'booked', 'dead')),
-  sms_status text check (sms_status in ('pending', 'sent', 'failed', 'skipped_opt_out')),
+  sms_status text check (sms_status in ('pending', 'sent', 'failed', 'skipped_opt_out', 'skipped_recent')),
   sms_error text,
   created_at timestamptz not null default now()
 );
@@ -21,9 +21,10 @@ alter table public.leads
   add constraint leads_status_check check (status in ('new', 'contacted', 'booked', 'dead'));
 alter table public.leads drop constraint if exists leads_sms_status_check;
 alter table public.leads
-  add constraint leads_sms_status_check check (sms_status in ('pending', 'sent', 'failed', 'skipped_opt_out'));
+  add constraint leads_sms_status_check check (sms_status in ('pending', 'sent', 'failed', 'skipped_opt_out', 'skipped_recent'));
 
 create index if not exists leads_created_at_idx on public.leads (created_at desc);
+create index if not exists leads_phone_created_at_idx on public.leads (phone, created_at desc);
 create unique index if not exists leads_call_sid_unique_idx
   on public.leads (call_sid)
   where call_sid is not null;

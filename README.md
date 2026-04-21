@@ -66,6 +66,7 @@ Optional:
 
 - `SMS_TEMPLATE`: overrides the default SMS template
 - `DIAL_TIMEOUT_SECONDS`: defaults to `18`
+- `MISSED_CALL_SMS_COOLDOWN_HOURS`: defaults to `24`; prevents repeated missed-call texts to the same caller inside this window
 
 Use phone numbers in E.164 format, like `+12065551234`.
 
@@ -169,6 +170,7 @@ Use method `POST`.
 - `DIAL_TIMEOUT_SECONDS` defaults to 18 seconds to reduce the chance that the owner's carrier voicemail answers first.
 - Shorter timeout means more false missed calls.
 - Longer timeout means voicemail is more likely to answer, causing Twilio to report a connected call.
+- `MISSED_CALL_SMS_COOLDOWN_HOURS` prevents repeat callers from receiving the same missed-call SMS over and over. Repeat missed calls still create leads; they are marked as recently texted.
 - Relay NW tries to show the original caller as the forwarded caller ID. Twilio/carrier caller ID rules may affect what the owner actually sees.
 - Before using this for real US business texting, complete Twilio A2P 10DLC brand/campaign registration. Use a customer-care style use case and include a sample message matching the app's SMS template.
 

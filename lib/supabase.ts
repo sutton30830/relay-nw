@@ -3,7 +3,13 @@ import { env } from "@/lib/env";
 
 export type LeadSource = "missed_call" | "intake_form";
 export type LeadStatus = "new" | "contacted" | "booked" | "dead";
-export type SmsStatus = "pending" | "sent" | "failed" | "skipped_opt_out" | null;
+export type SmsStatus =
+  | "pending"
+  | "sent"
+  | "failed"
+  | "skipped_opt_out"
+  | "skipped_recent"
+  | null;
 export type WebhookEventSource = "twilio_voice" | "twilio_dial_status" | "twilio_inbound_sms";
 
 export type Lead = {
@@ -165,6 +171,27 @@ export async function updateLeadSmsStatus(input: {
   if (error) {
     throw error;
   }
+}
+
+export async function hasRecentMissedCallSms(phone: string, since: Date) {
+  if (isPlaceholderSupabaseConfig()) {
+    return false;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("leads")
+    .select("id")
+    .eq("phone", phone)
+    .eq("source", "missed_call")
+    .eq("sms_status", "sent")
+    .gte("created_at", since.toISOString())
+    .limit(1);
+
+  if (error) {
+    throw error;
+  }
+
+  return Boolean(data?.length);
 }
 
 export async function isOptedOut(phone: string) {
