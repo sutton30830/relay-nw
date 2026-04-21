@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f5f3ee;
+  --foreground: #1e252b;
+  --muted: #69747e;
+  --panel: #fffdf9;
+  --panel-soft: #ebe7df;
+  --line: #d9d2c6;
+  --brand: #245f56;
+  --brand-dark: #1a4640;
+  --accent: #a96133;
+  --good: #28704b;
+  --warn: #936a23;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+a {
+  color: inherit;
+}
+
+input,
+textarea,
+button {
+  font: inherit;
+}
+
+.shell {
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.page {
+  margin: 0 auto;
+  max-width: 1120px;
+}
+
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 12px 30px rgba(31, 37, 43, 0.06);
+}
+
+.eyebrow {
+  color: var(--brand);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.field {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  padding: 0.8rem 0.9rem;
+  color: var(--foreground);
+}
+
+.field:focus {
+  border-color: var(--brand);
+  outline: 3px solid rgba(31, 95, 91, 0.18);
+}
+
+.button-primary,
+.button-secondary {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  padding: 0.7rem 1rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.button-primary {
+  border: 1px solid var(--brand);
+  background: var(--brand);
+  color: #fff;
+}
+
+.button-primary:hover {
+  background: var(--brand-dark);
+}
+
+.button-secondary {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--foreground);
+}
+
+.status-dot {
+  display: inline-block;
+  height: 10px;
+  width: 10px;
+  border-radius: 999px;
+  background: var(--good);
+}
+
+code {
+  border-radius: 4px;
+  background: #eee9df;
+  padding: 0.12rem 0.28rem;
+  font-size: 0.92em;
+}
