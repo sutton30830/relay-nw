@@ -3,7 +3,8 @@ import { env } from "@/lib/env";
 
 export type LeadSource = "missed_call" | "intake_form";
 export type LeadStatus = "new" | "contacted" | "booked" | "dead";
-export type WebhookEventSource = "twilio_voice" | "twilio_dial_status";
+export type SmsStatus = "pending" | "sent" | "failed" | "skipped_opt_out" | null;
+export type WebhookEventSource = "twilio_voice" | "twilio_dial_status" | "twilio_inbound_sms";
 
 export type Lead = {
   id: string;
@@ -11,8 +12,11 @@ export type Lead = {
   name: string | null;
   phone: string;
   message: string | null;
+  notes: string | null;
   source: LeadSource;
   status: LeadStatus;
+  sms_status: SmsStatus;
+  sms_error: string | null;
   created_at: string;
 };
 
@@ -72,9 +76,10 @@ export async function createMissedCallLeadIfNew(input: {
     .insert({
       call_sid: input.callSid,
       phone: input.phone,
-      message: input.message,
-      source: "missed_call",
-      status: "new",
+        message: input.message,
+        sms_status: "pending",
+        source: "missed_call",
+        status: "new",
     })
     .select("id")
     .maybeSingle();
@@ -100,7 +105,7 @@ export async function getLeads() {
 
   const { data, error } = await supabaseAdmin
     .from("leads")
-    .select("id, call_sid, name, phone, message, source, status, created_at")
+    .select("id, call_sid, name, phone, message, notes, source, status, sms_status, sms_error, created_at")
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -110,16 +115,85 @@ export async function getLeads() {
   return (data ?? []) as Lead[];
 }
 
-export async function updateLeadStatus(input: { id: string; status: LeadStatus }) {
+export async function updateLead(input: { id: string; status?: LeadStatus; notes?: string | null }) {
   if (isPlaceholderSupabaseConfig()) {
-    console.warn("Skipping lead status update because Supabase is using placeholder values.", input);
+    console.warn("Skipping lead update because Supabase is using placeholder values.", input);
+    return;
+  }
+
+  const updates: {
+    status?: LeadStatus;
+    notes?: string | null;
+  } = {};
+
+  if (input.status) {
+    updates.status = input.status;
+  }
+
+  if (typeof input.notes !== "undefined") {
+    updates.notes = input.notes;
+  }
+
+  const { error } = await supabaseAdmin
+    .from("leads")
+    .update(updates)
+    .eq("id", input.id);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function updateLeadSmsStatus(input: {
+  id: string;
+  smsStatus: Exclude<SmsStatus, null>;
+  smsError?: string | null;
+}) {
+  if (isPlaceholderSupabaseConfig()) {
+    console.warn("Skipping SMS status update because Supabase is using placeholder values.", input);
     return;
   }
 
   const { error } = await supabaseAdmin
     .from("leads")
-    .update({ status: input.status })
+    .update({
+      sms_status: input.smsStatus,
+      sms_error: input.smsError ?? null,
+    })
     .eq("id", input.id);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function isOptedOut(phone: string) {
+  if (isPlaceholderSupabaseConfig()) {
+    return false;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("opt_outs")
+    .select("phone")
+    .eq("phone", phone)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return Boolean(data);
+}
+
+export async function recordOptOut(phone: string) {
+  if (isPlaceholderSupabaseConfig()) {
+    console.warn("Skipping opt-out insert because Supabase is using placeholder values.", { phone });
+    return;
+  }
+
+  const { error } = await supabaseAdmin
+    .from("opt_outs")
+    .upsert({ phone }, { onConflict: "phone" });
 
   if (error) {
     throw error;

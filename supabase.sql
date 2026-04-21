@@ -4,15 +4,24 @@ create table if not exists public.leads (
   name text,
   phone text not null,
   message text,
+  notes text,
   source text not null check (source in ('missed_call', 'intake_form')),
   status text not null default 'new' check (status in ('new', 'contacted', 'booked', 'dead')),
+  sms_status text check (sms_status in ('pending', 'sent', 'failed', 'skipped_opt_out')),
+  sms_error text,
   created_at timestamptz not null default now()
 );
 
 alter table public.leads add column if not exists call_sid text;
+alter table public.leads add column if not exists notes text;
+alter table public.leads add column if not exists sms_status text;
+alter table public.leads add column if not exists sms_error text;
 alter table public.leads drop constraint if exists leads_status_check;
 alter table public.leads
   add constraint leads_status_check check (status in ('new', 'contacted', 'booked', 'dead'));
+alter table public.leads drop constraint if exists leads_sms_status_check;
+alter table public.leads
+  add constraint leads_sms_status_check check (sms_status in ('pending', 'sent', 'failed', 'skipped_opt_out'));
 
 create index if not exists leads_created_at_idx on public.leads (created_at desc);
 create unique index if not exists leads_call_sid_unique_idx
@@ -24,14 +33,25 @@ alter table public.leads enable row level security;
 create table if not exists public.webhook_events (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
-  source text not null check (source in ('twilio_voice', 'twilio_dial_status')),
+  source text not null check (source in ('twilio_voice', 'twilio_dial_status', 'twilio_inbound_sms')),
   payload jsonb not null default '{}'::jsonb,
   response_status integer not null,
   response_body text,
   error text
 );
 
+alter table public.webhook_events drop constraint if exists webhook_events_source_check;
+alter table public.webhook_events
+  add constraint webhook_events_source_check check (source in ('twilio_voice', 'twilio_dial_status', 'twilio_inbound_sms'));
+
 alter table public.webhook_events enable row level security;
+
+create table if not exists public.opt_outs (
+  phone text primary key,
+  created_at timestamptz not null default now()
+);
+
+alter table public.opt_outs enable row level security;
 
 -- This MVP uses the Supabase service role key from server-only Next.js routes.
 -- No browser/client table access is needed, so no public RLS policies are added.

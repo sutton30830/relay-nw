@@ -36,6 +36,7 @@ export function LeadsList({ leads }: { leads: Lead[] }) {
   const [items, setItems] = useState(leads);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [errorId, setErrorId] = useState<string | null>(null);
+  const [savedNotesId, setSavedNotesId] = useState<string | null>(null);
 
   const counts = useMemo(
     () => ({
@@ -70,6 +71,62 @@ export function LeadsList({ leads }: { leads: Lead[] }) {
     setSavingId(null);
   }
 
+  async function updateNotes(id: string, notes: string) {
+    const previousItems = items;
+    setSavingId(id);
+    setErrorId(null);
+    setSavedNotesId(null);
+    setItems((current) =>
+      current.map((lead) => (lead.id === id ? { ...lead, notes } : lead)),
+    );
+
+    const response = await fetch(`/api/leads/${id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ notes }),
+    });
+
+    if (!response.ok) {
+      setItems(previousItems);
+      setErrorId(id);
+    } else {
+      setSavedNotesId(id);
+      window.setTimeout(() => setSavedNotesId(null), 1800);
+    }
+
+    setSavingId(null);
+  }
+
+  function smsStatusBadge(lead: Lead) {
+    if (!lead.sms_status || lead.source !== "missed_call") {
+      return null;
+    }
+
+    if (lead.sms_status === "failed") {
+      return (
+        <span className="rounded-full bg-red-50 px-3 py-1 text-sm font-semibold text-red-800">
+          SMS failed
+        </span>
+      );
+    }
+
+    if (lead.sms_status === "skipped_opt_out") {
+      return (
+        <span className="rounded-full bg-amber-50 px-3 py-1 text-sm font-semibold text-amber-800">
+          opted out
+        </span>
+      );
+    }
+
+    return (
+      <span className="rounded-full bg-[#e4f0e8] px-3 py-1 text-sm font-semibold text-[var(--good)]">
+        SMS {lead.sms_status}
+      </span>
+    );
+  }
+
   return (
     <>
       <div className="mt-6 grid gap-4 sm:grid-cols-3">
@@ -99,6 +156,7 @@ export function LeadsList({ leads }: { leads: Lead[] }) {
               <span className="rounded-full bg-[#eee9df] px-3 py-1 text-sm font-semibold">
                 {sourceLabel(lead.source)}
               </span>
+              {smsStatusBadge(lead)}
             </div>
 
             {lead.message ? (
@@ -133,9 +191,24 @@ export function LeadsList({ leads }: { leads: Lead[] }) {
               </a>
             </div>
 
+            <label className="mt-4 block">
+              <span className="mb-2 block text-sm font-semibold text-[var(--muted)]">
+                Owner notes
+              </span>
+              <textarea
+                className="field min-h-24"
+                defaultValue={lead.notes ?? ""}
+                maxLength={2000}
+                placeholder="Example: called back, left voicemail, booked for Thursday..."
+                onBlur={(event) => updateNotes(lead.id, event.currentTarget.value)}
+              />
+            </label>
+
             <div className="mt-3 min-h-6 text-sm text-[var(--muted)]">
               {savingId === lead.id ? "Saving..." : null}
-              {errorId === lead.id ? "Could not save status. Try again." : null}
+              {savedNotesId === lead.id ? "Notes saved." : null}
+              {errorId === lead.id ? "Could not save. Try again." : null}
+              {lead.sms_status === "failed" && lead.sms_error ? `SMS error: ${lead.sms_error}` : null}
             </div>
           </article>
         ))}

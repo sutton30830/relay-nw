@@ -1,4 +1,9 @@
-import { createMissedCallLeadIfNew, logWebhookEvent } from "@/lib/supabase";
+import {
+  createMissedCallLeadIfNew,
+  isOptedOut,
+  logWebhookEvent,
+  updateLeadSmsStatus,
+} from "@/lib/supabase";
 import { env } from "@/lib/env";
 import {
   formDataToRecord,
@@ -53,11 +58,40 @@ export async function POST(request: Request) {
         });
 
         if (leadResult.inserted) {
-          await twilioClient.messages.create({
-            to: callerPhone,
-            from: env.twilioPhoneNumber,
-            body: missedCallSmsBody(),
-          });
+          if (leadResult.leadId && (await isOptedOut(callerPhone))) {
+            await updateLeadSmsStatus({
+              id: leadResult.leadId,
+              smsStatus: "skipped_opt_out",
+            });
+            break;
+          }
+
+          try {
+            await twilioClient.messages.create({
+              to: callerPhone,
+              from: env.twilioPhoneNumber,
+              body: missedCallSmsBody(),
+            });
+
+            if (leadResult.leadId) {
+              await updateLeadSmsStatus({
+                id: leadResult.leadId,
+                smsStatus: "sent",
+              });
+            }
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "Unknown SMS send error";
+
+            if (leadResult.leadId) {
+              await updateLeadSmsStatus({
+                id: leadResult.leadId,
+                smsStatus: "failed",
+                smsError: message,
+              });
+            }
+
+            console.error("Failed to send missed call SMS", error);
+          }
         }
 
         break;
@@ -82,7 +116,7 @@ export async function POST(request: Request) {
     await logWebhookEvent({
       source: "twilio_dial_status",
       payload,
-      responseStatus: 500,
+      responseStatus: 200,
       responseBody: xml,
       error: message,
     });

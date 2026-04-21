@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { env } from "@/lib/env";
-import { type LeadStatus, updateLeadStatus } from "@/lib/supabase";
+import { type LeadStatus, updateLead } from "@/lib/supabase";
 
 const VALID_STATUSES = new Set<LeadStatus>(["new", "contacted", "booked", "dead"]);
 
@@ -16,13 +16,25 @@ export async function PATCH(
   }
 
   const { id } = await params;
-  const body = (await request.json()) as { status?: LeadStatus };
+  const body = (await request.json()) as { status?: LeadStatus; notes?: string | null };
 
-  if (!body.status || !VALID_STATUSES.has(body.status)) {
+  if (body.status && !VALID_STATUSES.has(body.status)) {
     return Response.json({ error: "Invalid status" }, { status: 400 });
   }
 
-  await updateLeadStatus({ id, status: body.status });
+  if (typeof body.notes === "string" && body.notes.length > 2000) {
+    return Response.json({ error: "Notes are too long" }, { status: 400 });
+  }
+
+  if (!body.status && typeof body.notes === "undefined") {
+    return Response.json({ error: "Nothing to update" }, { status: 400 });
+  }
+
+  await updateLead({
+    id,
+    status: body.status,
+    notes: typeof body.notes === "undefined" ? undefined : body.notes,
+  });
 
   return Response.json({ ok: true });
 }

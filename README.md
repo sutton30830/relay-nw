@@ -15,10 +15,12 @@ This app is intentionally single-business. No accounts, billing, CRM, shared inb
 5. For local Twilio testing, run `ngrok http 3000`.
 6. Set `APP_BASE_URL` and `INTAKE_URL` to the ngrok or deployed public URL.
 7. In Twilio, configure the phone number's Voice webhook to `APP_BASE_URL/api/twilio/voice`.
-8. Use HTTP `POST` for the Twilio webhook.
-9. Make a real test call from a separate phone.
-10. Let the owner's phone ring without answering.
-11. Confirm the caller receives the SMS and the lead appears in `/leads`.
+8. In Twilio, configure the phone number's Messaging webhook to `APP_BASE_URL/api/twilio/sms`.
+9. Use HTTP `POST` for both Twilio webhooks.
+10. Make a real test call from a separate phone.
+11. Let the owner's phone ring without answering.
+12. Confirm the caller receives the SMS and the lead appears in `/leads`.
+13. Reply to the SMS and confirm the owner receives the forwarded reply.
 
 ## Core Flow
 
@@ -41,6 +43,7 @@ This app is intentionally single-business. No accounts, billing, CRM, shared inb
 - `/api/leads/[id]` lead status update
 - `/api/twilio/voice` Twilio incoming call webhook
 - `/api/twilio/dial-status` Twilio dial result webhook
+- `/api/twilio/sms` Twilio inbound SMS webhook
 
 ## Environment Variables
 
@@ -90,6 +93,7 @@ The schema includes:
 
 - `leads`: intake and missed-call leads
 - `webhook_events`: basic Twilio webhook logs for debugging
+- `opt_outs`: phone numbers that replied STOP/UNSUBSCRIBE/CANCEL/END/QUIT
 
 `leads.call_sid` is unique when present. This prevents Twilio retries from creating duplicate missed-call leads or sending duplicate SMS messages.
 
@@ -152,6 +156,14 @@ https://abc123.ngrok-free.app/api/twilio/voice
 
 Use method `POST`.
 
+Set the phone number's Messaging webhook to:
+
+```text
+https://abc123.ngrok-free.app/api/twilio/sms
+```
+
+Use method `POST`.
+
 ## Twilio Notes
 
 - `DIAL_TIMEOUT_SECONDS` defaults to 18 seconds to reduce the chance that the owner's carrier voicemail answers first.
@@ -171,12 +183,15 @@ The simplest deployment path is Vercel:
 5. Set `APP_BASE_URL` to the deployed app URL, like `https://relay-nw.vercel.app`.
 6. Set `INTAKE_URL` to `https://relay-nw.vercel.app/intake`.
 7. Set Twilio's Voice webhook to `https://relay-nw.vercel.app/api/twilio/voice`.
+8. Set Twilio's Messaging webhook to `https://relay-nw.vercel.app/api/twilio/sms`.
 
 ## Security Notes
 
 - `/leads` uses one shared password.
 - There is no auth system.
 - Twilio webhooks validate `X-Twilio-Signature`.
+- Inbound SMS replies are forwarded to the owner phone number.
+- STOP/UNSUBSCRIBE/CANCEL/END/QUIT replies are recorded in `opt_outs`.
 - Supabase writes happen server-side with the service role key.
 - `.env.local` must never be committed.
 - This MVP is intended for non-healthcare businesses only.

@@ -51,8 +51,8 @@ export default function HomePage() {
             <div className="mt-6 grid gap-4 sm:grid-cols-3">
               {[
                 ["Twilio number", env.twilioPhoneNumber],
-                ["Owner phone", env.ownerPhoneNumber],
                 ["Ring time", `${env.dialTimeoutSeconds} seconds`],
+                ["Reply handling", "forwards to owner"],
               ].map(([label, value]) => (
                 <div key={label} className="panel p-4">
                   <p className="text-sm font-semibold text-[var(--muted)]">{label}</p>
