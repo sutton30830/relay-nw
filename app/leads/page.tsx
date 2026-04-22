@@ -1,8 +1,9 @@
 import { cookies } from "next/headers";
 import Link from "next/link";
-import { getLeads } from "@/lib/supabase";
-import { env } from "@/lib/env";
+import { Icon } from "@/components/icon";
 import { LeadsList } from "@/app/leads/leads-list";
+import { env } from "@/lib/env";
+import { getLeads } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
@@ -12,33 +13,41 @@ export default async function LeadsPage() {
 
   if (!isAllowed) {
     return (
-      <main className="shell">
-        <section className="panel mx-auto mt-8 max-w-md p-6 sm:p-8">
-          <p className="eyebrow">Relay NW</p>
-          <h1 className="mt-3 text-3xl font-semibold">Lead inbox</h1>
-          <p className="mt-3 leading-7 text-[var(--muted)]">
-            Enter the shared password to open {env.businessName}&apos;s leads.
+      <main className="gate-view">
+        <section className="gate-card">
+          <div className="brand-mark" style={{ margin: "0 auto" }}>
+            <Icon name="relay" size={18} />
+          </div>
+          <p className="t-eyebrow" style={{ marginTop: 14 }}>Relay NW · Protected</p>
+          <h1 className="t-display gate-title">Lead inbox</h1>
+          <p className="gate-sub">
+            Enter the shared password to open <strong>{env.businessName}&apos;s</strong> leads.
           </p>
-          <form action="/api/leads-login" method="POST" className="mt-7 space-y-4">
-            <label className="block">
-              <span className="mb-2 block font-semibold">Password</span>
-              <input
-                className="field"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                autoFocus
-                required
-              />
+
+          <form action="/api/leads-login" method="POST" className="gate-form">
+            <label className="field-label">
+              <span>Password</span>
+              <div className="gate-input">
+                <Icon name="shield" size={14} />
+                <input
+                  className="field"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  autoFocus
+                  required
+                  placeholder="••••••••"
+                />
+              </div>
             </label>
-            <button type="submit" className="button-primary w-full">
-              Open leads
+            <button className="btn btn-primary" type="submit" style={{ width: "100%", marginTop: 12 }}>
+              Open leads <Icon name="arrowRight" size={14} />
             </button>
           </form>
-          <p className="mt-6 text-center text-sm text-[var(--muted)]">
-            <Link href="/" className="underline-offset-4 hover:underline">
-              Back to setup
-            </Link>
+
+          <p className="gate-foot">
+            Only the owner has this password.{" "}
+            <Link href="/" style={{ textDecoration: "underline" }}>Back to setup</Link>
           </p>
         </section>
       </main>
@@ -48,36 +57,8 @@ export default async function LeadsPage() {
   const leads = await getLeads();
 
   return (
-    <main className="shell">
-      <section className="page">
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--line)] pb-5">
-          <div>
-            <div className="flex items-center gap-2">
-              <Link href="/" className="eyebrow">
-                Relay NW
-              </Link>
-              <span
-                aria-label="Live — updates automatically"
-                title="Auto-refreshes every 30 seconds"
-                className="inline-flex items-center gap-1.5 rounded-full bg-[#e4f0e8] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--good)]"
-              >
-                <span className="relative inline-flex h-1.5 w-1.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--good)] opacity-60" />
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[var(--good)]" />
-                </span>
-                Live
-              </span>
-            </div>
-            <h1 className="mt-2 text-3xl font-semibold">Lead inbox</h1>
-            <p className="mt-1 text-[var(--muted)]">{env.businessName}</p>
-          </div>
-          <form action="/api/leads-logout" method="POST">
-            <button className="button-secondary">Log out</button>
-          </form>
-        </div>
-
-        <LeadsList leads={leads} />
-      </section>
+    <main className="leads-view">
+      <LeadsList businessName={env.businessName} twilioNumber={env.twilioPhoneNumber} leads={leads} />
     </main>
   );
 }

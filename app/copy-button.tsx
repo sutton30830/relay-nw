@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Icon } from "@/components/icon";
 
 export function CopyButton({ value, label = "Copy" }: { value: string; label?: string }) {
   const [copied, setCopied] = useState(false);
@@ -19,10 +20,10 @@ export function CopyButton({ value, label = "Copy" }: { value: string; label?: s
     <button
       type="button"
       onClick={handleClick}
-      className="button-secondary text-xs"
-      style={{ minHeight: 32, padding: "0.3rem 0.65rem" }}
+      className="btn btn-secondary btn-sm"
       aria-live="polite"
     >
+      <Icon name={copied ? "check" : "copy"} size={13} />
       {copied ? "Copied" : label}
     </button>
   );

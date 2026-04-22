@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { env } from "@/lib/env";
+import { Icon } from "@/components/icon";
 import { IntakeForm } from "@/app/intake/intake-form";
+import { env } from "@/lib/env";
 
 type SearchParams = Promise<{
   saved?: string;
@@ -16,102 +17,125 @@ export default async function IntakePage({
   const saved = params.saved === "1";
   const error = params.error === "1";
 
-  return (
-    <main className="shell">
-      <section className="mx-auto max-w-5xl">
-        <nav className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] pb-5">
-          <div>
-            <Link href="/" className="eyebrow">
-              Relay NW
+  if (saved) {
+    return (
+      <main className="intake-view intake-view--done">
+        <section className="intake-done">
+          <div className="intake-done__seal">
+            <Icon name="check" size={30} />
+          </div>
+          <p className="t-eyebrow">Received · just now</p>
+          <h1 className="t-display intake-done__title">Thanks. We&apos;ve got you.</h1>
+          <p className="intake-done__sub">
+            {env.businessName} will call or text you back shortly. If it is urgent, you can also
+            book a time directly.
+          </p>
+
+          <div className="intake-done__next">
+            <h2 className="t-eyebrow">What happens next</h2>
+            <ol className="intake-next-list">
+              <li><span>1</span> Your request is saved and flagged as new.</li>
+              <li><span>2</span> The owner reviews it and reaches out.</li>
+              <li><span>3</span> You lock in a time that works.</li>
+            </ol>
+          </div>
+
+          <div className="mt-5 flex flex-wrap justify-center gap-3">
+            <a className="btn btn-primary" href={env.schedulingUrl}>
+              <Icon name="calendar" size={14} /> Book a time directly
+            </a>
+            <Link className="btn btn-secondary" href="/intake">
+              Submit another request
             </Link>
-            <p className="mt-1 text-sm text-[var(--muted)]">{env.businessName}</p>
           </div>
-          <a href={env.schedulingUrl} className="button-secondary text-sm">
-            Book online instead
-          </a>
-        </nav>
+        </section>
+      </main>
+    );
+  }
 
-        {saved ? (
-          <div className="py-10">
-            <div className="panel mx-auto max-w-xl p-8 text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#e4f0e8] text-2xl font-bold text-[var(--good)]">
-                ✓
-              </div>
-              <h1 className="mt-5 text-3xl font-semibold">Thanks, we&apos;ve got it.</h1>
-              <p className="mt-3 leading-7 text-[var(--muted)]">
-                The owner will call or text you back shortly. If it&apos;s urgent, you can also
-                book a time directly.
-              </p>
-              <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                <a href={env.schedulingUrl} className="button-primary">
-                  Book a time
-                </a>
-                <Link href="/intake" className="button-secondary">
-                  Submit another request
-                </Link>
-              </div>
-            </div>
+  return (
+    <main className="intake-view">
+      <header className="intake-top">
+        <div className="app-head__brand">
+          <div className="brand-mark">
+            <Icon name="relay" size={18} />
           </div>
-        ) : (
-          <div className="grid gap-6 py-8 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
-            <aside className="space-y-5">
-              <div className="panel overflow-hidden">
-                <div className="bg-[var(--brand)] p-6 text-white">
-                  <p className="text-sm font-semibold uppercase tracking-[0.12em] opacity-85">
-                    Request help
-                  </p>
-                  <h1 className="mt-3 text-3xl font-semibold leading-tight">
-                    Tell us what you need and we&apos;ll follow up.
-                  </h1>
-                </div>
-                <div className="space-y-4 p-6 text-[var(--muted)]">
-                  <p className="leading-7">
-                    Use this form if we missed your call or if you prefer to send a quick note
-                    first.
-                  </p>
-                  <div className="rounded-md border border-[var(--line)] bg-white p-4">
-                    <p className="font-semibold text-[var(--foreground)]">What happens next</p>
-                    <ol className="mt-3 space-y-2 text-sm leading-6">
-                      <li>1. Your request is saved securely.</li>
-                      <li>2. The owner reviews the details.</li>
-                      <li>3. You get a call or text back with next steps.</li>
-                    </ol>
-                  </div>
-                </div>
-              </div>
-
-              <div className="panel p-5">
-                <p className="text-sm font-semibold text-[var(--muted)]">Prefer a time slot?</p>
-                <a href={env.schedulingUrl} className="button-secondary mt-3 w-full">
-                  Open scheduling link
-                </a>
-              </div>
-            </aside>
-
-            <div className="panel overflow-hidden">
-              <div className="border-b border-[var(--line)] bg-[#f1eee7] p-6 sm:p-8">
-                <p className="eyebrow">{env.businessName}</p>
-                <h2 className="mt-3 text-3xl font-semibold leading-tight">Service request</h2>
-                <p className="mt-3 max-w-2xl leading-7 text-[var(--muted)]">
-                  A few details are enough. Keep it brief, and include anything that will help us
-                  understand the job.
-                </p>
-              </div>
-
-              <div className="p-6 sm:p-8">
-                {error ? (
-                  <div className="alert alert--error mb-6" role="alert">
-                    Something went wrong. Please check the form and try again. If this keeps
-                    happening, call us directly.
-                  </div>
-                ) : null}
-
-                <IntakeForm />
-              </div>
-            </div>
+          <div>
+            <Link href="/" className="t-eyebrow" style={{ fontSize: 10 }}>
+              Request help
+            </Link>
+            <h1 className="t-display" style={{ fontSize: 22, margin: 0 }}>
+              {env.businessName}
+            </h1>
           </div>
-        )}
-      </section>
+        </div>
+        <a href={env.schedulingUrl} className="btn btn-secondary btn-sm">
+          <Icon name="calendar" size={13} /> Book online instead
+        </a>
+      </header>
+
+      <div className="intake-grid">
+        <aside className="intake-side">
+          <p className="t-eyebrow">Tell us the essentials</p>
+          <h2 className="t-display intake-side__title">
+            A few details are all we need to call you back.
+          </h2>
+          <p className="intake-side__lede">
+            Missed our call? Hate phone tag? Fill this out and the owner will follow up by text or
+            phone, whichever gets the job moving.
+          </p>
+
+          <ul className="intake-signals">
+            <li>
+              <span className="intake-signals__icon"><Icon name="shield" size={14} /></span>
+              <div>
+                <p className="intake-signals__t">Your info stays private</p>
+                <p className="intake-signals__d">Only used to follow up on this request.</p>
+              </div>
+            </li>
+            <li>
+              <span className="intake-signals__icon"><Icon name="clock" size={14} /></span>
+              <div>
+                <p className="intake-signals__t">Fast follow-up</p>
+                <p className="intake-signals__d">The request lands in the owner&apos;s lead inbox.</p>
+              </div>
+            </li>
+            <li>
+              <span className="intake-signals__icon"><Icon name="star" size={14} /></span>
+              <div>
+                <p className="intake-signals__t">Local business friendly</p>
+                <p className="intake-signals__d">No account needed. No app to download.</p>
+              </div>
+            </li>
+          </ul>
+
+          <div className="intake-quote">
+            <p style={{ margin: 0, fontSize: 15, lineHeight: 1.55, fontStyle: "italic" }}>
+              &quot;Texted after a missed call and got a reply without waiting on hold.&quot;
+            </p>
+            <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--ink-3)" }}>
+              Customer-friendly follow-up, built for service work.
+            </p>
+          </div>
+        </aside>
+
+        <section className="intake-form panel">
+          <div className="intake-form__head">
+            <p className="t-eyebrow">Service request</p>
+            <h2 className="t-display intake-form__title">What can we help with?</h2>
+          </div>
+
+          <div className="intake-form__body">
+            {error ? (
+              <div className="intake-error" role="alert">
+                <Icon name="alertTriangle" size={14} />
+                Something went wrong. Please check the form and try again.
+              </div>
+            ) : null}
+            <IntakeForm />
+          </div>
+        </section>
+      </div>
     </main>
   );
 }

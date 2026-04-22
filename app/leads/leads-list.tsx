@@ -1,56 +1,68 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Icon } from "@/components/icon";
 import type { Lead, LeadStatus } from "@/lib/supabase";
 
 const STATUS_OPTIONS: LeadStatus[] = ["new", "contacted", "booked", "dead"];
-
-type Filter = "all" | "attention" | LeadStatus;
-
-const FILTER_LABELS: Record<Filter, string> = {
-  all: "All",
-  attention: "Needs attention",
+const STATUS_LABELS: Record<LeadStatus, string> = {
   new: "New",
   contacted: "Contacted",
   booked: "Booked",
   dead: "Dead",
 };
 
-const FILTER_ORDER: Filter[] = ["all", "attention", "new", "contacted", "booked", "dead"];
+type Filter = "all" | "attention" | LeadStatus;
 
-const POLL_INTERVAL_MS = 30_000;
-const TICK_INTERVAL_MS = 30_000;
+const FILTERS: Array<{ key: Filter; label: string; danger?: boolean; hideIfEmpty?: boolean }> = [
+  { key: "all", label: "All" },
+  { key: "attention", label: "Needs attention", danger: true, hideIfEmpty: true },
+  { key: "new", label: "New" },
+  { key: "contacted", label: "Contacted" },
+  { key: "booked", label: "Booked" },
+  { key: "dead", label: "Dead" },
+];
+
+const QUICK_REPLIES = [
+  "On my way - ETA 30 min.",
+  "Can I come by tomorrow morning?",
+  "Minimum service call is $95 - still good?",
+  "I'll send a quote by end of day.",
+];
 
 function formatRelativeTime(value: string, now: number) {
   const createdAt = new Date(value).getTime();
-  const diffMs = Math.max(0, now - createdAt);
-  const diffMinutes = Math.floor(diffMs / 60_000);
+  const diffMinutes = Math.floor(Math.max(0, now - createdAt) / 60_000);
 
-  if (diffMinutes < 1) {
-    return "just now";
-  }
-
-  if (diffMinutes < 60) {
-    return `${diffMinutes}m ago`;
-  }
+  if (diffMinutes < 1) return "just now";
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
 
   const diffHours = Math.floor(diffMinutes / 60);
-
-  if (diffHours < 24) {
-    return `${diffHours}h ago`;
-  }
+  if (diffHours < 24) return `${diffHours}h ago`;
 
   const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
 
-  if (diffDays < 7) {
-    return `${diffDays}d ago`;
+  return new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function formatPhone(phone: string) {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("1")) {
+    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
   }
+  return phone;
+}
 
-  return new Date(value).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
+function initials(lead: Lead) {
+  if (!lead.name) return null;
+  return lead.name
+    .split(" ")
+    .map((word) => word[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 }
 
 function sourceLabel(source: Lead["source"]) {
@@ -61,312 +73,490 @@ function needsAttention(lead: Lead) {
   return lead.sms_status === "failed";
 }
 
-export function LeadsList({ leads }: { leads: Lead[] }) {
+function StatusPill({ status }: { status: LeadStatus }) {
+  return <span className={`chip status-pill--${status}`}>{STATUS_LABELS[status]}</span>;
+}
+
+function SourceBadge({ source }: { source: Lead["source"] }) {
+  return (
+    <span className="chip" style={{ textTransform: "none", letterSpacing: 0, fontSize: 12 }}>
+      <Icon name={source === "missed_call" ? "phoneMissed" : "inbox"} size={12} />
+      {sourceLabel(source)}
+    </span>
+  );
+}
+
+function SmsBadge({ lead }: { lead: Lead }) {
+  if (!lead.sms_status || lead.source !== "missed_call") return null;
+
+  if (lead.sms_status === "failed") {
+    return <span className="chip chip-danger"><Icon name="alertTriangle" size={12} /> SMS failed</span>;
+  }
+  if (lead.sms_status === "sent") {
+    return <span className="chip chip-good"><Icon name="checkDouble" size={12} /> SMS sent</span>;
+  }
+  if (lead.sms_status === "skipped_opt_out") {
+    return <span className="chip chip-warn"><Icon name="shield" size={12} /> Opted out</span>;
+  }
+  if (lead.sms_status === "skipped_recent") {
+    return <span className="chip"><Icon name="clock" size={12} /> Recently texted</span>;
+  }
+  return <span className="chip chip-warn"><Icon name="clock" size={12} /> SMS pending</span>;
+}
+
+function StatusControl({
+  status,
+  onChange,
+}: {
+  status: LeadStatus;
+  onChange: (status: LeadStatus) => void;
+}) {
+  return (
+    <div className="lead-card__status-ctrl">
+      {STATUS_OPTIONS.map((option) => (
+        <button
+          key={option}
+          type="button"
+          className={`status-seg ${status === option ? "status-seg--on" : ""}`}
+          onClick={() => onChange(option)}
+        >
+          {STATUS_LABELS[option]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function LeadDrawer({
+  lead,
+  now,
+  twilioNumber,
+  onClose,
+  onStatus,
+  onNotes,
+}: {
+  lead: Lead;
+  now: number;
+  twilioNumber: string;
+  onClose: () => void;
+  onStatus: (id: string, status: LeadStatus) => void;
+  onNotes: (id: string, notes: string) => void;
+}) {
+  const [reply, setReply] = useState("");
+  const [notes, setNotes] = useState(lead.notes ?? "");
+
+  useEffect(() => {
+    setReply("");
+    setNotes(lead.notes ?? "");
+  }, [lead.id, lead.notes]);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  const autoMessage =
+    lead.source === "missed_call" && lead.sms_status === "sent"
+      ? "Hi, sorry we missed your call. Please fill out the intake form or book a time."
+      : null;
+
+  return (
+    <>
+      <div className="drawer-backdrop" onClick={onClose} />
+      <aside className="drawer" role="dialog" aria-label={`Lead ${lead.name || lead.phone}`}>
+        <header className="drawer__head">
+          <button className="btn btn-ghost btn-sm" type="button" onClick={onClose}>
+            <Icon name="x" size={14} /> Close
+          </button>
+          <div className="drawer__head-actions">
+            <a className="btn btn-secondary btn-sm" href={`tel:${lead.phone}`}>
+              <Icon name="phone" size={13} /> Call
+            </a>
+            <button className="btn btn-ghost btn-sm" type="button" aria-label="More">
+              <Icon name="more" size={16} />
+            </button>
+          </div>
+        </header>
+
+        <div className="drawer__hero">
+          <div className="lead-card__avatar lead-card__avatar--lg">
+            {initials(lead) ?? <Icon name="user" size={22} />}
+          </div>
+          <div>
+            <h2 className="t-display" style={{ fontSize: 34, margin: 0 }}>
+              {lead.name || "Unknown caller"}
+            </h2>
+            <p className="t-mono" style={{ margin: "4px 0 0", color: "var(--ink-2)", fontSize: 15 }}>
+              {formatPhone(lead.phone)}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <StatusPill status={lead.status} />
+              <SourceBadge source={lead.source} />
+              <SmsBadge lead={lead} />
+            </div>
+          </div>
+        </div>
+
+        <div className="drawer__status-row">
+          <span className="t-eyebrow">Status</span>
+          <StatusControl status={lead.status} onChange={(status) => onStatus(lead.id, status)} />
+        </div>
+
+        {lead.message ? (
+          <div className="drawer__message">
+            <p className="t-eyebrow">Request details</p>
+            <p style={{ margin: "8px 0 0", lineHeight: 1.55 }}>{lead.message}</p>
+          </div>
+        ) : null}
+
+        <div className="drawer__section-head">
+          <p className="t-eyebrow">SMS thread</p>
+          <span style={{ fontSize: 12, color: "var(--ink-4)" }}>
+            {autoMessage ? "1 auto message" : "No stored replies yet"}
+          </span>
+        </div>
+
+        <div className="thread clean-scroll">
+          {autoMessage ? (
+            <>
+              <div className="thread__day"><span>{formatRelativeTime(lead.created_at, now)}</span></div>
+              <div className="bubble-row bubble-row--out">
+                <div className="bubble bubble--out">
+                  <p className="bubble__tag"><Icon name="checkDouble" size={10} /> Auto-sent by Relay</p>
+                  <p style={{ margin: 0 }}>{autoMessage}</p>
+                  <p className="bubble__time">sent</p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="thread__empty">
+              <Icon name="message" size={20} />
+              <p>No SMS thread yet.</p>
+              <p style={{ fontSize: 13, color: "var(--ink-4)" }}>
+                Customer replies are logged by the SMS webhook; full thread storage is next.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="thread-composer">
+          <div className="thread-composer__quick clean-scroll">
+            {QUICK_REPLIES.map((template) => (
+              <button key={template} className="quick-reply" type="button" onClick={() => setReply(template)}>
+                {template}
+              </button>
+            ))}
+          </div>
+          <div className="thread-composer__input">
+            <textarea
+              className="field"
+              placeholder={`Prepare a text to ${lead.name?.split(" ")[0] || "this lead"}...`}
+              rows={2}
+              value={reply}
+              onChange={(event) => setReply(event.target.value)}
+            />
+            <a className="btn btn-primary" href={`sms:${lead.phone}${reply ? `?&body=${encodeURIComponent(reply)}` : ""}`}>
+              <Icon name="send" size={14} /> Text
+            </a>
+          </div>
+          <p className="thread-composer__hint">
+            Opens your device SMS app. Twilio conversation sending is a follow-up backend upgrade.
+            Relay number: <span className="t-mono">{twilioNumber}</span>.
+          </p>
+        </div>
+
+        <div className="drawer__notes">
+          <p className="t-eyebrow" style={{ marginBottom: 8 }}>Owner notes</p>
+          <textarea
+            className="field"
+            rows={3}
+            placeholder="Private notes - only you see these."
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            onBlur={() => onNotes(lead.id, notes)}
+          />
+        </div>
+      </aside>
+    </>
+  );
+}
+
+export function LeadsList({
+  leads,
+  businessName,
+  twilioNumber,
+}: {
+  leads: Lead[];
+  businessName: string;
+  twilioNumber: string;
+}) {
   const router = useRouter();
+  const searchRef = useRef<HTMLInputElement | null>(null);
   const [items, setItems] = useState(leads);
   const [filter, setFilter] = useState<Filter>("all");
-  const [savingId, setSavingId] = useState<string | null>(null);
-  const [errorId, setErrorId] = useState<string | null>(null);
-  const [savedNotesId, setSavedNotesId] = useState<string | null>(null);
-  const [now, setNow] = useState<number>(() => Date.now());
+  const [query, setQuery] = useState("");
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
-  // Sync from the server when router.refresh() brings new data in.
   useEffect(() => {
     setItems(leads);
   }, [leads]);
 
-  // Poll the server for new leads.
   useEffect(() => {
-    const id = window.setInterval(() => {
-      router.refresh();
-    }, POLL_INTERVAL_MS);
+    const id = window.setInterval(() => router.refresh(), 30_000);
     return () => window.clearInterval(id);
   }, [router]);
 
-  // Tick the clock so relative timestamps stay fresh.
   useEffect(() => {
-    const id = window.setInterval(() => {
-      setNow(Date.now());
-    }, TICK_INTERVAL_MS);
+    const id = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(id);
   }, []);
 
-  const counts = useMemo(() => {
-    return {
-      all: items.length,
-      attention: items.filter(needsAttention).length,
-      new: items.filter((lead) => lead.status === "new").length,
-      contacted: items.filter((lead) => lead.status === "contacted").length,
-      booked: items.filter((lead) => lead.status === "booked").length,
-      dead: items.filter((lead) => lead.status === "dead").length,
-      missed: items.filter((lead) => lead.source === "missed_call").length,
-      intake: items.filter((lead) => lead.source === "intake_form").length,
-    };
-  }, [items]);
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        searchRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  const counts = useMemo(() => ({
+    all: items.length,
+    attention: items.filter(needsAttention).length,
+    new: items.filter((lead) => lead.status === "new").length,
+    contacted: items.filter((lead) => lead.status === "contacted").length,
+    booked: items.filter((lead) => lead.status === "booked").length,
+    dead: items.filter((lead) => lead.status === "dead").length,
+    missed: items.filter((lead) => lead.source === "missed_call").length,
+    replied: 0,
+  }), [items]);
+
+  const todays = useMemo(() => {
+    const dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    return items.filter((lead) => new Date(lead.created_at).getTime() >= dayStart.getTime());
+  }, [items, now]);
 
   const filteredItems = useMemo(() => {
-    switch (filter) {
-      case "all":
-        return items;
-      case "attention":
-        return items.filter(needsAttention);
-      default:
-        return items.filter((lead) => lead.status === filter);
+    let list = items;
+    if (filter === "attention") list = list.filter(needsAttention);
+    else if (filter !== "all") list = list.filter((lead) => lead.status === filter);
+
+    if (query.trim()) {
+      const needle = query.trim().toLowerCase();
+      list = list.filter((lead) =>
+        [lead.name, lead.phone, lead.message, lead.notes, sourceLabel(lead.source)]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(needle)),
+      );
     }
-  }, [items, filter]);
+
+    return list;
+  }, [items, filter, query]);
+
+  const openLead = items.find((lead) => lead.id === openId) ?? null;
 
   async function updateStatus(id: string, status: LeadStatus) {
     const previousItems = items;
-    setSavingId(id);
-    setErrorId(null);
-    setSavedNotesId(null);
-    setItems((current) =>
-      current.map((lead) => (lead.id === id ? { ...lead, status } : lead)),
-    );
+    setItems((current) => current.map((lead) => (lead.id === id ? { ...lead, status } : lead)));
 
     const response = await fetch(`/api/leads/${id}`, {
       method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
 
-    if (!response.ok) {
-      setItems(previousItems);
-      setErrorId(id);
-    }
-
-    setSavingId(null);
+    if (!response.ok) setItems(previousItems);
   }
 
   async function updateNotes(id: string, notes: string) {
     const previousItems = items;
-    setSavingId(id);
-    setErrorId(null);
-    setSavedNotesId(null);
-    setItems((current) =>
-      current.map((lead) => (lead.id === id ? { ...lead, notes } : lead)),
-    );
+    setItems((current) => current.map((lead) => (lead.id === id ? { ...lead, notes } : lead)));
 
     const response = await fetch(`/api/leads/${id}`, {
       method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ notes }),
     });
 
-    if (!response.ok) {
-      setItems(previousItems);
-      setErrorId(id);
-    } else {
-      setSavedNotesId(id);
-      window.setTimeout(() => setSavedNotesId(null), 1800);
-    }
-
-    setSavingId(null);
-  }
-
-  function renderStatusBadge(status: LeadStatus) {
-    return <span className={`status-pill status-pill--${status}`}>{status}</span>;
-  }
-
-  function renderSourceBadge(source: Lead["source"]) {
-    return <span className="source-badge">{sourceLabel(source)}</span>;
-  }
-
-  function renderSmsBadge(lead: Lead) {
-    if (!lead.sms_status || lead.source !== "missed_call") {
-      return null;
-    }
-
-    if (lead.sms_status === "failed") {
-      return <span className="sms-badge sms-badge--failed">SMS failed</span>;
-    }
-
-    if (lead.sms_status === "skipped_opt_out") {
-      return <span className="sms-badge sms-badge--optout">opted out</span>;
-    }
-
-    if (lead.sms_status === "skipped_recent") {
-      return <span className="sms-badge sms-badge--skipped">recently texted</span>;
-    }
-
-    if (lead.sms_status === "sent") {
-      return <span className="sms-badge sms-badge--sent">SMS sent</span>;
-    }
-
-    return <span className="sms-badge sms-badge--pending">SMS {lead.sms_status}</span>;
+    if (!response.ok) setItems(previousItems);
   }
 
   return (
     <>
-      <nav
-        aria-label="Filter leads"
-        className="scroll-row mt-6 flex gap-2 overflow-x-auto pb-1"
-      >
-        {FILTER_ORDER.map((key) => {
-          const count = counts[key];
-          const isActive = filter === key;
-          const isAttention = key === "attention";
+      <header className="app-head">
+        <div className="app-head__brand">
+          <div className="brand-mark"><Icon name="relay" size={18} /></div>
+          <div>
+            <p className="t-eyebrow" style={{ fontSize: 10 }}>Relay NW</p>
+            <h1 className="t-display" style={{ fontSize: 22, margin: 0 }}>{businessName}</h1>
+          </div>
+          <span className="live-dot" title="Auto-refreshes every 30 seconds">
+            <span className="live-dot__pulse" />
+            <span className="live-dot__core" />
+            Live
+          </span>
+        </div>
 
-          if (isAttention && count === 0) {
-            return null;
-          }
+        <div className="app-head__right">
+          <div className="search">
+            <Icon name="search" size={14} />
+            <input
+              ref={searchRef}
+              className="search__input"
+              placeholder="Search name, phone, message..."
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            <span className="kbd">⌘K</span>
+          </div>
+          <button className="btn btn-ghost btn-sm" type="button" onClick={() => router.refresh()} aria-label="Refresh">
+            <Icon name="refresh" size={14} />
+          </button>
+          <form action="/api/leads-logout" method="POST">
+            <button className="btn btn-secondary btn-sm">Log out</button>
+          </form>
+        </div>
+      </header>
 
+      <section className="page-head">
+        <div>
+          <p className="t-eyebrow">Inbox</p>
+          <h2 className="t-display page-head__title">
+            {counts.new > 0 ? (
+              <>You have <em>{counts.new}</em> new {counts.new === 1 ? "lead" : "leads"} to work.</>
+            ) : (
+              <>Inbox is clear. Nice work.</>
+            )}
+          </h2>
+        </div>
+      </section>
+
+      <div className="pulse-strip">
+        <div className="pulse-cell pulse-cell--accent">
+          <p className="t-eyebrow" style={{ fontSize: 10.5 }}>Needs your reply</p>
+          <p className="pulse-value t-display">{counts.new}</p>
+          <p className="pulse-sub">{counts.new === 1 ? "lead waiting" : "leads waiting"}</p>
+        </div>
+        <div className="pulse-cell pulse-cell--brand">
+          <p className="t-eyebrow" style={{ fontSize: 10.5 }}>Missed calls today</p>
+          <p className="pulse-value t-display">{todays.filter((lead) => lead.source === "missed_call").length}</p>
+          <p className="pulse-sub">auto-texted when eligible</p>
+        </div>
+        <div className="pulse-cell pulse-cell--good">
+          <p className="t-eyebrow" style={{ fontSize: 10.5 }}>Customers replied</p>
+          <p className="pulse-value t-display">{counts.replied}</p>
+          <p className="pulse-sub">thread storage next</p>
+        </div>
+        <div className="pulse-cell">
+          <p className="t-eyebrow" style={{ fontSize: 10.5 }}>Total leads</p>
+          <p className="pulse-value t-display">{counts.all}</p>
+          <p className="pulse-sub">newest first</p>
+        </div>
+      </div>
+
+      <nav className="filters clean-scroll" aria-label="Filter leads">
+        {FILTERS.map((item) => {
+          const count = counts[item.key];
+          if (item.hideIfEmpty && !count) return null;
+          const active = filter === item.key;
           return (
             <button
-              key={key}
+              key={item.key}
               type="button"
-              onClick={() => setFilter(key)}
-              aria-pressed={isActive}
-              className={[
-                "filter-chip",
-                isActive ? "filter-chip--active" : "",
-                isAttention ? "filter-chip--attention" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
+              className={`filter-pill ${active ? "filter-pill--on" : ""} ${item.danger ? "filter-pill--danger" : ""}`}
+              onClick={() => setFilter(item.key)}
+              aria-pressed={active}
             >
-              <span>{FILTER_LABELS[key]}</span>
-              <span className="filter-chip__count">{count}</span>
+              {item.danger ? <Icon name="alertTriangle" size={12} /> : null}
+              {item.label}
+              <span className="filter-pill__count">{count}</span>
             </button>
           );
         })}
       </nav>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-3">
-        <div className="panel p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
-            Total leads
-          </p>
-          <p className="mt-1 text-3xl font-semibold">{counts.all}</p>
-        </div>
-        <div className="panel p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
-            Missed calls
-          </p>
-          <p className="mt-1 text-3xl font-semibold">{counts.missed}</p>
-        </div>
-        <div className="panel p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
-            Intake forms
-          </p>
-          <p className="mt-1 text-3xl font-semibold">{counts.intake}</p>
-        </div>
-      </div>
-
-      <div className="mt-6 grid gap-4">
+      <div className="leads-list">
         {filteredItems.map((lead) => {
           const attention = needsAttention(lead);
-          const isNew = lead.status === "new";
-
           return (
             <article
               key={lead.id}
-              className={[
-                "lead-card panel p-5 sm:p-6",
-                isNew ? "lead-card--new" : "",
-                attention ? "lead-card--attention" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
+              className={`lead-card ${lead.status === "new" ? "lead-card--new" : ""} ${attention ? "lead-card--attention" : ""}`}
+              onClick={() => setOpenId(lead.id)}
             >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
-                    {formatRelativeTime(lead.created_at, now)}
-                  </p>
-                  <h2 className="mt-1 break-words text-2xl font-semibold">
-                    {lead.name || "Unknown caller"}
-                  </h2>
-                  <a
-                    href={`tel:${lead.phone}`}
-                    className="mt-1 inline-block text-lg font-semibold text-[var(--brand)] underline-offset-4 hover:underline"
-                  >
-                    {lead.phone}
-                  </a>
+              <div className="lead-card__head">
+                <div className="lead-card__id">
+                  <div className="lead-card__avatar">{initials(lead) ?? <Icon name="user" size={14} />}</div>
+                  <div style={{ minWidth: 0 }}>
+                    <h3 className="lead-card__name">{lead.name || "Unknown caller"}</h3>
+                    <div className="lead-card__meta">
+                      <span className="t-mono" style={{ fontSize: 13 }}>{formatPhone(lead.phone)}</span>
+                      <span>·</span>
+                      <span>{formatRelativeTime(lead.created_at, now)}</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  {renderStatusBadge(lead.status)}
-                  {renderSourceBadge(lead.source)}
-                  {renderSmsBadge(lead)}
+
+                <div className="lead-card__badges">
+                  <StatusPill status={lead.status} />
+                  <SourceBadge source={lead.source} />
+                  <SmsBadge lead={lead} />
                 </div>
               </div>
 
-              {lead.message ? (
-                <p className="mt-4 rounded-md border border-[var(--line)] bg-white p-4 leading-7 text-[var(--foreground)]">
-                  {lead.message}
-                </p>
+              {lead.message ? <p className="lead-card__msg">{lead.message}</p> : null}
+
+              {attention ? (
+                <div className="lead-card__alert">
+                  <Icon name="alertTriangle" size={14} />
+                  <span>{lead.sms_error || "SMS delivery failed"} - call them directly.</span>
+                </div>
               ) : null}
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-[auto_1fr_1fr] sm:items-end">
-                <label className="block">
-                  <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
-                    Status
-                  </span>
-                  <select
-                    className="field"
-                    value={lead.status}
-                    onChange={(event) =>
-                      updateStatus(lead.id, event.target.value as LeadStatus)
-                    }
-                  >
-                    {STATUS_OPTIONS.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <a className="button-primary" href={`tel:${lead.phone}`}>
-                  Call
+              <div className="lead-card__actions" onClick={(event) => event.stopPropagation()}>
+                <a className="btn btn-primary btn-sm" href={`tel:${lead.phone}`}>
+                  <Icon name="phone" size={13} /> Call
                 </a>
-                <a className="button-secondary" href={`sms:${lead.phone}`}>
-                  Text
+                <a className="btn btn-secondary btn-sm" href={`sms:${lead.phone}`}>
+                  <Icon name="message" size={13} /> Text
                 </a>
-              </div>
-
-              <label className="mt-4 block">
-                <span className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
-                  <span>Owner notes</span>
-                  <span className="text-[var(--muted)]/70 text-[10px] font-normal normal-case tracking-normal">
-                    Saves when you tap outside
-                  </span>
-                </span>
-                <textarea
-                  className="field min-h-24"
-                  defaultValue={lead.notes ?? ""}
-                  maxLength={2000}
-                  placeholder="Example: called back, left voicemail, booked for Thursday..."
-                  onBlur={(event) =>
-                    updateNotes(lead.id, event.currentTarget.value)
-                  }
-                />
-              </label>
-
-              <div className="mt-3 min-h-6 text-sm text-[var(--muted)]">
-                {savingId === lead.id ? "Saving..." : null}
-                {savedNotesId === lead.id ? "Notes saved." : null}
-                {errorId === lead.id ? "Could not save. Try again." : null}
-                {lead.sms_status === "failed" && lead.sms_error
-                  ? `SMS error: ${lead.sms_error}`
-                  : null}
+                <StatusControl status={lead.status} onChange={(status) => updateStatus(lead.id, status)} />
+                <button className="btn btn-ghost btn-sm ml-auto" type="button" onClick={() => setOpenId(lead.id)}>
+                  Open <Icon name="chevronRight" size={13} />
+                </button>
               </div>
             </article>
           );
         })}
 
         {filteredItems.length === 0 ? (
-          <div className="panel p-6 text-center text-[var(--muted)]">
-            {filter === "all"
-              ? "No leads yet. Missed calls and intake submissions will show up here."
-              : `No ${FILTER_LABELS[filter].toLowerCase()} leads.`}
+          <div className="empty-state">
+            <div className="empty-state__icon"><Icon name="inbox" size={28} /></div>
+            <h3 className="t-display" style={{ fontSize: 24, margin: "12px 0 4px" }}>Nothing here yet.</h3>
+            <p style={{ color: "var(--ink-3)", margin: 0 }}>
+              {filter === "all" ? "Missed calls and intake forms will land here." : "No leads match this view."}
+            </p>
           </div>
         ) : null}
       </div>
+
+      {openLead ? (
+        <LeadDrawer
+          lead={openLead}
+          now={now}
+          twilioNumber={twilioNumber}
+          onClose={() => setOpenId(null)}
+          onStatus={updateStatus}
+          onNotes={updateNotes}
+        />
+      ) : null}
     </>
   );
 }

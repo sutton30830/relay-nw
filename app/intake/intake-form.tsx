@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Icon } from "@/components/icon";
 
 function formatUsPhone(value: string) {
   const digits = value.replace(/\D/g, "").slice(0, 11);
@@ -67,13 +68,7 @@ export function IntakeForm() {
   }
 
   return (
-    <form
-      action="/api/intake"
-      method="POST"
-      className="space-y-5"
-      onSubmit={handleSubmit}
-      noValidate
-    >
+    <form action="/api/intake" method="POST" onSubmit={handleSubmit} noValidate>
       {/* Honeypot — real users won't see or fill this. */}
       <div className="honeypot" aria-hidden="true">
         <label>
@@ -88,9 +83,9 @@ export function IntakeForm() {
         </label>
       </div>
 
-      <div className="grid gap-5 sm:grid-cols-2">
-        <label className="block">
-          <span className="mb-2 block font-semibold">Your name</span>
+      <div className="intake-row">
+        <label className="field-label">
+          <span>Your name</span>
           <input
             ref={nameRef}
             className="field"
@@ -100,8 +95,8 @@ export function IntakeForm() {
           />
         </label>
 
-        <label className="block">
-          <span className="mb-2 block font-semibold">Best phone number</span>
+        <label className="field-label">
+          <span>Best phone number</span>
           <input
             className="field"
             name="phone"
@@ -113,52 +108,56 @@ export function IntakeForm() {
             onChange={handlePhoneChange}
             required
           />
-          <span className="mt-1 block text-xs text-[var(--muted)]">
-            US numbers only. We&apos;ll text you at this number.
+          <span className="field-hint">
+            US only. We&apos;ll text or call this number.
           </span>
         </label>
       </div>
 
-      <label className="block">
-        <span className="mb-2 block font-semibold">What can we help with?</span>
+      <label className="field-label">
+        <span>What do you need?</span>
         <textarea
-          className="field min-h-44"
+          className="field"
           name="message"
-          placeholder="Example: leaking outdoor faucet, no hot water, broken outlet..."
+          rows={5}
+          placeholder="Example: leaking outdoor faucet, water heater making noise, kitchen sink backed up..."
           maxLength={2000}
         />
+        <span className="field-hint">
+          One or two sentences is perfect. Include the room or fixture if it helps.
+        </span>
       </label>
 
-      <label className="flex gap-3 rounded-md border border-[var(--line)] bg-white p-4 text-sm leading-6 text-[var(--muted)]">
+      <label className="consent-row">
         <input
           ref={consentRef}
-          className="mt-1 h-4 w-4 shrink-0"
           name="consent"
           type="checkbox"
           required
         />
         <span>
           I agree to be contacted by phone or text about this request. Message and data rates may
-          apply. Reply STOP to opt out.
+          apply. Reply <span className="t-mono">STOP</span> to opt out anytime.
         </span>
       </label>
 
       {clientError ? (
-        <div className="alert alert--error" role="alert">
-          {clientError}
+        <div className="intake-error" role="alert">
+          <Icon name="alertTriangle" size={14} /> {clientError}
         </div>
       ) : null}
 
       <button
         type="submit"
-        className="button-primary w-full"
+        className="btn btn-primary intake-submit"
         disabled={submitting}
         aria-disabled={submitting}
       >
-        {submitting ? "Sending..." : "Send request"}
+        {submitting ? "Sending..." : "Send request"} <Icon name="arrowRight" size={14} />
       </button>
 
-      <p className="text-center text-xs text-[var(--muted)]">
+      <p className="intake-foot">
+        <Icon name="shield" size={11} />
         Your information is only used to follow up about this request.
       </p>
     </form>
