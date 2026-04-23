@@ -14,25 +14,39 @@ export function missedCallSmsBody() {
 }
 
 export function validateTwilioRequest(input: {
-  url: string;
+  urls: string[];
   params: Record<string, string>;
   signature: string | null;
 }) {
   if (!input.signature) {
-    return false;
+    return { isValid: false, matchedUrl: null as string | null };
   }
 
-  return twilio.validateRequest(
-    env.twilioAuthToken,
-    input.signature,
-    input.url,
-    input.params,
-  );
+  for (const url of input.urls) {
+    if (twilio.validateRequest(env.twilioAuthToken, input.signature, url, input.params)) {
+      return { isValid: true, matchedUrl: url };
+    }
+  }
+
+  return { isValid: false, matchedUrl: null as string | null };
 }
 
-export function twilioWebhookUrl(request: Request) {
+export function twilioWebhookUrls(request: Request) {
   const url = new URL(request.url);
-  return `${env.appBaseUrl}${url.pathname}${url.search}`;
+  const pathnameAndSearch = `${url.pathname}${url.search}`;
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  const forwardedHost =
+    request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+
+  const candidates = new Set<string>();
+  candidates.add(request.url);
+  candidates.add(`${env.appBaseUrl}${pathnameAndSearch}`);
+
+  if (forwardedProto && forwardedHost) {
+    candidates.add(`${forwardedProto}://${forwardedHost}${pathnameAndSearch}`);
+  }
+
+  return Array.from(candidates);
 }
 
 export function formDataToRecord(formData: FormData) {
@@ -43,4 +57,17 @@ export function formDataToRecord(formData: FormData) {
   }
 
   return values;
+}
+
+export function summarizeTwilioRequest(request: Request, payload: Record<string, string>) {
+  return {
+    method: request.method,
+    path: new URL(request.url).pathname,
+    callSid: payload.CallSid ?? null,
+    from: payload.From ?? null,
+    to: payload.To ?? null,
+    dialCallStatus: payload.DialCallStatus ?? null,
+    hasOwnerPhoneNumber: Boolean(env.ownerPhoneNumber),
+    hasTwilioPhoneNumber: Boolean(env.twilioPhoneNumber),
+  };
 }

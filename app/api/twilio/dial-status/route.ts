@@ -9,29 +9,43 @@ import { env } from "@/lib/env";
 import {
   formDataToRecord,
   missedCallSmsBody,
+  summarizeTwilioRequest,
   twilioClient,
-  twilioWebhookUrl,
+  twilioWebhookUrls,
   validateTwilioRequest,
 } from "@/lib/twilio";
 import { emptyTwiml, twimlResponse } from "@/lib/twiml";
 
+export async function GET() {
+  return twimlResponse(emptyTwiml());
+}
+
 export async function POST(request: Request) {
   const formData = await request.formData();
   const payload = formDataToRecord(formData);
-  const requestUrl = twilioWebhookUrl(request);
-  const isValid = validateTwilioRequest({
-    url: requestUrl,
+  const candidateUrls = twilioWebhookUrls(request);
+  const validation = validateTwilioRequest({
+    urls: candidateUrls,
     params: payload,
     signature: request.headers.get("x-twilio-signature"),
   });
+  const requestSummary = summarizeTwilioRequest(request, payload);
 
-  if (!isValid) {
+  console.info("Twilio dial status webhook received", requestSummary);
+
+  if (!validation.isValid) {
+    console.warn("Twilio dial status signature validation failed", {
+      ...requestSummary,
+      candidateUrls,
+      hasSignature: Boolean(request.headers.get("x-twilio-signature")),
+    });
+
     await logWebhookEvent({
       source: "twilio_dial_status",
       payload,
       responseStatus: 403,
       responseBody: "Forbidden",
-      error: "Invalid Twilio signature",
+      error: `Invalid Twilio signature. Candidate URLs: ${candidateUrls.join(" | ")}`,
     });
 
     return new Response("Forbidden", { status: 403 });
@@ -43,6 +57,11 @@ export async function POST(request: Request) {
   const xml = emptyTwiml();
 
   try {
+    console.info("Processing Twilio DialCallStatus", {
+      ...requestSummary,
+      dialCallStatus,
+    });
+
     switch (dialCallStatus) {
       case "no-answer":
       case "busy":
@@ -123,6 +142,7 @@ export async function POST(request: Request) {
       payload,
       responseStatus: 200,
       responseBody: xml,
+      error: validation.matchedUrl ? `Validated with URL: ${validation.matchedUrl}` : null,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown dial-status error";

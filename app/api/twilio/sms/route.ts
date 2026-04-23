@@ -2,8 +2,9 @@ import { env } from "@/lib/env";
 import { logWebhookEvent, recordOptOut } from "@/lib/supabase";
 import {
   formDataToRecord,
+  summarizeTwilioRequest,
   twilioClient,
-  twilioWebhookUrl,
+  twilioWebhookUrls,
   validateTwilioRequest,
 } from "@/lib/twilio";
 import { emptyTwiml, twimlResponse } from "@/lib/twiml";
@@ -17,20 +18,23 @@ function normalizeBody(value: string) {
 export async function POST(request: Request) {
   const formData = await request.formData();
   const payload = formDataToRecord(formData);
-  const requestUrl = twilioWebhookUrl(request);
-  const isValid = validateTwilioRequest({
-    url: requestUrl,
+  const candidateUrls = twilioWebhookUrls(request);
+  const validation = validateTwilioRequest({
+    urls: candidateUrls,
     params: payload,
     signature: request.headers.get("x-twilio-signature"),
   });
+  const requestSummary = summarizeTwilioRequest(request, payload);
 
-  if (!isValid) {
+  console.info("Twilio inbound SMS webhook received", requestSummary);
+
+  if (!validation.isValid) {
     await logWebhookEvent({
       source: "twilio_inbound_sms",
       payload,
       responseStatus: 403,
       responseBody: "Forbidden",
-      error: "Invalid Twilio signature",
+      error: `Invalid Twilio signature. Candidate URLs: ${candidateUrls.join(" | ")}`,
     });
 
     return new Response("Forbidden", { status: 403 });
@@ -56,6 +60,7 @@ export async function POST(request: Request) {
       payload,
       responseStatus: 200,
       responseBody: xml,
+      error: validation.matchedUrl ? `Validated with URL: ${validation.matchedUrl}` : null,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown inbound SMS error";
