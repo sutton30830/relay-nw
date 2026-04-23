@@ -419,14 +419,14 @@ code {
   gap: 40px;
   align-items: center;
   overflow: hidden;
-  border: 1px solid rgba(15, 75, 68, 0.24);
+  border: 1px solid var(--line);
   border-radius: 28px;
   background:
-    radial-gradient(circle at 78% 42%, rgba(219, 233, 227, 0.16), transparent 18rem),
-    linear-gradient(110deg, var(--navy) 0%, #102620 62%, #182d28 100%);
+    radial-gradient(circle at 78% 42%, rgba(15, 75, 68, 0.1), transparent 18rem),
+    linear-gradient(135deg, var(--panel) 0%, var(--paper) 100%);
   margin: 28px 0 32px;
   padding: clamp(32px, 5vw, 64px);
-  color: #f8fafc;
+  color: var(--ink);
 }
 
 .home-hero__title {
@@ -437,14 +437,14 @@ code {
 
 .home-hero__title em,
 .intake-done__title em {
-  color: #dceee8;
+  color: var(--brand);
   font-style: italic;
 }
 
 .home-hero__sub {
   max-width: 540px;
   margin: 0;
-  color: rgba(248, 250, 252, 0.78);
+  color: var(--ink-2);
   font-size: 20px;
   line-height: 1.55;
 }
@@ -453,7 +453,7 @@ code {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  color: #fff;
+  color: var(--ink);
 }
 
 .home-hero-stat svg {
@@ -469,19 +469,19 @@ code {
 .home-hero-stat span {
   display: block;
   margin-top: 2px;
-  color: rgba(248, 250, 252, 0.72);
+  color: var(--ink-3);
   font-size: 13px;
   line-height: 1.45;
 }
 
 .home-hero .t-eyebrow {
-  color: rgba(248, 250, 252, 0.66);
+  color: var(--ink-3);
 }
 
 .home-hero .btn-secondary {
-  border-color: rgba(248, 250, 252, 0.18);
-  background: rgba(248, 250, 252, 0.06);
-  color: #fff;
+  border-color: var(--line);
+  background: var(--panel);
+  color: var(--ink);
 }
 
 .phone-mock {
