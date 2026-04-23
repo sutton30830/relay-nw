@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { env } from "@/lib/env";
-import { missedCallSmsBody } from "@/lib/twilio";
 
 export default function HomePage() {
-  const smsBody = missedCallSmsBody();
+  const customerPreview =
+    "Hi, sorry we missed your call. Tell us what you need and we will follow up shortly.";
 
   const steps = [
     {
@@ -112,7 +112,7 @@ export default function HomePage() {
                 <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.55)" }}>now</p>
               </div>
             </div>
-            <div className="phone-mock__bubble">{smsBody}</div>
+            <div className="phone-mock__bubble">{customerPreview}</div>
             <p className="phone-mock__time-stamp">Sent after missed call</p>
           </div>
         </aside>
@@ -143,7 +143,7 @@ export default function HomePage() {
 
         <div className="client-split">
           <div className="panel client-card client-card--dark">
-            <p className="t-eyebrow">What customers see</p>
+            <p className="t-eyebrow">What customers experience</p>
             <h3>A fast, helpful reply instead of a dead end.</h3>
             <div className="client-sms">
               <div className="client-sms__head">
@@ -151,7 +151,7 @@ export default function HomePage() {
                 <strong>{env.businessName}</strong>
                 <em>now</em>
               </div>
-              <p>{smsBody}</p>
+              <p>{customerPreview}</p>
             </div>
           </div>
 
