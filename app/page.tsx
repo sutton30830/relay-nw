@@ -4,7 +4,7 @@ import { env } from "@/lib/env";
 
 export default function HomePage() {
   const customerPreview =
-    "Hi, sorry we missed your call. Tell us what you need and we will follow up shortly.";
+    "Hi, sorry we missed your call. Tell us what you need and we will follow up shortly. Reply STOP to opt out.";
 
   const steps = [
     {
