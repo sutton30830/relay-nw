@@ -56,19 +56,19 @@ export default async function IntakePage({
   return (
     <main className="intake-view">
       <header className="intake-top">
-        <div className="app-head__brand">
+        <Link className="app-head__brand app-head__brand--link" href="/">
           <div className="brand-mark">
             <Icon name="relay" size={18} />
           </div>
           <div>
-            <Link href="/" className="t-eyebrow" style={{ fontSize: 10 }}>
+            <p className="t-eyebrow" style={{ fontSize: 10, margin: 0 }}>
               Request help
-            </Link>
+            </p>
             <h1 className="t-display" style={{ fontSize: 22, margin: 0 }}>
               {env.businessName}
             </h1>
           </div>
-        </div>
+        </Link>
         <a href={env.schedulingUrl} className="btn btn-ghost btn-sm">
           <Icon name="calendar" size={13} /> Book online instead
         </a>
