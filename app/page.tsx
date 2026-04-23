@@ -1,29 +1,33 @@
 import Link from "next/link";
-import { CopyButton } from "@/app/copy-button";
 import { Icon } from "@/components/icon";
 import { env } from "@/lib/env";
 import { missedCallSmsBody } from "@/lib/twilio";
 
-function StatusDot({ tone }: { tone: "good" | "warn" | "danger" }) {
-  return <span className={`s-dot s-dot--${tone}`} />;
-}
-
 export default function HomePage() {
-  const voiceWebhookUrl = `${env.appBaseUrl}/api/twilio/voice`;
-  const smsWebhookUrl = `${env.appBaseUrl}/api/twilio/sms`;
   const smsBody = missedCallSmsBody();
 
-  const healthChecks = [
-    { label: "Twilio webhook: Voice", tone: "good" as const, detail: "Ready for inbound calls" },
-    { label: "Twilio webhook: SMS", tone: "good" as const, detail: "Ready for replies and opt-outs" },
-    { label: "Supabase connection", tone: "good" as const, detail: "Server routes write securely" },
-    { label: "A2P 10DLC registration", tone: "warn" as const, detail: "Required before real US customer texting" },
+  const steps = [
+    {
+      icon: "phone" as const,
+      title: "A customer calls",
+      body: "Your Relay NW number rings your real phone like a normal business call.",
+    },
+    {
+      icon: "message" as const,
+      title: "If you miss it, they get a text",
+      body: "The caller gets a friendly reply with your intake form and booking link.",
+    },
+    {
+      icon: "inbox" as const,
+      title: "You get the lead",
+      body: "The missed call is saved so you can call back, text back, and book the job.",
+    },
   ];
 
-  const recent = [
-    { kind: "missed", text: "Missed calls create a lead and send one auto-text." },
-    { kind: "intake", text: "Intake form submissions save to the same lead inbox." },
-    { kind: "failed", text: "Failed SMS rows are flagged so the owner can call directly." },
+  const benefits = [
+    "Recover customers who would have called the next company.",
+    "Give callers a useful next step instead of silence.",
+    "Keep follow-up simple from a phone-friendly lead inbox.",
   ];
 
   return (
@@ -114,116 +118,69 @@ export default function HomePage() {
         </aside>
       </section>
 
-      <section className="home-grid">
-        <div className="panel home-panel">
-          <header className="home-panel__head">
-            <p className="t-eyebrow">System health</p>
-            <span style={{ fontSize: 12, color: "var(--ink-3)" }}>Production ready</span>
-          </header>
-          <ul className="health-list">
-            {healthChecks.map((check) => (
-              <li key={check.label} className="health-row">
-                <StatusDot tone={check.tone} />
-                <div style={{ flex: 1 }}>
-                  <p style={{ margin: 0, fontWeight: 700, fontSize: 14 }}>{check.label}</p>
-                  <p style={{ margin: 0, fontSize: 12, color: "var(--ink-3)" }}>{check.detail}</p>
-                </div>
-                <Icon name="chevronRight" size={14} />
-              </li>
-            ))}
-          </ul>
+      <section className="client-section">
+        <div className="client-section__intro">
+          <p className="t-eyebrow">How it works</p>
+          <h2 className="t-display">Simple enough to use on day one.</h2>
+          <p>
+            Relay NW is built for local service owners who are in the field, on ladders, under
+            sinks, or driving between jobs. When you cannot answer, the follow-up still happens.
+          </p>
         </div>
 
-        <div className="panel home-panel">
-          <header className="home-panel__head">
-            <p className="t-eyebrow">Twilio webhooks</p>
-            <span style={{ fontSize: 12, color: "var(--ink-3)" }}>POST only</span>
-          </header>
-          <div className="grid gap-3">
-            <div className="copy-row">
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <p className="t-eyebrow" style={{ fontSize: 10 }}>Voice: a call comes in</p>
-                <p className="t-mono copy-row__value">{voiceWebhookUrl}</p>
+        <div className="client-steps">
+          {steps.map((step, index) => (
+            <article key={step.title} className="panel client-step">
+              <div className="client-step__top">
+                <span className="client-step__number">{index + 1}</span>
+                <span className="client-step__icon"><Icon name={step.icon} size={22} /></span>
               </div>
-              <CopyButton value={voiceWebhookUrl} />
-            </div>
-            <div className="copy-row">
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <p className="t-eyebrow" style={{ fontSize: 10 }}>Messaging: a text comes in</p>
-                <p className="t-mono copy-row__value">{smsWebhookUrl}</p>
+              <h3>{step.title}</h3>
+              <p>{step.body}</p>
+            </article>
+          ))}
+        </div>
+
+        <div className="client-split">
+          <div className="panel client-card client-card--dark">
+            <p className="t-eyebrow">What customers see</p>
+            <h3>A fast, helpful reply instead of a dead end.</h3>
+            <div className="client-sms">
+              <div className="client-sms__head">
+                <span><Icon name="message" size={15} /></span>
+                <strong>{env.businessName}</strong>
+                <em>now</em>
               </div>
-              <CopyButton value={smsWebhookUrl} />
+              <p>{smsBody}</p>
             </div>
           </div>
-          <div className="home-note">
-            <Icon name="info" size={14} />
-            <p style={{ margin: 0 }}>
-              Paste these into your Twilio phone number&apos;s Voice and Messaging webhook fields.
-              Method: <span className="t-mono">POST</span>.
-            </p>
-          </div>
-        </div>
 
-        <div className="panel home-panel home-panel--wide">
-          <header className="home-panel__head">
-            <p className="t-eyebrow">Recent activity</p>
-            <Link href="/leads" className="t-eyebrow" style={{ color: "var(--brand)" }}>
-              See leads <Icon name="arrowRight" size={11} />
-            </Link>
-          </header>
-          <ul className="activity-list">
-            {recent.map((item) => (
-              <li key={item.text} className="activity-row">
-                <span className={`activity-icon activity-icon--${item.kind}`}>
-                  <Icon
-                    name={item.kind === "failed" ? "alertTriangle" : item.kind === "intake" ? "inbox" : "phoneMissed"}
-                    size={13}
-                  />
-                </span>
-                <span style={{ flex: 1 }}>{item.text}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="panel home-panel">
-          <header className="home-panel__head">
-            <p className="t-eyebrow">SMS template</p>
-          </header>
-          <div className="sms-preview">
-            <p style={{ margin: 0, lineHeight: 1.55 }}>{smsBody}</p>
-          </div>
-          <div className="home-settings">
-            <div className="setting">
-              <span className="setting__label">Ring timeout</span>
-              <span className="setting__value t-mono">{env.dialTimeoutSeconds}s</span>
+          <div className="panel client-card">
+            <p className="t-eyebrow">Why businesses use it</p>
+            <h3>More chances to turn calls into booked work.</h3>
+            <ul className="client-benefits">
+              {benefits.map((benefit) => (
+                <li key={benefit}>
+                  <Icon name="check" size={15} />
+                  <span>{benefit}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-5 flex flex-wrap gap-3">
+              <Link className="btn btn-primary" href="/intake">
+                View the intake form
+              </Link>
+              <Link className="btn btn-secondary" href="/leads">
+                Open the lead inbox
+              </Link>
             </div>
-            <div className="setting">
-              <span className="setting__label">SMS cooldown</span>
-              <span className="setting__value t-mono">{env.missedCallSmsCooldownHours}h</span>
-            </div>
-            <div className="setting">
-              <span className="setting__label">Twilio number</span>
-              <span className="setting__value t-mono">{env.twilioPhoneNumber}</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="panel home-panel home-panel--tip">
-          <Icon name="sparkle" size={22} />
-          <div>
-            <p className="t-eyebrow">Pro tip</p>
-            <p style={{ margin: "6px 0 0", fontSize: 14.5, lineHeight: 1.55 }}>
-              Put the Twilio number on the truck, business card, and Google listing. Missed calls
-              become texted leads automatically.
-            </p>
           </div>
         </div>
       </section>
 
       <footer className="home-footer">
-        <span>Relay NW. Built for one business, not a thousand.</span>
-        <span>No accounts, no CRM, no extra noise.</span>
+        <span>Relay NW. Automatic missed-call texts for local service businesses.</span>
+        <span>Keep customers happy. Win more jobs.</span>
       </footer>
     </main>
   );
