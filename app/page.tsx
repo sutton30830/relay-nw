@@ -63,11 +63,11 @@ export default function HomePage() {
         <div>
           <p className="t-eyebrow">Your missed-call safety net</p>
           <h2 className="t-display home-hero__title">
-            Never miss another <em>customer.</em>
+            Every missed call gets a warm text back in <em>under 20 seconds.</em>
           </h2>
           <p className="home-hero__sub">
-            Relay NW automatically texts customers when you miss their call, so you never miss
-            another opportunity.
+            Relay NW automatically texts customers when you miss their call, captures the request,
+            and keeps the next job from slipping away.
           </p>
           <div className="mt-5 flex flex-wrap gap-3">
             <Link className="btn btn-primary" href="/leads">

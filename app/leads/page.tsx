@@ -54,11 +54,12 @@ export default async function LeadsPage() {
     );
   }
 
-  const leads = await getLeads();
+  const isDemoBusiness = /demo/i.test(env.businessName);
+  const leads = isDemoBusiness ? [] : await getLeads();
 
   return (
     <main className="leads-view">
-      <LeadsList businessName={env.businessName} twilioNumber={env.twilioPhoneNumber} leads={leads} />
+      <LeadsList businessName={env.businessName} leads={leads} />
     </main>
   );
 }

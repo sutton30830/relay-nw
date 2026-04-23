@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
 import type { Lead, LeadStatus } from "@/lib/supabase";
@@ -25,11 +26,57 @@ const FILTERS: Array<{ key: Filter; label: string; danger?: boolean; hideIfEmpty
 ];
 
 const QUICK_REPLIES = [
-  "On my way - ETA 30 min.",
+  "Thanks for reaching out. I can call you shortly.",
   "Can I come by tomorrow morning?",
-  "Minimum service call is $95 - still good?",
-  "I'll send a quote by end of day.",
+  "Can you send a photo of the issue?",
+  "I can get you on the schedule today.",
 ];
+
+function createDemoLeads(): Lead[] {
+  const now = Date.now();
+
+  return [
+    {
+      id: "demo-marcus",
+      call_sid: "demo-call-1",
+      name: "Marcus Tillman",
+      phone: "+12065550134",
+      message: "Kitchen sink is backing up and the disposal is humming. Hoping someone can come by today if possible.",
+      notes: "Prefers text. Mentioned they are near Ballard.",
+      source: "missed_call",
+      status: "new",
+      sms_status: "sent",
+      sms_error: null,
+      created_at: new Date(now - 14 * 60_000).toISOString(),
+    },
+    {
+      id: "demo-priya",
+      call_sid: null,
+      name: "Priya Shah",
+      phone: "+12065550187",
+      message: "Water heater is making a popping noise. Flexible tomorrow morning or early afternoon.",
+      notes: "",
+      source: "intake_form",
+      status: "contacted",
+      sms_status: null,
+      sms_error: null,
+      created_at: new Date(now - 52 * 60_000).toISOString(),
+    },
+    {
+      id: "demo-eli",
+      call_sid: "demo-call-2",
+      name: "Eli Ramirez",
+      phone: "+12065550192",
+      message: "Outdoor faucet is leaking near the garage.",
+      notes: "Left voicemail. Try again after 4pm.",
+      source: "missed_call",
+      status: "booked",
+      sms_status: "sent",
+      sms_error: null,
+      created_at: new Date(now - 3 * 60 * 60_000).toISOString(),
+    },
+  ];
+}
 
 function formatRelativeTime(value: string, now: number) {
   const createdAt = new Date(value).getTime();
@@ -130,23 +177,19 @@ function StatusControl({
 function LeadDrawer({
   lead,
   now,
-  twilioNumber,
   onClose,
   onStatus,
   onNotes,
 }: {
   lead: Lead;
   now: number;
-  twilioNumber: string;
   onClose: () => void;
   onStatus: (id: string, status: LeadStatus) => void;
   onNotes: (id: string, notes: string) => void;
 }) {
-  const [reply, setReply] = useState("");
   const [notes, setNotes] = useState(lead.notes ?? "");
 
   useEffect(() => {
-    setReply("");
     setNotes(lead.notes ?? "");
   }, [lead.id, lead.notes]);
 
@@ -245,26 +288,25 @@ function LeadDrawer({
         <div className="thread-composer">
           <div className="thread-composer__quick clean-scroll">
             {QUICK_REPLIES.map((template) => (
-              <button key={template} className="quick-reply" type="button" onClick={() => setReply(template)}>
+              <a
+                key={template}
+                className="quick-reply"
+                href={`sms:${lead.phone}?&body=${encodeURIComponent(template)}`}
+              >
                 {template}
-              </button>
+              </a>
             ))}
           </div>
           <div className="thread-composer__input">
-            <textarea
-              className="field"
-              placeholder={`Prepare a text to ${lead.name?.split(" ")[0] || "this lead"}...`}
-              rows={2}
-              value={reply}
-              onChange={(event) => setReply(event.target.value)}
-            />
-            <a className="btn btn-primary" href={`sms:${lead.phone}${reply ? `?&body=${encodeURIComponent(reply)}` : ""}`}>
-              <Icon name="send" size={14} /> Text
+            <a className="btn btn-primary" href={`sms:${lead.phone}`}>
+              <Icon name="message" size={14} /> Text from your phone
+            </a>
+            <a className="btn btn-secondary" href={`tel:${lead.phone}`}>
+              <Icon name="phone" size={14} /> Call back
             </a>
           </div>
           <p className="thread-composer__hint">
-            Opens your device SMS app. Twilio conversation sending is a follow-up backend upgrade.
-            Relay number: <span className="t-mono">{twilioNumber}</span>.
+            Replies open your phone's messages app so follow-up stays personal and fast.
           </p>
         </div>
 
@@ -287,19 +329,20 @@ function LeadDrawer({
 export function LeadsList({
   leads,
   businessName,
-  twilioNumber,
 }: {
   leads: Lead[];
   businessName: string;
-  twilioNumber: string;
 }) {
   const router = useRouter();
   const searchRef = useRef<HTMLInputElement | null>(null);
   const [items, setItems] = useState(leads);
+  const [demoItems, setDemoItems] = useState(() => createDemoLeads());
+  const [demoMode, setDemoMode] = useState(() => /demo/i.test(businessName));
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const activeItems = demoMode ? demoItems : items;
 
   useEffect(() => {
     setItems(leads);
@@ -327,24 +370,25 @@ export function LeadsList({
   }, []);
 
   const counts = useMemo(() => ({
-    all: items.length,
-    attention: items.filter(needsAttention).length,
-    new: items.filter((lead) => lead.status === "new").length,
-    contacted: items.filter((lead) => lead.status === "contacted").length,
-    booked: items.filter((lead) => lead.status === "booked").length,
-    dead: items.filter((lead) => lead.status === "dead").length,
-    missed: items.filter((lead) => lead.source === "missed_call").length,
+    all: activeItems.length,
+    attention: activeItems.filter(needsAttention).length,
+    new: activeItems.filter((lead) => lead.status === "new").length,
+    actionable: activeItems.filter((lead) => lead.status === "new" || lead.status === "contacted").length,
+    contacted: activeItems.filter((lead) => lead.status === "contacted").length,
+    booked: activeItems.filter((lead) => lead.status === "booked").length,
+    dead: activeItems.filter((lead) => lead.status === "dead").length,
+    missed: activeItems.filter((lead) => lead.source === "missed_call").length,
     replied: 0,
-  }), [items]);
+  }), [activeItems]);
 
   const todays = useMemo(() => {
     const dayStart = new Date();
     dayStart.setHours(0, 0, 0, 0);
-    return items.filter((lead) => new Date(lead.created_at).getTime() >= dayStart.getTime());
-  }, [items, now]);
+    return activeItems.filter((lead) => new Date(lead.created_at).getTime() >= dayStart.getTime());
+  }, [activeItems, now]);
 
   const filteredItems = useMemo(() => {
-    let list = items;
+    let list = activeItems;
     if (filter === "attention") list = list.filter(needsAttention);
     else if (filter !== "all") list = list.filter((lead) => lead.status === filter);
 
@@ -358,13 +402,23 @@ export function LeadsList({
     }
 
     return list;
-  }, [items, filter, query]);
+  }, [activeItems, filter, query]);
 
-  const openLead = items.find((lead) => lead.id === openId) ?? null;
+  const openLead = activeItems.find((lead) => lead.id === openId) ?? null;
+
+  function updateLocalLead(id: string, updates: Partial<Lead>) {
+    const setter = demoMode ? setDemoItems : setItems;
+    setter((current) => current.map((lead) => (lead.id === id ? { ...lead, ...updates } : lead)));
+  }
 
   async function updateStatus(id: string, status: LeadStatus) {
+    if (demoMode) {
+      updateLocalLead(id, { status });
+      return;
+    }
+
     const previousItems = items;
-    setItems((current) => current.map((lead) => (lead.id === id ? { ...lead, status } : lead)));
+    updateLocalLead(id, { status });
 
     const response = await fetch(`/api/leads/${id}`, {
       method: "PATCH",
@@ -376,8 +430,13 @@ export function LeadsList({
   }
 
   async function updateNotes(id: string, notes: string) {
+    if (demoMode) {
+      updateLocalLead(id, { notes });
+      return;
+    }
+
     const previousItems = items;
-    setItems((current) => current.map((lead) => (lead.id === id ? { ...lead, notes } : lead)));
+    updateLocalLead(id, { notes });
 
     const response = await fetch(`/api/leads/${id}`, {
       method: "PATCH",
@@ -391,7 +450,7 @@ export function LeadsList({
   return (
     <>
       <header className="app-head">
-        <div className="app-head__brand">
+        <Link className="app-head__brand app-head__brand--link" href="/">
           <div className="brand-mark"><Icon name="relay" size={18} /></div>
           <div>
             <p className="t-eyebrow" style={{ fontSize: 10 }}>Relay NW</p>
@@ -402,7 +461,7 @@ export function LeadsList({
             <span className="live-dot__core" />
             Live
           </span>
-        </div>
+        </Link>
 
         <div className="app-head__right">
           <div className="search">
@@ -419,6 +478,16 @@ export function LeadsList({
           <button className="btn btn-ghost btn-sm" type="button" onClick={() => router.refresh()} aria-label="Refresh">
             <Icon name="refresh" size={14} />
           </button>
+          <button
+            className={`btn btn-secondary btn-sm ${demoMode ? "btn-demo-on" : ""}`}
+            type="button"
+            onClick={() => {
+              setDemoMode((value) => !value);
+              setOpenId(null);
+            }}
+          >
+            Demo view
+          </button>
           <form action="/api/leads-logout" method="POST">
             <button className="btn btn-secondary btn-sm">Log out</button>
           </form>
@@ -429,8 +498,8 @@ export function LeadsList({
         <div>
           <p className="t-eyebrow">Inbox</p>
           <h2 className="t-display page-head__title">
-            {counts.new > 0 ? (
-              <>You have <em>{counts.new}</em> new {counts.new === 1 ? "lead" : "leads"} to work.</>
+            {counts.actionable > 0 ? (
+              <>You have <em>{counts.actionable}</em> {counts.actionable === 1 ? "lead" : "leads"} to work.</>
             ) : (
               <>Inbox is clear. Nice work.</>
             )}
@@ -441,8 +510,8 @@ export function LeadsList({
       <div className="pulse-strip">
         <div className="pulse-cell pulse-cell--accent">
           <p className="t-eyebrow" style={{ fontSize: 10.5 }}>Needs your reply</p>
-          <p className="pulse-value t-display">{counts.new}</p>
-          <p className="pulse-sub">{counts.new === 1 ? "lead waiting" : "leads waiting"}</p>
+          <p className="pulse-value t-display">{counts.actionable}</p>
+          <p className="pulse-sub">{counts.actionable === 1 ? "lead waiting" : "leads waiting"}</p>
         </div>
         <div className="pulse-cell pulse-cell--brand">
           <p className="t-eyebrow" style={{ fontSize: 10.5 }}>Missed calls today</p>
@@ -452,12 +521,12 @@ export function LeadsList({
         <div className="pulse-cell pulse-cell--good">
           <p className="t-eyebrow" style={{ fontSize: 10.5 }}>Customers replied</p>
           <p className="pulse-value t-display">{counts.replied}</p>
-          <p className="pulse-sub">thread storage next</p>
+          <p className="pulse-sub">manual follow-up</p>
         </div>
-        <div className="pulse-cell">
+        <div className="pulse-cell pulse-cell--neutral">
           <p className="t-eyebrow" style={{ fontSize: 10.5 }}>Total leads</p>
           <p className="pulse-value t-display">{counts.all}</p>
-          <p className="pulse-sub">newest first</p>
+          <p className="pulse-sub">{demoMode ? "demo sample" : "captured so far"}</p>
         </div>
       </div>
 
@@ -480,6 +549,9 @@ export function LeadsList({
             </button>
           );
         })}
+        <span className="sort-pill">
+          <Icon name="clock" size={12} /> Newest first
+        </span>
       </nav>
 
       <div className="leads-list">
@@ -551,7 +623,6 @@ export function LeadsList({
         <LeadDrawer
           lead={openLead}
           now={now}
-          twilioNumber={twilioNumber}
           onClose={() => setOpenId(null)}
           onStatus={updateStatus}
           onNotes={updateNotes}

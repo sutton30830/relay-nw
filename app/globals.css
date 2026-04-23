@@ -1,30 +1,30 @@
 @import "tailwindcss";
 
 :root {
-  --font-display: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: var(--font-instrument-serif), Georgia, "Times New Roman", serif;
+  --font-ui: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --ink: #0f172a;
-  --ink-2: #1f2937;
-  --ink-3: #56616f;
-  --ink-4: #8b96a5;
-  --paper: #f1f5f9;
-  --paper-2: #e8edf3;
-  --panel: #ffffff;
-  --panel-2: #f7fafc;
-  --line: #dce3eb;
-  --line-soft: #e8eef4;
-  --brand: #22c55e;
-  --brand-2: #16a34a;
-  --brand-soft: #dcfce7;
-  --brand-ink: #14532d;
-  --navy: #0f172a;
-  --navy-2: #111827;
-  --navy-soft: #172337;
-  --accent: #1e40af;
-  --accent-soft: #dbeafe;
-  --good: #16a34a;
-  --good-soft: #dcfce7;
+  --ink: #14211f;
+  --ink-2: #263532;
+  --ink-3: #5f6b67;
+  --ink-4: #8d9893;
+  --paper: #f5f3ee;
+  --paper-2: #ece7dc;
+  --panel: #fffcf6;
+  --panel-2: #f8f4ea;
+  --line: #ddd5c7;
+  --line-soft: #e8dfd1;
+  --brand: #0f4b44;
+  --brand-2: #245f56;
+  --brand-soft: #dbe9e3;
+  --brand-ink: #0b3b35;
+  --navy: #0f1f1c;
+  --navy-2: #17322d;
+  --navy-soft: #1f3d37;
+  --accent: #766b4f;
+  --accent-soft: #eee7d6;
+  --good: #2f7a57;
+  --good-soft: #dfece2;
   --warn: #b45309;
   --warn-soft: #fef3c7;
   --danger: #dc2626;
@@ -56,8 +56,8 @@ html {
 body {
   margin: 0;
   background:
-    radial-gradient(circle at top right, rgba(34, 197, 94, 0.12), transparent 32rem),
-    linear-gradient(180deg, #f8fafc 0%, var(--paper) 38rem);
+    radial-gradient(circle at top right, rgba(15, 75, 68, 0.1), transparent 32rem),
+    linear-gradient(180deg, #fbf8f1 0%, var(--paper) 38rem);
   color: var(--ink);
   font-family: var(--font-ui);
   font-feature-settings: "cv11", "ss01", "ss03";
@@ -124,8 +124,8 @@ code {
 
 .t-display {
   font-family: var(--font-display);
-  font-weight: 800;
-  letter-spacing: -0.045em;
+  font-weight: 400;
+  letter-spacing: 0;
   line-height: 1.02;
 }
 
@@ -179,7 +179,7 @@ code {
 .button-primary {
   border-color: var(--brand);
   background: var(--brand);
-  color: var(--navy);
+  color: #fff;
 }
 
 .btn-primary:hover,
@@ -215,6 +215,12 @@ code {
   padding: 0 10px;
   border-radius: 6px;
   font-size: 13px;
+}
+
+.btn-demo-on {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand-ink);
 }
 
 .field {
@@ -346,6 +352,17 @@ code {
   gap: 12px;
 }
 
+.app-head__brand--link {
+  border-radius: 12px;
+  margin: -6px;
+  padding: 6px;
+  transition: background 120ms ease;
+}
+
+.app-head__brand--link:hover {
+  background: color-mix(in oklab, var(--brand-soft) 55%, transparent);
+}
+
 .brand-mark {
   display: grid;
   width: 36px;
@@ -353,7 +370,7 @@ code {
   place-items: center;
   border-radius: 9px;
   background: var(--brand);
-  color: var(--navy);
+  color: #fff;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), var(--shadow-sm);
 }
 
@@ -402,11 +419,11 @@ code {
   gap: 40px;
   align-items: center;
   overflow: hidden;
-  border: 1px solid rgba(34, 197, 94, 0.18);
+  border: 1px solid rgba(15, 75, 68, 0.24);
   border-radius: 28px;
   background:
-    radial-gradient(circle at 78% 42%, rgba(34, 197, 94, 0.18), transparent 18rem),
-    linear-gradient(110deg, var(--navy) 0%, #071123 62%, #111827 100%);
+    radial-gradient(circle at 78% 42%, rgba(219, 233, 227, 0.16), transparent 18rem),
+    linear-gradient(110deg, var(--navy) 0%, #102620 62%, #182d28 100%);
   margin: 28px 0 32px;
   padding: clamp(32px, 5vw, 64px);
   color: #f8fafc;
@@ -415,14 +432,13 @@ code {
 .home-hero__title {
   margin: 10px 0 16px;
   max-width: 720px;
-  font-size: clamp(44px, 6.2vw, 82px);
-  letter-spacing: -0.02em;
+  font-size: clamp(42px, 5.8vw, 76px);
 }
 
 .home-hero__title em,
 .intake-done__title em {
-  color: var(--brand);
-  font-style: normal;
+  color: #dceee8;
+  font-style: italic;
 }
 
 .home-hero__sub {
@@ -526,7 +542,7 @@ code {
   place-items: center;
   border-radius: 999px;
   background: var(--brand);
-  color: var(--navy);
+  color: #fff;
   font-size: 12px;
   font-weight: 800;
 }
@@ -830,9 +846,9 @@ code {
 
 .client-card--dark {
   overflow: hidden;
-  border-color: rgba(34, 197, 94, 0.18);
+  border-color: rgba(15, 75, 68, 0.24);
   background:
-    radial-gradient(circle at 85% 10%, rgba(34, 197, 94, 0.16), transparent 16rem),
+    radial-gradient(circle at 85% 10%, rgba(219, 233, 227, 0.13), transparent 16rem),
     var(--navy);
   color: #fff;
 }
@@ -869,7 +885,7 @@ code {
   place-items: center;
   border-radius: 8px;
   background: var(--brand);
-  color: var(--navy);
+  color: #fff;
 }
 
 .client-sms__head em {
@@ -1223,7 +1239,7 @@ code {
 .page-head__title em {
   background: linear-gradient(180deg, transparent 62%, var(--brand-soft) 62%);
   color: var(--brand);
-  font-style: normal;
+  font-style: italic;
   padding: 0 3px;
 }
 
@@ -1251,6 +1267,10 @@ code {
   background: linear-gradient(180deg, var(--good-soft), var(--panel) 180%);
 }
 
+.pulse-cell--neutral {
+  background: linear-gradient(180deg, var(--paper-2), var(--panel) 180%);
+}
+
 .pulse-value {
   margin: 4px 0 0;
   color: var(--ink);
@@ -1266,6 +1286,7 @@ code {
 
 .filters {
   display: flex;
+  align-items: center;
   gap: 8px;
   overflow-x: auto;
   margin-bottom: 8px;
@@ -1313,6 +1334,19 @@ code {
 .filter-pill--danger {
   border-color: color-mix(in oklab, var(--danger) 50%, var(--line));
   color: var(--danger);
+}
+
+.sort-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-left: 1px solid var(--line);
+  color: var(--ink-3);
+  margin-left: 4px;
+  padding-left: 14px;
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .leads-list {
@@ -1649,6 +1683,8 @@ code {
 }
 
 .quick-reply {
+  display: inline-flex;
+  align-items: center;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--panel);
@@ -1660,6 +1696,7 @@ code {
 
 .thread-composer__input {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   gap: 8px;
 }
