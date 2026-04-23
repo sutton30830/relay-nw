@@ -69,7 +69,7 @@ export default async function IntakePage({
             </h1>
           </div>
         </div>
-        <a href={env.schedulingUrl} className="btn btn-secondary btn-sm">
+        <a href={env.schedulingUrl} className="btn btn-ghost btn-sm">
           <Icon name="calendar" size={13} /> Book online instead
         </a>
       </header>
@@ -117,6 +117,9 @@ export default async function IntakePage({
               Customer-friendly follow-up, built for service work.
             </p>
           </div>
+          <a href={env.schedulingUrl} className="btn btn-secondary mt-5">
+            <Icon name="calendar" size={14} /> Prefer to book directly?
+          </a>
         </aside>
 
         <section className="intake-form panel">

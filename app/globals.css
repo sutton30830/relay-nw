@@ -1,31 +1,34 @@
 @import "tailwindcss";
 
 :root {
-  --font-display: "Instrument Serif", "Source Serif 4", Georgia, serif;
+  --font-display: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --ink: #0e1b18;
-  --ink-2: #2a3734;
-  --ink-3: #556360;
-  --ink-4: #8a938f;
-  --paper: #f4f0e8;
-  --paper-2: #ebe5d7;
-  --panel: #fbf8f1;
-  --panel-2: #f1ecde;
-  --line: #d9d0b9;
-  --line-soft: #e8e0cb;
-  --brand: #0f4b44;
-  --brand-2: #1a5f56;
-  --brand-soft: #e2ebe7;
-  --brand-ink: #063934;
-  --accent: #b45a28;
-  --accent-soft: #f3e3d4;
-  --good: #2a6a47;
-  --good-soft: #dfeadd;
-  --warn: #8f6a1e;
-  --warn-soft: #f4e6c2;
-  --danger: #a02828;
-  --danger-soft: #f3d7d4;
+  --ink: #0f172a;
+  --ink-2: #1f2937;
+  --ink-3: #56616f;
+  --ink-4: #8b96a5;
+  --paper: #f1f5f9;
+  --paper-2: #e8edf3;
+  --panel: #ffffff;
+  --panel-2: #f7fafc;
+  --line: #dce3eb;
+  --line-soft: #e8eef4;
+  --brand: #22c55e;
+  --brand-2: #16a34a;
+  --brand-soft: #dcfce7;
+  --brand-ink: #14532d;
+  --navy: #0f172a;
+  --navy-2: #111827;
+  --navy-soft: #172337;
+  --accent: #1e40af;
+  --accent-soft: #dbeafe;
+  --good: #16a34a;
+  --good-soft: #dcfce7;
+  --warn: #b45309;
+  --warn-soft: #fef3c7;
+  --danger: #dc2626;
+  --danger-soft: #fee2e2;
   --background: var(--paper);
   --foreground: var(--ink);
   --muted: var(--ink-3);
@@ -35,9 +38,9 @@
   --r-md: 10px;
   --r-lg: 14px;
   --r-xl: 22px;
-  --shadow-sm: 0 1px 2px rgba(14, 27, 24, 0.04), 0 1px 1px rgba(14, 27, 24, 0.03);
-  --shadow-md: 0 8px 24px -8px rgba(14, 27, 24, 0.12), 0 2px 6px rgba(14, 27, 24, 0.05);
-  --shadow-lg: 0 24px 48px -16px rgba(14, 27, 24, 0.18), 0 4px 12px rgba(14, 27, 24, 0.06);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 1px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 10px 28px -10px rgba(15, 23, 42, 0.16), 0 2px 6px rgba(15, 23, 42, 0.06);
+  --shadow-lg: 0 28px 56px -18px rgba(15, 23, 42, 0.28), 0 4px 12px rgba(15, 23, 42, 0.08);
 }
 
 *,
@@ -52,7 +55,9 @@ html {
 
 body {
   margin: 0;
-  background: var(--paper);
+  background:
+    radial-gradient(circle at top right, rgba(34, 197, 94, 0.12), transparent 32rem),
+    linear-gradient(180deg, #f8fafc 0%, var(--paper) 38rem);
   color: var(--ink);
   font-family: var(--font-ui);
   font-feature-settings: "cv11", "ss01", "ss03";
@@ -119,8 +124,8 @@ code {
 
 .t-display {
   font-family: var(--font-display);
-  font-weight: 400;
-  letter-spacing: -0.01em;
+  font-weight: 800;
+  letter-spacing: -0.045em;
   line-height: 1.02;
 }
 
@@ -143,7 +148,7 @@ code {
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--panel);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
 }
 
 .btn,
@@ -174,7 +179,7 @@ code {
 .button-primary {
   border-color: var(--brand);
   background: var(--brand);
-  color: #fff;
+  color: var(--navy);
 }
 
 .btn-primary:hover,
@@ -346,9 +351,9 @@ code {
   width: 36px;
   height: 36px;
   place-items: center;
-  border-radius: 10px;
+  border-radius: 9px;
   background: var(--brand);
-  color: #fff;
+  color: var(--navy);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), var(--shadow-sm);
 }
 
@@ -391,33 +396,76 @@ code {
 }
 
 .home-hero {
+  position: relative;
   display: grid;
   grid-template-columns: 1.2fr 0.8fr;
   gap: 40px;
   align-items: center;
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 32px;
-  padding: 44px 0 36px;
+  overflow: hidden;
+  border: 1px solid rgba(34, 197, 94, 0.18);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 78% 42%, rgba(34, 197, 94, 0.18), transparent 18rem),
+    linear-gradient(110deg, var(--navy) 0%, #071123 62%, #111827 100%);
+  margin: 28px 0 32px;
+  padding: clamp(32px, 5vw, 64px);
+  color: #f8fafc;
 }
 
 .home-hero__title {
   margin: 10px 0 16px;
-  font-size: clamp(34px, 5.2vw, 58px);
+  max-width: 720px;
+  font-size: clamp(44px, 6.2vw, 82px);
   letter-spacing: -0.02em;
 }
 
 .home-hero__title em,
 .intake-done__title em {
   color: var(--brand);
-  font-style: italic;
+  font-style: normal;
 }
 
 .home-hero__sub {
   max-width: 540px;
   margin: 0;
-  color: var(--ink-2);
-  font-size: 17px;
+  color: rgba(248, 250, 252, 0.78);
+  font-size: 20px;
   line-height: 1.55;
+}
+
+.home-hero-stat {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  color: #fff;
+}
+
+.home-hero-stat svg {
+  flex-shrink: 0;
+  color: var(--brand);
+}
+
+.home-hero-stat p {
+  margin: 0;
+  font-weight: 800;
+}
+
+.home-hero-stat span {
+  display: block;
+  margin-top: 2px;
+  color: rgba(248, 250, 252, 0.72);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.home-hero .t-eyebrow {
+  color: rgba(248, 250, 252, 0.66);
+}
+
+.home-hero .btn-secondary {
+  border-color: rgba(248, 250, 252, 0.18);
+  background: rgba(248, 250, 252, 0.06);
+  color: #fff;
 }
 
 .phone-mock {
@@ -426,9 +474,9 @@ code {
   height: 520px;
   margin-left: auto;
   border-radius: 42px;
-  background: var(--ink);
+  background: #050b16;
   padding: 10px;
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 34px 70px -28px rgba(0, 0, 0, 0.75);
 }
 
 .phone-mock__notch {
@@ -449,14 +497,15 @@ code {
   height: 100%;
   overflow: hidden;
   border-radius: 34px;
-  background: var(--paper);
+  background: #0b1220;
   padding: 52px 18px 18px;
+  color: #fff;
 }
 
 .phone-mock__time {
   margin-bottom: 10px;
-  color: var(--ink-3);
-  font-family: var(--font-display);
+  color: rgba(255, 255, 255, 0.72);
+  font-family: var(--font-mono);
   font-size: 14px;
   text-align: right;
 }
@@ -465,7 +514,7 @@ code {
   display: flex;
   align-items: center;
   gap: 10px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   margin-bottom: 14px;
   padding-bottom: 12px;
 }
@@ -477,7 +526,7 @@ code {
   place-items: center;
   border-radius: 999px;
   background: var(--brand);
-  color: #fff;
+  color: var(--navy);
   font-size: 12px;
   font-weight: 800;
 }
@@ -485,7 +534,8 @@ code {
 .phone-mock__bubble {
   border-bottom-left-radius: 4px;
   border-radius: 16px;
-  background: var(--panel-2);
+  background: #f8fafc;
+  color: #0f172a;
   padding: 12px 14px;
   font-size: 13.5px;
   line-height: 1.55;
@@ -493,7 +543,7 @@ code {
 
 .phone-mock__time-stamp {
   margin-top: 8px;
-  color: var(--ink-4);
+  color: rgba(255, 255, 255, 0.58);
   font-size: 11px;
   text-align: center;
 }

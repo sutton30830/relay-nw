@@ -59,19 +59,34 @@ export default function HomePage() {
         <div>
           <p className="t-eyebrow">Your missed-call safety net</p>
           <h2 className="t-display home-hero__title">
-            Every missed call gets a warm, useful text back in <em>under 20 seconds.</em>
+            Never miss another <em>customer.</em>
           </h2>
           <p className="home-hero__sub">
-            Calls to your Twilio number ring the owner&apos;s phone. If they cannot pick up,
-            Relay NW texts the caller an intake link and saves the lead.
+            Relay NW automatically texts customers when you miss their call, so you never miss
+            another opportunity.
           </p>
           <div className="mt-5 flex flex-wrap gap-3">
             <Link className="btn btn-primary" href="/leads">
-              Open lead inbox <Icon name="arrowRight" size={14} />
+              Get started <Icon name="arrowRight" size={14} />
             </Link>
             <Link className="btn btn-secondary" href="/intake">
-              See the intake form
+              See how it works
             </Link>
+          </div>
+          <div className="mt-8 grid max-w-2xl gap-5 sm:grid-cols-3">
+            {[
+              ["phone", "Missed call", "We monitor calls to your business."],
+              ["message", "Instant text", "Customers get a text right away."],
+              ["user", "More jobs", "You stay connected. You get the job."],
+            ].map(([icon, title, body]) => (
+              <div key={title} className="home-hero-stat">
+                <Icon name={icon as "phone" | "message" | "user"} size={28} />
+                <div>
+                  <p>{title}</p>
+                  <span>{body}</span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -89,8 +104,8 @@ export default function HomePage() {
                   .toUpperCase()}
               </div>
               <div>
-                <p style={{ margin: 0, fontWeight: 700, fontSize: 14 }}>{env.businessName}</p>
-                <p style={{ margin: 0, fontSize: 11, color: "var(--ink-4)" }}>Text message</p>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: 14 }}>Relay NW</p>
+                <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.55)" }}>now</p>
               </div>
             </div>
             <div className="phone-mock__bubble">{smsBody}</div>

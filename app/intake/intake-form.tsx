@@ -96,7 +96,7 @@ export function IntakeForm() {
         </label>
 
         <label className="field-label">
-          <span>Best phone number</span>
+          <span>Phone number</span>
           <input
             className="field"
             name="phone"
