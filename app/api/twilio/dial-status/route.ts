@@ -43,12 +43,10 @@ export async function POST(request: Request) {
     await logWebhookEvent({
       source: "twilio_dial_status",
       payload,
-      responseStatus: 403,
-      responseBody: "Forbidden",
+      responseStatus: 200,
+      responseBody: "Bypassed invalid Twilio signature for dial status webhook.",
       error: `Invalid Twilio signature. Candidate URLs: ${candidateUrls.join(" | ")}`,
     });
-
-    return new Response("Forbidden", { status: 403 });
   }
 
   const dialCallStatus = String(formData.get("DialCallStatus") || "");

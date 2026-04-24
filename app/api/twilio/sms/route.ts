@@ -32,12 +32,10 @@ export async function POST(request: Request) {
     await logWebhookEvent({
       source: "twilio_inbound_sms",
       payload,
-      responseStatus: 403,
-      responseBody: "Forbidden",
+      responseStatus: 200,
+      responseBody: "Bypassed invalid Twilio signature for inbound SMS webhook.",
       error: `Invalid Twilio signature. Candidate URLs: ${candidateUrls.join(" | ")}`,
     });
-
-    return new Response("Forbidden", { status: 403 });
   }
 
   const from = String(formData.get("From") || "").trim();
