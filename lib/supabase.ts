@@ -10,7 +10,11 @@ export type SmsStatus =
   | "skipped_opt_out"
   | "skipped_recent"
   | null;
-export type WebhookEventSource = "twilio_voice" | "twilio_dial_status" | "twilio_inbound_sms";
+export type WebhookEventSource =
+  | "twilio_voice"
+  | "twilio_dial_status"
+  | "twilio_inbound_sms"
+  | "twilio_recording";
 
 export type Lead = {
   id: string;
@@ -23,6 +27,10 @@ export type Lead = {
   status: LeadStatus;
   sms_status: SmsStatus;
   sms_error: string | null;
+  recording_sid: string | null;
+  recording_url: string | null;
+  recording_duration: number | null;
+  recording_status: string | null;
   created_at: string;
 };
 
@@ -111,7 +119,7 @@ export async function getLeads() {
 
   const { data, error } = await supabaseAdmin
     .from("leads")
-    .select("id, call_sid, name, phone, message, notes, source, status, sms_status, sms_error, created_at")
+    .select("id, call_sid, name, phone, message, notes, source, status, sms_status, sms_error, recording_sid, recording_url, recording_duration, recording_status, created_at")
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -119,6 +127,33 @@ export async function getLeads() {
   }
 
   return (data ?? []) as Lead[];
+}
+
+export async function updateLeadRecordingByCallSid(input: {
+  callSid: string;
+  recordingSid?: string | null;
+  recordingUrl?: string | null;
+  recordingDuration?: number | null;
+  recordingStatus?: string | null;
+}) {
+  if (isPlaceholderSupabaseConfig()) {
+    console.warn("Skipping recording update because Supabase is using placeholder values.", input);
+    return;
+  }
+
+  const { error } = await supabaseAdmin
+    .from("leads")
+    .update({
+      recording_sid: input.recordingSid ?? null,
+      recording_url: input.recordingUrl ?? null,
+      recording_duration: input.recordingDuration ?? null,
+      recording_status: input.recordingStatus ?? null,
+    })
+    .eq("call_sid", input.callSid);
+
+  if (error) {
+    throw error;
+  }
 }
 
 export async function updateLead(input: { id: string; status?: LeadStatus; notes?: string | null }) {

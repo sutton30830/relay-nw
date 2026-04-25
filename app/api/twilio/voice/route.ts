@@ -28,9 +28,16 @@ function voiceTwiml(request: Request, callerPhone: string) {
 }
 
 export async function GET(request: Request) {
+  const recordingActionUrl = `${env.appBaseUrl}/api/twilio/recording`;
   const xml =
     env.callMode === "forwarding"
-      ? forwardedMissedCallTwiml(env.missedCallVoiceMessage, env.missedCallVoiceName)
+      ? forwardedMissedCallTwiml({
+          message: env.missedCallVoiceMessage,
+          voiceName: env.missedCallVoiceName,
+          greetingAudioUrl: env.missedCallGreetingAudioUrl,
+          recordingActionUrl,
+          maxLengthSeconds: env.voicemailMaxSeconds,
+        })
       : voiceTwiml(request, env.twilioPhoneNumber);
 
   return twimlResponse(xml);
@@ -88,7 +95,13 @@ export async function POST(request: Request) {
 
   if (env.callMode === "forwarding") {
     const callSid = String(formData.get("CallSid") || "").trim();
-    const xml = forwardedMissedCallTwiml(env.missedCallVoiceMessage, env.missedCallVoiceName);
+    const xml = forwardedMissedCallTwiml({
+      message: env.missedCallVoiceMessage,
+      voiceName: env.missedCallVoiceName,
+      greetingAudioUrl: env.missedCallGreetingAudioUrl,
+      recordingActionUrl: `${env.appBaseUrl}/api/twilio/recording`,
+      maxLengthSeconds: env.voicemailMaxSeconds,
+    });
 
     try {
       const result = await handleMissedCall({

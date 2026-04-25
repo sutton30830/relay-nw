@@ -60,6 +60,8 @@ export const env = {
   smsTemplate: getOptionalEnv("SMS_TEMPLATE"),
   missedCallVoiceMessage: getOptionalEnv("MISSED_CALL_VOICE_MESSAGE"),
   missedCallVoiceName: getOptionalEnv("MISSED_CALL_VOICE_NAME") ?? "Polly.Joanna-Neural",
+  missedCallGreetingAudioUrl: getOptionalEnv("MISSED_CALL_GREETING_AUDIO_URL"),
+  voicemailMaxSeconds: getOptionalNumberEnv("VOICEMAIL_MAX_SECONDS", 60),
   dialTimeoutSeconds: getOptionalNumberEnv("DIAL_TIMEOUT_SECONDS", 18),
   missedCallSmsCooldownHours: getOptionalNumberEnv("MISSED_CALL_SMS_COOLDOWN_HOURS", 24),
   leadsPassword: getRequiredEnv("LEADS_PASSWORD"),

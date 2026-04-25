@@ -36,15 +36,22 @@ export function emptyTwiml() {
 }
 
 const defaultForwardingMessage =
-  "Thanks for calling. Sorry we missed you. We will text you shortly so we can help.";
+  "Thanks for calling. Sorry we missed you. We will text you shortly. Please leave a quick message after the tone.";
 
-export function forwardedMissedCallTwiml(
-  message = defaultForwardingMessage,
-  voiceName = "Polly.Joanna-Neural",
-) {
+export function forwardedMissedCallTwiml(input: {
+  message?: string;
+  voiceName?: string;
+  greetingAudioUrl?: string;
+  recordingActionUrl: string;
+  maxLengthSeconds?: number;
+}) {
+  const greeting = input.greetingAudioUrl
+    ? `  <Play>${escapeXml(input.greetingAudioUrl)}</Play>`
+    : `  <Say voice="${escapeXml(input.voiceName ?? "Polly.Joanna-Neural")}">${escapeXml(input.message ?? defaultForwardingMessage)}</Say>`;
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="${escapeXml(voiceName)}">${escapeXml(message)}</Say>
-  <Hangup />
+${greeting}
+  <Record action="${escapeXml(input.recordingActionUrl)}" method="POST" maxLength="${input.maxLengthSeconds ?? 60}" playBeep="true" timeout="5" trim="trim-silence" />
 </Response>`;
 }

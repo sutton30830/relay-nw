@@ -62,6 +62,7 @@ This app is intentionally single-business. No accounts, billing, CRM, shared inb
 - `/api/twilio/voice` Twilio incoming call webhook
 - `/api/twilio/voice-status` Twilio dial result webhook
 - `/api/twilio/dial-status` Twilio dial result webhook alias
+- `/api/twilio/recording` Twilio voicemail recording callback
 - `/api/twilio/sms` Twilio inbound SMS webhook
 
 ## Environment Variables
@@ -88,6 +89,8 @@ Optional:
 - `SMS_TEMPLATE`: overrides the default SMS template
 - `MISSED_CALL_VOICE_MESSAGE`: overrides what callers hear in `CALL_MODE=forwarding` before Twilio hangs up
 - `MISSED_CALL_VOICE_NAME`: defaults to `Polly.Joanna-Neural` for a less robotic Twilio voice
+- `MISSED_CALL_GREETING_AUDIO_URL`: optional public MP3/WAV URL; if set, Twilio plays it instead of text-to-speech before recording voicemail
+- `VOICEMAIL_MAX_SECONDS`: defaults to `60`; maximum caller voicemail length in seconds
 - `DIAL_TIMEOUT_SECONDS`: defaults to `18`
 - `MISSED_CALL_SMS_COOLDOWN_HOURS`: defaults to `24`; prevents repeated missed-call texts to the same caller inside this window
 - `ALLOW_UNSIGNED_TWILIO_WEBHOOKS`: defaults to `false`; use `true` only for local manual webhook testing, never production
@@ -111,8 +114,10 @@ Supported template variables:
 Default forwarding voice message:
 
 ```text
-Thanks for calling. Sorry we missed you. We will text you shortly so we can help.
+Thanks for calling. Sorry we missed you. We will text you shortly. Please leave a quick message after the tone.
 ```
+
+In `CALL_MODE=forwarding`, Relay plays the greeting and then records a short voicemail. Twilio posts the recording to `/api/twilio/recording`, and the lead inbox shows the voicemail on the matching missed-call lead.
 
 ## Database Setup
 

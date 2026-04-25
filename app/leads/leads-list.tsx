@@ -47,6 +47,10 @@ function createDemoLeads(): Lead[] {
       status: "new",
       sms_status: "sent",
       sms_error: null,
+      recording_sid: "demo-recording-1",
+      recording_url: null,
+      recording_duration: 18,
+      recording_status: "completed",
       created_at: new Date(now - 14 * 60_000).toISOString(),
     },
     {
@@ -60,6 +64,10 @@ function createDemoLeads(): Lead[] {
       status: "contacted",
       sms_status: null,
       sms_error: null,
+      recording_sid: null,
+      recording_url: null,
+      recording_duration: null,
+      recording_status: null,
       created_at: new Date(now - 52 * 60_000).toISOString(),
     },
     {
@@ -73,6 +81,10 @@ function createDemoLeads(): Lead[] {
       status: "booked",
       sms_status: "sent",
       sms_error: null,
+      recording_sid: null,
+      recording_url: null,
+      recording_duration: null,
+      recording_status: null,
       created_at: new Date(now - 3 * 60 * 60_000).toISOString(),
     },
   ];
@@ -149,6 +161,25 @@ function SmsBadge({ lead }: { lead: Lead }) {
     return <span className="chip"><Icon name="clock" size={12} /> Recently texted</span>;
   }
   return <span className="chip chip-warn"><Icon name="clock" size={12} /> SMS pending</span>;
+}
+
+function VoicemailBadge({ lead }: { lead: Lead }) {
+  if (!lead.recording_url && !lead.recording_sid) return null;
+
+  return (
+    <span className="chip chip-good">
+      <Icon name="message" size={12} /> Voicemail
+    </span>
+  );
+}
+
+function formatDuration(seconds: number | null) {
+  if (!seconds) return "Voice message";
+  if (seconds < 60) return `${seconds}s voice message`;
+
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return `${minutes}m ${remainder.toString().padStart(2, "0")}s voice message`;
 }
 
 function StatusControl({
@@ -239,6 +270,7 @@ function LeadDrawer({
               <StatusPill status={lead.status} />
               <SourceBadge source={lead.source} />
               <SmsBadge lead={lead} />
+              <VoicemailBadge lead={lead} />
             </div>
           </div>
         </div>
@@ -252,6 +284,26 @@ function LeadDrawer({
           <div className="drawer__message">
             <p className="t-eyebrow">Request details</p>
             <p style={{ margin: "8px 0 0", lineHeight: 1.55 }}>{lead.message}</p>
+          </div>
+        ) : null}
+
+        {(lead.recording_url || lead.recording_sid) ? (
+          <div className="drawer__message voicemail-card">
+            <div>
+              <p className="t-eyebrow">Voicemail</p>
+              <p style={{ margin: "8px 0 0", color: "var(--ink-2)" }}>
+                {formatDuration(lead.recording_duration)}
+              </p>
+            </div>
+            {lead.recording_url ? (
+              <audio className="voicemail-card__audio" controls src={lead.recording_url}>
+                <a href={lead.recording_url}>Open voicemail</a>
+              </audio>
+            ) : (
+              <p style={{ margin: 0, color: "var(--ink-3)", fontSize: 13 }}>
+                Recording is processing in Twilio.
+              </p>
+            )}
           </div>
         ) : null}
 
@@ -581,6 +633,7 @@ export function LeadsList({
                   <StatusPill status={lead.status} />
                   <SourceBadge source={lead.source} />
                   <SmsBadge lead={lead} />
+                  <VoicemailBadge lead={lead} />
                 </div>
               </div>
 

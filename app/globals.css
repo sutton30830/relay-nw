@@ -1575,6 +1575,18 @@ code {
   padding: 18px 24px;
 }
 
+.voicemail-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  background: var(--panel-2);
+}
+
+.voicemail-card__audio {
+  width: 100%;
+  max-width: 100%;
+}
+
 .drawer__section-head {
   display: flex;
   align-items: center;
