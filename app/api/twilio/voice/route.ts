@@ -28,7 +28,11 @@ function voiceTwiml(request: Request, callerPhone: string) {
 }
 
 export async function GET(request: Request) {
-  const xml = voiceTwiml(request, env.twilioPhoneNumber);
+  const xml =
+    env.callMode === "forwarding"
+      ? forwardedMissedCallTwiml()
+      : voiceTwiml(request, env.twilioPhoneNumber);
+
   return twimlResponse(xml);
 }
 

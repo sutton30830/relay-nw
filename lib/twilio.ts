@@ -67,6 +67,7 @@ export function summarizeTwilioRequest(request: Request, payload: Record<string,
     from: payload.From ?? null,
     to: payload.To ?? null,
     dialCallStatus: payload.DialCallStatus ?? null,
+    callMode: env.callMode,
     hasOwnerPhoneNumber: Boolean(env.ownerPhoneNumber),
     hasTwilioPhoneNumber: Boolean(env.twilioPhoneNumber),
   };
