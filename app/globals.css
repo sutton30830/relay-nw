@@ -1289,13 +1289,17 @@ code {
   align-items: center;
   gap: 8px;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
   margin-bottom: 8px;
-  padding: 4px 0 12px;
+  padding: 4px 2px 12px;
 }
 
 .filter-pill {
   display: inline-flex;
+  min-height: 44px;
   align-items: center;
+  flex: 0 0 auto;
   gap: 7px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -1304,6 +1308,7 @@ code {
   padding: 7px 14px;
   font-size: 13.5px;
   font-weight: 700;
+  scroll-snap-align: start;
   white-space: nowrap;
 }
 
@@ -1331,13 +1336,9 @@ code {
   color: var(--paper);
 }
 
-.filter-pill--danger {
-  border-color: color-mix(in oklab, var(--danger) 50%, var(--line));
-  color: var(--danger);
-}
-
 .sort-pill {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 6px;
   border-left: 1px solid var(--line);
@@ -1787,6 +1788,29 @@ code {
   .thread-composer__input {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .filters {
+    margin-right: -18px;
+    margin-left: -18px;
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+
+  .filter-pill {
+    min-height: 42px;
+    padding: 7px 12px;
+    font-size: 13px;
+  }
+
+  .lead-card__status-ctrl {
+    width: 100%;
+  }
+
+  .status-seg {
+    flex: 1;
+    padding: 8px 6px;
+    text-align: center;
   }
 }
 

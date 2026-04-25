@@ -11,18 +11,17 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
   new: "New",
   contacted: "Contacted",
   booked: "Booked",
-  dead: "Dead",
+  dead: "Closed",
 };
 
-type Filter = "all" | "attention" | LeadStatus;
+type Filter = "all" | "needs_reply" | "contacted" | "booked" | "dead";
 
-const FILTERS: Array<{ key: Filter; label: string; danger?: boolean; hideIfEmpty?: boolean }> = [
+const FILTERS: Array<{ key: Filter; label: string }> = [
   { key: "all", label: "All" },
-  { key: "attention", label: "Needs attention", danger: true, hideIfEmpty: true },
-  { key: "new", label: "New" },
+  { key: "needs_reply", label: "Needs reply" },
   { key: "contacted", label: "Contacted" },
   { key: "booked", label: "Booked" },
-  { key: "dead", label: "Dead" },
+  { key: "dead", label: "Closed" },
 ];
 
 const QUICK_REPLIES = [
@@ -428,8 +427,7 @@ export function LeadsList({
 
   const counts = useMemo(() => ({
     all: activeItems.length,
-    attention: activeItems.filter(needsAttention).length,
-    new: activeItems.filter((lead) => lead.status === "new").length,
+    needs_reply: activeItems.filter((lead) => lead.status === "new").length,
     actionable: activeItems.filter((lead) => lead.status === "new" || lead.status === "contacted").length,
     contacted: activeItems.filter((lead) => lead.status === "contacted").length,
     booked: activeItems.filter((lead) => lead.status === "booked").length,
@@ -446,7 +444,7 @@ export function LeadsList({
 
   const filteredItems = useMemo(() => {
     let list = activeItems;
-    if (filter === "attention") list = list.filter(needsAttention);
+    if (filter === "needs_reply") list = list.filter((lead) => lead.status === "new");
     else if (filter !== "all") list = list.filter((lead) => lead.status === filter);
 
     if (query.trim()) {
@@ -590,17 +588,15 @@ export function LeadsList({
       <nav className="filters clean-scroll" aria-label="Filter leads">
         {FILTERS.map((item) => {
           const count = counts[item.key];
-          if (item.hideIfEmpty && !count) return null;
           const active = filter === item.key;
           return (
             <button
               key={item.key}
               type="button"
-              className={`filter-pill ${active ? "filter-pill--on" : ""} ${item.danger ? "filter-pill--danger" : ""}`}
+              className={`filter-pill ${active ? "filter-pill--on" : ""}`}
               onClick={() => setFilter(item.key)}
               aria-pressed={active}
             >
-              {item.danger ? <Icon name="alertTriangle" size={12} /> : null}
               {item.label}
               <span className="filter-pill__count">{count}</span>
             </button>
