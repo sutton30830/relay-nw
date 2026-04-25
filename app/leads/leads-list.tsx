@@ -231,10 +231,18 @@ function LeadDrawer({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
-  const autoMessage =
-    lead.source === "missed_call" && lead.sms_status === "sent"
-      ? "Hi, sorry we missed your call. Please fill out the intake form or book a time."
-      : null;
+  const smsStatusText =
+    lead.source !== "missed_call"
+      ? "This lead came from the intake form."
+      : lead.sms_status === "sent"
+        ? "Auto-text sent by Relay."
+        : lead.sms_status === "failed"
+          ? "Auto-text failed. Follow up manually."
+          : lead.sms_status === "skipped_recent"
+            ? "Auto-text skipped because this caller was recently texted."
+            : lead.sms_status === "skipped_opt_out"
+              ? "Auto-text skipped because this caller opted out."
+              : "Auto-text pending or waiting on SMS setup.";
 
   return (
     <>
@@ -311,37 +319,18 @@ function LeadDrawer({
         ) : null}
 
         <div className="drawer__section-head">
-          <p className="t-eyebrow">SMS thread</p>
+          <p className="t-eyebrow">Follow-up</p>
           <span style={{ fontSize: 12, color: "var(--ink-4)" }}>
-            {autoMessage ? "1 auto message" : "No stored replies yet"}
+            Use your phone for replies
           </span>
         </div>
 
-        <div className="thread clean-scroll">
-          {autoMessage ? (
-            <>
-              <div className="thread__day"><span>{formatRelativeTime(lead.created_at, now)}</span></div>
-              <div className="bubble-row bubble-row--out">
-                <div className="bubble bubble--out">
-                  <p className="bubble__tag"><Icon name="checkDouble" size={10} /> Auto-sent by Relay</p>
-                  <p style={{ margin: 0 }}>{autoMessage}</p>
-                  <p className="bubble__time">sent</p>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="thread__empty">
-              <Icon name="message" size={20} />
-              <p>No SMS thread yet.</p>
-              <p style={{ fontSize: 13, color: "var(--ink-4)" }}>
-                Customer replies are logged by the SMS webhook; full thread storage is next.
-              </p>
-            </div>
-          )}
-        </div>
-
-        <div className="thread-composer">
-          <div className="thread-composer__quick clean-scroll">
+        <div className="follow-up-panel">
+          <div className={`follow-up-status ${lead.sms_status === "failed" ? "follow-up-status--warn" : ""}`}>
+            <Icon name={lead.sms_status === "failed" ? "alertTriangle" : "message"} size={15} />
+            <span>{smsStatusText}</span>
+          </div>
+          <div className="follow-up-quick clean-scroll">
             {QUICK_REPLIES.map((template) => (
               <a
                 key={template}
@@ -352,7 +341,7 @@ function LeadDrawer({
               </a>
             ))}
           </div>
-          <div className="thread-composer__input">
+          <div className="follow-up-actions">
             <a className="btn btn-primary" href={`sms:${lead.phone}`}>
               <Icon name="message" size={14} /> Text from your phone
             </a>
@@ -360,7 +349,7 @@ function LeadDrawer({
               <Icon name="phone" size={14} /> Call back
             </a>
           </div>
-          <p className="thread-composer__hint">
+          <p className="follow-up-hint">
             Replies open your phone's messages app so follow-up stays personal and fast.
           </p>
         </div>
