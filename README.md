@@ -87,6 +87,7 @@ Optional:
 
 - `SMS_TEMPLATE`: overrides the default SMS template
 - `MISSED_CALL_VOICE_MESSAGE`: overrides what callers hear in `CALL_MODE=forwarding` before Twilio hangs up
+- `MISSED_CALL_VOICE_NAME`: defaults to `Polly.Joanna-Neural` for a less robotic Twilio voice
 - `DIAL_TIMEOUT_SECONDS`: defaults to `18`
 - `MISSED_CALL_SMS_COOLDOWN_HOURS`: defaults to `24`; prevents repeated missed-call texts to the same caller inside this window
 - `ALLOW_UNSIGNED_TWILIO_WEBHOOKS`: defaults to `false`; use `true` only for local manual webhook testing, never production

@@ -38,10 +38,13 @@ export function emptyTwiml() {
 const defaultForwardingMessage =
   "Thanks for calling. Sorry we missed you. We will text you shortly so we can help.";
 
-export function forwardedMissedCallTwiml(message = defaultForwardingMessage) {
+export function forwardedMissedCallTwiml(
+  message = defaultForwardingMessage,
+  voiceName = "Polly.Joanna-Neural",
+) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say>${escapeXml(message)}</Say>
+  <Say voice="${escapeXml(voiceName)}">${escapeXml(message)}</Say>
   <Hangup />
 </Response>`;
 }
