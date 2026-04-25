@@ -42,7 +42,18 @@ function normalizeBaseUrl(value: string) {
   return value.replace(/\/$/, "");
 }
 
+function getCallMode() {
+  const value = getOptionalEnv("CALL_MODE") ?? "direct";
+
+  if (value !== "direct" && value !== "forwarding") {
+    throw new Error("Invalid CALL_MODE. Use direct or forwarding.");
+  }
+
+  return value;
+}
+
 export const env = {
+  callMode: getCallMode(),
   businessName: getRequiredEnv("BUSINESS_NAME"),
   intakeUrl: getRequiredEnv("INTAKE_URL"),
   schedulingUrl: getRequiredEnv("SCHEDULING_URL"),

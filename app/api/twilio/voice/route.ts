@@ -6,7 +6,8 @@ import {
   twilioWebhookUrls,
   validateTwilioRequest,
 } from "@/lib/twilio";
-import { dialForwardTwiml, twimlResponse } from "@/lib/twiml";
+import { handleMissedCall } from "@/lib/missed-call";
+import { dialForwardTwiml, forwardedMissedCallTwiml, twimlResponse } from "@/lib/twiml";
 
 function voiceTwiml(request: Request, callerPhone: string) {
   const url = new URL(request.url);
@@ -80,6 +81,51 @@ export async function POST(request: Request) {
   }
 
   const callerPhone = String(formData.get("From") || env.twilioPhoneNumber);
+
+  if (env.callMode === "forwarding") {
+    const callSid = String(formData.get("CallSid") || "").trim();
+    const xml = forwardedMissedCallTwiml();
+
+    try {
+      const result = await handleMissedCall({
+        callSid,
+        callerPhone,
+        message: "Forwarded missed call from existing business number.",
+      });
+
+      console.info("Handled forwarded missed call", {
+        ...requestSummary,
+        smsStatus: result.smsStatus,
+      });
+
+      await logWebhookEvent({
+        source: "twilio_voice",
+        payload,
+        responseStatus: 200,
+        responseBody: xml,
+        error: validation.matchedUrl
+          ? `Validated with URL: ${validation.matchedUrl}; forwarding mode SMS status: ${result.smsStatus}`
+          : env.allowUnsignedTwilioWebhooks
+            ? `Unsigned/invalid Twilio webhook allowed by env override; forwarding mode SMS status: ${result.smsStatus}`
+            : `Forwarding mode SMS status: ${result.smsStatus}`,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown forwarding-mode error";
+
+      await logWebhookEvent({
+        source: "twilio_voice",
+        payload,
+        responseStatus: 200,
+        responseBody: xml,
+        error: message,
+      });
+
+      console.error("Failed to handle forwarded missed call", error);
+    }
+
+    return twimlResponse(xml);
+  }
+
   const xml = voiceTwiml(request, callerPhone);
 
   await logWebhookEvent({

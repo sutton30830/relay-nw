@@ -9,24 +9,24 @@ export default function HomePage() {
   const steps = [
     {
       icon: "phone" as const,
-      title: "A customer calls",
-      body: "Your Relay NW number rings your real phone like a normal business call.",
+      title: "Customers call your number",
+      body: "You keep the business number already on your website, trucks, and Google profile.",
     },
     {
       icon: "message" as const,
-      title: "If you miss it, they get a text",
-      body: "The caller gets a friendly reply with your intake form and booking link.",
+      title: "Missed calls forward to Relay NW",
+      body: "Conditional call forwarding sends busy or unanswered calls to your Relay NW recovery number.",
     },
     {
       icon: "inbox" as const,
-      title: "You get the lead",
-      body: "The missed call is saved so you can call back, text back, and book the job.",
+      title: "They get a useful text",
+      body: "Relay NW texts the caller, saves the lead, and gives you a simple follow-up inbox.",
     },
   ];
 
   const benefits = [
+    "Keep the number customers already know.",
     "Recover customers who would have called the next company.",
-    "Give callers a useful next step instead of silence.",
     "Keep follow-up simple from a phone-friendly lead inbox.",
   ];
 
@@ -63,11 +63,11 @@ export default function HomePage() {
         <div>
           <p className="t-eyebrow">Your missed-call safety net</p>
           <h2 className="t-display home-hero__title">
-            Every missed call gets a warm text back in <em>under 20 seconds.</em>
+            Keep your number. Text back missed callers <em>automatically.</em>
           </h2>
           <p className="home-hero__sub">
-            Relay NW automatically texts customers when you miss their call, captures the request,
-            and keeps the next job from slipping away.
+            Relay NW works with conditional call forwarding so local service businesses can keep
+            their existing number and still recover missed-call leads.
           </p>
           <div className="mt-5 flex flex-wrap gap-3">
             <Link className="btn btn-primary" href="/leads">
@@ -79,9 +79,9 @@ export default function HomePage() {
           </div>
           <div className="mt-8 grid max-w-2xl gap-5 sm:grid-cols-3">
             {[
-              ["phone", "Missed call", "We monitor calls to your business."],
-              ["message", "Instant text", "Customers get a text right away."],
-              ["user", "More jobs", "You stay connected. You get the job."],
+              ["phone", "Keep your number", "No website or Google listing change."],
+              ["message", "Missed-call text", "Customers get a fast next step."],
+              ["user", "More booked work", "You stay connected after the ring."],
             ].map(([icon, title, body]) => (
               <div key={title} className="home-hero-stat">
                 <Icon name={icon as "phone" | "message" | "user"} size={28} />
@@ -124,7 +124,8 @@ export default function HomePage() {
           <h2 className="t-display">Simple enough to use on day one.</h2>
           <p>
             Relay NW is built for local service owners who are in the field, on ladders, under
-            sinks, or driving between jobs. When you cannot answer, the follow-up still happens.
+            sinks, or driving between jobs. When your existing number goes unanswered, the follow-up
+            still happens.
           </p>
         </div>
 

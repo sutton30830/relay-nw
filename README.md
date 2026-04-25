@@ -2,14 +2,19 @@
 
 Relay NW is a small missed-call SMS follow-up MVP for one local home services business.
 
-When a customer calls the business's Twilio number, Relay NW forwards the call to the owner's real phone. If the owner misses the call, Relay NW sends one automatic SMS with the intake link and saves the lead in Supabase.
+Relay NW supports two call flows:
+
+- `CALL_MODE=forwarding`: the business keeps its existing public number and uses conditional call forwarding to send missed calls to Relay NW.
+- `CALL_MODE=direct`: customers call the Twilio number directly, and Relay NW forwards the call to the owner's real phone.
+
+In both modes, Relay NW sends one automatic SMS with the intake link and saves the lead in Supabase when a call is missed.
 
 This app is intentionally single-business. No accounts, billing, CRM, shared inbox, business-hours logic, or multi-tenant support.
 
 ## Day-One Setup Checklist
 
 1. Create a Supabase project and run `supabase.sql` in the Supabase SQL Editor.
-2. Create a Twilio account and buy or choose one Twilio phone number.
+2. Create a Twilio account and buy or choose one Twilio phone number. This is the Relay NW recovery number.
 3. Complete Twilio A2P 10DLC registration before expecting US SMS to deliver reliably.
 4. Create `.env.local` from `.env.example` and fill in every required value.
 5. Run locally with `npm install` and `npm run dev`.
@@ -18,12 +23,14 @@ This app is intentionally single-business. No accounts, billing, CRM, shared inb
 8. In Twilio, configure the phone number's Voice webhook to `APP_BASE_URL/api/twilio/voice`.
 9. In Twilio, configure the phone number's Messaging webhook to `APP_BASE_URL/api/twilio/sms`.
 10. Use HTTP `POST` for both Twilio webhooks.
-11. Make a real test call from a separate phone.
-12. Let the owner's phone ring without answering.
+11. For `CALL_MODE=direct`, make a real test call from a separate phone and let the owner's phone ring without answering.
+12. For `CALL_MODE=forwarding`, configure the owner's existing number to forward busy/no-answer calls to the Twilio number, then make a missed-call test to the existing number.
 13. Confirm the caller receives the SMS and the lead appears in `/leads`.
 14. Reply to the SMS and confirm the owner receives the forwarded reply.
 
 ## Core Flow
+
+### Direct Mode
 
 1. Customer calls the Twilio business number.
 2. Twilio posts to `/api/twilio/voice`.
@@ -34,6 +41,16 @@ This app is intentionally single-business. No accounts, billing, CRM, shared inb
 7. If `DialCallStatus` is `no-answer`, `busy`, `failed`, or `canceled`, Relay NW creates a missed-call lead and sends the SMS.
 8. If `DialCallStatus` is `completed` or `answered`, Relay NW does nothing.
 9. The owner reviews leads at `/leads`.
+
+### Forwarding Mode
+
+1. Customer calls the business's existing number.
+2. If the owner does not answer, is busy, or is unreachable, the carrier forwards the call to the Twilio number.
+3. Twilio posts to `/api/twilio/voice`.
+4. Relay NW treats the forwarded call as a missed-call lead immediately.
+5. Relay NW sends the missed-call SMS when the number is eligible and records the SMS status.
+6. Relay NW returns a short TwiML message and hangs up.
+7. The owner reviews leads at `/leads`.
 
 ## Pages And Routes
 
@@ -52,6 +69,7 @@ This app is intentionally single-business. No accounts, billing, CRM, shared inb
 Required:
 
 - `BUSINESS_NAME`: business name used in the missed-call SMS
+- `CALL_MODE`: `forwarding` to keep the existing business number, or `direct` to make the Twilio number the main call number
 - `INTAKE_URL`: public URL for `/intake`
 - `SCHEDULING_URL`: existing scheduling link for the business
 - `LEADS_PASSWORD`: shared password for `/leads`
@@ -73,6 +91,8 @@ Optional:
 - `ALLOW_UNSIGNED_TWILIO_WEBHOOKS`: defaults to `false`; use `true` only for local manual webhook testing, never production
 
 Use phone numbers in E.164 format, like `+12065551234`.
+
+For early customers, `CALL_MODE=forwarding` is the recommended product direction because the business can keep its existing number. Use `CALL_MODE=direct` when a business is willing to make the Twilio number its public number or when you want the simplest controlled test.
 
 Default SMS template:
 
@@ -171,6 +191,8 @@ Use method `POST`.
 
 ## Twilio Notes
 
+- In forwarding mode, configure the business's existing carrier number to forward missed, busy, or unreachable calls to the Twilio number. Exact steps vary by carrier.
+- Forwarding mode may miss callers who hang up before the carrier forwards the call. The honest promise is "recover more missed calls without changing your number," not "capture every abandoned call."
 - `DIAL_TIMEOUT_SECONDS` defaults to 18 seconds to reduce the chance that the owner's carrier voicemail answers first.
 - Shorter timeout means more false missed calls.
 - Longer timeout means voicemail is more likely to answer, causing Twilio to report a connected call.

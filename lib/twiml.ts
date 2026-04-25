@@ -34,3 +34,11 @@ export function emptyTwiml() {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response></Response>`;
 }
+
+export function forwardedMissedCallTwiml() {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say>Thanks. We will text you shortly.</Say>
+  <Hangup />
+</Response>`;
+}

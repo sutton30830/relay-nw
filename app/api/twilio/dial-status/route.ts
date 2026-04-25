@@ -1,19 +1,14 @@
 import {
-  createMissedCallLeadIfNew,
-  hasRecentMissedCallSms,
-  isOptedOut,
   logWebhookEvent,
-  updateLeadSmsStatus,
 } from "@/lib/supabase";
 import { env } from "@/lib/env";
 import {
   formDataToRecord,
-  missedCallSmsBody,
   summarizeTwilioRequest,
-  twilioClient,
   twilioWebhookUrls,
   validateTwilioRequest,
 } from "@/lib/twilio";
+import { handleMissedCall } from "@/lib/missed-call";
 import { emptyTwiml, twimlResponse } from "@/lib/twiml";
 
 export async function GET() {
@@ -83,65 +78,17 @@ export async function POST(request: Request) {
       case "busy":
       case "failed":
       case "canceled": {
-        if (!callerPhone || !callSid) {
-          throw new Error("Missing caller phone or CallSid on missed call webhook.");
-        }
-
-        const leadResult = await createMissedCallLeadIfNew({
+        const result = await handleMissedCall({
           callSid,
-          phone: callerPhone,
+          callerPhone,
           message: `Missed call. Dial status: ${dialCallStatus}.`,
         });
 
-        if (leadResult.inserted) {
-          const cooldownSince = new Date(
-            Date.now() - env.missedCallSmsCooldownHours * 60 * 60 * 1000,
-          );
-          const alreadyTextedRecently = await hasRecentMissedCallSms(callerPhone, cooldownSince);
-
-          if (leadResult.leadId && alreadyTextedRecently) {
-            await updateLeadSmsStatus({
-              id: leadResult.leadId,
-              smsStatus: "skipped_recent",
-            });
-            break;
-          }
-
-          if (leadResult.leadId && (await isOptedOut(callerPhone))) {
-            await updateLeadSmsStatus({
-              id: leadResult.leadId,
-              smsStatus: "skipped_opt_out",
-            });
-            break;
-          }
-
-          try {
-            await twilioClient.messages.create({
-              to: callerPhone,
-              from: env.twilioPhoneNumber,
-              body: missedCallSmsBody(),
-            });
-
-            if (leadResult.leadId) {
-              await updateLeadSmsStatus({
-                id: leadResult.leadId,
-                smsStatus: "sent",
-              });
-            }
-          } catch (error) {
-            const message = error instanceof Error ? error.message : "Unknown SMS send error";
-
-            if (leadResult.leadId) {
-              await updateLeadSmsStatus({
-                id: leadResult.leadId,
-                smsStatus: "failed",
-                smsError: message,
-              });
-            }
-
-            console.error("Failed to send missed call SMS", error);
-          }
-        }
+        console.info("Handled direct-mode missed call", {
+          ...requestSummary,
+          dialCallStatus,
+          smsStatus: result.smsStatus,
+        });
 
         break;
       }
