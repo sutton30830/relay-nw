@@ -33,7 +33,7 @@ export async function POST(request: Request) {
 
   console.info("Twilio dial status webhook received", requestSummary);
 
-  if (!validation.isValid) {
+  if (!validation.isValid && !env.allowUnsignedTwilioWebhooks) {
     console.warn("Twilio dial status signature validation failed", {
       ...requestSummary,
       candidateUrls,
@@ -43,9 +43,27 @@ export async function POST(request: Request) {
     await logWebhookEvent({
       source: "twilio_dial_status",
       payload,
-      responseStatus: 200,
-      responseBody: "Bypassed invalid Twilio signature for dial status webhook.",
+      responseStatus: 403,
+      responseBody: "Rejected invalid Twilio signature for dial status webhook.",
       error: `Invalid Twilio signature. Candidate URLs: ${candidateUrls.join(" | ")}`,
+    });
+
+    return new Response("Forbidden", { status: 403 });
+  }
+
+  if (!validation.isValid) {
+    console.warn("Unsigned Twilio dial status webhook allowed by env override", {
+      ...requestSummary,
+      candidateUrls,
+      hasSignature: Boolean(request.headers.get("x-twilio-signature")),
+    });
+
+    await logWebhookEvent({
+      source: "twilio_dial_status",
+      payload,
+      responseStatus: 200,
+      responseBody: "Allowed unsigned Twilio dial status webhook by env override.",
+      error: `Unsigned/invalid Twilio signature. Candidate URLs: ${candidateUrls.join(" | ")}`,
     });
   }
 

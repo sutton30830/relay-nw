@@ -28,13 +28,37 @@ export async function POST(request: Request) {
 
   console.info("Twilio inbound SMS webhook received", requestSummary);
 
+  if (!validation.isValid && !env.allowUnsignedTwilioWebhooks) {
+    console.warn("Twilio inbound SMS signature validation failed", {
+      ...requestSummary,
+      candidateUrls,
+      hasSignature: Boolean(request.headers.get("x-twilio-signature")),
+    });
+
+    await logWebhookEvent({
+      source: "twilio_inbound_sms",
+      payload,
+      responseStatus: 403,
+      responseBody: "Forbidden",
+      error: `Invalid Twilio signature. Candidate URLs: ${candidateUrls.join(" | ")}`,
+    });
+
+    return new Response("Forbidden", { status: 403 });
+  }
+
   if (!validation.isValid) {
+    console.warn("Unsigned Twilio inbound SMS webhook allowed by env override", {
+      ...requestSummary,
+      candidateUrls,
+      hasSignature: Boolean(request.headers.get("x-twilio-signature")),
+    });
+
     await logWebhookEvent({
       source: "twilio_inbound_sms",
       payload,
       responseStatus: 200,
-      responseBody: "Bypassed invalid Twilio signature for inbound SMS webhook.",
-      error: `Invalid Twilio signature. Candidate URLs: ${candidateUrls.join(" | ")}`,
+      responseBody: "Allowed unsigned Twilio inbound SMS webhook by env override.",
+      error: `Unsigned/invalid Twilio signature. Candidate URLs: ${candidateUrls.join(" | ")}`,
     });
   }
 

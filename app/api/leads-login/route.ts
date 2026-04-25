@@ -1,14 +1,18 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { env } from "@/lib/env";
+import {
+  createLeadsSessionCookie,
+  LEADS_COOKIE_NAME,
+  passwordsMatch,
+} from "@/lib/leads-auth";
 
 export async function POST(request: Request) {
   const formData = await request.formData();
   const password = String(formData.get("password") || "");
 
-  if (password === env.leadsPassword) {
+  if (passwordsMatch(password)) {
     const cookieStore = await cookies();
-    cookieStore.set("relay_leads_password", password, {
+    cookieStore.set(LEADS_COOKIE_NAME, createLeadsSessionCookie(), {
       httpOnly: true,
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",

@@ -3,13 +3,14 @@ import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { LeadsList } from "@/app/leads/leads-list";
 import { env } from "@/lib/env";
+import { isValidLeadsSessionCookie, LEADS_COOKIE_NAME } from "@/lib/leads-auth";
 import { getLeads } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
 export default async function LeadsPage() {
   const cookieStore = await cookies();
-  const isAllowed = cookieStore.get("relay_leads_password")?.value === env.leadsPassword;
+  const isAllowed = isValidLeadsSessionCookie(cookieStore.get(LEADS_COOKIE_NAME)?.value);
 
   if (!isAllowed) {
     return (
@@ -54,8 +55,7 @@ export default async function LeadsPage() {
     );
   }
 
-  const isDemoBusiness = /demo/i.test(env.businessName);
-  const leads = isDemoBusiness ? [] : await getLeads();
+  const leads = await getLeads();
 
   return (
     <main className="leads-view">

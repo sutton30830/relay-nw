@@ -45,7 +45,7 @@ export async function POST(request: Request) {
 
   console.info("Twilio voice webhook received", requestSummary);
 
-  if (signature && !validation.isValid) {
+  if (!validation.isValid && !env.allowUnsignedTwilioWebhooks) {
     console.warn("Twilio voice signature validation failed", {
       ...requestSummary,
       candidateUrls,
@@ -55,9 +55,27 @@ export async function POST(request: Request) {
     await logWebhookEvent({
       source: "twilio_voice",
       payload,
-      responseStatus: 200,
-      responseBody: "Bypassed invalid Twilio signature for voice webhook.",
+      responseStatus: 403,
+      responseBody: "Rejected invalid Twilio signature for voice webhook.",
       error: `Invalid Twilio signature. Candidate URLs: ${candidateUrls.join(" | ")}`,
+    });
+
+    return new Response("Forbidden", { status: 403 });
+  }
+
+  if (!validation.isValid) {
+    console.warn("Unsigned Twilio voice webhook allowed by env override", {
+      ...requestSummary,
+      candidateUrls,
+      hasSignature: Boolean(signature),
+    });
+
+    await logWebhookEvent({
+      source: "twilio_voice",
+      payload,
+      responseStatus: 200,
+      responseBody: "Allowed unsigned Twilio voice webhook by env override.",
+      error: `Unsigned/invalid Twilio signature. Candidate URLs: ${candidateUrls.join(" | ")}`,
     });
   }
 
@@ -69,11 +87,11 @@ export async function POST(request: Request) {
     payload,
     responseStatus: 200,
     responseBody: xml,
-    error: signature
-      ? validation.matchedUrl
-        ? `Validated with URL: ${validation.matchedUrl}`
-        : null
-      : "No Twilio signature present; served TwiML for manual testing.",
+    error: validation.matchedUrl
+      ? `Validated with URL: ${validation.matchedUrl}`
+      : env.allowUnsignedTwilioWebhooks
+        ? "Unsigned/invalid Twilio webhook allowed by env override."
+        : null,
   });
 
   return twimlResponse(xml);

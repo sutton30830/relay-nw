@@ -12,6 +12,16 @@ function getOptionalEnv(name: string): string | undefined {
   return process.env[name] || undefined;
 }
 
+function getOptionalBooleanEnv(name: string, fallback: boolean): boolean {
+  const value = process.env[name];
+
+  if (!value) {
+    return fallback;
+  }
+
+  return ["1", "true", "yes", "on"].includes(value.toLowerCase());
+}
+
 function getOptionalNumberEnv(name: string, fallback: number): number {
   const value = process.env[name];
 
@@ -40,7 +50,9 @@ export const env = {
   dialTimeoutSeconds: getOptionalNumberEnv("DIAL_TIMEOUT_SECONDS", 18),
   missedCallSmsCooldownHours: getOptionalNumberEnv("MISSED_CALL_SMS_COOLDOWN_HOURS", 24),
   leadsPassword: getRequiredEnv("LEADS_PASSWORD"),
+  leadsCookieSecret: getOptionalEnv("LEADS_COOKIE_SECRET") ?? getRequiredEnv("LEADS_PASSWORD"),
   appBaseUrl: normalizeBaseUrl(getRequiredEnv("APP_BASE_URL")),
+  allowUnsignedTwilioWebhooks: getOptionalBooleanEnv("ALLOW_UNSIGNED_TWILIO_WEBHOOKS", false),
   twilioAccountSid: getRequiredEnv("TWILIO_ACCOUNT_SID"),
   twilioAuthToken: getRequiredEnv("TWILIO_AUTH_TOKEN"),
   twilioPhoneNumber: getRequiredEnv("TWILIO_PHONE_NUMBER"),

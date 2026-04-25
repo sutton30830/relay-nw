@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { env } from "@/lib/env";
+import { isValidLeadsSessionCookie, LEADS_COOKIE_NAME } from "@/lib/leads-auth";
 import { type LeadStatus, updateLead } from "@/lib/supabase";
 
 const VALID_STATUSES = new Set<LeadStatus>(["new", "contacted", "booked", "dead"]);
@@ -9,7 +9,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const cookieStore = await cookies();
-  const isAllowed = cookieStore.get("relay_leads_password")?.value === env.leadsPassword;
+  const isAllowed = isValidLeadsSessionCookie(cookieStore.get(LEADS_COOKIE_NAME)?.value);
 
   if (!isAllowed) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

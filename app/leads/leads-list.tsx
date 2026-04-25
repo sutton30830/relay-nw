@@ -337,7 +337,7 @@ export function LeadsList({
   const searchRef = useRef<HTMLInputElement | null>(null);
   const [items, setItems] = useState(leads);
   const [demoItems, setDemoItems] = useState(() => createDemoLeads());
-  const [demoMode, setDemoMode] = useState(() => /demo/i.test(businessName));
+  const [demoMode, setDemoMode] = useState(() => /demo/i.test(businessName) && leads.length === 0);
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -346,6 +346,7 @@ export function LeadsList({
 
   useEffect(() => {
     setItems(leads);
+    if (leads.length > 0) setDemoMode(false);
   }, [leads]);
 
   useEffect(() => {
@@ -378,7 +379,7 @@ export function LeadsList({
     booked: activeItems.filter((lead) => lead.status === "booked").length,
     dead: activeItems.filter((lead) => lead.status === "dead").length,
     missed: activeItems.filter((lead) => lead.source === "missed_call").length,
-    replied: 0,
+    smsIssues: activeItems.filter((lead) => lead.sms_status === "failed").length,
   }), [activeItems]);
 
   const todays = useMemo(() => {
@@ -519,9 +520,9 @@ export function LeadsList({
           <p className="pulse-sub">auto-texted when eligible</p>
         </div>
         <div className="pulse-cell pulse-cell--good">
-          <p className="t-eyebrow" style={{ fontSize: 10.5 }}>Customers replied</p>
-          <p className="pulse-value t-display">{counts.replied}</p>
-          <p className="pulse-sub">manual follow-up</p>
+          <p className="t-eyebrow" style={{ fontSize: 10.5 }}>SMS issues</p>
+          <p className="pulse-value t-display">{counts.smsIssues}</p>
+          <p className="pulse-sub">{counts.smsIssues === 1 ? "needs manual follow-up" : "delivery problems"}</p>
         </div>
         <div className="pulse-cell pulse-cell--neutral">
           <p className="t-eyebrow" style={{ fontSize: 10.5 }}>Total leads</p>
