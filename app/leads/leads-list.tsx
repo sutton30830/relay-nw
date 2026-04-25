@@ -295,10 +295,14 @@ function LeadDrawer({
                 {formatDuration(lead.recording_duration)}
               </p>
             </div>
-            {lead.recording_url ? (
-              <audio className="voicemail-card__audio" controls src={lead.recording_url}>
-                <a href={lead.recording_url}>Open voicemail</a>
+            {lead.recording_sid ? (
+              <audio className="voicemail-card__audio" controls src={`/api/recordings/${lead.recording_sid}`}>
+                <a href={`/api/recordings/${lead.recording_sid}`}>Open voicemail</a>
               </audio>
+            ) : lead.recording_url ? (
+              <a className="btn btn-secondary btn-sm" href={lead.recording_url} target="_blank" rel="noreferrer">
+                Open voicemail
+              </a>
             ) : (
               <p style={{ margin: 0, color: "var(--ink-3)", fontSize: 13 }}>
                 Recording is processing in Twilio.
