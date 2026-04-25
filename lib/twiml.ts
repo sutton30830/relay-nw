@@ -35,10 +35,13 @@ export function emptyTwiml() {
 <Response></Response>`;
 }
 
-export function forwardedMissedCallTwiml() {
+const defaultForwardingMessage =
+  "Thanks for calling. Sorry we missed you. We will text you shortly so we can help.";
+
+export function forwardedMissedCallTwiml(message = defaultForwardingMessage) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say>Thanks. We will text you shortly.</Say>
+  <Say>${escapeXml(message)}</Say>
   <Hangup />
 </Response>`;
 }

@@ -86,6 +86,7 @@ Required:
 Optional:
 
 - `SMS_TEMPLATE`: overrides the default SMS template
+- `MISSED_CALL_VOICE_MESSAGE`: overrides what callers hear in `CALL_MODE=forwarding` before Twilio hangs up
 - `DIAL_TIMEOUT_SECONDS`: defaults to `18`
 - `MISSED_CALL_SMS_COOLDOWN_HOURS`: defaults to `24`; prevents repeated missed-call texts to the same caller inside this window
 - `ALLOW_UNSIGNED_TWILIO_WEBHOOKS`: defaults to `false`; use `true` only for local manual webhook testing, never production
@@ -105,6 +106,12 @@ Supported template variables:
 - `{BUSINESS_NAME}`
 - `{INTAKE_URL}`
 - `{SCHEDULING_URL}`
+
+Default forwarding voice message:
+
+```text
+Thanks for calling. Sorry we missed you. We will text you shortly so we can help.
+```
 
 ## Database Setup
 

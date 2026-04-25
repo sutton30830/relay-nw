@@ -30,7 +30,7 @@ function voiceTwiml(request: Request, callerPhone: string) {
 export async function GET(request: Request) {
   const xml =
     env.callMode === "forwarding"
-      ? forwardedMissedCallTwiml()
+      ? forwardedMissedCallTwiml(env.missedCallVoiceMessage)
       : voiceTwiml(request, env.twilioPhoneNumber);
 
   return twimlResponse(xml);
@@ -88,7 +88,7 @@ export async function POST(request: Request) {
 
   if (env.callMode === "forwarding") {
     const callSid = String(formData.get("CallSid") || "").trim();
-    const xml = forwardedMissedCallTwiml();
+    const xml = forwardedMissedCallTwiml(env.missedCallVoiceMessage);
 
     try {
       const result = await handleMissedCall({
