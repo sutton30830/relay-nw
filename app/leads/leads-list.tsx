@@ -14,11 +14,11 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
   dead: "Closed",
 };
 
-type Filter = "all" | "needs_reply" | "contacted" | "booked" | "dead";
+type Filter = "all" | LeadStatus;
 
 const FILTERS: Array<{ key: Filter; label: string }> = [
   { key: "all", label: "All" },
-  { key: "needs_reply", label: "Needs reply" },
+  { key: "new", label: "New" },
   { key: "contacted", label: "Contacted" },
   { key: "booked", label: "Booked" },
   { key: "dead", label: "Closed" },
@@ -427,7 +427,7 @@ export function LeadsList({
 
   const counts = useMemo(() => ({
     all: activeItems.length,
-    needs_reply: activeItems.filter((lead) => lead.status === "new").length,
+    new: activeItems.filter((lead) => lead.status === "new").length,
     actionable: activeItems.filter((lead) => lead.status === "new" || lead.status === "contacted").length,
     contacted: activeItems.filter((lead) => lead.status === "contacted").length,
     booked: activeItems.filter((lead) => lead.status === "booked").length,
@@ -444,8 +444,7 @@ export function LeadsList({
 
   const filteredItems = useMemo(() => {
     let list = activeItems;
-    if (filter === "needs_reply") list = list.filter((lead) => lead.status === "new");
-    else if (filter !== "all") list = list.filter((lead) => lead.status === filter);
+    if (filter !== "all") list = list.filter((lead) => lead.status === filter);
 
     if (query.trim()) {
       const needle = query.trim().toLowerCase();
