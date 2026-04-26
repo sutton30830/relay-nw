@@ -70,9 +70,6 @@ export default async function IntakePage({
             </h1>
           </div>
         </Link>
-        <a href={env.schedulingUrl} className="btn btn-ghost btn-sm">
-          <Icon name="calendar" size={13} /> Book online instead
-        </a>
       </header>
 
       <div className="intake-grid">
@@ -108,18 +105,6 @@ export default async function IntakePage({
               </div>
             </li>
           </ul>
-
-          <div className="intake-quote">
-            <p style={{ margin: 0, fontSize: 15, lineHeight: 1.55, fontStyle: "italic" }}>
-              &quot;Send the request once. Get a real follow-up.&quot;
-            </p>
-            <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--ink-3)" }}>
-              Built for local service calls.
-            </p>
-          </div>
-          <a href={env.schedulingUrl} className="btn btn-secondary mt-5">
-            <Icon name="calendar" size={14} /> Prefer to book directly?
-          </a>
         </aside>
 
         <section className="intake-form panel">
