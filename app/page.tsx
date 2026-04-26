@@ -71,15 +71,7 @@ export default function HomePage() {
             Relay NW answers missed calls with your greeting, records the message, and saves the
             caller in one simple inbox.
           </p>
-          <div className="mt-5 flex flex-wrap gap-3">
-            <Link className="btn btn-primary" href="/leads">
-              Get started <Icon name="arrowRight" size={14} />
-            </Link>
-            <Link className="btn btn-secondary" href="/intake">
-              See how it works
-            </Link>
-          </div>
-          <div className="mt-8 grid max-w-2xl gap-5 sm:grid-cols-3">
+          <div className="mt-7 grid max-w-2xl gap-5 sm:grid-cols-3">
             {[
               ["phone", "Keep your number", "No website or Google listing change."],
               ["message", "Helpful reply", "Callers know what happens next."],
