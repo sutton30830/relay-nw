@@ -61,6 +61,7 @@ Test with the customer watching:
 6. Confirm the lead appears in `/leads`.
 7. Confirm the voicemail appears on the lead.
 8. Confirm SMS status is visible on the lead.
+9. Open the recent Twilio activity panel at the bottom of `/leads` and confirm the call, recording, and SMS events are visible.
 
 If A2P is not active, SMS may show failed because the number is unregistered. That is expected until registration is complete.
 
@@ -72,5 +73,6 @@ Before charging:
 - One missed call test succeeds.
 - One voicemail recording test succeeds.
 - One inbound SMS reply test succeeds.
+- The recent Twilio activity panel shows enough detail to explain the test call.
 - The owner knows the lead inbox password.
 - The owner understands that callers who hang up before forwarding may not be captured.

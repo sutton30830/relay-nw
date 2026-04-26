@@ -59,11 +59,25 @@ export async function handleMissedCall(input: {
       statusCallback: `${env.appBaseUrl}/api/twilio/sms-status`,
     });
 
-    await updateLeadSmsStatus({
-      id: leadResult.leadId,
-      smsStatus: "sent",
-      twilioMessageSid: message.sid,
-    });
+    try {
+      await updateLeadSmsStatus({
+        id: leadResult.leadId,
+        smsStatus: "sent",
+        twilioMessageSid: message.sid,
+      });
+    } catch (error) {
+      console.error("Twilio accepted SMS, but Relay could not update the lead", {
+        leadId: leadResult.leadId,
+        twilioMessageSid: message.sid,
+        error,
+      });
+
+      return {
+        inserted: true,
+        smsStatus: "sent_update_failed" as const,
+        twilioMessageSid: message.sid,
+      };
+    }
 
     return { inserted: true, smsStatus: "sent" as const, twilioMessageSid: message.sid };
   } catch (error) {

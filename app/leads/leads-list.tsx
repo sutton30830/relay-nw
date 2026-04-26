@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
-import type { Lead, LeadStatus } from "@/lib/supabase";
+import type { Lead, LeadStatus, WebhookEvent } from "@/lib/supabase";
 
 const STATUS_OPTIONS: LeadStatus[] = ["new", "contacted", "booked", "dead"];
 const STATUS_LABELS: Record<LeadStatus, string> = {
@@ -286,6 +286,45 @@ function formatDuration(seconds: number | null) {
   return `${minutes}m ${remainder.toString().padStart(2, "0")}s voice message`;
 }
 
+function eventSourceLabel(source: WebhookEvent["source"]) {
+  const labels: Record<WebhookEvent["source"], string> = {
+    twilio_voice: "Call received",
+    twilio_dial_status: "Call result",
+    twilio_inbound_sms: "Inbound SMS",
+    twilio_sms_status: "SMS status",
+    twilio_recording: "Voicemail",
+  };
+
+  return labels[source];
+}
+
+function eventMainValue(event: WebhookEvent) {
+  const payload = event.payload ?? {};
+  const value =
+    payload.From ||
+    payload.To ||
+    payload.CallSid ||
+    payload.MessageSid ||
+    payload.RecordingSid;
+
+  return typeof value === "string" ? value : "Twilio event";
+}
+
+function eventStatusText(event: WebhookEvent) {
+  const payload = event.payload ?? {};
+  const status =
+    payload.DialCallStatus ||
+    payload.MessageStatus ||
+    payload.SmsStatus ||
+    payload.RecordingStatus;
+
+  if (typeof status === "string" && status) {
+    return status;
+  }
+
+  return event.response_status >= 400 ? `HTTP ${event.response_status}` : "received";
+}
+
 function StatusControl({
   status,
   onChange,
@@ -527,9 +566,11 @@ function LeadCard({
 export function LeadsList({
   leads,
   businessName,
+  webhookEvents,
 }: {
   leads: Lead[];
   businessName: string;
+  webhookEvents: WebhookEvent[];
 }) {
   const router = useRouter();
   const searchRef = useRef<HTMLInputElement | null>(null);
@@ -746,6 +787,49 @@ export function LeadsList({
           onNotes={updateNotes}
         />
       ) : null}
+
+      <section className="events-panel">
+        <div className="events-panel__head">
+          <div>
+            <p className="t-eyebrow">System events</p>
+            <h3 className="t-display" style={{ fontSize: 24, margin: "4px 0 0" }}>
+              Recent Twilio activity
+            </h3>
+          </div>
+          <p style={{ margin: 0, color: "var(--ink-3)", fontSize: 13 }}>
+            Last {webhookEvents.length} webhook events
+          </p>
+        </div>
+
+        {webhookEvents.length > 0 ? (
+          <div className="events-list">
+            {webhookEvents.map((event) => (
+              <details className="event-row" key={event.id}>
+                <summary>
+                  <span className={`event-dot ${event.response_status >= 400 || event.error ? "event-dot--warn" : ""}`} />
+                  <span>
+                    <strong>{eventSourceLabel(event.source)}</strong>
+                    <span className="event-row__meta">
+                      {eventMainValue(event)} · {eventStatusText(event)} · {formatRelativeTime(event.created_at, now)}
+                    </span>
+                  </span>
+                </summary>
+                <div className="event-row__detail">
+                  {event.error ? <p><strong>Note:</strong> {event.error}</p> : <p>No errors logged.</p>}
+                  <pre>{JSON.stringify(event.payload, null, 2)}</pre>
+                </div>
+              </details>
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state empty-state--compact">
+            <div className="empty-state__icon"><Icon name="inbox" size={22} /></div>
+            <p style={{ color: "var(--ink-3)", margin: "8px 0 0" }}>
+              Twilio webhook activity will appear here after calls, recordings, and SMS status updates.
+            </p>
+          </div>
+        )}
+      </section>
     </>
   );
 }

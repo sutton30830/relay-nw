@@ -24,6 +24,16 @@ export type WebhookEventSource =
   | "twilio_sms_status"
   | "twilio_recording";
 
+export type WebhookEvent = {
+  id: string;
+  created_at: string;
+  source: WebhookEventSource;
+  payload: Record<string, unknown>;
+  response_status: number;
+  response_body: string | null;
+  error: string | null;
+};
+
 export type Lead = {
   id: string;
   call_sid: string | null;
@@ -146,6 +156,25 @@ export async function getLeads() {
   throwIfSupabaseError(error);
 
   return (data ?? []) as Lead[];
+}
+
+export async function getRecentWebhookEvents(limit = 20) {
+  if (isPlaceholderSupabaseConfig()) {
+    return [] as WebhookEvent[];
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("webhook_events")
+    .select("id, created_at, source, payload, response_status, response_body, error")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error("Failed to load recent webhook events", error);
+    return [] as WebhookEvent[];
+  }
+
+  return (data ?? []) as WebhookEvent[];
 }
 
 export async function updateLeadRecordingByCallSid(input: {

@@ -60,6 +60,9 @@ alter table public.webhook_events drop constraint if exists webhook_events_sourc
 alter table public.webhook_events
   add constraint webhook_events_source_check check (source in ('twilio_voice', 'twilio_dial_status', 'twilio_inbound_sms', 'twilio_sms_status', 'twilio_recording'));
 
+create index if not exists webhook_events_created_at_idx
+  on public.webhook_events (created_at desc);
+
 alter table public.webhook_events enable row level security;
 
 create table if not exists public.opt_outs (

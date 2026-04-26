@@ -5,7 +5,7 @@ import { LeadsList } from "@/app/leads/leads-list";
 import { publicBusinessName } from "@/lib/display-name";
 import { env } from "@/lib/env";
 import { isValidLeadsSessionCookie, LEADS_COOKIE_NAME } from "@/lib/leads-auth";
-import { getLeads } from "@/lib/supabase";
+import { getLeads, getRecentWebhookEvents } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
@@ -57,11 +57,14 @@ export default async function LeadsPage() {
     );
   }
 
-  const leads = await getLeads();
+  const [leads, webhookEvents] = await Promise.all([
+    getLeads(),
+    getRecentWebhookEvents(),
+  ]);
 
   return (
     <main className="leads-view">
-      <LeadsList businessName={businessName} leads={leads} />
+      <LeadsList businessName={businessName} leads={leads} webhookEvents={webhookEvents} />
     </main>
   );
 }

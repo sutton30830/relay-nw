@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "simulate": "node scripts/simulate.mjs",
+    "typecheck": "tsc --noEmit --incremental false",
+    "lint": "npm run typecheck"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.4",

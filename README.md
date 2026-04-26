@@ -168,6 +168,38 @@ You can test these locally without Twilio:
 - Leads page password gate
 - Lead status changes
 
+## Webhook Simulator
+
+For local webhook smoke tests, temporarily set this in `.env.local`:
+
+```env
+ALLOW_UNSIGNED_TWILIO_WEBHOOKS="true"
+```
+
+Then run the app locally and post simulated Twilio payloads:
+
+```bash
+npm run dev
+npm run simulate -- missed-call
+npm run simulate -- answered-call
+npm run simulate -- recording
+npm run simulate -- inbound-sms
+npm run simulate -- sms-status
+```
+
+Set `ALLOW_UNSIGNED_TWILIO_WEBHOOKS` back to `false` after local testing. Production refuses to start if unsigned Twilio webhooks are enabled.
+
+`missed-call` can attempt to send an outbound SMS if your local Twilio credentials are real. Use Twilio test credentials or expect SMS failure until A2P 10DLC is approved.
+
+## Verification Commands
+
+Before pushing changes, run:
+
+```bash
+npm run typecheck
+npm run build
+```
+
 ## Twilio Local Testing With Ngrok
 
 Twilio cannot call `localhost` directly. Use ngrok:

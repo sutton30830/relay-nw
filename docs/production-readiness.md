@@ -15,6 +15,9 @@ Update after hardening pass:
 - Twilio phone numbers are normalized before cooldown and opt-out checks.
 - The fresh Supabase schema now matches the current SMS status values.
 - A customer setup checklist now exists at `docs/customer-setup.md`.
+- The lead inbox now shows recent Twilio webhook events behind the password gate.
+- A local webhook simulator now exists at `npm run simulate -- <scenario>`.
+- The SMS send path now distinguishes "Twilio accepted the SMS but the lead update failed" from a true SMS send failure.
 
 Recommended launch posture:
 - Personally onboard each business.
@@ -24,15 +27,15 @@ Recommended launch posture:
 
 ## Scores
 
-- Backend reliability: 78/100
+- Backend reliability: 82/100
 - Twilio webhook correctness: 84/100
-- Duplicate prevention/idempotency: 75/100
-- Error handling: 76/100
-- Observability/debuggability: 74/100
-- Database/schema quality: 78/100
+- Duplicate prevention/idempotency: 78/100
+- Error handling: 80/100
+- Observability/debuggability: 84/100
+- Database/schema quality: 80/100
 - Security/RLS/env safety: 80/100
 - Maintainability for a non-expert developer: 82/100
-- Paid beta readiness: 72/100
+- Paid beta readiness: 79/100
 
 ## Solid For V1
 
@@ -45,14 +48,15 @@ Recommended launch posture:
 - Leads page shows failed or undelivered SMS states.
 - Supabase uses service-role-only server writes with RLS enabled.
 - Voicemail recordings attach to leads by `CallSid`.
+- The lead inbox shows the most recent Twilio webhook events.
+- Local webhook scenarios can be simulated without waiting on live calls.
 - The code is now reasonably readable for a solo founder to maintain.
 
 ## Remaining Risks
 
-- If Twilio accepts an SMS but the DB update fails, the customer may get a text while the lead stays `pending`.
+- If Twilio accepts an SMS but the DB update fails, the recent webhook event now makes that visible, but the lead row may still stay `pending`.
 - Forwarding mode depends on carrier caller-ID behavior.
-- Debugging still requires looking at Supabase and Twilio logs, not just the app UI.
-- No automated webhook simulator exists yet.
+- Deep debugging can still require Twilio logs, especially for carrier/A2P delivery problems.
 
 ## Must Fix Before First Paying Customer
 
@@ -66,10 +70,10 @@ Recommended launch posture:
 ## Should Fix During Beta
 
 1. Detect and log zero-row recording updates. Done.
-2. Add a simple webhook simulator script.
-3. Show recent webhook/SMS events in the lead drawer or owner admin view.
+2. Add a simple webhook simulator script. Done.
+3. Show recent webhook/SMS events in the lead drawer or owner admin view. Done on the lead inbox page.
 4. Normalize Twilio phone numbers before DB writes/checks. Done for missed-call and inbound-SMS paths.
-5. Improve partial-failure handling after Twilio accepts an SMS but DB update fails.
+5. Improve partial-failure handling after Twilio accepts an SMS but DB update fails. Partially done: the webhook event now records `sent_update_failed`.
 
 ## Can Defer
 
@@ -158,6 +162,8 @@ Difficulty: Medium
 
 Required before beta: No
 
+Status: Done.
+
 ### 6. Show recent webhook/SMS events in app
 
 Severity: Medium
@@ -171,6 +177,8 @@ Files:
 Difficulty: Medium
 
 Required before beta: No
+
+Status: Done.
 
 ### 7. Normalize Twilio phone numbers
 
@@ -200,6 +208,8 @@ Files:
 Difficulty: Medium
 
 Required before beta: No, but valuable
+
+Status: Partially done. The status is now visible in webhook logs, but the lead row can still remain stale if Supabase update fails.
 
 ### 9. Align initial schema check constraint
 
