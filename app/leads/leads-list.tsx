@@ -896,56 +896,59 @@ export function LeadsList({
         />
       ) : null}
 
-      <section className="activity-panel">
-        <div className="activity-panel__head">
+      <details className="activity-panel">
+        <summary className="activity-panel__summary">
           <div>
             <p className="t-eyebrow">Activity</p>
             <h3 className="t-display" style={{ fontSize: 24, margin: "4px 0 0" }}>
-              What happened recently
+              Recent call history
             </h3>
           </div>
           <p style={{ margin: 0, color: "var(--ink-3)", fontSize: 13 }}>
-            Last {webhookEvents.length} system updates
+            Open when you need to check what Relay saw.
           </p>
-        </div>
+        </summary>
 
-        {webhookEvents.length > 0 ? (
-          <ol className="activity-list">
-            {webhookEvents.map((event) => {
-              const summary = activitySummary(event);
-              const tone = activityTone(event);
+        <div className="activity-panel__content">
+          <p className="activity-panel__count">Last {webhookEvents.length} system updates</p>
+          {webhookEvents.length > 0 ? (
+            <ol className="activity-list">
+              {webhookEvents.map((event) => {
+                const summary = activitySummary(event);
+                const tone = activityTone(event);
 
-              return (
-                <li className={`activity-item activity-item--${tone}`} key={event.id}>
-                  <div className="activity-item__marker" />
-                  <div className="activity-item__body">
-                    <div className="activity-item__top">
-                      <strong>{summary.title}</strong>
-                      <span>{formatRelativeTime(event.created_at, now)}</span>
+                return (
+                  <li className={`activity-item activity-item--${tone}`} key={event.id}>
+                    <div className="activity-item__marker" />
+                    <div className="activity-item__body">
+                      <div className="activity-item__top">
+                        <strong>{summary.title}</strong>
+                        <span>{formatRelativeTime(event.created_at, now)}</span>
+                      </div>
+                      <p>{summary.detail}</p>
+                      {ownerVisibleEventNote(event) ? (
+                        <p className="activity-item__note">{ownerVisibleEventNote(event)}</p>
+                      ) : null}
+                      <details className="activity-details">
+                        <summary>Technical details</summary>
+                        {event.error ? <p>{event.error}</p> : null}
+                        <pre>{JSON.stringify(event.payload, null, 2)}</pre>
+                      </details>
                     </div>
-                    <p>{summary.detail}</p>
-                    {ownerVisibleEventNote(event) ? (
-                      <p className="activity-item__note">{ownerVisibleEventNote(event)}</p>
-                    ) : null}
-                    <details className="activity-details">
-                      <summary>Technical details</summary>
-                      {event.error ? <p>{event.error}</p> : null}
-                      <pre>{JSON.stringify(event.payload, null, 2)}</pre>
-                    </details>
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
-        ) : (
-          <div className="empty-state empty-state--compact">
-            <div className="empty-state__icon"><Icon name="inbox" size={22} /></div>
-            <p style={{ color: "var(--ink-3)", margin: "8px 0 0" }}>
-              Calls, texts, and voicemail updates will appear here in plain English.
-            </p>
-          </div>
-        )}
-      </section>
+                  </li>
+                );
+              })}
+            </ol>
+          ) : (
+            <div className="empty-state empty-state--compact">
+              <div className="empty-state__icon"><Icon name="inbox" size={22} /></div>
+              <p style={{ color: "var(--ink-3)", margin: "8px 0 0" }}>
+                Calls, texts, and voicemail updates will appear here in plain English.
+              </p>
+            </div>
+          )}
+        </div>
+      </details>
     </>
   );
 }

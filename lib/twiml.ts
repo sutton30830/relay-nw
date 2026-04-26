@@ -52,6 +52,6 @@ export function forwardedMissedCallTwiml(input: {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
 ${greeting}
-  <Record action="${escapeXml(input.recordingActionUrl)}" method="POST" maxLength="${input.maxLengthSeconds ?? 60}" playBeep="true" timeout="5" trim="trim-silence" />
+  <Record action="${escapeXml(input.recordingActionUrl)}" method="POST" recordingStatusCallback="${escapeXml(input.recordingActionUrl)}" recordingStatusCallbackMethod="POST" recordingStatusCallbackEvent="completed" maxLength="${input.maxLengthSeconds ?? 60}" playBeep="true" timeout="5" trim="trim-silence" />
 </Response>`;
 }

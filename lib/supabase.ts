@@ -179,6 +179,7 @@ export async function getRecentWebhookEvents(limit = 20) {
 
 export async function updateLeadRecordingByCallSid(input: {
   callSid: string;
+  callerPhone?: string | null;
   recordingSid?: string | null;
   recordingUrl?: string | null;
   recordingDuration?: number | null;
@@ -202,7 +203,47 @@ export async function updateLeadRecordingByCallSid(input: {
 
   throwIfSupabaseError(error);
 
-  return { updated: Boolean(data?.id), leadId: data?.id ?? null };
+  if (data?.id || !input.callerPhone) {
+    return { updated: Boolean(data?.id), leadId: data?.id ?? null, matchedBy: data?.id ? "call_sid" : null };
+  }
+
+  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const { data: recentLead, error: recentLeadError } = await supabaseAdmin
+    .from("leads")
+    .select("id")
+    .eq("phone", input.callerPhone)
+    .eq("source", "missed_call")
+    .is("recording_sid", null)
+    .gte("created_at", thirtyMinutesAgo)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  throwIfSupabaseError(recentLeadError);
+
+  if (!recentLead?.id) {
+    return { updated: false, leadId: null, matchedBy: null };
+  }
+
+  const { data: fallbackData, error: fallbackError } = await supabaseAdmin
+    .from("leads")
+    .update({
+      recording_sid: input.recordingSid ?? null,
+      recording_url: input.recordingUrl ?? null,
+      recording_duration: input.recordingDuration ?? null,
+      recording_status: input.recordingStatus ?? null,
+    })
+    .eq("id", recentLead.id)
+    .select("id")
+    .maybeSingle();
+
+  throwIfSupabaseError(fallbackError);
+
+  return {
+    updated: Boolean(fallbackData?.id),
+    leadId: fallbackData?.id ?? null,
+    matchedBy: fallbackData?.id ? "phone" : null,
+  };
 }
 
 export async function updateLead(input: { id: string; status?: LeadStatus; notes?: string | null }) {

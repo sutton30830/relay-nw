@@ -1703,15 +1703,62 @@ code {
   border-radius: 14px;
   background: var(--panel);
   margin-top: 28px;
-  padding: 18px;
+  padding: 0;
 }
 
-.activity-panel__head {
+.activity-panel:focus {
+  outline: none;
+}
+
+.activity-panel:focus-within {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--brand) 14%, transparent);
+}
+
+.activity-panel__summary {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 14px;
+  cursor: pointer;
+  list-style: none;
+  padding: 18px;
+}
+
+.activity-panel__summary:focus {
+  outline: none;
+}
+
+.activity-panel__summary::-webkit-details-marker {
+  display: none;
+}
+
+.activity-panel__summary::after {
+  content: "Open";
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 800;
+  padding: 7px 11px;
+}
+
+.activity-panel[open] .activity-panel__summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.activity-panel[open] .activity-panel__summary::after {
+  content: "Hide";
+}
+
+.activity-panel__content {
+  padding: 16px 18px 18px;
+}
+
+.activity-panel__count {
+  color: var(--ink-3);
+  font-size: 13px;
+  margin: 0 0 14px;
 }
 
 .activity-list {
@@ -1863,12 +1910,16 @@ code {
 
   .app-head__right,
   .search,
-  .activity-panel__head {
+  .activity-panel__summary {
     width: 100%;
   }
 
-  .activity-panel__head {
+  .activity-panel__summary {
     flex-direction: column;
+  }
+
+  .activity-panel__summary::after {
+    align-self: flex-start;
   }
 }
 

@@ -7,6 +7,7 @@ import {
   validateTwilioRequest,
 } from "@/lib/twilio";
 import { emptyTwiml, twimlResponse } from "@/lib/twiml";
+import { normalizePhoneNumber } from "@/lib/phone";
 
 const RECORDING_WEBHOOK_SOURCE = "twilio_recording";
 
@@ -43,6 +44,7 @@ function validateRecordingWebhook(request: Request, payload: Record<string, stri
 function parseRecordingPayload(payload: Record<string, string>) {
   return {
     callSid: (payload.CallSid ?? "").trim(),
+    callerPhone: normalizePhoneNumber((payload.From ?? "").trim()),
     recordingSid: (payload.RecordingSid ?? "").trim() || null,
     recordingUrl: recordingMediaUrl((payload.RecordingUrl ?? "").trim() || null),
     recordingDuration: parseDuration((payload.RecordingDuration ?? "").trim() || null),
@@ -53,6 +55,7 @@ function parseRecordingPayload(payload: Record<string, string>) {
 function webhookEventNote(input: {
   matchedUrl: string | null;
   recordingUpdated: boolean;
+  recordingMatchedBy?: string | null;
   missingCallSid: boolean;
   unmatchedCallSid: boolean;
 }) {
@@ -65,7 +68,11 @@ function webhookEventNote(input: {
   }
 
   if (input.recordingUpdated) {
-    notes.push("Recording attached to lead.");
+    notes.push(
+      input.recordingMatchedBy === "phone"
+        ? "Recording attached to the latest recent lead from this caller."
+        : "Recording attached to lead.",
+    );
   }
 
   if (input.missingCallSid) {
@@ -120,9 +127,15 @@ async function updateLeadRecording(input: ReturnType<typeof parseRecordingPayloa
       recordingSid: input.recordingSid,
       recordingStatus: input.recordingStatus,
     });
+  } else if (result.matchedBy === "phone") {
+    console.info("Recording webhook matched a recent lead by caller phone fallback", {
+      callSid: input.callSid,
+      callerPhone: input.callerPhone,
+      recordingSid: input.recordingSid,
+    });
   }
 
-  return { updated: result.updated, missingCallSid: false };
+  return { updated: result.updated, missingCallSid: false, matchedBy: result.matchedBy };
 }
 
 export async function POST(request: Request) {
@@ -160,6 +173,7 @@ export async function POST(request: Request) {
       error: webhookEventNote({
         matchedUrl: validation.matchedUrl,
         recordingUpdated: result.updated,
+        recordingMatchedBy: result.matchedBy,
         missingCallSid: result.missingCallSid,
         unmatchedCallSid: !result.updated && !result.missingCallSid,
       }),
