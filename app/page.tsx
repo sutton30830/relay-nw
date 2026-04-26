@@ -71,21 +71,6 @@ export default function HomePage() {
             Relay NW answers missed calls with your greeting, records the message, and saves the
             caller in one simple inbox.
           </p>
-          <div className="mt-7 grid max-w-2xl gap-5 sm:grid-cols-3">
-            {[
-              ["phone", "Keep your number", "No website or Google listing change."],
-              ["message", "Helpful reply", "Callers know what happens next."],
-              ["user", "Faster follow-up", "You stay connected after the ring."],
-            ].map(([icon, title, body]) => (
-              <div key={title} className="home-hero-stat">
-                <Icon name={icon as "phone" | "message" | "user"} size={28} />
-                <div>
-                  <p>{title}</p>
-                  <span>{body}</span>
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
 
         <aside className="phone-mock" aria-label="Missed-call SMS preview">
