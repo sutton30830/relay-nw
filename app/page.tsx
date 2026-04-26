@@ -5,9 +5,6 @@ import { env } from "@/lib/env";
 
 export default function HomePage() {
   const businessName = publicBusinessName(env.businessName);
-  const customerPreview =
-    "Sorry we missed your call. Tell us what you need and we will follow up shortly. Reply STOP to opt out.";
-
   const steps = [
     {
       icon: "phone" as const,
@@ -24,12 +21,6 @@ export default function HomePage() {
       title: "Follow up fast",
       body: "Open one simple inbox with the caller, message, and next step.",
     },
-  ];
-
-  const benefits = [
-    "No phone-number change.",
-    "A real greeting instead of a dead end.",
-    "One simple inbox for missed calls.",
   ];
 
   return (
@@ -91,7 +82,10 @@ export default function HomePage() {
                 <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.55)" }}>now</p>
               </div>
             </div>
-            <div className="phone-mock__bubble">{customerPreview}</div>
+            <div className="phone-mock__bubble">
+              Sorry we missed your call. Tell us what you need and we will follow up shortly. Reply
+              STOP to opt out.
+            </div>
             <p className="phone-mock__time-stamp">Sent after missed call</p>
           </div>
         </aside>
@@ -118,42 +112,6 @@ export default function HomePage() {
               <p>{step.body}</p>
             </article>
           ))}
-        </div>
-
-        <div className="client-split">
-          <div className="panel client-card client-card--dark">
-            <p className="t-eyebrow">What customers experience</p>
-            <h3>A clear reply instead of a dead end.</h3>
-            <div className="client-sms">
-              <div className="client-sms__head">
-                <span><Icon name="message" size={15} /></span>
-                <strong>{businessName}</strong>
-                <em>now</em>
-              </div>
-              <p>{customerPreview}</p>
-            </div>
-          </div>
-
-          <div className="panel client-card">
-            <p className="t-eyebrow">Why businesses use it</p>
-            <h3>More chances to turn calls into work.</h3>
-            <ul className="client-benefits">
-              {benefits.map((benefit) => (
-                <li key={benefit}>
-                  <Icon name="check" size={15} />
-                  <span>{benefit}</span>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-5 flex flex-wrap gap-3">
-              <Link className="btn btn-primary" href="/intake">
-                View the intake form
-              </Link>
-              <Link className="btn btn-secondary" href="/leads">
-                Open the lead inbox
-              </Link>
-            </div>
-          </div>
         </div>
       </section>
 
