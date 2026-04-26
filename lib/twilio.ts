@@ -1,16 +1,42 @@
 import twilio from "twilio";
 import { env } from "@/lib/env";
 
+const DEFAULT_MISSED_CALL_SMS_TEMPLATE =
+  "Hi, this is {BUSINESS_NAME} - sorry we missed your call. Book or reply here: {INTAKE_URL}. Reply STOP to opt out.";
+
+type TwilioRequestSummary = {
+  method: string;
+  path: string;
+  callSid: string | null;
+  messageSid: string | null;
+  recordingSid: string | null;
+  recordingStatus: string | null;
+  from: string | null;
+  to: string | null;
+  dialCallStatus: string | null;
+  callMode: typeof env.callMode;
+  hasOwnerPhoneNumber: boolean;
+  hasTwilioPhoneNumber: boolean;
+};
+
 export const twilioClient = twilio(env.twilioAccountSid, env.twilioAuthToken);
 
-export function missedCallSmsBody() {
-  const defaultTemplate =
-    "Hi, this is {BUSINESS_NAME} - sorry we missed your call. Book or reply here: {INTAKE_URL}. Reply STOP to opt out.";
+function replaceTemplateValues(template: string, values: Record<string, string>) {
+  let output = template;
 
-  return (env.smsTemplate || defaultTemplate)
-    .replaceAll("{BUSINESS_NAME}", env.businessName)
-    .replaceAll("{INTAKE_URL}", env.intakeUrl)
-    .replaceAll("{SCHEDULING_URL}", env.schedulingUrl);
+  for (const [key, value] of Object.entries(values)) {
+    output = output.replaceAll(`{${key}}`, value);
+  }
+
+  return output;
+}
+
+export function missedCallSmsBody() {
+  return replaceTemplateValues(env.smsTemplate || DEFAULT_MISSED_CALL_SMS_TEMPLATE, {
+    BUSINESS_NAME: env.businessName,
+    INTAKE_URL: env.intakeUrl,
+    SCHEDULING_URL: env.schedulingUrl,
+  });
 }
 
 export function validateTwilioRequest(input: {
@@ -23,27 +49,48 @@ export function validateTwilioRequest(input: {
   }
 
   for (const url of input.urls) {
-    if (twilio.validateRequest(env.twilioAuthToken, input.signature, url, input.params)) {
-      return { isValid: true, matchedUrl: url };
+    try {
+      if (twilio.validateRequest(env.twilioAuthToken, input.signature, url, input.params)) {
+        return { isValid: true, matchedUrl: url };
+      }
+    } catch (error) {
+      console.warn("Twilio signature validation threw an error", {
+        url,
+        error: error instanceof Error ? error.message : "Unknown validation error",
+      });
     }
   }
 
   return { isValid: false, matchedUrl: null as string | null };
 }
 
-export function twilioWebhookUrls(request: Request) {
-  const url = new URL(request.url);
-  const pathnameAndSearch = `${url.pathname}${url.search}`;
+function requestPathAndSearch(requestUrl: string) {
+  const url = new URL(requestUrl);
+  return `${url.pathname}${url.search}`;
+}
+
+function forwardedOrigin(request: Request) {
   const forwardedProto = request.headers.get("x-forwarded-proto");
   const forwardedHost =
     request.headers.get("x-forwarded-host") ?? request.headers.get("host");
 
+  if (!forwardedProto || !forwardedHost) {
+    return null;
+  }
+
+  return `${forwardedProto}://${forwardedHost}`;
+}
+
+export function twilioWebhookUrls(request: Request) {
+  const pathAndSearch = requestPathAndSearch(request.url);
+  const proxyOrigin = forwardedOrigin(request);
+
   const candidates = new Set<string>();
   candidates.add(request.url);
-  candidates.add(`${env.appBaseUrl}${pathnameAndSearch}`);
+  candidates.add(`${env.appBaseUrl}${pathAndSearch}`);
 
-  if (forwardedProto && forwardedHost) {
-    candidates.add(`${forwardedProto}://${forwardedHost}${pathnameAndSearch}`);
+  if (proxyOrigin) {
+    candidates.add(`${proxyOrigin}${pathAndSearch}`);
   }
 
   return Array.from(candidates);
@@ -59,11 +106,19 @@ export function formDataToRecord(formData: FormData) {
   return values;
 }
 
-export function summarizeTwilioRequest(request: Request, payload: Record<string, string>) {
+export function summarizeTwilioRequest(
+  request: Request,
+  payload: Record<string, string>,
+): TwilioRequestSummary {
+  const url = new URL(request.url);
+
   return {
     method: request.method,
-    path: new URL(request.url).pathname,
+    path: url.pathname,
     callSid: payload.CallSid ?? null,
+    messageSid: payload.MessageSid ?? payload.SmsSid ?? null,
+    recordingSid: payload.RecordingSid ?? null,
+    recordingStatus: payload.RecordingStatus ?? null,
     from: payload.From ?? null,
     to: payload.To ?? null,
     dialCallStatus: payload.DialCallStatus ?? null,
