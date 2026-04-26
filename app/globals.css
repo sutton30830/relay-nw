@@ -217,6 +217,18 @@ code {
   font-size: 13px;
 }
 
+.btn-header {
+  min-height: 38px;
+  padding: 0 15px;
+  border-radius: 8px;
+  font-size: 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-header.btn-secondary {
+  border-color: var(--line-strong);
+}
+
 .btn-sample-on {
   border-color: var(--brand);
   background: var(--brand-soft);
@@ -379,6 +391,10 @@ code {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+.app-head__right--primary {
+  gap: 10px;
 }
 
 .live-dot {

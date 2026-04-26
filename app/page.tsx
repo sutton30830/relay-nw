@@ -36,17 +36,12 @@ export default function HomePage() {
               {businessName}
             </h1>
           </div>
-          <span className="live-dot">
-            <span className="live-dot__pulse" />
-            <span className="live-dot__core" />
-            All systems go
-          </span>
         </div>
-        <div className="app-head__right">
-          <Link className="btn btn-secondary btn-sm" href="/intake">
+        <div className="app-head__right app-head__right--primary">
+          <Link className="btn btn-secondary btn-header" href="/intake">
             <Icon name="external" size={13} /> View intake
           </Link>
-          <Link className="btn btn-primary btn-sm" href="/leads">
+          <Link className="btn btn-primary btn-header" href="/leads">
             <Icon name="inbox" size={13} /> Open leads
           </Link>
         </div>
