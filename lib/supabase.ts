@@ -1,6 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 import { env } from "@/lib/env";
 
+const LEAD_SELECT_COLUMNS =
+  "id, call_sid, name, phone, message, notes, source, status, sms_status, sms_error, recording_sid, recording_url, recording_duration, recording_status, created_at";
+
 export type LeadSource = "missed_call" | "intake_form";
 export type LeadStatus = "new" | "contacted" | "booked" | "dead";
 export type SmsStatus =
@@ -49,6 +52,21 @@ function isPlaceholderSupabaseConfig() {
   );
 }
 
+function shouldSkipDatabaseWrite(action: string, details?: unknown) {
+  if (!isPlaceholderSupabaseConfig()) {
+    return false;
+  }
+
+  console.warn(`Skipping ${action} because Supabase is using placeholder values.`, details);
+  return true;
+}
+
+function throwIfSupabaseError(error: { message: string } | null) {
+  if (error) {
+    throw error;
+  }
+}
+
 export async function createLead(input: {
   name?: string | null;
   phone: string;
@@ -56,8 +74,7 @@ export async function createLead(input: {
   source: LeadSource;
   callSid?: string | null;
 }) {
-  if (isPlaceholderSupabaseConfig()) {
-    console.warn("Skipping lead insert because Supabase is using placeholder local values.", input);
+  if (shouldSkipDatabaseWrite("lead insert", input)) {
     return;
   }
 
@@ -70,9 +87,7 @@ export async function createLead(input: {
     status: "new",
   });
 
-  if (error) {
-    throw error;
-  }
+  throwIfSupabaseError(error);
 }
 
 export async function createMissedCallLeadIfNew(input: {
@@ -80,8 +95,7 @@ export async function createMissedCallLeadIfNew(input: {
   phone: string;
   message: string;
 }) {
-  if (isPlaceholderSupabaseConfig()) {
-    console.warn("Skipping missed call lead insert because Supabase is using placeholder values.", input);
+  if (shouldSkipDatabaseWrite("missed call lead insert", input)) {
     return { inserted: true, leadId: null };
   }
 
@@ -90,10 +104,10 @@ export async function createMissedCallLeadIfNew(input: {
     .insert({
       call_sid: input.callSid,
       phone: input.phone,
-        message: input.message,
-        sms_status: "pending",
-        source: "missed_call",
-        status: "new",
+      message: input.message,
+      sms_status: "pending",
+      source: "missed_call",
+      status: "new",
     })
     .select("id")
     .maybeSingle();
@@ -119,12 +133,10 @@ export async function getLeads() {
 
   const { data, error } = await supabaseAdmin
     .from("leads")
-    .select("id, call_sid, name, phone, message, notes, source, status, sms_status, sms_error, recording_sid, recording_url, recording_duration, recording_status, created_at")
+    .select(LEAD_SELECT_COLUMNS)
     .order("created_at", { ascending: false });
 
-  if (error) {
-    throw error;
-  }
+  throwIfSupabaseError(error);
 
   return (data ?? []) as Lead[];
 }
@@ -136,8 +148,7 @@ export async function updateLeadRecordingByCallSid(input: {
   recordingDuration?: number | null;
   recordingStatus?: string | null;
 }) {
-  if (isPlaceholderSupabaseConfig()) {
-    console.warn("Skipping recording update because Supabase is using placeholder values.", input);
+  if (shouldSkipDatabaseWrite("recording update", input)) {
     return;
   }
 
@@ -151,14 +162,11 @@ export async function updateLeadRecordingByCallSid(input: {
     })
     .eq("call_sid", input.callSid);
 
-  if (error) {
-    throw error;
-  }
+  throwIfSupabaseError(error);
 }
 
 export async function updateLead(input: { id: string; status?: LeadStatus; notes?: string | null }) {
-  if (isPlaceholderSupabaseConfig()) {
-    console.warn("Skipping lead update because Supabase is using placeholder values.", input);
+  if (shouldSkipDatabaseWrite("lead update", input)) {
     return;
   }
 
@@ -180,9 +188,7 @@ export async function updateLead(input: { id: string; status?: LeadStatus; notes
     .update(updates)
     .eq("id", input.id);
 
-  if (error) {
-    throw error;
-  }
+  throwIfSupabaseError(error);
 }
 
 export async function updateLeadSmsStatus(input: {
@@ -190,8 +196,7 @@ export async function updateLeadSmsStatus(input: {
   smsStatus: Exclude<SmsStatus, null>;
   smsError?: string | null;
 }) {
-  if (isPlaceholderSupabaseConfig()) {
-    console.warn("Skipping SMS status update because Supabase is using placeholder values.", input);
+  if (shouldSkipDatabaseWrite("SMS status update", input)) {
     return;
   }
 
@@ -203,9 +208,7 @@ export async function updateLeadSmsStatus(input: {
     })
     .eq("id", input.id);
 
-  if (error) {
-    throw error;
-  }
+  throwIfSupabaseError(error);
 }
 
 export async function hasRecentMissedCallSms(phone: string, since: Date) {
@@ -222,9 +225,7 @@ export async function hasRecentMissedCallSms(phone: string, since: Date) {
     .gte("created_at", since.toISOString())
     .limit(1);
 
-  if (error) {
-    throw error;
-  }
+  throwIfSupabaseError(error);
 
   return Boolean(data?.length);
 }
@@ -240,16 +241,13 @@ export async function isOptedOut(phone: string) {
     .eq("phone", phone)
     .maybeSingle();
 
-  if (error) {
-    throw error;
-  }
+  throwIfSupabaseError(error);
 
   return Boolean(data);
 }
 
 export async function recordOptOut(phone: string) {
-  if (isPlaceholderSupabaseConfig()) {
-    console.warn("Skipping opt-out insert because Supabase is using placeholder values.", { phone });
+  if (shouldSkipDatabaseWrite("opt-out insert", { phone })) {
     return;
   }
 
@@ -257,9 +255,7 @@ export async function recordOptOut(phone: string) {
     .from("opt_outs")
     .upsert({ phone }, { onConflict: "phone" });
 
-  if (error) {
-    throw error;
-  }
+  throwIfSupabaseError(error);
 }
 
 export async function logWebhookEvent(input: {
