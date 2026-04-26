@@ -286,31 +286,18 @@ function formatDuration(seconds: number | null) {
   return `${minutes}m ${remainder.toString().padStart(2, "0")}s voice message`;
 }
 
-function eventSourceLabel(source: WebhookEvent["source"]) {
-  const labels: Record<WebhookEvent["source"], string> = {
-    twilio_voice: "Call received",
-    twilio_dial_status: "Call result",
-    twilio_inbound_sms: "Inbound SMS",
-    twilio_sms_status: "SMS status",
-    twilio_recording: "Voicemail",
-  };
-
-  return labels[source];
-}
-
-function eventMainValue(event: WebhookEvent) {
+function eventPhone(event: WebhookEvent) {
   const payload = event.payload ?? {};
   const value =
     payload.From ||
     payload.To ||
-    payload.CallSid ||
-    payload.MessageSid ||
-    payload.RecordingSid;
+    payload.Caller ||
+    payload.Called;
 
-  return typeof value === "string" ? value : "Twilio event";
+  return typeof value === "string" ? formatPhone(value) : null;
 }
 
-function eventStatusText(event: WebhookEvent) {
+function eventOutcome(event: WebhookEvent) {
   const payload = event.payload ?? {};
   const status =
     payload.DialCallStatus ||
@@ -322,7 +309,128 @@ function eventStatusText(event: WebhookEvent) {
     return status;
   }
 
-  return event.response_status >= 400 ? `HTTP ${event.response_status}` : "received";
+  return event.response_status >= 400 ? "request failed" : "received";
+}
+
+function eventErrorText(event: WebhookEvent) {
+  return event.error?.toLowerCase() ?? "";
+}
+
+function eventNeedsReview(event: WebhookEvent) {
+  const note = eventErrorText(event);
+
+  return (
+    event.response_status >= 400 ||
+    note.includes("invalid") ||
+    note.includes("failed") ||
+    note.includes("undelivered") ||
+    note.includes("no lead matched")
+  );
+}
+
+function ownerVisibleEventNote(event: WebhookEvent) {
+  const note = eventErrorText(event);
+
+  if (note.includes("sms status: failed") || note.includes("sms status: undelivered")) {
+    return "Auto-text failed. Follow up manually.";
+  }
+
+  if (note.includes("no lead matched")) {
+    return "Relay could not attach this update to a lead.";
+  }
+
+  if (note.includes("invalid twilio signature")) {
+    return "Twilio signature check failed. Check the webhook URL and app URL.";
+  }
+
+  return null;
+}
+
+function activitySummary(event: WebhookEvent) {
+  const outcome = eventOutcome(event);
+
+  if (event.source === "twilio_voice") {
+    const note = ownerVisibleEventNote(event);
+
+    if (note) {
+      return {
+        title: "Call reached Relay NW",
+        detail: `${eventPhone(event) ? `Caller ${eventPhone(event)} reached Relay. ` : ""}${note}`,
+      };
+    }
+
+    return {
+      title: "Call reached Relay NW",
+      detail: eventPhone(event)
+        ? `Caller ${eventPhone(event)} reached the call handler.`
+        : "Twilio reached the call handler.",
+    };
+  }
+
+  if (event.source === "twilio_dial_status") {
+    if (["no-answer", "busy", "failed", "canceled"].includes(outcome)) {
+      return {
+        title: "Missed call confirmed",
+        detail: `The forwarded call ended as ${outcome}. Relay checked whether to send the auto-text.`,
+      };
+    }
+
+    if (["answered", "completed"].includes(outcome)) {
+      return {
+        title: "Call was answered",
+        detail: "Relay did not send a missed-call text.",
+      };
+    }
+
+    return {
+      title: "Call result received",
+      detail: `Relay received call result: ${outcome}.`,
+    };
+  }
+
+  if (event.source === "twilio_sms_status") {
+    if (["failed", "undelivered"].includes(outcome)) {
+      return {
+        title: "Auto-text did not deliver",
+        detail: "The owner should follow up manually.",
+      };
+    }
+
+    if (outcome === "delivered") {
+      return {
+        title: "Auto-text delivered",
+        detail: "The caller's carrier reported the text as delivered.",
+      };
+    }
+
+    return {
+      title: "Auto-text status updated",
+      detail: `Current text status: ${outcome}.`,
+    };
+  }
+
+  if (event.source === "twilio_inbound_sms") {
+    return {
+      title: "Customer text received",
+      detail: eventPhone(event)
+        ? `Reply came from ${eventPhone(event)}.`
+        : "Relay received a customer reply.",
+    };
+  }
+
+  return {
+    title: "Voicemail saved",
+    detail: "Relay received a voicemail recording update.",
+  };
+}
+
+function activityTone(event: WebhookEvent) {
+  if (eventNeedsReview(event)) return "warn";
+
+  const outcome = eventOutcome(event);
+  if (["failed", "undelivered"].includes(outcome)) return "warn";
+  if (["delivered", "completed", "answered"].includes(outcome)) return "good";
+  return "neutral";
 }
 
 function StatusControl({
@@ -788,44 +896,52 @@ export function LeadsList({
         />
       ) : null}
 
-      <section className="events-panel">
-        <div className="events-panel__head">
+      <section className="activity-panel">
+        <div className="activity-panel__head">
           <div>
-            <p className="t-eyebrow">System events</p>
+            <p className="t-eyebrow">Activity</p>
             <h3 className="t-display" style={{ fontSize: 24, margin: "4px 0 0" }}>
-              Recent Twilio activity
+              What happened recently
             </h3>
           </div>
           <p style={{ margin: 0, color: "var(--ink-3)", fontSize: 13 }}>
-            Last {webhookEvents.length} webhook events
+            Last {webhookEvents.length} system updates
           </p>
         </div>
 
         {webhookEvents.length > 0 ? (
-          <div className="events-list">
-            {webhookEvents.map((event) => (
-              <details className="event-row" key={event.id}>
-                <summary>
-                  <span className={`event-dot ${event.response_status >= 400 || event.error ? "event-dot--warn" : ""}`} />
-                  <span>
-                    <strong>{eventSourceLabel(event.source)}</strong>
-                    <span className="event-row__meta">
-                      {eventMainValue(event)} · {eventStatusText(event)} · {formatRelativeTime(event.created_at, now)}
-                    </span>
-                  </span>
-                </summary>
-                <div className="event-row__detail">
-                  {event.error ? <p><strong>Note:</strong> {event.error}</p> : <p>No errors logged.</p>}
-                  <pre>{JSON.stringify(event.payload, null, 2)}</pre>
-                </div>
-              </details>
-            ))}
-          </div>
+          <ol className="activity-list">
+            {webhookEvents.map((event) => {
+              const summary = activitySummary(event);
+              const tone = activityTone(event);
+
+              return (
+                <li className={`activity-item activity-item--${tone}`} key={event.id}>
+                  <div className="activity-item__marker" />
+                  <div className="activity-item__body">
+                    <div className="activity-item__top">
+                      <strong>{summary.title}</strong>
+                      <span>{formatRelativeTime(event.created_at, now)}</span>
+                    </div>
+                    <p>{summary.detail}</p>
+                    {ownerVisibleEventNote(event) ? (
+                      <p className="activity-item__note">{ownerVisibleEventNote(event)}</p>
+                    ) : null}
+                    <details className="activity-details">
+                      <summary>Technical details</summary>
+                      {event.error ? <p>{event.error}</p> : null}
+                      <pre>{JSON.stringify(event.payload, null, 2)}</pre>
+                    </details>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
         ) : (
           <div className="empty-state empty-state--compact">
             <div className="empty-state__icon"><Icon name="inbox" size={22} /></div>
             <p style={{ color: "var(--ink-3)", margin: "8px 0 0" }}>
-              Twilio webhook activity will appear here after calls, recordings, and SMS status updates.
+              Calls, texts, and voicemail updates will appear here in plain English.
             </p>
           </div>
         )}
