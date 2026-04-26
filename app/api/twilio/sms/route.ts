@@ -9,90 +9,187 @@ import {
 } from "@/lib/twilio";
 import { emptyTwiml, twimlResponse } from "@/lib/twiml";
 
+const INBOUND_SMS_WEBHOOK_SOURCE = "twilio_inbound_sms";
 const OPT_OUT_WORDS = new Set(["STOP", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"]);
 
 function normalizeBody(value: string) {
   return value.trim().toUpperCase();
 }
 
-export async function POST(request: Request) {
-  const formData = await request.formData();
-  const payload = formDataToRecord(formData);
+function validateInboundSmsWebhook(request: Request, payload: Record<string, string>) {
   const candidateUrls = twilioWebhookUrls(request);
+  const signature = request.headers.get("x-twilio-signature");
   const validation = validateTwilioRequest({
     urls: candidateUrls,
     params: payload,
-    signature: request.headers.get("x-twilio-signature"),
+    signature,
   });
+
+  return {
+    ...validation,
+    candidateUrls,
+    hasSignature: Boolean(signature),
+    shouldReject: !validation.isValid && !env.allowUnsignedTwilioWebhooks,
+    wasAllowedByOverride: !validation.isValid && env.allowUnsignedTwilioWebhooks,
+  };
+}
+
+function parseInboundSmsPayload(payload: Record<string, string>) {
+  const from = (payload.From ?? "").trim();
+  const body = (payload.Body ?? "").trim();
+
+  return {
+    from,
+    body,
+    isOptOut: Boolean(from) && OPT_OUT_WORDS.has(normalizeBody(body)),
+    shouldNotifyOwner: Boolean(from && body),
+  };
+}
+
+function webhookEventNote(input: {
+  matchedUrl: string | null;
+  action: "recorded_opt_out" | "forwarded_to_owner" | "ignored_empty_message";
+}) {
+  const notes = [];
+
+  if (input.matchedUrl) {
+    notes.push(`Validated with URL: ${input.matchedUrl}`);
+  } else if (env.allowUnsignedTwilioWebhooks) {
+    notes.push("Unsigned/invalid Twilio SMS webhook allowed by env override.");
+  }
+
+  if (input.action === "recorded_opt_out") {
+    notes.push("Recorded opt-out.");
+  }
+
+  if (input.action === "forwarded_to_owner") {
+    notes.push("Forwarded inbound reply to owner.");
+  }
+
+  if (input.action === "ignored_empty_message") {
+    notes.push("Ignored because From or Body was missing.");
+  }
+
+  return notes.join(" ");
+}
+
+async function rejectInvalidSignature(input: {
+  payload: Record<string, string>;
+  requestSummary: ReturnType<typeof summarizeTwilioRequest>;
+  candidateUrls: string[];
+  hasSignature: boolean;
+}) {
+  console.warn("Twilio inbound SMS signature validation failed", {
+    ...input.requestSummary,
+    candidateUrls: input.candidateUrls,
+    hasSignature: input.hasSignature,
+  });
+
+  await logWebhookEvent({
+    source: INBOUND_SMS_WEBHOOK_SOURCE,
+    payload: input.payload,
+    responseStatus: 403,
+    responseBody: "Forbidden",
+    error: `Invalid Twilio signature. Candidate URLs: ${input.candidateUrls.join(" | ")}`,
+  });
+
+  return new Response("Forbidden", { status: 403 });
+}
+
+async function logUnsignedOverride(input: {
+  payload: Record<string, string>;
+  requestSummary: ReturnType<typeof summarizeTwilioRequest>;
+  candidateUrls: string[];
+  hasSignature: boolean;
+}) {
+  console.warn("Unsigned Twilio inbound SMS webhook allowed by env override", {
+    ...input.requestSummary,
+    candidateUrls: input.candidateUrls,
+    hasSignature: input.hasSignature,
+  });
+
+  await logWebhookEvent({
+    source: INBOUND_SMS_WEBHOOK_SOURCE,
+    payload: input.payload,
+    responseStatus: 200,
+    responseBody: "Allowed unsigned Twilio inbound SMS webhook by env override.",
+    error: `Unsigned/invalid Twilio signature. Candidate URLs: ${input.candidateUrls.join(" | ")}`,
+  });
+}
+
+async function handleInboundSms(input: ReturnType<typeof parseInboundSmsPayload>) {
+  if (input.isOptOut) {
+    await recordOptOut(input.from);
+    return "recorded_opt_out" as const;
+  }
+
+  if (input.shouldNotifyOwner) {
+    await twilioClient.messages.create({
+      to: env.ownerPhoneNumber,
+      from: env.twilioPhoneNumber,
+      body: `Reply from ${input.from}: "${input.body}"`,
+    });
+
+    return "forwarded_to_owner" as const;
+  }
+
+  return "ignored_empty_message" as const;
+}
+
+export async function POST(request: Request) {
+  const formData = await request.formData();
+  const payload = formDataToRecord(formData);
   const requestSummary = summarizeTwilioRequest(request, payload);
-
-  console.info("Twilio inbound SMS webhook received", requestSummary);
-
-  if (!validation.isValid && !env.allowUnsignedTwilioWebhooks) {
-    console.warn("Twilio inbound SMS signature validation failed", {
-      ...requestSummary,
-      candidateUrls,
-      hasSignature: Boolean(request.headers.get("x-twilio-signature")),
-    });
-
-    await logWebhookEvent({
-      source: "twilio_inbound_sms",
-      payload,
-      responseStatus: 403,
-      responseBody: "Forbidden",
-      error: `Invalid Twilio signature. Candidate URLs: ${candidateUrls.join(" | ")}`,
-    });
-
-    return new Response("Forbidden", { status: 403 });
-  }
-
-  if (!validation.isValid) {
-    console.warn("Unsigned Twilio inbound SMS webhook allowed by env override", {
-      ...requestSummary,
-      candidateUrls,
-      hasSignature: Boolean(request.headers.get("x-twilio-signature")),
-    });
-
-    await logWebhookEvent({
-      source: "twilio_inbound_sms",
-      payload,
-      responseStatus: 200,
-      responseBody: "Allowed unsigned Twilio inbound SMS webhook by env override.",
-      error: `Unsigned/invalid Twilio signature. Candidate URLs: ${candidateUrls.join(" | ")}`,
-    });
-  }
-
-  const from = String(formData.get("From") || "").trim();
-  const body = String(formData.get("Body") || "").trim();
+  const validation = validateInboundSmsWebhook(request, payload);
+  const message = parseInboundSmsPayload(payload);
   const xml = emptyTwiml();
 
+  console.info("Twilio inbound SMS webhook received", {
+    ...requestSummary,
+    hasBody: Boolean(message.body),
+    isOptOut: message.isOptOut,
+  });
+
+  if (validation.shouldReject) {
+    return rejectInvalidSignature({
+      payload,
+      requestSummary,
+      candidateUrls: validation.candidateUrls,
+      hasSignature: validation.hasSignature,
+    });
+  }
+
+  if (validation.wasAllowedByOverride) {
+    await logUnsignedOverride({
+      payload,
+      requestSummary,
+      candidateUrls: validation.candidateUrls,
+      hasSignature: validation.hasSignature,
+    });
+  }
+
   try {
-    if (from && OPT_OUT_WORDS.has(normalizeBody(body))) {
-      await recordOptOut(from);
-    } else if (from && body) {
-      await twilioClient.messages.create({
-        to: env.ownerPhoneNumber,
-        from: env.twilioPhoneNumber,
-        body: `Reply from ${from}: "${body}"`,
-      });
-    }
+    const action = await handleInboundSms(message);
 
     await logWebhookEvent({
-      source: "twilio_inbound_sms",
+      source: INBOUND_SMS_WEBHOOK_SOURCE,
       payload,
       responseStatus: 200,
       responseBody: xml,
-      error: validation.matchedUrl ? `Validated with URL: ${validation.matchedUrl}` : null,
+      error: webhookEventNote({
+        matchedUrl: validation.matchedUrl,
+        action,
+      }),
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown inbound SMS error";
+    const errorMessage = error instanceof Error ? error.message : "Unknown inbound SMS error";
 
     await logWebhookEvent({
-      source: "twilio_inbound_sms",
+      source: INBOUND_SMS_WEBHOOK_SOURCE,
       payload,
       responseStatus: 200,
       responseBody: xml,
-      error: message,
+      error: errorMessage,
     });
 
     console.error("Failed to handle inbound Twilio SMS", error);
