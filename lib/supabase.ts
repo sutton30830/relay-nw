@@ -2,14 +2,18 @@ import { createClient } from "@supabase/supabase-js";
 import { env } from "@/lib/env";
 
 const LEAD_SELECT_COLUMNS =
-  "id, call_sid, name, phone, message, notes, source, status, sms_status, sms_error, recording_sid, recording_url, recording_duration, recording_status, created_at";
+  "id, call_sid, name, phone, message, notes, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, created_at";
 
 export type LeadSource = "missed_call" | "intake_form";
 export type LeadStatus = "new" | "contacted" | "booked" | "dead";
 export type SmsStatus =
   | "pending"
+  | "queued"
+  | "sending"
   | "sent"
+  | "delivered"
   | "failed"
+  | "undelivered"
   | "skipped_opt_out"
   | "skipped_recent"
   | null;
@@ -17,6 +21,7 @@ export type WebhookEventSource =
   | "twilio_voice"
   | "twilio_dial_status"
   | "twilio_inbound_sms"
+  | "twilio_sms_status"
   | "twilio_recording";
 
 export type Lead = {
@@ -30,6 +35,8 @@ export type Lead = {
   status: LeadStatus;
   sms_status: SmsStatus;
   sms_error: string | null;
+  twilio_message_sid: string | null;
+  sms_updated_at: string | null;
   recording_sid: string | null;
   recording_url: string | null;
   recording_duration: number | null;
@@ -195,20 +202,58 @@ export async function updateLeadSmsStatus(input: {
   id: string;
   smsStatus: Exclude<SmsStatus, null>;
   smsError?: string | null;
+  twilioMessageSid?: string | null;
 }) {
   if (shouldSkipDatabaseWrite("SMS status update", input)) {
     return;
   }
 
+  const updates: {
+    sms_status: Exclude<SmsStatus, null>;
+    sms_error: string | null;
+    sms_updated_at: string;
+    twilio_message_sid?: string | null;
+  } = {
+    sms_status: input.smsStatus,
+    sms_error: input.smsError ?? null,
+    sms_updated_at: new Date().toISOString(),
+  };
+
+  if (typeof input.twilioMessageSid !== "undefined") {
+    updates.twilio_message_sid = input.twilioMessageSid;
+  }
+
   const { error } = await supabaseAdmin
+    .from("leads")
+    .update(updates)
+    .eq("id", input.id);
+
+  throwIfSupabaseError(error);
+}
+
+export async function updateLeadSmsStatusByMessageSid(input: {
+  twilioMessageSid: string;
+  smsStatus: Exclude<SmsStatus, null>;
+  smsError?: string | null;
+}) {
+  if (shouldSkipDatabaseWrite("SMS status callback update", input)) {
+    return { updated: false };
+  }
+
+  const { data, error } = await supabaseAdmin
     .from("leads")
     .update({
       sms_status: input.smsStatus,
       sms_error: input.smsError ?? null,
+      sms_updated_at: new Date().toISOString(),
     })
-    .eq("id", input.id);
+    .eq("twilio_message_sid", input.twilioMessageSid)
+    .select("id")
+    .maybeSingle();
 
   throwIfSupabaseError(error);
+
+  return { updated: Boolean(data?.id), leadId: data?.id ?? null };
 }
 
 export async function hasRecentMissedCallSms(phone: string, since: Date) {
@@ -221,7 +266,7 @@ export async function hasRecentMissedCallSms(phone: string, since: Date) {
     .select("id")
     .eq("phone", phone)
     .eq("source", "missed_call")
-    .eq("sms_status", "sent")
+    .in("sms_status", ["queued", "sending", "sent", "delivered"])
     .gte("created_at", since.toISOString())
     .limit(1);
 
@@ -256,6 +301,34 @@ export async function recordOptOut(phone: string) {
     .upsert({ phone }, { onConflict: "phone" });
 
   throwIfSupabaseError(error);
+}
+
+export async function createInboundMessageIfNew(input: {
+  messageSid: string;
+  fromPhone: string;
+  toPhone?: string | null;
+  body: string;
+}) {
+  if (shouldSkipDatabaseWrite("inbound message insert", input)) {
+    return { inserted: true };
+  }
+
+  const { error } = await supabaseAdmin.from("inbound_messages").insert({
+    message_sid: input.messageSid,
+    from_phone: input.fromPhone,
+    to_phone: input.toPhone ?? null,
+    body: input.body,
+  });
+
+  if (error) {
+    if (error.code === "23505") {
+      return { inserted: false };
+    }
+
+    throw error;
+  }
+
+  return { inserted: true };
 }
 
 export async function logWebhookEvent(input: {

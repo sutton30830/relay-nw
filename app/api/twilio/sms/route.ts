@@ -1,5 +1,5 @@
 import { env } from "@/lib/env";
-import { logWebhookEvent, recordOptOut } from "@/lib/supabase";
+import { createInboundMessageIfNew, logWebhookEvent, recordOptOut } from "@/lib/supabase";
 import {
   formDataToRecord,
   summarizeTwilioRequest,
@@ -35,11 +35,15 @@ function validateInboundSmsWebhook(request: Request, payload: Record<string, str
 }
 
 function parseInboundSmsPayload(payload: Record<string, string>) {
+  const messageSid = (payload.MessageSid ?? payload.SmsSid ?? "").trim();
   const from = (payload.From ?? "").trim();
+  const to = (payload.To ?? "").trim();
   const body = (payload.Body ?? "").trim();
 
   return {
+    messageSid,
     from,
+    to,
     body,
     isOptOut: Boolean(from) && OPT_OUT_WORDS.has(normalizeBody(body)),
     shouldNotifyOwner: Boolean(from && body),
@@ -48,7 +52,7 @@ function parseInboundSmsPayload(payload: Record<string, string>) {
 
 function webhookEventNote(input: {
   matchedUrl: string | null;
-  action: "recorded_opt_out" | "forwarded_to_owner" | "ignored_empty_message";
+  action: "recorded_opt_out" | "forwarded_to_owner" | "ignored_empty_message" | "duplicate_ignored";
 }) {
   const notes = [];
 
@@ -68,6 +72,10 @@ function webhookEventNote(input: {
 
   if (input.action === "ignored_empty_message") {
     notes.push("Ignored because From or Body was missing.");
+  }
+
+  if (input.action === "duplicate_ignored") {
+    notes.push("Duplicate inbound SMS webhook ignored.");
   }
 
   return notes.join(" ");
@@ -118,6 +126,19 @@ async function logUnsignedOverride(input: {
 }
 
 async function handleInboundSms(input: ReturnType<typeof parseInboundSmsPayload>) {
+  if (input.messageSid && input.from && input.body) {
+    const inboundMessage = await createInboundMessageIfNew({
+      messageSid: input.messageSid,
+      fromPhone: input.from,
+      toPhone: input.to || null,
+      body: input.body,
+    });
+
+    if (!inboundMessage.inserted) {
+      return "duplicate_ignored" as const;
+    }
+  }
+
   if (input.isOptOut) {
     await recordOptOut(input.from);
     return "recorded_opt_out" as const;

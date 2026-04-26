@@ -57,6 +57,8 @@ function createSampleLeads(): Lead[] {
       status: "new",
       sms_status: "sent",
       sms_error: null,
+      twilio_message_sid: "sample-message-1",
+      sms_updated_at: new Date(now - 13 * 60_000).toISOString(),
       recording_sid: "sample-recording-1",
       recording_url: null,
       recording_duration: 18,
@@ -74,6 +76,8 @@ function createSampleLeads(): Lead[] {
       status: "contacted",
       sms_status: null,
       sms_error: null,
+      twilio_message_sid: null,
+      sms_updated_at: null,
       recording_sid: null,
       recording_url: null,
       recording_duration: null,
@@ -91,6 +95,8 @@ function createSampleLeads(): Lead[] {
       status: "booked",
       sms_status: "sent",
       sms_error: null,
+      twilio_message_sid: "sample-message-2",
+      sms_updated_at: new Date(now - 3 * 60 * 60_000).toISOString(),
       recording_sid: null,
       recording_url: null,
       recording_duration: null,
@@ -139,7 +145,7 @@ function sourceLabel(source: Lead["source"]) {
 }
 
 function needsAttention(lead: Lead) {
-  return lead.sms_status === "failed";
+  return lead.sms_status === "failed" || lead.sms_status === "undelivered";
 }
 
 function countLeads(leads: Lead[]): LeadCounts {
@@ -208,7 +214,11 @@ function followUpStatusText(lead: Lead) {
     return "Auto-text sent by Relay.";
   }
 
-  if (lead.sms_status === "failed") {
+  if (lead.sms_status === "delivered") {
+    return "Auto-text delivered.";
+  }
+
+  if (lead.sms_status === "failed" || lead.sms_status === "undelivered") {
     return "Auto-text failed. Follow up manually.";
   }
 
@@ -239,8 +249,11 @@ function SourceBadge({ source }: { source: Lead["source"] }) {
 function SmsBadge({ lead }: { lead: Lead }) {
   if (!lead.sms_status || lead.source !== "missed_call") return null;
 
-  if (lead.sms_status === "failed") {
+  if (lead.sms_status === "failed" || lead.sms_status === "undelivered") {
     return <span className="chip chip-danger"><Icon name="alertTriangle" size={12} /> SMS failed</span>;
+  }
+  if (lead.sms_status === "delivered") {
+    return <span className="chip chip-good"><Icon name="checkDouble" size={12} /> SMS delivered</span>;
   }
   if (lead.sms_status === "sent") {
     return <span className="chip chip-good"><Icon name="checkDouble" size={12} /> SMS sent</span>;

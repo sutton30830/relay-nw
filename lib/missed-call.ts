@@ -51,18 +51,20 @@ export async function handleMissedCall(input: {
   }
 
   try {
-    await twilioClient.messages.create({
+    const message = await twilioClient.messages.create({
       to: callerPhone,
       from: env.twilioPhoneNumber,
       body: missedCallSmsBody(),
+      statusCallback: `${env.appBaseUrl}/api/twilio/sms-status`,
     });
 
     await updateLeadSmsStatus({
       id: leadResult.leadId,
       smsStatus: "sent",
+      twilioMessageSid: message.sid,
     });
 
-    return { inserted: true, smsStatus: "sent" as const };
+    return { inserted: true, smsStatus: "sent" as const, twilioMessageSid: message.sid };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown SMS send error";
 
