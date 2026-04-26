@@ -217,7 +217,7 @@ code {
   font-size: 13px;
 }
 
-.btn-demo-on {
+.btn-sample-on {
   border-color: var(--brand);
   background: var(--brand-soft);
   color: var(--brand-ink);

@@ -85,7 +85,7 @@ export function IntakeForm() {
 
       <div className="intake-row">
         <label className="field-label">
-          <span>Your name</span>
+          <span>Name</span>
           <input
             ref={nameRef}
             className="field"
@@ -115,16 +115,16 @@ export function IntakeForm() {
       </div>
 
       <label className="field-label">
-        <span>What do you need?</span>
+        <span>How can we help?</span>
         <textarea
           className="field"
           name="message"
           rows={5}
-          placeholder="Example: leaking outdoor faucet, water heater making noise, kitchen sink backed up..."
+          placeholder="Example: leaking faucet, water heater noise, kitchen sink backed up..."
           maxLength={2000}
         />
         <span className="field-hint">
-          One or two sentences is perfect. Include the room or fixture if it helps.
+          One or two sentences is perfect.
         </span>
       </label>
 

@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { LeadsList } from "@/app/leads/leads-list";
+import { publicBusinessName } from "@/lib/display-name";
 import { env } from "@/lib/env";
 import { isValidLeadsSessionCookie, LEADS_COOKIE_NAME } from "@/lib/leads-auth";
 import { getLeads } from "@/lib/supabase";
@@ -11,6 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function LeadsPage() {
   const cookieStore = await cookies();
   const isAllowed = isValidLeadsSessionCookie(cookieStore.get(LEADS_COOKIE_NAME)?.value);
+  const businessName = publicBusinessName(env.businessName);
 
   if (!isAllowed) {
     return (
@@ -22,7 +24,7 @@ export default async function LeadsPage() {
           <p className="t-eyebrow" style={{ marginTop: 14 }}>Relay NW · Protected</p>
           <h1 className="t-display gate-title">Lead inbox</h1>
           <p className="gate-sub">
-            Enter the shared password to open <strong>{env.businessName}&apos;s</strong> leads.
+            Enter the shared password to open <strong>{businessName}&apos;s</strong> leads.
           </p>
 
           <form action="/api/leads-login" method="POST" className="gate-form">
@@ -59,7 +61,7 @@ export default async function LeadsPage() {
 
   return (
     <main className="leads-view">
-      <LeadsList businessName={env.businessName} leads={leads} />
+      <LeadsList businessName={businessName} leads={leads} />
     </main>
   );
 }

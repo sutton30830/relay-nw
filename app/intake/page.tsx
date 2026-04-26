@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { IntakeForm } from "@/app/intake/intake-form";
+import { publicBusinessName } from "@/lib/display-name";
 import { env } from "@/lib/env";
 
 type SearchParams = Promise<{
@@ -16,6 +17,7 @@ export default async function IntakePage({
   const params = await searchParams;
   const saved = params.saved === "1";
   const error = params.error === "1";
+  const businessName = publicBusinessName(env.businessName);
 
   if (saved) {
     return (
@@ -24,19 +26,18 @@ export default async function IntakePage({
           <div className="intake-done__seal">
             <Icon name="check" size={30} />
           </div>
-          <p className="t-eyebrow">Received · just now</p>
-          <h1 className="t-display intake-done__title">Thanks. We&apos;ve got you.</h1>
+          <p className="t-eyebrow">Request sent</p>
+          <h1 className="t-display intake-done__title">We&apos;ve got it.</h1>
           <p className="intake-done__sub">
-            {env.businessName} will call or text you back shortly. If it is urgent, you can also
-            book a time directly.
+            {businessName} will call or text you soon. If it is urgent, you can also book a time.
           </p>
 
           <div className="intake-done__next">
             <h2 className="t-eyebrow">What happens next</h2>
             <ol className="intake-next-list">
-              <li><span>1</span> Your request is saved and flagged as new.</li>
-              <li><span>2</span> The owner reviews it and reaches out.</li>
-              <li><span>3</span> You lock in a time that works.</li>
+              <li><span>1</span> Your request is saved.</li>
+              <li><span>2</span> The owner reviews it.</li>
+              <li><span>3</span> They follow up.</li>
             </ol>
           </div>
 
@@ -65,7 +66,7 @@ export default async function IntakePage({
               Request help
             </p>
             <h1 className="t-display" style={{ fontSize: 22, margin: 0 }}>
-              {env.businessName}
+              {businessName}
             </h1>
           </div>
         </Link>
@@ -76,34 +77,33 @@ export default async function IntakePage({
 
       <div className="intake-grid">
         <aside className="intake-side">
-          <p className="t-eyebrow">Tell us the essentials</p>
+          <p className="t-eyebrow">Quick request</p>
           <h2 className="t-display intake-side__title">
-            A few details are all we need to call you back.
+            Tell us what you need.
           </h2>
           <p className="intake-side__lede">
-            Missed our call? Hate phone tag? Fill this out and the owner will follow up by text or
-            phone, whichever gets the job moving.
+            Leave your name, number, and a quick note. We&apos;ll follow up by text or phone.
           </p>
 
           <ul className="intake-signals">
             <li>
               <span className="intake-signals__icon"><Icon name="shield" size={14} /></span>
               <div>
-                <p className="intake-signals__t">Your info stays private</p>
-                <p className="intake-signals__d">Only used to follow up on this request.</p>
+                <p className="intake-signals__t">Private</p>
+                <p className="intake-signals__d">Only used for this request.</p>
               </div>
             </li>
             <li>
               <span className="intake-signals__icon"><Icon name="clock" size={14} /></span>
               <div>
                 <p className="intake-signals__t">Fast follow-up</p>
-                <p className="intake-signals__d">The request lands in the owner&apos;s lead inbox.</p>
+                <p className="intake-signals__d">Goes straight to the inbox.</p>
               </div>
             </li>
             <li>
               <span className="intake-signals__icon"><Icon name="star" size={14} /></span>
               <div>
-                <p className="intake-signals__t">Local business friendly</p>
+                <p className="intake-signals__t">No account</p>
                 <p className="intake-signals__d">No account needed. No app to download.</p>
               </div>
             </li>
@@ -111,10 +111,10 @@ export default async function IntakePage({
 
           <div className="intake-quote">
             <p style={{ margin: 0, fontSize: 15, lineHeight: 1.55, fontStyle: "italic" }}>
-              &quot;Texted after a missed call and got a reply without waiting on hold.&quot;
+              &quot;Send the request once. Get a real follow-up.&quot;
             </p>
             <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--ink-3)" }}>
-              Customer-friendly follow-up, built for service work.
+              Built for local service calls.
             </p>
           </div>
           <a href={env.schedulingUrl} className="btn btn-secondary mt-5">
@@ -125,7 +125,7 @@ export default async function IntakePage({
         <section className="intake-form panel">
           <div className="intake-form__head">
             <p className="t-eyebrow">Service request</p>
-            <h2 className="t-display intake-form__title">What can we help with?</h2>
+            <h2 className="t-display intake-form__title">How can we help?</h2>
           </div>
 
           <div className="intake-form__body">

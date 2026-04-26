@@ -31,13 +31,13 @@ const QUICK_REPLIES = [
   "I can get you on the schedule today.",
 ];
 
-function createDemoLeads(): Lead[] {
+function createSampleLeads(): Lead[] {
   const now = Date.now();
 
   return [
     {
-      id: "demo-marcus",
-      call_sid: "demo-call-1",
+      id: "sample-marcus",
+      call_sid: "sample-call-1",
       name: "Marcus Tillman",
       phone: "+12065550134",
       message: "Kitchen sink is backing up and the disposal is humming. Hoping someone can come by today if possible.",
@@ -46,14 +46,14 @@ function createDemoLeads(): Lead[] {
       status: "new",
       sms_status: "sent",
       sms_error: null,
-      recording_sid: "demo-recording-1",
+      recording_sid: "sample-recording-1",
       recording_url: null,
       recording_duration: 18,
       recording_status: "completed",
       created_at: new Date(now - 14 * 60_000).toISOString(),
     },
     {
-      id: "demo-priya",
+      id: "sample-priya",
       call_sid: null,
       name: "Priya Shah",
       phone: "+12065550187",
@@ -70,8 +70,8 @@ function createDemoLeads(): Lead[] {
       created_at: new Date(now - 52 * 60_000).toISOString(),
     },
     {
-      id: "demo-eli",
-      call_sid: "demo-call-2",
+      id: "sample-eli",
+      call_sid: "sample-call-2",
       name: "Eli Ramirez",
       phone: "+12065550192",
       message: "Outdoor faucet is leaking near the garage.",
@@ -380,17 +380,17 @@ export function LeadsList({
   const router = useRouter();
   const searchRef = useRef<HTMLInputElement | null>(null);
   const [items, setItems] = useState(leads);
-  const [demoItems, setDemoItems] = useState(() => createDemoLeads());
-  const [demoMode, setDemoMode] = useState(() => /demo/i.test(businessName) && leads.length === 0);
+  const [sampleItems, setSampleItems] = useState(() => createSampleLeads());
+  const [sampleMode, setSampleMode] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  const activeItems = demoMode ? demoItems : items;
+  const activeItems = sampleMode ? sampleItems : items;
 
   useEffect(() => {
     setItems(leads);
-    if (leads.length > 0) setDemoMode(false);
+    if (leads.length > 0) setSampleMode(false);
   }, [leads]);
 
   useEffect(() => {
@@ -450,12 +450,12 @@ export function LeadsList({
   const openLead = activeItems.find((lead) => lead.id === openId) ?? null;
 
   function updateLocalLead(id: string, updates: Partial<Lead>) {
-    const setter = demoMode ? setDemoItems : setItems;
+    const setter = sampleMode ? setSampleItems : setItems;
     setter((current) => current.map((lead) => (lead.id === id ? { ...lead, ...updates } : lead)));
   }
 
   async function updateStatus(id: string, status: LeadStatus) {
-    if (demoMode) {
+    if (sampleMode) {
       updateLocalLead(id, { status });
       return;
     }
@@ -473,7 +473,7 @@ export function LeadsList({
   }
 
   async function updateNotes(id: string, notes: string) {
-    if (demoMode) {
+    if (sampleMode) {
       updateLocalLead(id, { notes });
       return;
     }
@@ -522,14 +522,14 @@ export function LeadsList({
             <Icon name="refresh" size={14} />
           </button>
           <button
-            className={`btn btn-secondary btn-sm ${demoMode ? "btn-demo-on" : ""}`}
+            className={`btn btn-secondary btn-sm ${sampleMode ? "btn-sample-on" : ""}`}
             type="button"
             onClick={() => {
-              setDemoMode((value) => !value);
+              setSampleMode((value) => !value);
               setOpenId(null);
             }}
           >
-            Demo view
+            Sample data
           </button>
           <form action="/api/leads-logout" method="POST">
             <button className="btn btn-secondary btn-sm">Log out</button>
@@ -569,7 +569,7 @@ export function LeadsList({
         <div className="pulse-cell pulse-cell--neutral">
           <p className="t-eyebrow" style={{ fontSize: 10.5 }}>Total leads</p>
           <p className="pulse-value t-display">{counts.all}</p>
-          <p className="pulse-sub">{demoMode ? "demo sample" : "captured so far"}</p>
+          <p className="pulse-sub">{sampleMode ? "sample data" : "captured so far"}</p>
         </div>
       </div>
 

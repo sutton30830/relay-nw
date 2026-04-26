@@ -1,33 +1,35 @@
 import Link from "next/link";
 import { Icon } from "@/components/icon";
+import { publicBusinessName } from "@/lib/display-name";
 import { env } from "@/lib/env";
 
 export default function HomePage() {
+  const businessName = publicBusinessName(env.businessName);
   const customerPreview =
-    "Hi, sorry we missed your call. Tell us what you need and we will follow up shortly. Reply STOP to opt out.";
+    "Sorry we missed your call. Tell us what you need and we will follow up shortly. Reply STOP to opt out.";
 
   const steps = [
     {
       icon: "phone" as const,
-      title: "Customers call your number",
-      body: "You keep the business number already on your website, trucks, and Google profile.",
+      title: "Keep your number",
+      body: "Forward missed, busy, or unreachable calls to Relay NW.",
     },
     {
       icon: "message" as const,
-      title: "Missed calls forward to Relay NW",
-      body: "Conditional call forwarding sends busy or unanswered calls to your Relay NW recovery number.",
+      title: "Greet the caller",
+      body: "Relay NW plays your greeting, takes a voicemail, and saves the lead.",
     },
     {
       icon: "inbox" as const,
-      title: "They get a useful text",
-      body: "Relay NW texts the caller, saves the lead, and gives you a simple follow-up inbox.",
+      title: "Follow up fast",
+      body: "Open one simple inbox with the caller, message, and next step.",
     },
   ];
 
   const benefits = [
-    "Keep the number customers already know.",
-    "Recover customers who would have called the next company.",
-    "Keep follow-up simple from a phone-friendly lead inbox.",
+    "No phone-number change.",
+    "A real greeting instead of a dead end.",
+    "One simple inbox for missed calls.",
   ];
 
   return (
@@ -40,7 +42,7 @@ export default function HomePage() {
           <div>
             <p className="t-eyebrow" style={{ fontSize: 10 }}>Relay NW</p>
             <h1 className="t-display" style={{ fontSize: 22, margin: 0 }}>
-              {env.businessName}
+              {businessName}
             </h1>
           </div>
           <span className="live-dot">
@@ -61,13 +63,13 @@ export default function HomePage() {
 
       <section className="home-hero">
         <div>
-          <p className="t-eyebrow">Your missed-call safety net</p>
+          <p className="t-eyebrow">Missed-call follow-up</p>
           <h2 className="t-display home-hero__title">
-            Keep your number. Text back missed callers <em>automatically.</em>
+            Keep your number. Catch more <em>missed calls.</em>
           </h2>
           <p className="home-hero__sub">
-            Relay NW works with conditional call forwarding so local service businesses can keep
-            their existing number and still recover missed-call leads.
+            Relay NW answers missed calls with your greeting, records the message, and saves the
+            caller in one simple inbox.
           </p>
           <div className="mt-5 flex flex-wrap gap-3">
             <Link className="btn btn-primary" href="/leads">
@@ -80,8 +82,8 @@ export default function HomePage() {
           <div className="mt-8 grid max-w-2xl gap-5 sm:grid-cols-3">
             {[
               ["phone", "Keep your number", "No website or Google listing change."],
-              ["message", "Missed-call text", "Customers get a fast next step."],
-              ["user", "More booked work", "You stay connected after the ring."],
+              ["message", "Helpful reply", "Callers know what happens next."],
+              ["user", "Faster follow-up", "You stay connected after the ring."],
             ].map(([icon, title, body]) => (
               <div key={title} className="home-hero-stat">
                 <Icon name={icon as "phone" | "message" | "user"} size={28} />
@@ -100,7 +102,7 @@ export default function HomePage() {
             <div className="phone-mock__time">10:42</div>
             <div className="phone-mock__msg-head">
               <div className="phone-mock__avatar">
-                {env.businessName
+                {businessName
                   .split(" ")
                   .map((word) => word[0])
                   .join("")
@@ -121,11 +123,10 @@ export default function HomePage() {
       <section className="client-section">
         <div className="client-section__intro">
           <p className="t-eyebrow">How it works</p>
-          <h2 className="t-display">Simple enough to use on day one.</h2>
+          <h2 className="t-display">Set up once. Use it every day.</h2>
           <p>
-            Relay NW is built for local service owners who are in the field, on ladders, under
-            sinks, or driving between jobs. When your existing number goes unanswered, the follow-up
-            still happens.
+            Built for local service owners who cannot answer every call. When your number goes
+            unanswered, Relay NW gives the caller a clear next step and gives you the lead.
           </p>
         </div>
 
@@ -145,11 +146,11 @@ export default function HomePage() {
         <div className="client-split">
           <div className="panel client-card client-card--dark">
             <p className="t-eyebrow">What customers experience</p>
-            <h3>A fast, helpful reply instead of a dead end.</h3>
+            <h3>A clear reply instead of a dead end.</h3>
             <div className="client-sms">
               <div className="client-sms__head">
                 <span><Icon name="message" size={15} /></span>
-                <strong>{env.businessName}</strong>
+                <strong>{businessName}</strong>
                 <em>now</em>
               </div>
               <p>{customerPreview}</p>
@@ -158,7 +159,7 @@ export default function HomePage() {
 
           <div className="panel client-card">
             <p className="t-eyebrow">Why businesses use it</p>
-            <h3>More chances to turn calls into booked work.</h3>
+            <h3>More chances to turn calls into work.</h3>
             <ul className="client-benefits">
               {benefits.map((benefit) => (
                 <li key={benefit}>
@@ -180,8 +181,8 @@ export default function HomePage() {
       </section>
 
       <footer className="home-footer">
-        <span>Relay NW. Automatic missed-call texts for local service businesses.</span>
-        <span>Keep customers happy. Win more jobs.</span>
+        <span>Relay NW. Missed-call follow-up for local service businesses.</span>
+        <span>Keep your number. Catch the next job.</span>
       </footer>
     </main>
   );
