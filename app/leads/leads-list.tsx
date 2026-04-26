@@ -16,6 +16,17 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
 
 type Filter = "all" | LeadStatus;
 
+type LeadCounts = Record<Filter, number> & {
+  actionable: number;
+  missed: number;
+  smsIssues: number;
+};
+
+type LeadPatch = {
+  status?: LeadStatus;
+  notes?: string | null;
+};
+
 const FILTERS: Array<{ key: Filter; label: string }> = [
   { key: "all", label: "All" },
   { key: "new", label: "New" },
@@ -131,6 +142,87 @@ function needsAttention(lead: Lead) {
   return lead.sms_status === "failed";
 }
 
+function countLeads(leads: Lead[]): LeadCounts {
+  return {
+    all: leads.length,
+    new: leads.filter((lead) => lead.status === "new").length,
+    actionable: leads.filter((lead) => lead.status === "new" || lead.status === "contacted").length,
+    contacted: leads.filter((lead) => lead.status === "contacted").length,
+    booked: leads.filter((lead) => lead.status === "booked").length,
+    dead: leads.filter((lead) => lead.status === "dead").length,
+    missed: leads.filter((lead) => lead.source === "missed_call").length,
+    smsIssues: leads.filter(needsAttention).length,
+  };
+}
+
+function countMissedCallsToday(leads: Lead[], now: number) {
+  const dayStart = new Date(now);
+  dayStart.setHours(0, 0, 0, 0);
+
+  return leads.filter(
+    (lead) =>
+      lead.source === "missed_call" &&
+      new Date(lead.created_at).getTime() >= dayStart.getTime(),
+  ).length;
+}
+
+function leadMatchesSearch(lead: Lead, query: string) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) {
+    return true;
+  }
+
+  return [lead.name, lead.phone, lead.message, lead.notes, sourceLabel(lead.source)]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(needle));
+}
+
+function filterLeads(leads: Lead[], filter: Filter, query: string) {
+  return leads.filter((lead) => {
+    const matchesFilter = filter === "all" || lead.status === filter;
+    return matchesFilter && leadMatchesSearch(lead, query);
+  });
+}
+
+async function patchLead(id: string, body: LeadPatch) {
+  try {
+    const response = await fetch(`/api/leads/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    return response.ok;
+  } catch (error) {
+    console.error("Failed to update lead from inbox", { leadId: id, error });
+    return false;
+  }
+}
+
+function followUpStatusText(lead: Lead) {
+  if (lead.source !== "missed_call") {
+    return "This lead came from the intake form.";
+  }
+
+  if (lead.sms_status === "sent") {
+    return "Auto-text sent by Relay.";
+  }
+
+  if (lead.sms_status === "failed") {
+    return "Auto-text failed. Follow up manually.";
+  }
+
+  if (lead.sms_status === "skipped_recent") {
+    return "Auto-text skipped because this caller was recently texted.";
+  }
+
+  if (lead.sms_status === "skipped_opt_out") {
+    return "Auto-text skipped because this caller opted out.";
+  }
+
+  return "Auto-text pending or waiting on SMS setup.";
+}
+
 function StatusPill({ status }: { status: LeadStatus }) {
   return <span className={`chip status-pill--${status}`}>{STATUS_LABELS[status]}</span>;
 }
@@ -206,13 +298,11 @@ function StatusControl({
 
 function LeadDrawer({
   lead,
-  now,
   onClose,
   onStatus,
   onNotes,
 }: {
   lead: Lead;
-  now: number;
   onClose: () => void;
   onStatus: (id: string, status: LeadStatus) => void;
   onNotes: (id: string, notes: string) => void;
@@ -230,19 +320,6 @@ function LeadDrawer({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
-
-  const smsStatusText =
-    lead.source !== "missed_call"
-      ? "This lead came from the intake form."
-      : lead.sms_status === "sent"
-        ? "Auto-text sent by Relay."
-        : lead.sms_status === "failed"
-          ? "Auto-text failed. Follow up manually."
-          : lead.sms_status === "skipped_recent"
-            ? "Auto-text skipped because this caller was recently texted."
-            : lead.sms_status === "skipped_opt_out"
-              ? "Auto-text skipped because this caller opted out."
-              : "Auto-text pending or waiting on SMS setup.";
 
   return (
     <>
@@ -328,7 +405,7 @@ function LeadDrawer({
         <div className="follow-up-panel">
           <div className={`follow-up-status ${lead.sms_status === "failed" ? "follow-up-status--warn" : ""}`}>
             <Icon name={lead.sms_status === "failed" ? "alertTriangle" : "message"} size={15} />
-            <span>{smsStatusText}</span>
+            <span>{followUpStatusText(lead)}</span>
           </div>
           <div className="follow-up-quick">
             {QUICK_REPLIES.map((template) => (
@@ -367,6 +444,70 @@ function LeadDrawer({
         </div>
       </aside>
     </>
+  );
+}
+
+function LeadCard({
+  lead,
+  now,
+  onOpen,
+  onStatus,
+}: {
+  lead: Lead;
+  now: number;
+  onOpen: (id: string) => void;
+  onStatus: (id: string, status: LeadStatus) => void;
+}) {
+  const attention = needsAttention(lead);
+
+  return (
+    <article
+      className={`lead-card ${lead.status === "new" ? "lead-card--new" : ""} ${attention ? "lead-card--attention" : ""}`}
+      onClick={() => onOpen(lead.id)}
+    >
+      <div className="lead-card__head">
+        <div className="lead-card__id">
+          <div className="lead-card__avatar">{initials(lead) ?? <Icon name="user" size={14} />}</div>
+          <div style={{ minWidth: 0 }}>
+            <h3 className="lead-card__name">{lead.name || "Unknown caller"}</h3>
+            <div className="lead-card__meta">
+              <span className="t-mono" style={{ fontSize: 13 }}>{formatPhone(lead.phone)}</span>
+              <span>·</span>
+              <span>{formatRelativeTime(lead.created_at, now)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="lead-card__badges">
+          <StatusPill status={lead.status} />
+          <SourceBadge source={lead.source} />
+          <SmsBadge lead={lead} />
+          <VoicemailBadge lead={lead} />
+        </div>
+      </div>
+
+      {lead.message ? <p className="lead-card__msg">{lead.message}</p> : null}
+
+      {attention ? (
+        <div className="lead-card__alert">
+          <Icon name="alertTriangle" size={14} />
+          <span>{lead.sms_error || "SMS delivery failed"} - call them directly.</span>
+        </div>
+      ) : null}
+
+      <div className="lead-card__actions" onClick={(event) => event.stopPropagation()}>
+        <a className="btn btn-primary btn-sm" href={`tel:${lead.phone}`}>
+          <Icon name="phone" size={13} /> Call
+        </a>
+        <a className="btn btn-secondary btn-sm" href={`sms:${lead.phone}`}>
+          <Icon name="message" size={13} /> Text
+        </a>
+        <StatusControl status={lead.status} onChange={(status) => onStatus(lead.id, status)} />
+        <button className="btn btn-ghost btn-sm ml-auto" type="button" onClick={() => onOpen(lead.id)}>
+          Open <Icon name="chevronRight" size={13} />
+        </button>
+      </div>
+    </article>
   );
 }
 
@@ -414,38 +555,15 @@ export function LeadsList({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const counts = useMemo(() => ({
-    all: activeItems.length,
-    new: activeItems.filter((lead) => lead.status === "new").length,
-    actionable: activeItems.filter((lead) => lead.status === "new" || lead.status === "contacted").length,
-    contacted: activeItems.filter((lead) => lead.status === "contacted").length,
-    booked: activeItems.filter((lead) => lead.status === "booked").length,
-    dead: activeItems.filter((lead) => lead.status === "dead").length,
-    missed: activeItems.filter((lead) => lead.source === "missed_call").length,
-    smsIssues: activeItems.filter((lead) => lead.sms_status === "failed").length,
-  }), [activeItems]);
-
-  const todays = useMemo(() => {
-    const dayStart = new Date();
-    dayStart.setHours(0, 0, 0, 0);
-    return activeItems.filter((lead) => new Date(lead.created_at).getTime() >= dayStart.getTime());
-  }, [activeItems, now]);
-
-  const filteredItems = useMemo(() => {
-    let list = activeItems;
-    if (filter !== "all") list = list.filter((lead) => lead.status === filter);
-
-    if (query.trim()) {
-      const needle = query.trim().toLowerCase();
-      list = list.filter((lead) =>
-        [lead.name, lead.phone, lead.message, lead.notes, sourceLabel(lead.source)]
-          .filter(Boolean)
-          .some((value) => String(value).toLowerCase().includes(needle)),
-      );
-    }
-
-    return list;
-  }, [activeItems, filter, query]);
+  const counts = useMemo(() => countLeads(activeItems), [activeItems]);
+  const missedCallsToday = useMemo(
+    () => countMissedCallsToday(activeItems, now),
+    [activeItems, now],
+  );
+  const filteredItems = useMemo(
+    () => filterLeads(activeItems, filter, query),
+    [activeItems, filter, query],
+  );
 
   const openLead = activeItems.find((lead) => lead.id === openId) ?? null;
 
@@ -463,13 +581,8 @@ export function LeadsList({
     const previousItems = items;
     updateLocalLead(id, { status });
 
-    const response = await fetch(`/api/leads/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
-
-    if (!response.ok) setItems(previousItems);
+    const saved = await patchLead(id, { status });
+    if (!saved) setItems(previousItems);
   }
 
   async function updateNotes(id: string, notes: string) {
@@ -481,13 +594,8 @@ export function LeadsList({
     const previousItems = items;
     updateLocalLead(id, { notes });
 
-    const response = await fetch(`/api/leads/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ notes }),
-    });
-
-    if (!response.ok) setItems(previousItems);
+    const saved = await patchLead(id, { notes });
+    if (!saved) setItems(previousItems);
   }
 
   return (
@@ -558,7 +666,7 @@ export function LeadsList({
         </div>
         <div className="pulse-cell pulse-cell--brand">
           <p className="t-eyebrow" style={{ fontSize: 10.5 }}>Missed calls today</p>
-          <p className="pulse-value t-display">{todays.filter((lead) => lead.source === "missed_call").length}</p>
+          <p className="pulse-value t-display">{missedCallsToday}</p>
           <p className="pulse-sub">auto-texted when eligible</p>
         </div>
         <div className="pulse-cell pulse-cell--good">
@@ -596,59 +704,15 @@ export function LeadsList({
       </nav>
 
       <div className="leads-list">
-        {filteredItems.map((lead) => {
-          const attention = needsAttention(lead);
-          return (
-            <article
-              key={lead.id}
-              className={`lead-card ${lead.status === "new" ? "lead-card--new" : ""} ${attention ? "lead-card--attention" : ""}`}
-              onClick={() => setOpenId(lead.id)}
-            >
-              <div className="lead-card__head">
-                <div className="lead-card__id">
-                  <div className="lead-card__avatar">{initials(lead) ?? <Icon name="user" size={14} />}</div>
-                  <div style={{ minWidth: 0 }}>
-                    <h3 className="lead-card__name">{lead.name || "Unknown caller"}</h3>
-                    <div className="lead-card__meta">
-                      <span className="t-mono" style={{ fontSize: 13 }}>{formatPhone(lead.phone)}</span>
-                      <span>·</span>
-                      <span>{formatRelativeTime(lead.created_at, now)}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="lead-card__badges">
-                  <StatusPill status={lead.status} />
-                  <SourceBadge source={lead.source} />
-                  <SmsBadge lead={lead} />
-                  <VoicemailBadge lead={lead} />
-                </div>
-              </div>
-
-              {lead.message ? <p className="lead-card__msg">{lead.message}</p> : null}
-
-              {attention ? (
-                <div className="lead-card__alert">
-                  <Icon name="alertTriangle" size={14} />
-                  <span>{lead.sms_error || "SMS delivery failed"} - call them directly.</span>
-                </div>
-              ) : null}
-
-              <div className="lead-card__actions" onClick={(event) => event.stopPropagation()}>
-                <a className="btn btn-primary btn-sm" href={`tel:${lead.phone}`}>
-                  <Icon name="phone" size={13} /> Call
-                </a>
-                <a className="btn btn-secondary btn-sm" href={`sms:${lead.phone}`}>
-                  <Icon name="message" size={13} /> Text
-                </a>
-                <StatusControl status={lead.status} onChange={(status) => updateStatus(lead.id, status)} />
-                <button className="btn btn-ghost btn-sm ml-auto" type="button" onClick={() => setOpenId(lead.id)}>
-                  Open <Icon name="chevronRight" size={13} />
-                </button>
-              </div>
-            </article>
-          );
-        })}
+        {filteredItems.map((lead) => (
+          <LeadCard
+            key={lead.id}
+            lead={lead}
+            now={now}
+            onOpen={setOpenId}
+            onStatus={updateStatus}
+          />
+        ))}
 
         {filteredItems.length === 0 ? (
           <div className="empty-state">
@@ -664,7 +728,6 @@ export function LeadsList({
       {openLead ? (
         <LeadDrawer
           lead={openLead}
-          now={now}
           onClose={() => setOpenId(null)}
           onStatus={updateStatus}
           onNotes={updateNotes}
