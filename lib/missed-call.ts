@@ -1,4 +1,5 @@
 import { env } from "@/lib/env";
+import { normalizePhoneNumber } from "@/lib/phone";
 import {
   createMissedCallLeadIfNew,
   hasRecentMissedCallSms,
@@ -12,7 +13,7 @@ export async function handleMissedCall(input: {
   callSid: string;
   message: string;
 }) {
-  const callerPhone = input.callerPhone.trim();
+  const callerPhone = normalizePhoneNumber(input.callerPhone);
   const callSid = input.callSid.trim();
 
   if (!callerPhone || !callSid) {

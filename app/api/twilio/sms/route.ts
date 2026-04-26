@@ -1,4 +1,5 @@
 import { env } from "@/lib/env";
+import { normalizePhoneNumber } from "@/lib/phone";
 import { createInboundMessageIfNew, logWebhookEvent, recordOptOut } from "@/lib/supabase";
 import {
   formDataToRecord,
@@ -36,8 +37,8 @@ function validateInboundSmsWebhook(request: Request, payload: Record<string, str
 
 function parseInboundSmsPayload(payload: Record<string, string>) {
   const messageSid = (payload.MessageSid ?? payload.SmsSid ?? "").trim();
-  const from = (payload.From ?? "").trim();
-  const to = (payload.To ?? "").trim();
+  const from = normalizePhoneNumber(payload.From ?? "");
+  const to = normalizePhoneNumber(payload.To ?? "");
   const body = (payload.Body ?? "").trim();
 
   return {

@@ -156,10 +156,10 @@ export async function updateLeadRecordingByCallSid(input: {
   recordingStatus?: string | null;
 }) {
   if (shouldSkipDatabaseWrite("recording update", input)) {
-    return;
+    return { updated: false, leadId: null };
   }
 
-  const { error } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from("leads")
     .update({
       recording_sid: input.recordingSid ?? null,
@@ -167,9 +167,13 @@ export async function updateLeadRecordingByCallSid(input: {
       recording_duration: input.recordingDuration ?? null,
       recording_status: input.recordingStatus ?? null,
     })
-    .eq("call_sid", input.callSid);
+    .eq("call_sid", input.callSid)
+    .select("id")
+    .maybeSingle();
 
   throwIfSupabaseError(error);
+
+  return { updated: Boolean(data?.id), leadId: data?.id ?? null };
 }
 
 export async function updateLead(input: { id: string; status?: LeadStatus; notes?: string | null }) {
@@ -266,7 +270,7 @@ export async function hasRecentMissedCallSms(phone: string, since: Date) {
     .select("id")
     .eq("phone", phone)
     .eq("source", "missed_call")
-    .in("sms_status", ["queued", "sending", "sent", "delivered"])
+    .in("sms_status", ["pending", "queued", "sending", "sent", "delivered"])
     .gte("created_at", since.toISOString())
     .limit(1);
 

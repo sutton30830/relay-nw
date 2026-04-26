@@ -7,7 +7,7 @@ create table if not exists public.leads (
   notes text,
   source text not null check (source in ('missed_call', 'intake_form')),
   status text not null default 'new' check (status in ('new', 'contacted', 'booked', 'dead')),
-  sms_status text check (sms_status in ('pending', 'sent', 'failed', 'skipped_opt_out', 'skipped_recent')),
+  sms_status text check (sms_status in ('pending', 'queued', 'sending', 'sent', 'delivered', 'failed', 'undelivered', 'skipped_opt_out', 'skipped_recent')),
   sms_error text,
   twilio_message_sid text,
   sms_updated_at timestamptz,

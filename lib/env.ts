@@ -52,6 +52,16 @@ function getCallMode() {
   return value;
 }
 
+function getAllowUnsignedTwilioWebhooks() {
+  const value = getOptionalBooleanEnv("ALLOW_UNSIGNED_TWILIO_WEBHOOKS", false);
+
+  if (value && process.env.NODE_ENV === "production") {
+    throw new Error("ALLOW_UNSIGNED_TWILIO_WEBHOOKS cannot be enabled in production.");
+  }
+
+  return value;
+}
+
 export const env = {
   callMode: getCallMode(),
   businessName: getRequiredEnv("BUSINESS_NAME"),
@@ -67,7 +77,7 @@ export const env = {
   leadsPassword: getRequiredEnv("LEADS_PASSWORD"),
   leadsCookieSecret: getOptionalEnv("LEADS_COOKIE_SECRET") ?? getRequiredEnv("LEADS_PASSWORD"),
   appBaseUrl: normalizeBaseUrl(getRequiredEnv("APP_BASE_URL")),
-  allowUnsignedTwilioWebhooks: getOptionalBooleanEnv("ALLOW_UNSIGNED_TWILIO_WEBHOOKS", false),
+  allowUnsignedTwilioWebhooks: getAllowUnsignedTwilioWebhooks(),
   twilioAccountSid: getRequiredEnv("TWILIO_ACCOUNT_SID"),
   twilioAuthToken: getRequiredEnv("TWILIO_AUTH_TOKEN"),
   twilioPhoneNumber: getRequiredEnv("TWILIO_PHONE_NUMBER"),

@@ -28,6 +28,8 @@ This app is intentionally single-business. No accounts, billing, CRM, shared inb
 13. Confirm the caller receives the SMS and the lead appears in `/leads`.
 14. Reply to the SMS and confirm the owner receives the forwarded reply.
 
+For the customer-by-customer onboarding checklist, see `docs/customer-setup.md`.
+
 ## Core Flow
 
 ### Direct Mode
@@ -64,6 +66,7 @@ This app is intentionally single-business. No accounts, billing, CRM, shared inb
 - `/api/twilio/dial-status` Twilio dial result webhook alias
 - `/api/twilio/recording` Twilio voicemail recording callback
 - `/api/twilio/sms` Twilio inbound SMS webhook
+- `/api/twilio/sms-status` Twilio outbound SMS delivery callback
 
 ## Environment Variables
 
@@ -132,8 +135,10 @@ The schema includes:
 - `leads`: intake and missed-call leads
 - `webhook_events`: basic Twilio webhook logs for debugging
 - `opt_outs`: phone numbers that replied STOP/UNSUBSCRIBE/CANCEL/END/QUIT
+- `inbound_messages`: deduped inbound SMS replies from customers
 
 `leads.call_sid` is unique when present. This prevents Twilio retries from creating duplicate missed-call leads or sending duplicate SMS messages.
+`leads.twilio_message_sid` is unique when present. This lets SMS delivery callbacks update the matching lead.
 
 ## Local Development
 

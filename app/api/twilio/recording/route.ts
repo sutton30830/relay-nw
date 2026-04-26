@@ -54,6 +54,7 @@ function webhookEventNote(input: {
   matchedUrl: string | null;
   recordingUpdated: boolean;
   missingCallSid: boolean;
+  unmatchedCallSid: boolean;
 }) {
   const notes = [];
 
@@ -69,6 +70,10 @@ function webhookEventNote(input: {
 
   if (input.missingCallSid) {
     notes.push("Skipped recording update because CallSid was missing.");
+  }
+
+  if (input.unmatchedCallSid) {
+    notes.push("No lead matched the recording CallSid.");
   }
 
   return notes.length > 0 ? notes.join(" ") : null;
@@ -107,8 +112,17 @@ async function updateLeadRecording(input: ReturnType<typeof parseRecordingPayloa
     return { updated: false, missingCallSid: true };
   }
 
-  await updateLeadRecordingByCallSid(input);
-  return { updated: true, missingCallSid: false };
+  const result = await updateLeadRecordingByCallSid(input);
+
+  if (!result.updated) {
+    console.warn("Recording webhook did not match an existing lead", {
+      callSid: input.callSid,
+      recordingSid: input.recordingSid,
+      recordingStatus: input.recordingStatus,
+    });
+  }
+
+  return { updated: result.updated, missingCallSid: false };
 }
 
 export async function POST(request: Request) {
@@ -147,6 +161,7 @@ export async function POST(request: Request) {
         matchedUrl: validation.matchedUrl,
         recordingUpdated: result.updated,
         missingCallSid: result.missingCallSid,
+        unmatchedCallSid: !result.updated && !result.missingCallSid,
       }),
     });
   } catch (error) {
