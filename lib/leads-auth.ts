@@ -2,12 +2,13 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { env } from "@/lib/env";
 
 export const LEADS_COOKIE_NAME = "relay_leads_session";
+const LEADS_SESSION_VALUE = "ok";
 
-function sign(value: string) {
+function signCookieValue(value: string) {
   return createHmac("sha256", env.leadsCookieSecret).update(value).digest("hex");
 }
 
-function safeEqual(left: string, right: string) {
+function constantTimeEqual(left: string, right: string) {
   const leftBuffer = Buffer.from(left);
   const rightBuffer = Buffer.from(right);
 
@@ -19,12 +20,14 @@ function safeEqual(left: string, right: string) {
 }
 
 export function passwordsMatch(candidate: string) {
-  return safeEqual(sign(candidate), sign(env.leadsPassword));
+  return constantTimeEqual(
+    signCookieValue(candidate),
+    signCookieValue(env.leadsPassword),
+  );
 }
 
 export function createLeadsSessionCookie() {
-  const value = "ok";
-  return `${value}.${sign(value)}`;
+  return `${LEADS_SESSION_VALUE}.${signCookieValue(LEADS_SESSION_VALUE)}`;
 }
 
 export function isValidLeadsSessionCookie(cookieValue?: string) {
@@ -32,10 +35,15 @@ export function isValidLeadsSessionCookie(cookieValue?: string) {
     return false;
   }
 
-  const [value, signature] = cookieValue.split(".");
+  const parts = cookieValue.split(".");
+  if (parts.length !== 2) {
+    return false;
+  }
+
+  const [value, signature] = parts;
   if (!value || !signature) {
     return false;
   }
 
-  return safeEqual(signature, sign(value));
+  return constantTimeEqual(signature, signCookieValue(value));
 }
