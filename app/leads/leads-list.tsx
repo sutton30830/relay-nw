@@ -330,7 +330,7 @@ function LeadDrawer({
             <Icon name={lead.sms_status === "failed" ? "alertTriangle" : "message"} size={15} />
             <span>{smsStatusText}</span>
           </div>
-          <div className="follow-up-quick clean-scroll">
+          <div className="follow-up-quick">
             {QUICK_REPLIES.map((template) => (
               <a
                 key={template}
