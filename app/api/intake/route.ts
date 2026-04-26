@@ -1,6 +1,23 @@
 import { redirect } from "next/navigation";
 import { createLead } from "@/lib/supabase";
 
+const MAX_NAME_LENGTH = 100;
+const MAX_MESSAGE_LENGTH = 2000;
+
+type IntakeFormSubmission = {
+  name: string;
+  phoneRaw: string;
+  message: string;
+  consent: FormDataEntryValue | null;
+  honeypot: string;
+};
+
+type IntakeLeadInput = {
+  name: string | null;
+  phone: string;
+  message: string | null;
+};
+
 /**
  * Lightweight US phone normalization to E.164 so leads page tel:/sms: links
  * always dial correctly. Accepts any punctuation the user typed.
@@ -17,32 +34,70 @@ function normalizeUsPhone(raw: string): string | null {
   return null;
 }
 
+function readFormString(formData: FormData, key: string) {
+  return String(formData.get(key) || "").trim();
+}
+
+function parseIntakeForm(formData: FormData): IntakeFormSubmission {
+  return {
+    name: readFormString(formData, "name"),
+    phoneRaw: readFormString(formData, "phone"),
+    message: readFormString(formData, "message"),
+    consent: formData.get("consent"),
+    honeypot: readFormString(formData, "company"),
+  };
+}
+
+function isBotSubmission(submission: IntakeFormSubmission) {
+  // Spam trap: bots tend to fill every field. Silently "succeed".
+  return Boolean(submission.honeypot);
+}
+
+function validateIntakeSubmission(submission: IntakeFormSubmission): IntakeLeadInput | null {
+  const phone = normalizeUsPhone(submission.phoneRaw);
+
+  if (!phone || submission.consent !== "on") {
+    return null;
+  }
+
+  if (submission.name.length > MAX_NAME_LENGTH) {
+    return null;
+  }
+
+  if (submission.message.length > MAX_MESSAGE_LENGTH) {
+    return null;
+  }
+
+  return {
+    name: submission.name || null,
+    phone,
+    message: submission.message || null,
+  };
+}
+
+async function saveIntakeLead(lead: IntakeLeadInput) {
+  await createLead({
+    ...lead,
+    source: "intake_form",
+  });
+}
+
 export async function POST(request: Request) {
   const formData = await request.formData();
-  const name = String(formData.get("name") || "").trim();
-  const phoneRaw = String(formData.get("phone") || "").trim();
-  const message = String(formData.get("message") || "").trim();
-  const consent = formData.get("consent");
-  const honeypot = String(formData.get("company") || "").trim();
+  const submission = parseIntakeForm(formData);
 
-  // Spam trap: bots tend to fill every field. Silently "succeed".
-  if (honeypot) {
+  if (isBotSubmission(submission)) {
     redirect("/intake?saved=1");
   }
 
-  const phone = normalizeUsPhone(phoneRaw);
+  const lead = validateIntakeSubmission(submission);
 
-  if (!phone || consent !== "on") {
+  if (!lead) {
     redirect("/intake?error=1");
   }
 
   try {
-    await createLead({
-      name: name || null,
-      phone,
-      message: message || null,
-      source: "intake_form",
-    });
+    await saveIntakeLead(lead);
   } catch (error) {
     console.error("Failed to save intake form lead", error);
     redirect("/intake?error=1");
