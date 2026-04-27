@@ -5,6 +5,7 @@ create table if not exists public.leads (
   phone text not null,
   message text,
   notes text,
+  job_value_cents integer check (job_value_cents is null or job_value_cents >= 0),
   source text not null check (source in ('missed_call', 'intake_form')),
   status text not null default 'new' check (status in ('new', 'contacted', 'booked', 'dead')),
   sms_status text check (sms_status in ('pending', 'queued', 'sending', 'sent', 'delivered', 'failed', 'undelivered', 'skipped_opt_out', 'skipped_recent')),
@@ -20,6 +21,7 @@ create table if not exists public.leads (
 
 alter table public.leads add column if not exists call_sid text;
 alter table public.leads add column if not exists notes text;
+alter table public.leads add column if not exists job_value_cents integer;
 alter table public.leads add column if not exists sms_status text;
 alter table public.leads add column if not exists sms_error text;
 alter table public.leads add column if not exists twilio_message_sid text;
@@ -31,6 +33,9 @@ alter table public.leads add column if not exists recording_status text;
 alter table public.leads drop constraint if exists leads_status_check;
 alter table public.leads
   add constraint leads_status_check check (status in ('new', 'contacted', 'booked', 'dead'));
+alter table public.leads drop constraint if exists leads_job_value_cents_check;
+alter table public.leads
+  add constraint leads_job_value_cents_check check (job_value_cents is null or job_value_cents >= 0);
 alter table public.leads drop constraint if exists leads_sms_status_check;
 alter table public.leads
   add constraint leads_sms_status_check check (sms_status in ('pending', 'queued', 'sending', 'sent', 'delivered', 'failed', 'undelivered', 'skipped_opt_out', 'skipped_recent'));

@@ -3,16 +3,19 @@ import { isValidLeadsSessionCookie, LEADS_COOKIE_NAME } from "@/lib/leads-auth";
 import { type LeadStatus, updateLead } from "@/lib/supabase";
 
 const MAX_NOTES_LENGTH = 2000;
+const MAX_JOB_VALUE_CENTS = 100_000_000;
 const VALID_STATUSES = new Set<LeadStatus>(["new", "contacted", "booked", "dead"]);
 
 type LeadPatchBody = {
   status?: LeadStatus;
   notes?: string | null;
+  jobValueCents?: number | null;
 };
 
 type LeadUpdate = {
   status?: LeadStatus;
   notes?: string | null;
+  jobValueCents?: number | null;
 };
 
 async function isAuthorized() {
@@ -42,13 +45,28 @@ function validateLeadUpdate(body: LeadPatchBody | null): LeadUpdate | { error: s
     return { error: "Notes are too long" };
   }
 
-  if (!body.status && typeof body.notes === "undefined") {
+  if (
+    body.jobValueCents !== null &&
+    typeof body.jobValueCents !== "undefined" &&
+    (!Number.isInteger(body.jobValueCents) ||
+      body.jobValueCents < 0 ||
+      body.jobValueCents > MAX_JOB_VALUE_CENTS)
+  ) {
+    return { error: "Invalid booked value" };
+  }
+
+  if (
+    !body.status &&
+    typeof body.notes === "undefined" &&
+    typeof body.jobValueCents === "undefined"
+  ) {
     return { error: "Nothing to update" };
   }
 
   return {
     status: body.status,
     notes: typeof body.notes === "undefined" ? undefined : body.notes,
+    jobValueCents: typeof body.jobValueCents === "undefined" ? undefined : body.jobValueCents,
   };
 }
 

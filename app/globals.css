@@ -725,7 +725,8 @@ code {
 }
 
 .home-settings,
-.pulse-strip {
+.pulse-strip,
+.value-strip {
   display: grid;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -1264,6 +1265,11 @@ code {
   margin-bottom: 24px;
 }
 
+.value-strip {
+  grid-template-columns: minmax(0, 1fr);
+  margin-bottom: 24px;
+}
+
 .pulse-cell {
   display: flex;
   flex-direction: column;
@@ -1586,6 +1592,50 @@ code {
   padding: 12px 24px;
 }
 
+.drawer__value-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+  padding: 14px 24px;
+}
+
+.drawer__value-copy {
+  margin: 5px 0 0;
+  color: var(--ink-3);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.money-field {
+  display: inline-flex;
+  min-width: 160px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--ink-2);
+  font-weight: 800;
+}
+
+.money-field span {
+  border-right: 1px solid var(--line);
+  padding: 9px 10px;
+  color: var(--ink-3);
+}
+
+.money-field input {
+  width: 100%;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  padding: 9px 10px;
+  font: inherit;
+  outline: none;
+}
+
 .drawer__message,
 .drawer__notes {
   border-top: 1px solid var(--line);
@@ -1739,9 +1789,14 @@ code {
 
   .drawer__hero,
   .drawer__status-row,
+  .drawer__value-row,
   .follow-up-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .money-field {
+    width: 100%;
   }
 
   .filters {

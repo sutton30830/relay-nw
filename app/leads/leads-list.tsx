@@ -18,13 +18,15 @@ type Filter = "all" | LeadStatus;
 
 type LeadCounts = Record<Filter, number> & {
   actionable: number;
-  missed: number;
   smsIssues: number;
+  bookedValueCents: number;
+  bookedWithValue: number;
 };
 
 type LeadPatch = {
   status?: LeadStatus;
   notes?: string | null;
+  jobValueCents?: number | null;
 };
 
 const FILTERS: Array<{ key: Filter; label: string }> = [
@@ -53,6 +55,7 @@ function createSampleLeads(): Lead[] {
       phone: "+12065550134",
       message: "Kitchen sink is backing up and the disposal is humming. Hoping someone can come by today if possible.",
       notes: "Prefers text. Mentioned they are near Ballard.",
+      job_value_cents: null,
       source: "missed_call",
       status: "new",
       sms_status: "sent",
@@ -72,6 +75,7 @@ function createSampleLeads(): Lead[] {
       phone: "+12065550187",
       message: "Water heater is making a popping noise. Flexible tomorrow morning or early afternoon.",
       notes: "",
+      job_value_cents: null,
       source: "intake_form",
       status: "contacted",
       sms_status: null,
@@ -91,6 +95,7 @@ function createSampleLeads(): Lead[] {
       phone: "+12065550192",
       message: "Outdoor faucet is leaking near the garage.",
       notes: "Left voicemail. Try again after 4pm.",
+      job_value_cents: 42500,
       source: "missed_call",
       status: "booked",
       sms_status: "sent",
@@ -130,6 +135,29 @@ function formatPhone(phone: string) {
   return phone;
 }
 
+function formatCurrency(cents: number | null | undefined) {
+  if (!cents) return "$0";
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(cents / 100);
+}
+
+function dollarsToCents(value: string) {
+  const normalized = value.replace(/[$,\s]/g, "");
+  if (!normalized) return null;
+
+  const dollars = Number(normalized);
+  if (!Number.isFinite(dollars) || dollars < 0) return null;
+
+  return Math.round(dollars * 100);
+}
+
+function centsToInputValue(cents: number | null) {
+  return cents ? String(Math.round(cents / 100)) : "";
+}
+
 function initials(lead: Lead) {
   if (!lead.name) return null;
   return lead.name
@@ -156,20 +184,12 @@ function countLeads(leads: Lead[]): LeadCounts {
     contacted: leads.filter((lead) => lead.status === "contacted").length,
     booked: leads.filter((lead) => lead.status === "booked").length,
     dead: leads.filter((lead) => lead.status === "dead").length,
-    missed: leads.filter((lead) => lead.source === "missed_call").length,
     smsIssues: leads.filter(needsAttention).length,
+    bookedValueCents: leads
+      .filter((lead) => lead.status === "booked")
+      .reduce((total, lead) => total + (lead.job_value_cents ?? 0), 0),
+    bookedWithValue: leads.filter((lead) => lead.status === "booked" && lead.job_value_cents).length,
   };
-}
-
-function countMissedCallsToday(leads: Lead[], now: number) {
-  const dayStart = new Date(now);
-  dayStart.setHours(0, 0, 0, 0);
-
-  return leads.filter(
-    (lead) =>
-      lead.source === "missed_call" &&
-      new Date(lead.created_at).getTime() >= dayStart.getTime(),
-  ).length;
 }
 
 function leadMatchesSearch(lead: Lead, query: string) {
@@ -314,17 +334,24 @@ function LeadDrawer({
   onClose,
   onStatus,
   onNotes,
+  onJobValue,
 }: {
   lead: Lead;
   onClose: () => void;
   onStatus: (id: string, status: LeadStatus) => void;
   onNotes: (id: string, notes: string) => void;
+  onJobValue: (id: string, jobValueCents: number | null) => void;
 }) {
   const [notes, setNotes] = useState(lead.notes ?? "");
+  const [jobValue, setJobValue] = useState(centsToInputValue(lead.job_value_cents));
 
   useEffect(() => {
     setNotes(lead.notes ?? "");
   }, [lead.id, lead.notes]);
+
+  useEffect(() => {
+    setJobValue(centsToInputValue(lead.job_value_cents));
+  }, [lead.id, lead.job_value_cents]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -375,6 +402,26 @@ function LeadDrawer({
         <div className="drawer__status-row">
           <span className="t-eyebrow">Status</span>
           <StatusControl status={lead.status} onChange={(status) => onStatus(lead.id, status)} />
+        </div>
+
+        <div className="drawer__value-row">
+          <div>
+            <p className="t-eyebrow">Booked value</p>
+            <p className="drawer__value-copy">
+              Optional, but useful for showing what Relay helped recover.
+            </p>
+          </div>
+          <label className="money-field">
+            <span>$</span>
+            <input
+              inputMode="numeric"
+              placeholder="0"
+              value={jobValue}
+              onChange={(event) => setJobValue(event.target.value)}
+              onBlur={() => onJobValue(lead.id, dollarsToCents(jobValue))}
+              aria-label="Estimated booked job value"
+            />
+          </label>
         </div>
 
         {lead.message ? (
@@ -493,6 +540,9 @@ function LeadCard({
 
         <div className="lead-card__badges">
           <StatusPill status={lead.status} />
+          {lead.status === "booked" && lead.job_value_cents ? (
+            <span className="chip chip-good">{formatCurrency(lead.job_value_cents)} booked</span>
+          ) : null}
           <SourceBadge source={lead.source} />
           <SmsBadge lead={lead} />
           <VoicemailBadge lead={lead} />
@@ -569,10 +619,6 @@ export function LeadsList({
   }, []);
 
   const counts = useMemo(() => countLeads(activeItems), [activeItems]);
-  const missedCallsToday = useMemo(
-    () => countMissedCallsToday(activeItems, now),
-    [activeItems, now],
-  );
   const filteredItems = useMemo(
     () => filterLeads(activeItems, filter, query),
     [activeItems, filter, query],
@@ -608,6 +654,19 @@ export function LeadsList({
     updateLocalLead(id, { notes });
 
     const saved = await patchLead(id, { notes });
+    if (!saved) setItems(previousItems);
+  }
+
+  async function updateJobValue(id: string, jobValueCents: number | null) {
+    if (sampleMode) {
+      updateLocalLead(id, { job_value_cents: jobValueCents });
+      return;
+    }
+
+    const previousItems = items;
+    updateLocalLead(id, { job_value_cents: jobValueCents });
+
+    const saved = await patchLead(id, { jobValueCents });
     if (!saved) setItems(previousItems);
   }
 
@@ -671,26 +730,17 @@ export function LeadsList({
         </div>
       </section>
 
-      <div className="pulse-strip">
-        <div className="pulse-cell pulse-cell--accent">
-          <p className="t-eyebrow" style={{ fontSize: 10.5 }}>Needs your reply</p>
-          <p className="pulse-value t-display">{counts.actionable}</p>
-          <p className="pulse-sub">{counts.actionable === 1 ? "lead waiting" : "leads waiting"}</p>
-        </div>
-        <div className="pulse-cell pulse-cell--brand">
-          <p className="t-eyebrow" style={{ fontSize: 10.5 }}>Missed calls today</p>
-          <p className="pulse-value t-display">{missedCallsToday}</p>
-          <p className="pulse-sub">auto-texted when eligible</p>
-        </div>
-        <div className="pulse-cell pulse-cell--good">
-          <p className="t-eyebrow" style={{ fontSize: 10.5 }}>SMS issues</p>
-          <p className="pulse-value t-display">{counts.smsIssues}</p>
-          <p className="pulse-sub">{counts.smsIssues === 1 ? "needs manual follow-up" : "delivery problems"}</p>
-        </div>
+      <div className="value-strip">
         <div className="pulse-cell pulse-cell--neutral">
-          <p className="t-eyebrow" style={{ fontSize: 10.5 }}>Total leads</p>
-          <p className="pulse-value t-display">{counts.all}</p>
-          <p className="pulse-sub">{sampleMode ? "sample data" : "captured so far"}</p>
+          <p className="t-eyebrow" style={{ fontSize: 10.5 }}>Estimated booked value</p>
+          <p className="pulse-value t-display">
+            {counts.bookedWithValue > 0 ? formatCurrency(counts.bookedValueCents) : "Not set"}
+          </p>
+          <p className="pulse-sub">
+            {counts.bookedWithValue > 0
+              ? `${counts.bookedWithValue} ${counts.bookedWithValue === 1 ? "job has" : "jobs have"} a value`
+              : "add values to booked jobs"}
+          </p>
         </div>
       </div>
 
@@ -744,6 +794,7 @@ export function LeadsList({
           onClose={() => setOpenId(null)}
           onStatus={updateStatus}
           onNotes={updateNotes}
+          onJobValue={updateJobValue}
         />
       ) : null}
 

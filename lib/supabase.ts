@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { env } from "@/lib/env";
 
 const LEAD_SELECT_COLUMNS =
-  "id, call_sid, name, phone, message, notes, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, created_at";
+  "id, call_sid, name, phone, message, notes, job_value_cents, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, created_at";
 
 export type LeadSource = "missed_call" | "intake_form";
 export type LeadStatus = "new" | "contacted" | "booked" | "dead";
@@ -41,6 +41,7 @@ export type Lead = {
   phone: string;
   message: string | null;
   notes: string | null;
+  job_value_cents: number | null;
   source: LeadSource;
   status: LeadStatus;
   sms_status: SmsStatus;
@@ -246,7 +247,12 @@ export async function updateLeadRecordingByCallSid(input: {
   };
 }
 
-export async function updateLead(input: { id: string; status?: LeadStatus; notes?: string | null }) {
+export async function updateLead(input: {
+  id: string;
+  status?: LeadStatus;
+  notes?: string | null;
+  jobValueCents?: number | null;
+}) {
   if (shouldSkipDatabaseWrite("lead update", input)) {
     return;
   }
@@ -254,6 +260,7 @@ export async function updateLead(input: { id: string; status?: LeadStatus; notes
   const updates: {
     status?: LeadStatus;
     notes?: string | null;
+    job_value_cents?: number | null;
   } = {};
 
   if (input.status) {
@@ -262,6 +269,10 @@ export async function updateLead(input: { id: string; status?: LeadStatus; notes
 
   if (typeof input.notes !== "undefined") {
     updates.notes = input.notes;
+  }
+
+  if (typeof input.jobValueCents !== "undefined") {
+    updates.job_value_cents = input.jobValueCents;
   }
 
   const { error } = await supabaseAdmin
