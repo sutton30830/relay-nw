@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
-import type { Lead, LeadStatus, WebhookEvent } from "@/lib/supabase";
+import type { Lead, LeadStatus } from "@/lib/supabase";
 
 const STATUS_OPTIONS: LeadStatus[] = ["new", "contacted", "booked", "dead"];
 const STATUS_LABELS: Record<LeadStatus, string> = {
@@ -286,153 +286,6 @@ function formatDuration(seconds: number | null) {
   return `${minutes}m ${remainder.toString().padStart(2, "0")}s voice message`;
 }
 
-function eventPhone(event: WebhookEvent) {
-  const payload = event.payload ?? {};
-  const value =
-    payload.From ||
-    payload.To ||
-    payload.Caller ||
-    payload.Called;
-
-  return typeof value === "string" ? formatPhone(value) : null;
-}
-
-function eventOutcome(event: WebhookEvent) {
-  const payload = event.payload ?? {};
-  const status =
-    payload.DialCallStatus ||
-    payload.MessageStatus ||
-    payload.SmsStatus ||
-    payload.RecordingStatus;
-
-  if (typeof status === "string" && status) {
-    return status;
-  }
-
-  return event.response_status >= 400 ? "request failed" : "received";
-}
-
-function eventErrorText(event: WebhookEvent) {
-  return event.error?.toLowerCase() ?? "";
-}
-
-function eventNeedsReview(event: WebhookEvent) {
-  const note = eventErrorText(event);
-
-  return (
-    event.response_status >= 400 ||
-    note.includes("invalid") ||
-    note.includes("failed") ||
-    note.includes("undelivered") ||
-    note.includes("no lead matched")
-  );
-}
-
-function ownerVisibleEventNote(event: WebhookEvent) {
-  const note = eventErrorText(event);
-
-  if (note.includes("sms status: failed") || note.includes("sms status: undelivered")) {
-    return "Auto-text failed. Follow up manually.";
-  }
-
-  if (note.includes("no lead matched")) {
-    return "Relay could not attach this update to a lead.";
-  }
-
-  if (note.includes("invalid twilio signature")) {
-    return "Twilio signature check failed. Check the webhook URL and app URL.";
-  }
-
-  return null;
-}
-
-function activitySummary(event: WebhookEvent) {
-  const outcome = eventOutcome(event);
-
-  if (event.source === "twilio_voice") {
-    const note = ownerVisibleEventNote(event);
-
-    if (note) {
-      return {
-        title: "Call reached Relay NW",
-        detail: `${eventPhone(event) ? `Caller ${eventPhone(event)} reached Relay. ` : ""}${note}`,
-      };
-    }
-
-    return {
-      title: "Call reached Relay NW",
-      detail: eventPhone(event)
-        ? `Caller ${eventPhone(event)} reached the call handler.`
-        : "Twilio reached the call handler.",
-    };
-  }
-
-  if (event.source === "twilio_dial_status") {
-    if (["no-answer", "busy", "failed", "canceled"].includes(outcome)) {
-      return {
-        title: "Missed call confirmed",
-        detail: `The forwarded call ended as ${outcome}. Relay checked whether to send the auto-text.`,
-      };
-    }
-
-    if (["answered", "completed"].includes(outcome)) {
-      return {
-        title: "Call was answered",
-        detail: "Relay did not send a missed-call text.",
-      };
-    }
-
-    return {
-      title: "Call result received",
-      detail: `Relay received call result: ${outcome}.`,
-    };
-  }
-
-  if (event.source === "twilio_sms_status") {
-    if (["failed", "undelivered"].includes(outcome)) {
-      return {
-        title: "Auto-text did not deliver",
-        detail: "The owner should follow up manually.",
-      };
-    }
-
-    if (outcome === "delivered") {
-      return {
-        title: "Auto-text delivered",
-        detail: "The caller's carrier reported the text as delivered.",
-      };
-    }
-
-    return {
-      title: "Auto-text status updated",
-      detail: `Current text status: ${outcome}.`,
-    };
-  }
-
-  if (event.source === "twilio_inbound_sms") {
-    return {
-      title: "Customer text received",
-      detail: eventPhone(event)
-        ? `Reply came from ${eventPhone(event)}.`
-        : "Relay received a customer reply.",
-    };
-  }
-
-  return {
-    title: "Voicemail saved",
-    detail: "Relay received a voicemail recording update.",
-  };
-}
-
-function activityTone(event: WebhookEvent) {
-  if (eventNeedsReview(event)) return "warn";
-
-  const outcome = eventOutcome(event);
-  if (["failed", "undelivered"].includes(outcome)) return "warn";
-  if (["delivered", "completed", "answered"].includes(outcome)) return "good";
-  return "neutral";
-}
-
 function StatusControl({
   status,
   onChange,
@@ -674,11 +527,9 @@ function LeadCard({
 export function LeadsList({
   leads,
   businessName,
-  webhookEvents,
 }: {
   leads: Lead[];
   businessName: string;
-  webhookEvents: WebhookEvent[];
 }) {
   const router = useRouter();
   const searchRef = useRef<HTMLInputElement | null>(null);
@@ -896,59 +747,6 @@ export function LeadsList({
         />
       ) : null}
 
-      <details className="activity-panel">
-        <summary className="activity-panel__summary">
-          <div>
-            <p className="t-eyebrow">Activity</p>
-            <h3 className="t-display" style={{ fontSize: 24, margin: "4px 0 0" }}>
-              Recent call history
-            </h3>
-          </div>
-          <p style={{ margin: 0, color: "var(--ink-3)", fontSize: 13 }}>
-            Open when you need to check what Relay saw.
-          </p>
-        </summary>
-
-        <div className="activity-panel__content">
-          <p className="activity-panel__count">Last {webhookEvents.length} system updates</p>
-          {webhookEvents.length > 0 ? (
-            <ol className="activity-list">
-              {webhookEvents.map((event) => {
-                const summary = activitySummary(event);
-                const tone = activityTone(event);
-
-                return (
-                  <li className={`activity-item activity-item--${tone}`} key={event.id}>
-                    <div className="activity-item__marker" />
-                    <div className="activity-item__body">
-                      <div className="activity-item__top">
-                        <strong>{summary.title}</strong>
-                        <span>{formatRelativeTime(event.created_at, now)}</span>
-                      </div>
-                      <p>{summary.detail}</p>
-                      {ownerVisibleEventNote(event) ? (
-                        <p className="activity-item__note">{ownerVisibleEventNote(event)}</p>
-                      ) : null}
-                      <details className="activity-details">
-                        <summary>Technical details</summary>
-                        {event.error ? <p>{event.error}</p> : null}
-                        <pre>{JSON.stringify(event.payload, null, 2)}</pre>
-                      </details>
-                    </div>
-                  </li>
-                );
-              })}
-            </ol>
-          ) : (
-            <div className="empty-state empty-state--compact">
-              <div className="empty-state__icon"><Icon name="inbox" size={22} /></div>
-              <p style={{ color: "var(--ink-3)", margin: "8px 0 0" }}>
-                Calls, texts, and voicemail updates will appear here in plain English.
-              </p>
-            </div>
-          )}
-        </div>
-      </details>
     </>
   );
 }
