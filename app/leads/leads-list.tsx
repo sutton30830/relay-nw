@@ -149,13 +149,13 @@ function dollarsToCents(value: string) {
   if (!normalized) return null;
 
   const dollars = Number(normalized);
-  if (!Number.isFinite(dollars) || dollars < 0) return null;
+  if (!Number.isFinite(dollars) || dollars <= 0) return null;
 
   return Math.round(dollars * 100);
 }
 
 function centsToInputValue(cents: number | null) {
-  return cents ? String(Math.round(cents / 100)) : "";
+  return cents && cents > 0 ? String(Math.round(cents / 100)) : "";
 }
 
 function initials(lead: Lead) {
