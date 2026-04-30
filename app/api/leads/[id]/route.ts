@@ -9,12 +9,14 @@ const VALID_STATUSES = new Set<LeadStatus>(["new", "contacted", "booked", "dead"
 type LeadPatchBody = {
   status?: LeadStatus;
   notes?: string | null;
+  booked?: boolean;
   jobValueCents?: number | null;
 };
 
 type LeadUpdate = {
   status?: LeadStatus;
   notes?: string | null;
+  bookedAt?: string | null;
   jobValueCents?: number | null;
 };
 
@@ -45,6 +47,10 @@ function validateLeadUpdate(body: LeadPatchBody | null): LeadUpdate | { error: s
     return { error: "Notes are too long" };
   }
 
+  if (typeof body.booked !== "undefined" && typeof body.booked !== "boolean") {
+    return { error: "Invalid booked state" };
+  }
+
   if (
     body.jobValueCents !== null &&
     typeof body.jobValueCents !== "undefined" &&
@@ -58,6 +64,7 @@ function validateLeadUpdate(body: LeadPatchBody | null): LeadUpdate | { error: s
   if (
     !body.status &&
     typeof body.notes === "undefined" &&
+    typeof body.booked === "undefined" &&
     typeof body.jobValueCents === "undefined"
   ) {
     return { error: "Nothing to update" };
@@ -66,6 +73,7 @@ function validateLeadUpdate(body: LeadPatchBody | null): LeadUpdate | { error: s
   return {
     status: body.status,
     notes: typeof body.notes === "undefined" ? undefined : body.notes,
+    bookedAt: typeof body.booked === "undefined" ? undefined : body.booked ? new Date().toISOString() : null,
     jobValueCents: typeof body.jobValueCents === "undefined" ? undefined : body.jobValueCents,
   };
 }

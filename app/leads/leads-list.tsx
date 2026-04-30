@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
 import type { Lead, LeadStatus } from "@/lib/supabase";
 
-const STATUS_OPTIONS: LeadStatus[] = ["new", "contacted", "booked", "dead"];
+const STATUS_OPTIONS: LeadStatus[] = ["new", "contacted", "dead"];
 const STATUS_LABELS: Record<LeadStatus, string> = {
   new: "New",
   contacted: "Contacted",
@@ -26,6 +26,7 @@ type LeadCounts = Record<Filter, number> & {
 type LeadPatch = {
   status?: LeadStatus;
   notes?: string | null;
+  booked?: boolean;
   jobValueCents?: number | null;
 };
 
@@ -55,6 +56,7 @@ function createSampleLeads(): Lead[] {
       phone: "+12065550134",
       message: "Kitchen sink is backing up and the disposal is humming. Hoping someone can come by today if possible.",
       notes: "Prefers text. Mentioned they are near Ballard.",
+      booked_at: null,
       job_value_cents: null,
       source: "missed_call",
       status: "new",
@@ -75,6 +77,7 @@ function createSampleLeads(): Lead[] {
       phone: "+12065550187",
       message: "Water heater is making a popping noise. Flexible tomorrow morning or early afternoon.",
       notes: "",
+      booked_at: null,
       job_value_cents: null,
       source: "intake_form",
       status: "contacted",
@@ -95,9 +98,10 @@ function createSampleLeads(): Lead[] {
       phone: "+12065550192",
       message: "Outdoor faucet is leaking near the garage.",
       notes: "Left voicemail. Try again after 4pm.",
+      booked_at: new Date(now - 2 * 60 * 60_000).toISOString(),
       job_value_cents: 42500,
       source: "missed_call",
-      status: "booked",
+      status: "dead",
       sms_status: "sent",
       sms_error: null,
       twilio_message_sid: "sample-message-2",
@@ -176,6 +180,10 @@ function needsAttention(lead: Lead) {
   return lead.sms_status === "failed" || lead.sms_status === "undelivered";
 }
 
+function isBookedLead(lead: Lead) {
+  return Boolean(lead.booked_at || lead.status === "booked" || lead.job_value_cents);
+}
+
 function countLeads(leads: Lead[]): LeadCounts {
   return {
     all: leads.length,
@@ -186,9 +194,9 @@ function countLeads(leads: Lead[]): LeadCounts {
     dead: leads.filter((lead) => lead.status === "dead").length,
     smsIssues: leads.filter(needsAttention).length,
     bookedValueCents: leads
-      .filter((lead) => lead.status === "booked")
+      .filter(isBookedLead)
       .reduce((total, lead) => total + (lead.job_value_cents ?? 0), 0),
-    bookedWithValue: leads.filter((lead) => lead.status === "booked" && lead.job_value_cents).length,
+    bookedWithValue: leads.filter((lead) => isBookedLead(lead) && lead.job_value_cents).length,
   };
 }
 
@@ -205,7 +213,7 @@ function leadMatchesSearch(lead: Lead, query: string) {
 
 function filterLeads(leads: Lead[], filter: Filter, query: string) {
   return leads.filter((lead) => {
-    const matchesFilter = filter === "all" || lead.status === filter;
+    const matchesFilter = filter === "all" || (filter === "booked" ? isBookedLead(lead) : lead.status === filter);
     return matchesFilter && leadMatchesSearch(lead, query);
   });
 }
@@ -255,6 +263,16 @@ function followUpStatusText(lead: Lead) {
 
 function StatusPill({ status }: { status: LeadStatus }) {
   return <span className={`chip status-pill--${status}`}>{STATUS_LABELS[status]}</span>;
+}
+
+function BookedBadge({ lead }: { lead: Lead }) {
+  if (!isBookedLead(lead)) return null;
+
+  return (
+    <span className="chip chip-good">
+      {lead.job_value_cents ? `${formatCurrency(lead.job_value_cents)} booked` : "Booked job"}
+    </span>
+  );
 }
 
 function SourceBadge({ source }: { source: Lead["source"] }) {
@@ -329,6 +347,25 @@ function StatusControl({
   );
 }
 
+function BookedToggle({
+  booked,
+  onChange,
+}: {
+  booked: boolean;
+  onChange: (booked: boolean) => void;
+}) {
+  return (
+    <label className={`booked-toggle ${booked ? "booked-toggle--on" : ""}`}>
+      <input
+        type="checkbox"
+        checked={booked}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span>Booked job</span>
+    </label>
+  );
+}
+
 function BookedValueInput({
   valueCents,
   onSave,
@@ -372,16 +409,19 @@ function LeadDrawer({
   lead,
   onClose,
   onStatus,
+  onBooked,
   onNotes,
   onJobValue,
 }: {
   lead: Lead;
   onClose: () => void;
   onStatus: (id: string, status: LeadStatus) => void;
+  onBooked: (id: string, booked: boolean) => void;
   onNotes: (id: string, notes: string) => void;
   onJobValue: (id: string, jobValueCents: number | null) => void;
 }) {
   const [notes, setNotes] = useState(lead.notes ?? "");
+  const booked = isBookedLead(lead);
 
   useEffect(() => {
     setNotes(lead.notes ?? "");
@@ -426,6 +466,7 @@ function LeadDrawer({
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <StatusPill status={lead.status} />
+              <BookedBadge lead={lead} />
               <SourceBadge source={lead.source} />
               <SmsBadge lead={lead} />
               <VoicemailBadge lead={lead} />
@@ -440,11 +481,12 @@ function LeadDrawer({
 
         <div className="drawer__value-row">
           <div>
-            <p className="t-eyebrow">Booked value</p>
+            <p className="t-eyebrow">Outcome</p>
             <p className="drawer__value-copy">
-              Optional, but useful for showing what Relay helped recover.
+              Mark booked and add the job value so Relay can show what was recovered.
             </p>
           </div>
+          <BookedToggle booked={booked} onChange={(nextBooked) => onBooked(lead.id, nextBooked)} />
           <BookedValueInput
             valueCents={lead.job_value_cents}
             onSave={(jobValueCents) => onJobValue(lead.id, jobValueCents)}
@@ -539,15 +581,18 @@ function LeadCard({
   now,
   onOpen,
   onStatus,
+  onBooked,
   onJobValue,
 }: {
   lead: Lead;
   now: number;
   onOpen: (id: string) => void;
   onStatus: (id: string, status: LeadStatus) => void;
+  onBooked: (id: string, booked: boolean) => void;
   onJobValue: (id: string, jobValueCents: number | null) => void;
 }) {
   const attention = needsAttention(lead);
+  const booked = isBookedLead(lead);
 
   return (
     <article
@@ -569,9 +614,7 @@ function LeadCard({
 
         <div className="lead-card__badges">
           <StatusPill status={lead.status} />
-          {lead.status === "booked" && lead.job_value_cents ? (
-            <span className="chip chip-good">{formatCurrency(lead.job_value_cents)} booked</span>
-          ) : null}
+          <BookedBadge lead={lead} />
           <SourceBadge source={lead.source} />
           <SmsBadge lead={lead} />
           <VoicemailBadge lead={lead} />
@@ -587,7 +630,7 @@ function LeadCard({
         </div>
       ) : null}
 
-      {lead.status === "booked" ? (
+      {booked ? (
         <div className="lead-card__value" onClick={(event) => event.stopPropagation()}>
           <span className="lead-card__value-label">Booked value</span>
           <BookedValueInput
@@ -605,6 +648,7 @@ function LeadCard({
         <a className="btn btn-secondary btn-sm" href={`sms:${lead.phone}`}>
           <Icon name="message" size={13} /> Text
         </a>
+        <BookedToggle booked={booked} onChange={(nextBooked) => onBooked(lead.id, nextBooked)} />
         <StatusControl status={lead.status} onChange={(status) => onStatus(lead.id, status)} />
         <button className="btn btn-ghost btn-sm ml-auto" type="button" onClick={() => onOpen(lead.id)}>
           Open <Icon name="chevronRight" size={13} />
@@ -681,6 +725,29 @@ export function LeadsList({
     updateLocalLead(id, { status });
 
     const saved = await patchLead(id, { status });
+    if (!saved) setItems(previousItems);
+  }
+
+  async function updateBooked(id: string, booked: boolean) {
+    const currentLead = activeItems.find((lead) => lead.id === id);
+    const bookedAt = booked ? currentLead?.booked_at ?? new Date().toISOString() : null;
+    const updates: Partial<Lead> = {
+      booked_at: bookedAt,
+      job_value_cents: booked ? currentLead?.job_value_cents ?? null : null,
+    };
+
+    if (sampleMode) {
+      updateLocalLead(id, updates);
+      return;
+    }
+
+    const previousItems = items;
+    updateLocalLead(id, updates);
+
+    const saved = await patchLead(id, {
+      booked,
+      jobValueCents: booked ? currentLead?.job_value_cents ?? null : null,
+    });
     if (!saved) setItems(previousItems);
   }
 
@@ -811,6 +878,7 @@ export function LeadsList({
             now={now}
             onOpen={setOpenId}
             onStatus={updateStatus}
+            onBooked={updateBooked}
             onJobValue={updateJobValue}
           />
         ))}
@@ -828,11 +896,12 @@ export function LeadsList({
 
       {openLead ? (
         <LeadDrawer
-          lead={openLead}
-          onClose={() => setOpenId(null)}
-          onStatus={updateStatus}
-          onNotes={updateNotes}
-          onJobValue={updateJobValue}
+            lead={openLead}
+            onClose={() => setOpenId(null)}
+            onStatus={updateStatus}
+            onBooked={updateBooked}
+            onNotes={updateNotes}
+            onJobValue={updateJobValue}
         />
       ) : null}
 

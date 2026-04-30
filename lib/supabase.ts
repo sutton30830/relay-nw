@@ -2,6 +2,8 @@ import { createClient } from "@supabase/supabase-js";
 import { env } from "@/lib/env";
 
 const LEAD_SELECT_COLUMNS =
+  "id, call_sid, name, phone, message, notes, booked_at, job_value_cents, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, created_at";
+const LEGACY_LEAD_SELECT_COLUMNS =
   "id, call_sid, name, phone, message, notes, job_value_cents, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, created_at";
 
 export type LeadSource = "missed_call" | "intake_form";
@@ -41,6 +43,7 @@ export type Lead = {
   phone: string;
   message: string | null;
   notes: string | null;
+  booked_at: string | null;
   job_value_cents: number | null;
   source: LeadSource;
   status: LeadStatus;
@@ -83,6 +86,22 @@ function throwIfSupabaseError(error: { message: string } | null) {
   if (error) {
     throw error;
   }
+}
+
+function isMissingBookedAtColumnError(error: { message: string } | null) {
+  return Boolean(error?.message.includes("booked_at"));
+}
+
+function normalizeLead(lead: Lead): Lead {
+  if (lead.status !== "booked") {
+    return lead;
+  }
+
+  return {
+    ...lead,
+    booked_at: lead.booked_at ?? lead.created_at,
+    status: "dead",
+  };
 }
 
 export async function createLead(input: {
@@ -149,14 +168,31 @@ export async function getLeads() {
     return [] as Lead[];
   }
 
-  const { data, error } = await supabaseAdmin
+  const query = supabaseAdmin
     .from("leads")
     .select(LEAD_SELECT_COLUMNS)
     .order("created_at", { ascending: false });
+  const { data, error } = await query;
+
+  if (error && error.message.includes("booked_at")) {
+    console.warn("leads.booked_at is missing. Run supabase.sql to enable booked outcome tracking.");
+
+    const { data: legacyData, error: legacyError } = await supabaseAdmin
+      .from("leads")
+      .select(LEGACY_LEAD_SELECT_COLUMNS)
+      .order("created_at", { ascending: false });
+
+    throwIfSupabaseError(legacyError);
+
+    return ((legacyData ?? []).map((lead) => normalizeLead({
+      ...lead,
+      booked_at: lead.status === "booked" ? lead.created_at : null,
+    } as Lead)));
+  }
 
   throwIfSupabaseError(error);
 
-  return (data ?? []) as Lead[];
+  return ((data ?? []) as Lead[]).map(normalizeLead);
 }
 
 export async function getRecentWebhookEvents(limit = 20) {
@@ -251,6 +287,7 @@ export async function updateLead(input: {
   id: string;
   status?: LeadStatus;
   notes?: string | null;
+  bookedAt?: string | null;
   jobValueCents?: number | null;
 }) {
   if (shouldSkipDatabaseWrite("lead update", input)) {
@@ -260,6 +297,7 @@ export async function updateLead(input: {
   const updates: {
     status?: LeadStatus;
     notes?: string | null;
+    booked_at?: string | null;
     job_value_cents?: number | null;
   } = {};
 
@@ -271,6 +309,10 @@ export async function updateLead(input: {
     updates.notes = input.notes;
   }
 
+  if (typeof input.bookedAt !== "undefined") {
+    updates.booked_at = input.bookedAt;
+  }
+
   if (typeof input.jobValueCents !== "undefined") {
     updates.job_value_cents = input.jobValueCents;
   }
@@ -279,6 +321,24 @@ export async function updateLead(input: {
     .from("leads")
     .update(updates)
     .eq("id", input.id);
+
+  if (isMissingBookedAtColumnError(error) && typeof updates.booked_at !== "undefined") {
+    console.warn("leads.booked_at is missing. Run supabase.sql to persist booked outcome tracking.");
+    const legacyUpdates = { ...updates };
+    delete legacyUpdates.booked_at;
+
+    if (Object.keys(legacyUpdates).length === 0) {
+      return;
+    }
+
+    const { error: legacyError } = await supabaseAdmin
+      .from("leads")
+      .update(legacyUpdates)
+      .eq("id", input.id);
+
+    throwIfSupabaseError(legacyError);
+    return;
+  }
 
   throwIfSupabaseError(error);
 }

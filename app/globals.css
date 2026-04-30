@@ -1559,6 +1559,33 @@ code {
   gap: 8px;
 }
 
+.booked-toggle {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink-3);
+  padding: 6px 11px;
+  font-size: 12.5px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.booked-toggle input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--brand);
+}
+
+.booked-toggle--on {
+  border-color: color-mix(in oklab, var(--good) 25%, var(--line));
+  background: var(--good-soft);
+  color: var(--good);
+}
+
 .lead-card__status-ctrl {
   display: inline-flex;
   overflow: hidden;
