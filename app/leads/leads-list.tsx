@@ -329,6 +329,45 @@ function StatusControl({
   );
 }
 
+function BookedValueInput({
+  valueCents,
+  onSave,
+  compact = false,
+}: {
+  valueCents: number | null;
+  onSave: (jobValueCents: number | null) => void;
+  compact?: boolean;
+}) {
+  const [value, setValue] = useState(centsToInputValue(valueCents));
+
+  useEffect(() => {
+    setValue(centsToInputValue(valueCents));
+  }, [valueCents]);
+
+  function saveValue() {
+    onSave(dollarsToCents(value));
+  }
+
+  return (
+    <label className={`money-field ${compact ? "money-field--compact" : ""}`}>
+      <span>$</span>
+      <input
+        inputMode="numeric"
+        placeholder="0"
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        onBlur={saveValue}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.currentTarget.blur();
+          }
+        }}
+        aria-label="Estimated booked job value"
+      />
+    </label>
+  );
+}
+
 function LeadDrawer({
   lead,
   onClose,
@@ -343,15 +382,10 @@ function LeadDrawer({
   onJobValue: (id: string, jobValueCents: number | null) => void;
 }) {
   const [notes, setNotes] = useState(lead.notes ?? "");
-  const [jobValue, setJobValue] = useState(centsToInputValue(lead.job_value_cents));
 
   useEffect(() => {
     setNotes(lead.notes ?? "");
   }, [lead.id, lead.notes]);
-
-  useEffect(() => {
-    setJobValue(centsToInputValue(lead.job_value_cents));
-  }, [lead.id, lead.job_value_cents]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -411,17 +445,10 @@ function LeadDrawer({
               Optional, but useful for showing what Relay helped recover.
             </p>
           </div>
-          <label className="money-field">
-            <span>$</span>
-            <input
-              inputMode="numeric"
-              placeholder="0"
-              value={jobValue}
-              onChange={(event) => setJobValue(event.target.value)}
-              onBlur={() => onJobValue(lead.id, dollarsToCents(jobValue))}
-              aria-label="Estimated booked job value"
-            />
-          </label>
+          <BookedValueInput
+            valueCents={lead.job_value_cents}
+            onSave={(jobValueCents) => onJobValue(lead.id, jobValueCents)}
+          />
         </div>
 
         {lead.message ? (
@@ -512,11 +539,13 @@ function LeadCard({
   now,
   onOpen,
   onStatus,
+  onJobValue,
 }: {
   lead: Lead;
   now: number;
   onOpen: (id: string) => void;
   onStatus: (id: string, status: LeadStatus) => void;
+  onJobValue: (id: string, jobValueCents: number | null) => void;
 }) {
   const attention = needsAttention(lead);
 
@@ -555,6 +584,17 @@ function LeadCard({
         <div className="lead-card__alert">
           <Icon name="alertTriangle" size={14} />
           <span>{lead.sms_error || "SMS delivery failed"} - call them directly.</span>
+        </div>
+      ) : null}
+
+      {lead.status === "booked" ? (
+        <div className="lead-card__value" onClick={(event) => event.stopPropagation()}>
+          <span className="lead-card__value-label">Booked value</span>
+          <BookedValueInput
+            compact
+            valueCents={lead.job_value_cents}
+            onSave={(jobValueCents) => onJobValue(lead.id, jobValueCents)}
+          />
         </div>
       ) : null}
 
@@ -728,21 +768,18 @@ export function LeadsList({
             )}
           </h2>
         </div>
-      </section>
-
-      <div className="value-strip">
-        <div className="pulse-cell pulse-cell--neutral">
-          <p className="t-eyebrow" style={{ fontSize: 10.5 }}>Estimated booked value</p>
-          <p className="pulse-value t-display">
-            {counts.bookedWithValue > 0 ? formatCurrency(counts.bookedValueCents) : "Not set"}
-          </p>
-          <p className="pulse-sub">
+        <aside className="revenue-summary" aria-label="Estimated revenue recovered">
+          <span className="revenue-summary__label">Estimated revenue recovered</span>
+          <strong className="revenue-summary__amount t-display">
+            {counts.bookedWithValue > 0 ? formatCurrency(counts.bookedValueCents) : "Add values"}
+          </strong>
+          <span className="revenue-summary__note">
             {counts.bookedWithValue > 0
-              ? `${counts.bookedWithValue} ${counts.bookedWithValue === 1 ? "job has" : "jobs have"} a value`
-              : "add values to booked jobs"}
-          </p>
-        </div>
-      </div>
+              ? `${counts.bookedWithValue} ${counts.bookedWithValue === 1 ? "booked job" : "booked jobs"} counted`
+              : "Enter job value when a lead books."}
+          </span>
+        </aside>
+      </section>
 
       <nav className="filters clean-scroll" aria-label="Filter leads">
         {FILTERS.map((item) => {
@@ -774,6 +811,7 @@ export function LeadsList({
             now={now}
             onOpen={setOpenId}
             onStatus={updateStatus}
+            onJobValue={updateJobValue}
           />
         ))}
 

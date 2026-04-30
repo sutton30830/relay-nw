@@ -725,8 +725,7 @@ code {
 }
 
 .home-settings,
-.pulse-strip,
-.value-strip {
+.pulse-strip {
   display: grid;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -1265,11 +1264,6 @@ code {
   margin-bottom: 24px;
 }
 
-.value-strip {
-  grid-template-columns: minmax(0, 1fr);
-  margin-bottom: 24px;
-}
-
 .pulse-cell {
   display: flex;
   flex-direction: column;
@@ -1304,6 +1298,43 @@ code {
   margin: 2px 0 0;
   color: var(--ink-3);
   font-size: 12px;
+}
+
+.revenue-summary {
+  width: min(100%, 310px);
+  border: 1px solid color-mix(in oklab, var(--brand) 14%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--brand-soft) 28%, var(--panel));
+  padding: 13px 15px 14px;
+}
+
+.revenue-summary__label,
+.revenue-summary__note {
+  display: block;
+}
+
+.revenue-summary__label {
+  color: var(--ink-3);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.revenue-summary__amount {
+  display: block;
+  margin-top: 6px;
+  color: var(--brand);
+  font-size: clamp(28px, 3vw, 38px);
+  font-weight: 400;
+  line-height: 0.95;
+}
+
+.revenue-summary__note {
+  margin-top: 6px;
+  color: var(--ink-3);
+  font-size: 12.5px;
+  line-height: 1.35;
 }
 
 .filters {
@@ -1502,6 +1533,26 @@ code {
   font-size: 13px;
 }
 
+.lead-card__value {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-2);
+  margin-top: 12px;
+  padding: 7px 8px 7px 12px;
+}
+
+.lead-card__value-label {
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .lead-card__actions {
   align-items: center;
   margin-top: 14px;
@@ -1634,6 +1685,17 @@ code {
   padding: 9px 10px;
   font: inherit;
   outline: none;
+}
+
+.money-field--compact {
+  min-width: 112px;
+  background: var(--panel);
+}
+
+.money-field--compact span,
+.money-field--compact input {
+  padding-top: 7px;
+  padding-bottom: 7px;
 }
 
 .drawer__message,
@@ -1790,12 +1852,18 @@ code {
   .drawer__hero,
   .drawer__status-row,
   .drawer__value-row,
+  .lead-card__value,
   .follow-up-actions {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .money-field {
+  .money-field,
+  .money-field--compact {
+    width: 100%;
+  }
+
+  .revenue-summary {
     width: 100%;
   }
 
