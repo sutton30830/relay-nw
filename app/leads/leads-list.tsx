@@ -483,7 +483,7 @@ function LeadDrawer({
           <div>
             <p className="t-eyebrow">Outcome</p>
             <p className="drawer__value-copy">
-              Mark booked and add the job value so Relay can show what was recovered.
+              Mark booked and add the job value so Relay can track booked work.
             </p>
           </div>
           <BookedToggle booked={booked} onChange={(nextBooked) => onBooked(lead.id, nextBooked)} />
@@ -835,8 +835,8 @@ export function LeadsList({
             )}
           </h2>
         </div>
-        <aside className="revenue-summary" aria-label="Estimated revenue recovered">
-          <span className="revenue-summary__label">Estimated revenue recovered</span>
+        <aside className="revenue-summary" aria-label="Booked value tracked">
+          <span className="revenue-summary__label">Booked value tracked</span>
           <strong className="revenue-summary__amount t-display">
             {counts.bookedWithValue > 0 ? formatCurrency(counts.bookedValueCents) : "Add values"}
           </strong>
