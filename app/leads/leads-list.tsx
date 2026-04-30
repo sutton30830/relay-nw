@@ -14,7 +14,7 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
   dead: "Closed",
 };
 
-type Filter = "all" | LeadStatus;
+type Filter = "all" | Exclude<LeadStatus, "booked">;
 
 type LeadCounts = Record<Filter, number> & {
   actionable: number;
@@ -34,7 +34,6 @@ const FILTERS: Array<{ key: Filter; label: string }> = [
   { key: "all", label: "All" },
   { key: "new", label: "New" },
   { key: "contacted", label: "Contacted" },
-  { key: "booked", label: "Booked" },
   { key: "dead", label: "Closed" },
 ];
 
@@ -190,7 +189,6 @@ function countLeads(leads: Lead[]): LeadCounts {
     new: leads.filter((lead) => lead.status === "new").length,
     actionable: leads.filter((lead) => lead.status === "new" || lead.status === "contacted").length,
     contacted: leads.filter((lead) => lead.status === "contacted").length,
-    booked: leads.filter((lead) => lead.status === "booked").length,
     dead: leads.filter((lead) => lead.status === "dead").length,
     smsIssues: leads.filter(needsAttention).length,
     bookedValueCents: leads
@@ -213,7 +211,7 @@ function leadMatchesSearch(lead: Lead, query: string) {
 
 function filterLeads(leads: Lead[], filter: Filter, query: string) {
   return leads.filter((lead) => {
-    const matchesFilter = filter === "all" || (filter === "booked" ? isBookedLead(lead) : lead.status === filter);
+    const matchesFilter = filter === "all" || lead.status === filter;
     return matchesFilter && leadMatchesSearch(lead, query);
   });
 }
