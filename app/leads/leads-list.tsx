@@ -928,9 +928,13 @@ export function LeadsList({
         {filteredItems.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state__icon"><Icon name="inbox" size={28} /></div>
-            <h3 className="t-display" style={{ fontSize: 24, margin: "12px 0 4px" }}>Nothing here yet.</h3>
+            <h3 className="t-display" style={{ fontSize: 24, margin: "12px 0 4px" }}>
+              {activeItems.length === 0 ? "No missed calls yet." : "No leads in this view."}
+            </h3>
             <p style={{ color: "var(--ink-3)", margin: 0 }}>
-              {filter === "all" ? "Missed calls and intake forms will land here." : "No leads match this view."}
+              {activeItems.length === 0
+                ? "Once someone calls and you miss it, Relay NW will save the caller, voicemail, and follow-up status here."
+                : "Try another status filter or wait for new missed calls to come in."}
             </p>
           </div>
         ) : null}

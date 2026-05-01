@@ -13,7 +13,7 @@ export default function HomePage() {
     },
     {
       icon: "message" as const,
-      title: "Text back automatically",
+      title: "Text them instantly",
       body: "Instead of hitting voicemail, missed callers get a simple text so they can tell you what they need.",
     },
     {
@@ -38,10 +38,10 @@ export default function HomePage() {
           </div>
         </div>
         <div className="app-head__right app-head__right--primary">
-          <Link className="btn btn-secondary btn-header" href="#setup">
-            <Icon name="settings" size={13} /> View setup
+          <Link className="btn btn-primary btn-header" href="#setup">
+            <Icon name="settings" size={13} /> Set up in 10 minutes
           </Link>
-          <Link className="btn btn-primary btn-header" href="/leads">
+          <Link className="btn btn-secondary btn-header" href="/leads">
             <Icon name="inbox" size={13} /> Open inbox
           </Link>
         </div>
@@ -54,8 +54,12 @@ export default function HomePage() {
             Miss a call? That&apos;s a <em>lost job.</em>
           </h2>
           <p className="home-hero__sub">
-            When you miss a call, customers move on. Relay NW texts them so you can call back before
-            they hire someone else.
+            When you miss a call, customers move on. Relay NW texts them right away so you can call
+            back before they hire someone else.
+          </p>
+          <p className="home-hero__sub">
+            Built for local service businesses who can&apos;t answer every call. We&apos;ll walk you
+            through setup step-by-step.
           </p>
           <p className="home-hero__sub">
             Setup takes 5-10 minutes. Texting usually goes live once your number is approved.
@@ -111,9 +115,14 @@ export default function HomePage() {
           ))}
         </div>
 
-        <p className="home-optional">
-          Setup takes 5-10 minutes on your end. Texting activation depends on number approval and usually goes live within a day or two.
-        </p>
+        <div className="home-optional">
+          <strong>What happens next</strong>
+          <span>
+            Setup takes about 5-10 minutes on your end. After your number is approved, missed callers
+            will receive your automatic text and new leads will appear in your inbox.
+          </span>
+          <span>No contracts. Cancel anytime.</span>
+        </div>
       </section>
 
       <footer className="home-footer">

@@ -848,6 +848,8 @@ code {
 }
 
 .home-optional {
+  display: grid;
+  gap: 6px;
   max-width: 760px;
   border-top: 1px solid var(--line);
   margin: -4px 0 0;
@@ -855,6 +857,11 @@ code {
   padding-top: 18px;
   font-size: 15px;
   line-height: 1.6;
+}
+
+.home-optional strong {
+  color: var(--ink);
+  font-size: 16px;
 }
 
 .home-optional a {
