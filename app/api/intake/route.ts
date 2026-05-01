@@ -1,27 +1,24 @@
 import { redirect } from "next/navigation";
 import { createLead } from "@/lib/supabase";
 
-const MAX_NAME_LENGTH = 100;
-const MAX_MESSAGE_LENGTH = 2000;
+const MAX_FIELD_LENGTH = 200;
+const MAX_NOTES_LENGTH = 2000;
+const BUSINESS_TYPES = new Set(["HVAC", "Plumbing", "Electrical", "Other"]);
 
-type IntakeFormSubmission = {
-  name: string;
+type SetupSubmission = {
+  businessName: string;
+  ownerName: string;
   phoneRaw: string;
-  message: string;
-  consent: FormDataEntryValue | null;
+  businessType: string;
+  currentBusinessNumber: string;
+  preferredCallbackNumber: string;
+  notes: string;
   honeypot: string;
 };
 
-type IntakeLeadInput = {
-  name: string | null;
-  phone: string;
-  message: string | null;
-};
-
 /**
- * Lightweight US phone normalization to E.164 so leads page tel:/sms: links
- * always dial correctly. Accepts any punctuation the user typed.
- * Returns null if the value can't be parsed as a plausible US number.
+ * Lightweight US phone normalization to E.164 so owner callback links work.
+ * Accepts punctuation. Returns null if the value isn't a plausible US number.
  */
 function normalizeUsPhone(raw: string): string | null {
   const digits = raw.replace(/\D/g, "");
@@ -38,68 +35,93 @@ function readFormString(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
 }
 
-function parseIntakeForm(formData: FormData): IntakeFormSubmission {
+function parseSetupForm(formData: FormData): SetupSubmission {
   return {
-    name: readFormString(formData, "name"),
+    businessName: readFormString(formData, "businessName"),
+    ownerName: readFormString(formData, "ownerName"),
     phoneRaw: readFormString(formData, "phone"),
-    message: readFormString(formData, "message"),
-    consent: formData.get("consent"),
+    businessType: readFormString(formData, "businessType"),
+    currentBusinessNumber: readFormString(formData, "currentBusinessNumber"),
+    preferredCallbackNumber: readFormString(formData, "preferredCallbackNumber"),
+    notes: readFormString(formData, "notes"),
     honeypot: readFormString(formData, "company"),
   };
 }
 
-function isBotSubmission(submission: IntakeFormSubmission) {
-  // Spam trap: bots tend to fill every field. Silently "succeed".
+function isBotSubmission(submission: SetupSubmission) {
   return Boolean(submission.honeypot);
 }
 
-function validateIntakeSubmission(submission: IntakeFormSubmission): IntakeLeadInput | null {
-  const phone = normalizeUsPhone(submission.phoneRaw);
+function isTooLong(value: string, max: number) {
+  return value.length > max;
+}
 
-  if (!phone || submission.consent !== "on") {
+function validateSetupSubmission(submission: SetupSubmission) {
+  const ownerPhone = normalizeUsPhone(submission.phoneRaw);
+
+  if (
+    !submission.businessName ||
+    !submission.ownerName ||
+    !ownerPhone ||
+    !submission.currentBusinessNumber ||
+    !BUSINESS_TYPES.has(submission.businessType)
+  ) {
     return null;
   }
 
-  if (submission.name.length > MAX_NAME_LENGTH) {
-    return null;
-  }
-
-  if (submission.message.length > MAX_MESSAGE_LENGTH) {
+  if (
+    isTooLong(submission.businessName, MAX_FIELD_LENGTH) ||
+    isTooLong(submission.ownerName, MAX_FIELD_LENGTH) ||
+    isTooLong(submission.currentBusinessNumber, MAX_FIELD_LENGTH) ||
+    isTooLong(submission.preferredCallbackNumber, MAX_FIELD_LENGTH) ||
+    isTooLong(submission.notes, MAX_NOTES_LENGTH)
+  ) {
     return null;
   }
 
   return {
-    name: submission.name || null,
-    phone,
-    message: submission.message || null,
+    ownerPhone,
+    message: [
+      "Relay NW setup request",
+      `Business name: ${submission.businessName}`,
+      `Owner name: ${submission.ownerName}`,
+      `Business type: ${submission.businessType}`,
+      `Owner phone: ${submission.phoneRaw}`,
+      `Current business number: ${submission.currentBusinessNumber}`,
+      submission.preferredCallbackNumber
+        ? `Preferred callback number: ${submission.preferredCallbackNumber}`
+        : null,
+      submission.notes ? `Notes: ${submission.notes}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    leadName: `${submission.businessName} - ${submission.ownerName}`,
   };
-}
-
-async function saveIntakeLead(lead: IntakeLeadInput) {
-  await createLead({
-    ...lead,
-    source: "intake_form",
-  });
 }
 
 export async function POST(request: Request) {
   const formData = await request.formData();
-  const submission = parseIntakeForm(formData);
+  const submission = parseSetupForm(formData);
 
   if (isBotSubmission(submission)) {
     redirect("/intake?saved=1");
   }
 
-  const lead = validateIntakeSubmission(submission);
+  const setupLead = validateSetupSubmission(submission);
 
-  if (!lead) {
+  if (!setupLead) {
     redirect("/intake?error=1");
   }
 
   try {
-    await saveIntakeLead(lead);
+    await createLead({
+      name: setupLead.leadName,
+      phone: setupLead.ownerPhone,
+      message: setupLead.message,
+      source: "intake_form",
+    });
   } catch (error) {
-    console.error("Failed to save intake form lead", error);
+    console.error("Failed to save Relay NW setup request", error);
     redirect("/intake?error=1");
   }
 

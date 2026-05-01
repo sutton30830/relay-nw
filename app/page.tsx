@@ -38,7 +38,7 @@ export default function HomePage() {
           </div>
         </div>
         <div className="app-head__right app-head__right--primary">
-          <Link className="btn btn-primary btn-header" href="#setup">
+          <Link className="btn btn-primary btn-header" href="/intake">
             <Icon name="settings" size={13} /> Set up in 10 minutes
           </Link>
           <Link className="btn btn-secondary btn-header" href="/leads">
