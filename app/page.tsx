@@ -9,17 +9,17 @@ export default function HomePage() {
     {
       icon: "phone" as const,
       title: "Forward missed calls",
-      body: "Keep your number. Relay catches the overflow.",
+      body: "Keep your number. Send unanswered calls to Relay.",
     },
     {
       icon: "message" as const,
       title: "We text them instantly",
-      body: "Callers get a quick text before they move on.",
+      body: "They get a reply before they call someone else.",
     },
     {
       icon: "inbox" as const,
-      title: "You book the job",
-      body: "Open the lead, call back, and keep the work.",
+      title: "You win the job",
+      body: "Call back fast and turn the request into work.",
     },
   ];
 
@@ -39,7 +39,7 @@ export default function HomePage() {
         </div>
         <div className="app-head__right app-head__right--primary">
           <Link className="btn btn-primary btn-header" href="/intake">
-            <Icon name="settings" size={13} /> Set up in 10 minutes
+            <Icon name="settings" size={13} /> Stop losing jobs
           </Link>
           <Link className="btn btn-secondary btn-header" href="/leads">
             <Icon name="inbox" size={13} /> Open inbox
@@ -54,15 +54,17 @@ export default function HomePage() {
             Miss a call? That&apos;s a <em>lost job.</em>
           </h2>
           <p className="home-hero__sub">
-            Relay NW texts missed callers right away and saves the lead, so you can call back before
-            they hire someone else.
+            Relay NW texts missed callers right away, captures the request, and helps you call back
+            before the job goes to someone else.
           </p>
           <div className="home-hero__actions">
             <Link className="btn btn-primary" href="/intake">
-              <Icon name="settings" size={14} /> Set up in 10 minutes
+              <Icon name="settings" size={14} /> Start catching missed calls - $99/month
             </Link>
           </div>
-          <p className="home-hero__note">No contracts. Cancel anytime.</p>
+          <p className="home-hero__note">
+            Takes 5-10 minutes to set up. Texting goes live within 1-2 days.
+          </p>
         </div>
 
         <aside className="phone-mock" aria-label="Missed-call SMS preview">
@@ -94,10 +96,10 @@ export default function HomePage() {
       <section className="client-section" id="setup">
         <div className="client-section__intro">
           <p className="t-eyebrow">Built for busy trades</p>
-          <h2 className="t-display">Stop losing jobs after hours and on-site.</h2>
+          <h2 className="t-display">Your next job may call while you&apos;re busy.</h2>
           <p>
-            You&apos;re on a job, driving, or closed for the day. A customer calls, gets no answer,
-            and tries the next company. Relay NW keeps them engaged until you can call back.
+            You&apos;re under a sink, driving to the next house, or closed for the day. If nobody
+            answers, that customer may be gone in two minutes. Relay keeps them with you.
           </p>
         </div>
 
@@ -116,13 +118,14 @@ export default function HomePage() {
         </div>
 
         <div className="home-optional">
-          <strong>Start catching missed calls today</strong>
-          <span>Takes about 5-10 minutes on your end.</span>
-          <span>We handle setup and carrier approval.</span>
+          <strong>Start turning calls into jobs today</strong>
+          <span>$99/month. No contracts. Cancel anytime.</span>
+          <span>We handle carrier approval.</span>
           <span>Texting goes live once approved.</span>
+          <span>Missed call → instant text → customer replies → you call back → job booked.</span>
           <p className="home-optional__punch">Every missed call is a job someone else takes.</p>
           <Link className="btn btn-primary home-optional__cta" href="/intake">
-            Start now
+            Get started
           </Link>
         </div>
       </section>
