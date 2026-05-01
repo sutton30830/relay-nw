@@ -9,7 +9,7 @@ export default function HomePage() {
     {
       icon: "phone" as const,
       title: "Forward missed calls",
-      body: "Keep your number and send missed calls to Relay NW.",
+      body: "Keep your number. Relay catches the overflow.",
     },
     {
       icon: "message" as const,
@@ -117,18 +117,18 @@ export default function HomePage() {
 
         <div className="home-optional">
           <strong>Start catching missed calls today</strong>
-          <span>Quick setup on your end.</span>
+          <span>Takes about 5-10 minutes on your end.</span>
           <span>We handle setup and carrier approval.</span>
           <span>Texting goes live once approved.</span>
           <p className="home-optional__punch">Every missed call is a job someone else takes.</p>
           <Link className="btn btn-primary home-optional__cta" href="/intake">
-            Start catching missed calls
+            Start now
           </Link>
         </div>
       </section>
 
       <footer className="home-footer">
-        <span>Relay NW. Missed-call recovery for local service businesses.</span>
+        <span>Relay NW. Built for local service businesses.</span>
         <span>Catch the calls you would have lost.</span>
       </footer>
     </main>
