@@ -468,6 +468,20 @@ code {
   line-height: 1.55;
 }
 
+.home-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.home-hero__note {
+  margin: 12px 0 0;
+  color: var(--ink-3);
+  font-size: 14px;
+  font-weight: 700;
+}
+
 .home-hero-stat {
   display: flex;
   align-items: flex-start;
@@ -877,6 +891,19 @@ code {
 
 .home-optional a:hover {
   text-decoration: underline;
+}
+
+.home-optional .btn {
+  width: fit-content;
+  margin-top: 8px;
+}
+
+.home-optional a.btn-primary {
+  color: #fff;
+}
+
+.home-optional a.btn-primary:hover {
+  text-decoration: none;
 }
 
 .client-split {

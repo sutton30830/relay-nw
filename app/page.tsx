@@ -8,18 +8,18 @@ export default function HomePage() {
   const steps = [
     {
       icon: "phone" as const,
-      title: "Keep your number",
-      body: "Forward missed, busy, or unreachable calls to Relay NW. Your main number stays the same.",
+      title: "Forward missed calls",
+      body: "Keep your number and send missed calls to Relay NW.",
     },
     {
       icon: "message" as const,
-      title: "Text them instantly",
-      body: "Instead of hitting voicemail, missed callers get a simple text so they can tell you what they need.",
+      title: "We text them instantly",
+      body: "Callers get a quick text before they move on.",
     },
     {
       icon: "inbox" as const,
-      title: "Follow up fast",
-      body: "See the caller, voicemail, and next step in one simple inbox.",
+      title: "You book the job",
+      body: "Open the lead, call back, and keep the work.",
     },
   ];
 
@@ -54,16 +54,15 @@ export default function HomePage() {
             Miss a call? That&apos;s a <em>lost job.</em>
           </h2>
           <p className="home-hero__sub">
-            When you miss a call, customers move on. Relay NW texts them right away so you can call
-            back before they hire someone else.
+            Relay NW texts missed callers right away and saves the lead, so you can call back before
+            they hire someone else.
           </p>
-          <p className="home-hero__sub">
-            Built for local service businesses who can&apos;t answer every call. We&apos;ll walk you
-            through setup step-by-step.
-          </p>
-          <p className="home-hero__sub">
-            Setup takes 5-10 minutes. Texting usually goes live once your number is approved.
-          </p>
+          <div className="home-hero__actions">
+            <Link className="btn btn-primary" href="/intake">
+              <Icon name="settings" size={14} /> Set up in 10 minutes
+            </Link>
+          </div>
+          <p className="home-hero__note">No contracts. Cancel anytime.</p>
         </div>
 
         <aside className="phone-mock" aria-label="Missed-call SMS preview">
@@ -94,14 +93,15 @@ export default function HomePage() {
 
       <section className="client-section" id="setup">
         <div className="client-section__intro">
-          <p className="t-eyebrow">How Relay NW works</p>
-          <h2 className="t-display">Turn missed calls into real jobs.</h2>
+          <p className="t-eyebrow">Built for busy trades</p>
+          <h2 className="t-display">Stop losing jobs after hours and on-site.</h2>
           <p>
-            When you&apos;re on a job, driving, or can&apos;t answer, customers move on. Relay NW gives
-            them a quick response so you don&apos;t lose the work.
+            You&apos;re on a job, driving, or closed for the day. A customer calls, gets no answer,
+            and tries the next company. Relay NW keeps them engaged until you can call back.
           </p>
         </div>
 
+        <p className="t-eyebrow">How Relay NW works</p>
         <div className="client-steps">
           {steps.map((step, index) => (
             <article key={step.title} className="panel client-step">
@@ -117,11 +117,12 @@ export default function HomePage() {
 
         <div className="home-optional">
           <strong>What happens next</strong>
-          <span>
-            Setup takes about 5-10 minutes on your end. After your number is approved, missed callers
-            will receive your automatic text and new leads will appear in your inbox.
-          </span>
-          <span>No contracts. Cancel anytime.</span>
+          <span>Takes 5-10 minutes on your end.</span>
+          <span>We handle setup and carrier approval.</span>
+          <span>Texting goes live once approved.</span>
+          <Link className="btn btn-primary btn-sm" href="/intake">
+            Set up in 10 minutes
+          </Link>
         </div>
       </section>
 
