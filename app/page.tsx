@@ -54,8 +54,8 @@ export default function HomePage() {
             Miss a call? That&apos;s a <em>lost job.</em>
           </h2>
           <p className="home-hero__sub">
-            Turn missed calls into booked jobs automatically. Relay NW texts callers right away,
-            captures the request, and helps you call back before they hire someone else.
+            Turn missed calls into booked jobs automatically. Relay NW texts callers right away so
+            they don&apos;t hire someone else.
           </p>
           <div className="home-hero__actions">
             <Link className="btn btn-primary" href="/intake">
