@@ -120,7 +120,7 @@ export default function HomePage() {
           <span>Takes 5-10 minutes on your end.</span>
           <span>We handle setup and carrier approval.</span>
           <span>Texting goes live once approved.</span>
-          <Link className="btn btn-primary btn-sm" href="/intake">
+          <Link className="btn btn-primary home-optional__cta" href="/intake">
             Set up in 10 minutes
           </Link>
         </div>

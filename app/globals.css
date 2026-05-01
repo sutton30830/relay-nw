@@ -868,19 +868,32 @@ code {
 
 .home-optional {
   display: grid;
-  gap: 6px;
-  max-width: 760px;
-  border-top: 1px solid var(--line);
-  margin: -4px 0 0;
+  justify-items: center;
+  gap: 10px;
+  max-width: 860px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: color-mix(in oklab, var(--panel) 78%, var(--brand-soft));
+  margin: 28px auto 8px;
   color: var(--ink-3);
-  padding-top: 18px;
-  font-size: 15px;
+  padding: clamp(42px, 6vw, 72px) clamp(22px, 5vw, 64px);
+  text-align: center;
+  font-size: 17px;
   line-height: 1.6;
+  box-shadow: var(--shadow-sm);
 }
 
 .home-optional strong {
   color: var(--ink);
-  font-size: 16px;
+  font-family: var(--font-display);
+  font-size: clamp(34px, 4vw, 54px);
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.05;
+}
+
+.home-optional span {
+  max-width: 520px;
 }
 
 .home-optional a {
@@ -895,7 +908,14 @@ code {
 
 .home-optional .btn {
   width: fit-content;
-  margin-top: 8px;
+  margin-top: 18px;
+}
+
+.home-optional__cta {
+  min-height: 48px;
+  border-radius: 10px;
+  padding: 0 22px;
+  font-size: 16px;
 }
 
 .home-optional a.btn-primary {
