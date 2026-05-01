@@ -116,12 +116,13 @@ export default function HomePage() {
         </div>
 
         <div className="home-optional">
-          <strong>What happens next</strong>
-          <span>Takes 5-10 minutes on your end.</span>
+          <strong>Start catching missed calls today</strong>
+          <span>Quick setup on your end.</span>
           <span>We handle setup and carrier approval.</span>
           <span>Texting goes live once approved.</span>
+          <p className="home-optional__punch">Every missed call is a job someone else takes.</p>
           <Link className="btn btn-primary home-optional__cta" href="/intake">
-            Set up in 10 minutes
+            Start catching missed calls
           </Link>
         </div>
       </section>

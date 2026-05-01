@@ -896,6 +896,15 @@ code {
   max-width: 520px;
 }
 
+.home-optional__punch {
+  max-width: 560px;
+  margin: 8px 0 0;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
 .home-optional a {
   color: var(--brand);
   font-weight: 800;
