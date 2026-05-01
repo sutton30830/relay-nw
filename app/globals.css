@@ -1409,6 +1409,52 @@ code {
   gap: 10px;
 }
 
+.attention-group {
+  display: grid;
+  gap: 10px;
+  border: 1px solid color-mix(in oklab, var(--danger) 42%, var(--line));
+  border-radius: 16px;
+  background: color-mix(in oklab, var(--danger-soft) 36%, var(--panel));
+  padding: 14px;
+}
+
+.attention-group__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.attention-group__head h3 {
+  margin: 2px 0 0;
+  color: var(--danger);
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.attention-group__head span {
+  border: 1px solid color-mix(in oklab, var(--danger) 35%, var(--line));
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--danger);
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.attention-group__note {
+  color: var(--ink-2);
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.attention-group__list {
+  display: grid;
+  gap: 10px;
+}
+
 .lead-card {
   position: relative;
   border: 1px solid var(--line);

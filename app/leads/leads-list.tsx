@@ -713,6 +713,14 @@ export function LeadsList({
     () => filterLeads(activeItems, filter, query),
     [activeItems, filter, query],
   );
+  const attentionItems = useMemo(
+    () => filteredItems.filter(needsAttention),
+    [filteredItems],
+  );
+  const normalItems = useMemo(
+    () => filteredItems.filter((lead) => !needsAttention(lead)),
+    [filteredItems],
+  );
 
   const openLead = activeItems.find((lead) => lead.id === openId) ?? null;
 
@@ -877,7 +885,35 @@ export function LeadsList({
       </nav>
 
       <div className="leads-list">
-        {filteredItems.map((lead) => (
+        {attentionItems.length > 0 ? (
+          <section className="attention-group" aria-label="Needs attention">
+            <div className="attention-group__head">
+              <div>
+                <p className="t-eyebrow">Needs attention</p>
+                <h3>Follow up manually</h3>
+              </div>
+              <span>{attentionItems.length} {attentionItems.length === 1 ? "lead" : "leads"}</span>
+            </div>
+            <p className="attention-group__note">
+              Auto-text did not complete for these callers. Call or text them directly.
+            </p>
+            <div className="attention-group__list">
+              {attentionItems.map((lead) => (
+                <LeadCard
+                  key={lead.id}
+                  lead={lead}
+                  now={now}
+                  onOpen={setOpenId}
+                  onStatus={updateStatus}
+                  onBooked={updateBooked}
+                  onJobValue={updateJobValue}
+                />
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {normalItems.map((lead) => (
           <LeadCard
             key={lead.id}
             lead={lead}
