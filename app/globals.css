@@ -1424,17 +1424,6 @@ code {
   box-shadow: var(--shadow-md);
 }
 
-.lead-card--new::before {
-  position: absolute;
-  top: 14px;
-  bottom: 14px;
-  left: -1px;
-  width: 3px;
-  border-radius: 999px;
-  background: var(--brand);
-  content: "";
-}
-
 .lead-card--attention {
   border-color: color-mix(in oklab, var(--danger) 50%, var(--line));
   background: linear-gradient(180deg, color-mix(in oklab, var(--danger-soft) 50%, var(--panel)), var(--panel));
@@ -1511,11 +1500,10 @@ code {
 }
 
 .lead-card__msg {
-  border-left: 3px solid var(--line);
   border-radius: 8px;
-  background: var(--panel-2);
+  background: color-mix(in oklab, var(--panel-2) 72%, transparent);
   margin: 12px 0 0;
-  padding: 12px 14px;
+  padding: 10px 12px;
   color: var(--ink-2);
   font-size: 14px;
   line-height: 1.55;
@@ -1856,6 +1844,20 @@ code {
 
   .phone-mock {
     margin: 0 auto;
+  }
+
+  .lead-card__head {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .lead-card__id,
+  .lead-card__badges {
+    width: 100%;
+  }
+
+  .lead-card__badges {
+    justify-content: flex-start;
   }
 }
 

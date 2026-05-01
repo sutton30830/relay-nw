@@ -594,7 +594,7 @@ function LeadCard({
 
   return (
     <article
-      className={`lead-card ${lead.status === "new" ? "lead-card--new" : ""} ${attention ? "lead-card--attention" : ""}`}
+      className={`lead-card ${attention ? "lead-card--attention" : ""}`}
       onClick={() => onOpen(lead.id)}
     >
       <div className="lead-card__head">
@@ -646,8 +646,16 @@ function LeadCard({
         <a className="btn btn-secondary btn-sm" href={`sms:${lead.phone}`}>
           <Icon name="message" size={13} /> Text
         </a>
-        <BookedToggle booked={booked} onChange={(nextBooked) => onBooked(lead.id, nextBooked)} />
-        <StatusControl status={lead.status} onChange={(status) => onStatus(lead.id, status)} />
+        {lead.status === "new" ? (
+          <button className="btn btn-secondary btn-sm" type="button" onClick={() => onStatus(lead.id, "contacted")}>
+            Mark contacted
+          </button>
+        ) : null}
+        {!booked ? (
+          <button className="btn btn-secondary btn-sm" type="button" onClick={() => onBooked(lead.id, true)}>
+            Mark booked
+          </button>
+        ) : null}
         <button className="btn btn-ghost btn-sm ml-auto" type="button" onClick={() => onOpen(lead.id)}>
           Open <Icon name="chevronRight" size={13} />
         </button>
