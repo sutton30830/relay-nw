@@ -65,6 +65,9 @@ export default function HomePage() {
           <p className="home-hero__note">
             Takes 5–10 minutes to set up. Texting goes live within 1–2 days.
           </p>
+          <p className="home-hero__note">
+            Try it for 30 days. If it doesn&apos;t help, we&apos;ll refund you.
+          </p>
         </div>
 
         <aside className="phone-mock" aria-label="Missed-call SMS preview">
@@ -120,6 +123,7 @@ export default function HomePage() {
         <div className="home-optional">
           <strong>Start turning missed calls into jobs today</strong>
           <span>$99/month. No contracts. Cancel anytime.</span>
+          <span>Try it for 30 days. If it doesn&apos;t help, we&apos;ll refund you.</span>
           <span>Missed call → instant text → customer replies → you call back → job booked.</span>
           <p className="home-optional__punch">Every missed call is a job someone else takes.</p>
           <Link className="btn btn-primary home-optional__cta" href="/intake">
