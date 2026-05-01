@@ -176,7 +176,7 @@ function sourceLabel(source: Lead["source"]) {
 }
 
 function needsAttention(lead: Lead) {
-  return lead.sms_status === "failed" || lead.sms_status === "undelivered";
+  return lead.status === "new" && (lead.sms_status === "failed" || lead.sms_status === "undelivered");
 }
 
 function isBookedLead(lead: Lead) {
