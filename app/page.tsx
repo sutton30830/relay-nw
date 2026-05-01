@@ -13,13 +13,13 @@ export default function HomePage() {
     },
     {
       icon: "message" as const,
-      title: "Greet the caller",
-      body: "Relay NW plays your greeting, takes a voicemail, and saves the lead.",
+      title: "Handle missed calls",
+      body: "Relay NW plays your greeting, sends the follow-up, and records the message.",
     },
     {
       icon: "inbox" as const,
       title: "Follow up fast",
-      body: "Open one simple inbox with the caller, message, and next step.",
+      body: "Open one simple inbox with the caller, message, and follow-up status.",
     },
   ];
 
@@ -38,11 +38,11 @@ export default function HomePage() {
           </div>
         </div>
         <div className="app-head__right app-head__right--primary">
-          <Link className="btn btn-secondary btn-header" href="/intake">
-            <Icon name="external" size={13} /> View intake
+          <Link className="btn btn-secondary btn-header" href="#setup">
+            <Icon name="settings" size={13} /> View setup
           </Link>
           <Link className="btn btn-primary btn-header" href="/leads">
-            <Icon name="inbox" size={13} /> Open leads
+            <Icon name="inbox" size={13} /> Open inbox
           </Link>
         </div>
       </header>
@@ -54,8 +54,8 @@ export default function HomePage() {
             Keep your number. Catch more <em>missed calls.</em>
           </h2>
           <p className="home-hero__sub">
-            Relay NW answers missed calls with your greeting, records the message, and saves the
-            caller in one simple inbox.
+            Relay NW answers missed calls with your greeting, texts the caller back, and saves the
+            follow-up in one simple inbox.
           </p>
         </div>
 
@@ -78,15 +78,14 @@ export default function HomePage() {
               </div>
             </div>
             <div className="phone-mock__bubble">
-              Sorry we missed your call. Tell us what you need and we will follow up shortly. Reply
-              STOP to opt out.
+              Sorry we missed your call. Tell us what you need and we will follow up shortly. Reply STOP to opt out.
             </div>
             <p className="phone-mock__time-stamp">Sent after missed call</p>
           </div>
         </aside>
       </section>
 
-      <section className="client-section">
+      <section className="client-section" id="setup">
         <div className="client-section__intro">
           <p className="t-eyebrow">How it works</p>
           <h2 className="t-display">Set up once. Use it every day.</h2>
@@ -108,10 +107,15 @@ export default function HomePage() {
             </article>
           ))}
         </div>
+
+        <p className="home-optional">
+          Already have a booking page or intake form? Relay can link to it. Need a simple form?{" "}
+          <Link href="/intake">Preview the Relay form</Link>.
+        </p>
       </section>
 
       <footer className="home-footer">
-        <span>Relay NW. Missed-call follow-up for local service businesses.</span>
+        <span>Relay NW. Missed-call recovery for local service businesses.</span>
         <span>Keep your number. Catch the next job.</span>
       </footer>
     </main>

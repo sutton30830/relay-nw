@@ -847,6 +847,26 @@ code {
   line-height: 1.6;
 }
 
+.home-optional {
+  max-width: 760px;
+  border-top: 1px solid var(--line);
+  margin: -4px 0 0;
+  color: var(--ink-3);
+  padding-top: 18px;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.home-optional a {
+  color: var(--brand);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.home-optional a:hover {
+  text-decoration: underline;
+}
+
 .client-split {
   display: grid;
   grid-template-columns: 1fr 1fr;
