@@ -39,7 +39,7 @@ export default function HomePage() {
         </div>
         <div className="app-head__right app-head__right--primary">
           <Link className="btn btn-primary btn-header" href="/intake">
-            <Icon name="settings" size={13} /> Stop losing jobs
+            <Icon name="settings" size={13} /> Start catching missed calls
           </Link>
           <Link className="btn btn-secondary btn-header" href="/leads">
             <Icon name="inbox" size={13} /> Open inbox
@@ -54,8 +54,8 @@ export default function HomePage() {
             Miss a call? That&apos;s a <em>lost job.</em>
           </h2>
           <p className="home-hero__sub">
-            Relay NW texts missed callers right away, captures the request, and helps you call back
-            before the job goes to someone else.
+            Turn missed calls into booked jobs automatically. Relay NW texts callers right away,
+            captures the request, and helps you call back before they hire someone else.
           </p>
           <div className="home-hero__actions">
             <Link className="btn btn-primary" href="/intake">
@@ -63,7 +63,7 @@ export default function HomePage() {
             </Link>
           </div>
           <p className="home-hero__note">
-            Takes 5-10 minutes to set up. Texting goes live within 1-2 days.
+            Takes 5–10 minutes to set up. Texting goes live within 1–2 days.
           </p>
         </div>
 
@@ -96,10 +96,10 @@ export default function HomePage() {
       <section className="client-section" id="setup">
         <div className="client-section__intro">
           <p className="t-eyebrow">Built for busy trades</p>
-          <h2 className="t-display">Your next job may call while you&apos;re busy.</h2>
+          <h2 className="t-display">Your next job will call while you&apos;re busy.</h2>
           <p>
             You&apos;re under a sink, driving to the next house, or closed for the day. If nobody
-            answers, that customer may be gone in two minutes. Relay keeps them with you.
+            answers, that customer may call the next company. Relay keeps them with you.
           </p>
         </div>
 
@@ -118,14 +118,12 @@ export default function HomePage() {
         </div>
 
         <div className="home-optional">
-          <strong>Start turning calls into jobs today</strong>
+          <strong>Start turning missed calls into jobs today</strong>
           <span>$99/month. No contracts. Cancel anytime.</span>
-          <span>We handle carrier approval.</span>
-          <span>Texting goes live once approved.</span>
           <span>Missed call → instant text → customer replies → you call back → job booked.</span>
           <p className="home-optional__punch">Every missed call is a job someone else takes.</p>
           <Link className="btn btn-primary home-optional__cta" href="/intake">
-            Get started
+            Start catching missed calls
           </Link>
         </div>
       </section>
