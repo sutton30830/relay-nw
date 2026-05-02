@@ -19,6 +19,9 @@ export default function TermsPage() {
             By contacting a business that uses Relay NW, users may receive SMS messages related
             to their inquiry.
           </p>
+          <p>
+            Relay NW messages are sent only in response to a customer-initiated call or inquiry.
+          </p>
           <ul>
             <li>Message frequency varies</li>
             <li>Message and data rates may apply</li>
