@@ -857,6 +857,19 @@ code {
   font-size: 12.5px;
 }
 
+.home-footer__links {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.home-footer__links a {
+  color: var(--ink-3);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .client-section {
   display: grid;
   gap: 28px;
