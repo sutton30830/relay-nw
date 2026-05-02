@@ -135,6 +135,7 @@ export default function HomePage() {
       <footer className="home-footer">
         <span>Relay NW. Built for local service businesses.</span>
         <span>Catch the calls you would have lost.</span>
+        <span>© 2026 Relay NW. All rights reserved.</span>
         <nav className="home-footer__links" aria-label="Legal links">
           <Link href="/privacy">Privacy Policy</Link>
           <span aria-hidden="true">|</span>
