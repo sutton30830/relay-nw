@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Instrument_Serif, Inter } from "next/font/google";
+import { SiteFooter } from "@/components/site-footer";
 import "./globals.css";
 
 const inter = Inter({
@@ -17,7 +18,7 @@ const instrumentSerif = Instrument_Serif({
 
 export const metadata: Metadata = {
   title: "Relay NW",
-  description: "A simple missed-call text follow-up system for local service businesses.",
+  description: "A simple missed-call text follow-up system from Relay NW.",
 };
 
 export const viewport: Viewport = {
@@ -33,7 +34,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} ${instrumentSerif.variable}`}>{children}</body>
+      <body className={`${inter.variable} ${instrumentSerif.variable}`}>
+        {children}
+        <SiteFooter />
+      </body>
     </html>
   );
 }

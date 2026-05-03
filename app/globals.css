@@ -870,6 +870,33 @@ code {
   text-underline-offset: 3px;
 }
 
+.site-footer {
+  display: flex;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 32px 32px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--ink-4);
+  font-size: 12.5px;
+}
+
+.site-footer__links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.site-footer__links a,
+.consent-row a {
+  color: var(--brand);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .client-section {
   display: grid;
   gap: 28px;
@@ -1204,6 +1231,11 @@ code {
   padding: 24px 28px 28px;
 }
 
+.intake-form__body form {
+  display: grid;
+  gap: 16px;
+}
+
 .intake-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1231,7 +1263,8 @@ code {
 }
 
 .alert,
-.intake-error {
+.intake-error,
+.intake-success {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1240,6 +1273,12 @@ code {
   color: var(--danger);
   padding: 10px 14px;
   font-size: 13.5px;
+}
+
+.intake-success {
+  display: block;
+  background: var(--good-soft);
+  color: var(--good);
 }
 
 .intake-submit {

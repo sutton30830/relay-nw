@@ -8,33 +8,28 @@ export default function TermsPage() {
         <section>
           <h2>Service Description</h2>
           <p>
-            Relay NW provides missed-call response and SMS follow-up tools for local service
-            businesses.
+            Relay NW provides missed-call response and SMS follow-up tools for callers who contact
+            Relay NW.
           </p>
         </section>
 
         <section>
           <h2>SMS Terms</h2>
           <p>
-            By contacting a business that uses Relay NW, users may receive SMS messages related
-            to their inquiry.
+            When you call or submit your phone number via a form to Relay NW, we may send you a
+            one-time text message acknowledging your missed call or inquiry. These messages are
+            solely about the request you initiated; we do not send marketing or promotional texts.
+            Message frequency varies. Message and data rates may apply. You can opt out at any time
+            by replying STOP. Reply HELP for help. Relay NW does not use your phone number for
+            marketing or share it with third parties for promotional purposes.
           </p>
-          <p>
-            Relay NW messages are sent only in response to a customer-initiated call or inquiry.
-          </p>
-          <ul>
-            <li>Message frequency varies</li>
-            <li>Message and data rates may apply</li>
-            <li>Reply STOP to opt out at any time</li>
-            <li>Reply HELP for help</li>
-          </ul>
         </section>
 
         <section>
           <h2>No Guarantee</h2>
           <p>
-            Relay NW helps businesses respond to missed calls but does not guarantee that every
-            message will be delivered, received, or responded to.
+            Relay NW helps respond to missed calls but does not guarantee that every message will
+            be delivered, received, or responded to.
           </p>
           <p>Relay NW is not responsible for:</p>
           <ul>

@@ -8,8 +8,8 @@ export default function PrivacyPage() {
         <section>
           <h2>Overview</h2>
           <p>
-            Relay NW respects user privacy and uses information only to help local service
-            businesses respond to customer inquiries.
+            Relay NW respects user privacy and uses information only to respond to customer
+            inquiries.
           </p>
         </section>
 
@@ -27,28 +27,23 @@ export default function PrivacyPage() {
           <h2>How We Use Information</h2>
           <p>We use information to:</p>
           <ul>
-            <li>help businesses respond to missed calls</li>
+            <li>respond to customer inquiries</li>
             <li>send SMS follow-up messages related to customer inquiries</li>
             <li>route, organize, or prioritize customer requests</li>
-            <li>maintain records of communications for the business</li>
+            <li>maintain records of customer communications</li>
           </ul>
         </section>
 
         <section>
           <h2>SMS Messaging</h2>
           <p>
-            By contacting a business that uses Relay NW, users may receive SMS messages related
-            to their inquiry.
+            By calling or submitting a contact form to Relay NW, you consent to receive a one-time
+            text message regarding your inquiry. Message frequency varies; additional messages will
+            only be sent in response to your replies. Message and data rates may apply. To opt out,
+            reply STOP at any time. To receive help, reply HELP. Relay NW does not sell or share
+            mobile numbers or opt-in consent with third parties for marketing or promotional
+            purposes.
           </p>
-          <p>
-            Relay NW messages are sent only in response to a customer-initiated call or inquiry.
-          </p>
-          <ul>
-            <li>Message frequency varies</li>
-            <li>Message and data rates may apply</li>
-            <li>Reply STOP to opt out</li>
-            <li>Reply HELP for help</li>
-          </ul>
         </section>
 
         <section>

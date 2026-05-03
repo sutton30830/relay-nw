@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { Icon } from "@/components/icon";
 
 function formatUsPhone(value: string) {
@@ -148,6 +149,16 @@ export function IntakeForm() {
           placeholder="Anything helpful about your current phone setup, business hours, or greeting."
           maxLength={2000}
         />
+      </label>
+
+      <label className="consent-row">
+        <input type="checkbox" name="smsConsent" required />
+        <span>
+          I consent to receive a one-time text message from Relay NW regarding my inquiry. Message
+          frequency varies. Message & data rates may apply. Reply STOP to opt out. Reply HELP for
+          help. Read our <Link href="/privacy">Privacy Policy</Link> and{" "}
+          <Link href="/terms">Terms</Link>.
+        </span>
       </label>
 
       {clientError ? (
