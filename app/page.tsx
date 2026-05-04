@@ -63,9 +63,6 @@ export default function HomePage() {
             </Link>
           </div>
           <p className="home-hero__note">
-            Takes 5–10 minutes to set up. Texting goes live within 1–2 days.
-          </p>
-          <p className="home-hero__note">
             Try it for 30 days. If it doesn&apos;t help, we&apos;ll refund you.
           </p>
         </div>
