@@ -31,10 +31,19 @@ export async function handleMissedCall(input: {
   }
 
   if (!env.smsEnabled) {
-    await updateLeadSmsStatus({
-      id: leadResult.leadId,
-      smsStatus: "skipped_disabled",
-    });
+    try {
+      await updateLeadSmsStatus({
+        id: leadResult.leadId,
+        smsStatus: "skipped_disabled",
+      });
+    } catch (error) {
+      console.warn("Could not mark SMS as disabled. Run supabase.sql to allow skipped_disabled.", {
+        callSid,
+        callerPhone,
+        leadId: leadResult.leadId,
+        error,
+      });
+    }
 
     console.info("Missed-call SMS suppressed because SMS_ENABLED is false", {
       callSid,
