@@ -76,6 +76,7 @@ Required:
 - `CALL_MODE`: `forwarding` to keep the existing business number, or `direct` to make the Twilio number the main call number
 - `INTAKE_URL`: public URL for `/intake`
 - `SCHEDULING_URL`: existing scheduling link for the business
+- `SMS_ENABLED`: defaults to `false`; set to `true` only after A2P 10DLC is approved and you are ready for real outbound texts
 - `LEADS_PASSWORD`: shared password for `/leads`
 - `LEADS_COOKIE_SECRET`: long random secret used to sign the `/leads` session cookie
 - `APP_BASE_URL`: public app URL used for Twilio callbacks and signature validation

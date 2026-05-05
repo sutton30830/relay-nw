@@ -30,6 +30,21 @@ export async function handleMissedCall(input: {
     return { inserted: false, smsStatus: "duplicate" as const };
   }
 
+  if (!env.smsEnabled) {
+    await updateLeadSmsStatus({
+      id: leadResult.leadId,
+      smsStatus: "skipped_disabled",
+    });
+
+    console.info("Missed-call SMS suppressed because SMS_ENABLED is false", {
+      callSid,
+      callerPhone,
+      leadId: leadResult.leadId,
+    });
+
+    return { inserted: true, smsStatus: "skipped_disabled" as const };
+  }
+
   const cooldownSince = new Date(
     Date.now() - env.missedCallSmsCooldownHours * 60 * 60 * 1000,
   );

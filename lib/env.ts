@@ -64,6 +64,7 @@ function getAllowUnsignedTwilioWebhooks() {
 
 export const env = {
   callMode: getCallMode(),
+  smsEnabled: getOptionalBooleanEnv("SMS_ENABLED", false),
   businessName: getRequiredEnv("BUSINESS_NAME"),
   intakeUrl: getRequiredEnv("INTAKE_URL"),
   schedulingUrl: getRequiredEnv("SCHEDULING_URL"),

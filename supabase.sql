@@ -9,7 +9,7 @@ create table if not exists public.leads (
   job_value_cents integer check (job_value_cents is null or job_value_cents >= 0),
   source text not null check (source in ('missed_call', 'intake_form')),
   status text not null default 'new' check (status in ('new', 'contacted', 'booked', 'dead')),
-  sms_status text check (sms_status in ('pending', 'queued', 'sending', 'sent', 'delivered', 'failed', 'undelivered', 'skipped_opt_out', 'skipped_recent')),
+  sms_status text check (sms_status in ('pending', 'queued', 'sending', 'sent', 'delivered', 'failed', 'undelivered', 'skipped_disabled', 'skipped_opt_out', 'skipped_recent')),
   sms_error text,
   twilio_message_sid text,
   sms_updated_at timestamptz,
@@ -47,7 +47,7 @@ update public.leads
   where status = 'booked';
 alter table public.leads drop constraint if exists leads_sms_status_check;
 alter table public.leads
-  add constraint leads_sms_status_check check (sms_status in ('pending', 'queued', 'sending', 'sent', 'delivered', 'failed', 'undelivered', 'skipped_opt_out', 'skipped_recent'));
+  add constraint leads_sms_status_check check (sms_status in ('pending', 'queued', 'sending', 'sent', 'delivered', 'failed', 'undelivered', 'skipped_disabled', 'skipped_opt_out', 'skipped_recent'));
 
 create index if not exists leads_created_at_idx on public.leads (created_at desc);
 create index if not exists leads_phone_created_at_idx on public.leads (phone, created_at desc);

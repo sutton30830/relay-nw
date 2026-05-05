@@ -53,7 +53,12 @@ function parseInboundSmsPayload(payload: Record<string, string>) {
 
 function webhookEventNote(input: {
   matchedUrl: string | null;
-  action: "recorded_opt_out" | "forwarded_to_owner" | "ignored_empty_message" | "duplicate_ignored";
+  action:
+    | "recorded_opt_out"
+    | "forwarded_to_owner"
+    | "sms_disabled"
+    | "ignored_empty_message"
+    | "duplicate_ignored";
 }) {
   const notes = [];
 
@@ -69,6 +74,10 @@ function webhookEventNote(input: {
 
   if (input.action === "forwarded_to_owner") {
     notes.push("Forwarded inbound reply to owner.");
+  }
+
+  if (input.action === "sms_disabled") {
+    notes.push("Owner SMS notification skipped because SMS_ENABLED is false.");
   }
 
   if (input.action === "ignored_empty_message") {
@@ -143,6 +152,15 @@ async function handleInboundSms(input: ReturnType<typeof parseInboundSmsPayload>
   if (input.isOptOut) {
     await recordOptOut(input.from);
     return "recorded_opt_out" as const;
+  }
+
+  if (input.shouldNotifyOwner && !env.smsEnabled) {
+    console.info("Inbound SMS owner notification suppressed because SMS_ENABLED is false", {
+      from: input.from,
+      to: input.to,
+    });
+
+    return "sms_disabled" as const;
   }
 
   if (input.shouldNotifyOwner) {

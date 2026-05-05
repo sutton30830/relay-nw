@@ -256,6 +256,10 @@ function followUpStatusText(lead: Lead) {
     return "Auto-text skipped because this caller opted out.";
   }
 
+  if (lead.sms_status === "skipped_disabled") {
+    return "Auto-text is currently turned off. Follow up manually.";
+  }
+
   return "Auto-text pending or waiting on SMS setup.";
 }
 
@@ -299,6 +303,9 @@ function SmsBadge({ lead }: { lead: Lead }) {
   }
   if (lead.sms_status === "skipped_recent") {
     return <span className="chip"><Icon name="clock" size={12} /> Recently texted</span>;
+  }
+  if (lead.sms_status === "skipped_disabled") {
+    return <span className="chip chip-warn"><Icon name="shield" size={12} /> SMS off</span>;
   }
   return <span className="chip chip-warn"><Icon name="clock" size={12} /> SMS pending</span>;
 }
@@ -530,8 +537,8 @@ function LeadDrawer({
         </div>
 
         <div className="follow-up-panel">
-          <div className={`follow-up-status ${lead.sms_status === "failed" ? "follow-up-status--warn" : ""}`}>
-            <Icon name={lead.sms_status === "failed" ? "alertTriangle" : "message"} size={15} />
+          <div className={`follow-up-status ${lead.sms_status === "failed" || lead.sms_status === "skipped_disabled" ? "follow-up-status--warn" : ""}`}>
+            <Icon name={lead.sms_status === "failed" || lead.sms_status === "skipped_disabled" ? "alertTriangle" : "message"} size={15} />
             <span>{followUpStatusText(lead)}</span>
           </div>
           <div className="follow-up-quick">

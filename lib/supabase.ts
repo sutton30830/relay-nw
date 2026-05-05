@@ -16,6 +16,7 @@ export type SmsStatus =
   | "delivered"
   | "failed"
   | "undelivered"
+  | "skipped_disabled"
   | "skipped_opt_out"
   | "skipped_recent"
   | null;
