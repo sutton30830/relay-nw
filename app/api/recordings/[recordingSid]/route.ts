@@ -1,6 +1,13 @@
 import { cookies } from "next/headers";
 import { env } from "@/lib/env";
 import { isValidLeadsSessionCookie, LEADS_COOKIE_NAME } from "@/lib/leads-auth";
+import { recordingBelongsToLead } from "@/lib/supabase";
+
+const PRIVATE_AUDIO_HEADERS = {
+  "Cache-Control": "private, no-store, max-age=0",
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+};
 
 export async function GET(
   _request: Request,
@@ -19,6 +26,14 @@ export async function GET(
     return new Response("Invalid recording", { status: 400 });
   }
 
+  const isKnownRecording = await recordingBelongsToLead(recordingSid);
+  if (!isKnownRecording) {
+    return new Response("Recording unavailable", {
+      status: 404,
+      headers: PRIVATE_AUDIO_HEADERS,
+    });
+  }
+
   const recordingUrl =
     `https://api.twilio.com/2010-04-01/Accounts/${env.twilioAccountSid}/Recordings/${recordingSid}.mp3`;
   const auth = Buffer.from(`${env.twilioAccountSid}:${env.twilioAuthToken}`).toString("base64");
@@ -30,14 +45,17 @@ export async function GET(
   });
 
   if (!recordingResponse.ok || !recordingResponse.body) {
-    return new Response("Recording unavailable", { status: recordingResponse.status });
+    return new Response("Recording unavailable", {
+      status: recordingResponse.status,
+      headers: PRIVATE_AUDIO_HEADERS,
+    });
   }
 
   return new Response(recordingResponse.body, {
     status: 200,
     headers: {
+      ...PRIVATE_AUDIO_HEADERS,
       "Content-Type": recordingResponse.headers.get("content-type") ?? "audio/mpeg",
-      "Cache-Control": "private, no-store",
     },
   });
 }

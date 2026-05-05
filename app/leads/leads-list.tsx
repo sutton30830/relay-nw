@@ -311,7 +311,7 @@ function SmsBadge({ lead }: { lead: Lead }) {
 }
 
 function VoicemailBadge({ lead }: { lead: Lead }) {
-  if (!lead.recording_url && !lead.recording_sid) return null;
+  if (!lead.recording_sid) return null;
 
   return (
     <span className="chip chip-good">
@@ -505,7 +505,7 @@ function LeadDrawer({
           </div>
         ) : null}
 
-        {(lead.recording_url || lead.recording_sid) ? (
+        {lead.recording_sid ? (
           <div className="drawer__message voicemail-card">
             <div>
               <p className="t-eyebrow">Voicemail</p>
@@ -513,19 +513,9 @@ function LeadDrawer({
                 {formatDuration(lead.recording_duration)}
               </p>
             </div>
-            {lead.recording_sid ? (
-              <audio className="voicemail-card__audio" controls src={`/api/recordings/${lead.recording_sid}`}>
-                <a href={`/api/recordings/${lead.recording_sid}`}>Open voicemail</a>
-              </audio>
-            ) : lead.recording_url ? (
-              <a className="btn btn-secondary btn-sm" href={lead.recording_url} target="_blank" rel="noreferrer">
-                Open voicemail
-              </a>
-            ) : (
-              <p style={{ margin: 0, color: "var(--ink-3)", fontSize: 13 }}>
-                Recording is processing in Twilio.
-              </p>
-            )}
+            <audio className="voicemail-card__audio" controls src={`/api/recordings/${lead.recording_sid}`}>
+              <a href={`/api/recordings/${lead.recording_sid}`}>Open voicemail</a>
+            </audio>
           </div>
         ) : null}
 

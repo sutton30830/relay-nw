@@ -215,6 +215,23 @@ export async function getRecentWebhookEvents(limit = 20) {
   return (data ?? []) as WebhookEvent[];
 }
 
+export async function recordingBelongsToLead(recordingSid: string) {
+  if (isPlaceholderSupabaseConfig()) {
+    return false;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("leads")
+    .select("id")
+    .eq("recording_sid", recordingSid)
+    .limit(1)
+    .maybeSingle();
+
+  throwIfSupabaseError(error);
+
+  return Boolean(data?.id);
+}
+
 export async function updateLeadRecordingByCallSid(input: {
   callSid: string;
   callerPhone?: string | null;
