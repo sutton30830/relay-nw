@@ -62,6 +62,24 @@ function getAllowUnsignedTwilioWebhooks() {
   return value;
 }
 
+function isVercelProduction() {
+  return process.env.VERCEL === "1" && process.env.VERCEL_ENV === "production";
+}
+
+function getLeadsCookieSecret() {
+  const value = getOptionalEnv("LEADS_COOKIE_SECRET");
+
+  if (value) {
+    return value;
+  }
+
+  if (isVercelProduction()) {
+    throw new Error("Missing required environment variable: LEADS_COOKIE_SECRET");
+  }
+
+  return getRequiredEnv("LEADS_PASSWORD");
+}
+
 export const env = {
   callMode: getCallMode(),
   smsEnabled: getOptionalBooleanEnv("SMS_ENABLED", false),
@@ -76,7 +94,7 @@ export const env = {
   dialTimeoutSeconds: getOptionalNumberEnv("DIAL_TIMEOUT_SECONDS", 18),
   missedCallSmsCooldownHours: getOptionalNumberEnv("MISSED_CALL_SMS_COOLDOWN_HOURS", 24),
   leadsPassword: getRequiredEnv("LEADS_PASSWORD"),
-  leadsCookieSecret: getOptionalEnv("LEADS_COOKIE_SECRET") ?? getRequiredEnv("LEADS_PASSWORD"),
+  leadsCookieSecret: getLeadsCookieSecret(),
   appBaseUrl: normalizeBaseUrl(getRequiredEnv("APP_BASE_URL")),
   allowUnsignedTwilioWebhooks: getAllowUnsignedTwilioWebhooks(),
   twilioAccountSid: getRequiredEnv("TWILIO_ACCOUNT_SID"),

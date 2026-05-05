@@ -78,7 +78,7 @@ Required:
 - `SCHEDULING_URL`: existing scheduling link for the business
 - `SMS_ENABLED`: defaults to `false`; set to `true` only after A2P 10DLC is approved and you are ready for real outbound texts
 - `LEADS_PASSWORD`: shared password for `/leads`
-- `LEADS_COOKIE_SECRET`: long random secret used to sign the `/leads` session cookie
+- `LEADS_COOKIE_SECRET`: long random secret used to sign the `/leads` session cookie; required in Vercel production and should be different from `LEADS_PASSWORD`
 - `APP_BASE_URL`: public app URL used for Twilio callbacks and signature validation
 - `TWILIO_ACCOUNT_SID`: Twilio account SID
 - `TWILIO_AUTH_TOKEN`: Twilio auth token, server-only
@@ -269,6 +269,7 @@ The simplest deployment path is Vercel:
 
 - `/leads` uses one shared password.
 - The `/leads` cookie is signed and HttpOnly; it does not store the raw password.
+- The `/leads` login route has a small failed-attempt throttle. Use a strong password; the throttle is only a safety net.
 - There is no auth system.
 - Twilio webhooks require a valid `X-Twilio-Signature` unless `ALLOW_UNSIGNED_TWILIO_WEBHOOKS=true` is explicitly set for local testing.
 - Inbound SMS replies are forwarded to the owner phone number.
