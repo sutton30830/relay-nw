@@ -105,6 +105,47 @@ function normalizeLead(lead: Lead): Lead {
   };
 }
 
+function lastFour(value: string | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const digits = value.replace(/\D/g, "");
+  if (digits.length < 4) {
+    return null;
+  }
+
+  return digits.slice(-4);
+}
+
+function stringValue(payload: Record<string, string>, key: string) {
+  return payload[key]?.trim() || null;
+}
+
+function sanitizedWebhookPayload(payload: Record<string, string>) {
+  const body = stringValue(payload, "Body");
+
+  return {
+    callSid: stringValue(payload, "CallSid"),
+    parentCallSid: stringValue(payload, "ParentCallSid"),
+    dialCallSid: stringValue(payload, "DialCallSid"),
+    messageSid: stringValue(payload, "MessageSid") ?? stringValue(payload, "SmsSid"),
+    recordingSid: stringValue(payload, "RecordingSid"),
+    fromLast4: lastFour(payload.From),
+    toLast4: lastFour(payload.To),
+    calledLast4: lastFour(payload.Called),
+    callerLast4: lastFour(payload.Caller),
+    dialCallStatus: stringValue(payload, "DialCallStatus"),
+    callStatus: stringValue(payload, "CallStatus"),
+    messageStatus: stringValue(payload, "MessageStatus") ?? stringValue(payload, "SmsStatus"),
+    recordingStatus: stringValue(payload, "RecordingStatus"),
+    recordingDuration: stringValue(payload, "RecordingDuration"),
+    errorCode: stringValue(payload, "ErrorCode"),
+    hasBody: Boolean(body),
+    bodyLength: body?.length ?? null,
+  };
+}
+
 export async function createLead(input: {
   name?: string | null;
   phone: string;
@@ -507,7 +548,7 @@ export async function logWebhookEvent(input: {
 
   const { error } = await supabaseAdmin.from("webhook_events").insert({
     source: input.source,
-    payload: input.payload,
+    payload: sanitizedWebhookPayload(input.payload),
     response_status: input.responseStatus,
     response_body: input.responseBody ?? null,
     error: input.error ?? null,

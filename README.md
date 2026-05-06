@@ -272,6 +272,7 @@ The simplest deployment path is Vercel:
 - The `/leads` login route has a small failed-attempt throttle. Use a strong password; the throttle is only a safety net.
 - There is no auth system.
 - Twilio webhooks require a valid `X-Twilio-Signature` unless `ALLOW_UNSIGNED_TWILIO_WEBHOOKS=true` is explicitly set for local testing.
+- Webhook event logs store sanitized payload summaries. Full phone numbers, SMS bodies, and recording URLs are not stored in `webhook_events`.
 - Inbound SMS replies are forwarded to the owner phone number.
 - STOP/UNSUBSCRIBE/CANCEL/END/QUIT replies are recorded in `opt_outs`.
 - Supabase writes happen server-side with the service role key.
