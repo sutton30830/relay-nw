@@ -3,7 +3,12 @@ import { createLead } from "@/lib/supabase";
 
 const MAX_FIELD_LENGTH = 200;
 const MAX_NOTES_LENGTH = 2000;
+const MAX_SUBMISSIONS_PER_WINDOW = 5;
+const SUBMISSION_WINDOW_MS = 60 * 60 * 1000;
 const BUSINESS_TYPES = new Set(["HVAC", "Plumbing", "Electrical", "Other"]);
+
+const intakeSubmissions = new Map<string, { count: number; resetAt: number }>();
+let lastSubmissionPruneAt = 0;
 
 type SetupSubmission = {
   businessName: string;
@@ -33,6 +38,54 @@ function normalizeUsPhone(raw: string): string | null {
 
 function readFormString(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
+}
+
+function requestIp(request: Request) {
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (forwardedFor) {
+    return forwardedFor.split(",")[0]?.trim() || "unknown";
+  }
+
+  return request.headers.get("x-real-ip") ?? "unknown";
+}
+
+function currentSubmissionBucket(ip: string) {
+  const now = Date.now();
+  const existing = intakeSubmissions.get(ip);
+
+  if (!existing || existing.resetAt <= now) {
+    return { count: 0, resetAt: now + SUBMISSION_WINDOW_MS };
+  }
+
+  return existing;
+}
+
+function pruneExpiredSubmissionBuckets() {
+  const now = Date.now();
+
+  if (now - lastSubmissionPruneAt < SUBMISSION_WINDOW_MS) {
+    return;
+  }
+
+  lastSubmissionPruneAt = now;
+
+  for (const [ip, bucket] of intakeSubmissions.entries()) {
+    if (bucket.resetAt <= now) {
+      intakeSubmissions.delete(ip);
+    }
+  }
+}
+
+function isRateLimited(ip: string) {
+  return currentSubmissionBucket(ip).count >= MAX_SUBMISSIONS_PER_WINDOW;
+}
+
+function recordSubmissionAttempt(ip: string) {
+  const bucket = currentSubmissionBucket(ip);
+  intakeSubmissions.set(ip, {
+    count: bucket.count + 1,
+    resetAt: bucket.resetAt,
+  });
 }
 
 function parseSetupForm(formData: FormData): SetupSubmission {
@@ -100,6 +153,17 @@ function validateSetupSubmission(submission: SetupSubmission) {
 }
 
 export async function POST(request: Request) {
+  pruneExpiredSubmissionBuckets();
+
+  const ip = requestIp(request);
+
+  if (isRateLimited(ip)) {
+    console.warn("Relay NW setup request rate limited", { ip });
+    redirect("/intake?rate_limited=1");
+  }
+
+  recordSubmissionAttempt(ip);
+
   const formData = await request.formData();
   const submission = parseSetupForm(formData);
 

@@ -272,6 +272,7 @@ The simplest deployment path is Vercel:
 - `/leads` uses one shared password.
 - The `/leads` cookie is signed and HttpOnly; it does not store the raw password.
 - The `/leads` login route has a small failed-attempt throttle. Use a strong password; the throttle is only a safety net.
+- The public setup form has a small per-IP throttle to reduce spam submissions.
 - There is no auth system.
 - Twilio webhooks require a valid `X-Twilio-Signature` unless `ALLOW_UNSIGNED_TWILIO_WEBHOOKS=true` is explicitly set for local testing.
 - Webhook event logs store sanitized payload summaries. Full phone numbers, SMS bodies, and recording URLs are not stored in `webhook_events`.

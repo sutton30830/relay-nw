@@ -5,6 +5,7 @@ import { IntakeForm } from "@/app/intake/intake-form";
 type SearchParams = Promise<{
   saved?: string;
   error?: string;
+  rate_limited?: string;
 }>;
 
 export default async function IntakePage({
@@ -15,6 +16,7 @@ export default async function IntakePage({
   const params = await searchParams;
   const saved = params.saved === "1";
   const error = params.error === "1";
+  const rateLimited = params.rate_limited === "1";
 
   if (saved) {
     return (
@@ -76,6 +78,12 @@ export default async function IntakePage({
           </div>
 
           <div className="intake-form__body">
+            {rateLimited ? (
+              <div className="intake-error" role="alert">
+                <Icon name="alertTriangle" size={14} />
+                Too many setup requests came in from this connection. Please wait a bit and try again.
+              </div>
+            ) : null}
             {error ? (
               <div className="intake-error" role="alert">
                 <Icon name="alertTriangle" size={14} />
