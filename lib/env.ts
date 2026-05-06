@@ -93,6 +93,8 @@ export const env = {
   voicemailMaxSeconds: getOptionalNumberEnv("VOICEMAIL_MAX_SECONDS", 60),
   dialTimeoutSeconds: getOptionalNumberEnv("DIAL_TIMEOUT_SECONDS", 18),
   missedCallSmsCooldownHours: getOptionalNumberEnv("MISSED_CALL_SMS_COOLDOWN_HOURS", 24),
+  webhookEventRetentionDays: getOptionalNumberEnv("WEBHOOK_EVENT_RETENTION_DAYS", 30),
+  inboundMessageRetentionDays: getOptionalNumberEnv("INBOUND_MESSAGE_RETENTION_DAYS", 90),
   leadsPassword: getRequiredEnv("LEADS_PASSWORD"),
   leadsCookieSecret: getLeadsCookieSecret(),
   appBaseUrl: normalizeBaseUrl(getRequiredEnv("APP_BASE_URL")),

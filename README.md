@@ -97,6 +97,8 @@ Optional:
 - `VOICEMAIL_MAX_SECONDS`: defaults to `60`; maximum caller voicemail length in seconds
 - `DIAL_TIMEOUT_SECONDS`: defaults to `18`
 - `MISSED_CALL_SMS_COOLDOWN_HOURS`: defaults to `24`; prevents repeated missed-call texts to the same caller inside this window
+- `WEBHOOK_EVENT_RETENTION_DAYS`: defaults to `30`; old webhook debug logs are pruned during normal webhook activity
+- `INBOUND_MESSAGE_RETENTION_DAYS`: defaults to `90`; old inbound SMS reply bodies are pruned during normal webhook activity
 - `ALLOW_UNSIGNED_TWILIO_WEBHOOKS`: defaults to `false`; use `true` only for local manual webhook testing, never production
 
 Use phone numbers in E.164 format, like `+12065551234`.
@@ -273,6 +275,7 @@ The simplest deployment path is Vercel:
 - There is no auth system.
 - Twilio webhooks require a valid `X-Twilio-Signature` unless `ALLOW_UNSIGNED_TWILIO_WEBHOOKS=true` is explicitly set for local testing.
 - Webhook event logs store sanitized payload summaries. Full phone numbers, SMS bodies, and recording URLs are not stored in `webhook_events`.
+- Old webhook events and inbound message bodies are pruned according to the retention environment variables.
 - Inbound SMS replies are forwarded to the owner phone number.
 - STOP/UNSUBSCRIBE/CANCEL/END/QUIT replies are recorded in `opt_outs`.
 - Supabase writes happen server-side with the service role key.

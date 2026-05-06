@@ -66,6 +66,9 @@ export const supabaseAdmin = createClient(env.supabaseUrl, env.supabaseServiceRo
   },
 });
 
+const RETENTION_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
+let lastRetentionSweepAt = 0;
+
 function isPlaceholderSupabaseConfig() {
   return (
     env.supabaseUrl.includes("example.supabase.co") ||
@@ -144,6 +147,41 @@ function sanitizedWebhookPayload(payload: Record<string, string>) {
     hasBody: Boolean(body),
     bodyLength: body?.length ?? null,
   };
+}
+
+function retentionCutoff(days: number) {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+async function pruneOldOperationalData() {
+  const now = Date.now();
+
+  if (now - lastRetentionSweepAt < RETENTION_SWEEP_INTERVAL_MS) {
+    return;
+  }
+
+  lastRetentionSweepAt = now;
+
+  const webhookCutoff = retentionCutoff(env.webhookEventRetentionDays);
+  const inboundMessageCutoff = retentionCutoff(env.inboundMessageRetentionDays);
+
+  const { error: webhookError } = await supabaseAdmin
+    .from("webhook_events")
+    .delete()
+    .lt("created_at", webhookCutoff);
+
+  if (webhookError) {
+    console.error("Failed to prune old webhook events", webhookError);
+  }
+
+  const { error: inboundMessageError } = await supabaseAdmin
+    .from("inbound_messages")
+    .delete()
+    .lt("created_at", inboundMessageCutoff);
+
+  if (inboundMessageError) {
+    console.error("Failed to prune old inbound messages", inboundMessageError);
+  }
 }
 
 export async function createLead(input: {
@@ -545,6 +583,8 @@ export async function logWebhookEvent(input: {
   if (isPlaceholderSupabaseConfig()) {
     return;
   }
+
+  await pruneOldOperationalData();
 
   const { error } = await supabaseAdmin.from("webhook_events").insert({
     source: input.source,
