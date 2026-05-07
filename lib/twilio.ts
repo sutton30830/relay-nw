@@ -111,6 +111,31 @@ export async function rejectInvalidTwilioSignature(input: {
   return new Response("Forbidden", { status: 403 });
 }
 
+export async function logUnsignedTwilioWebhook(input: {
+  source: WebhookEventSource;
+  label: string;
+  payload: Record<string, string>;
+  requestSummary: TwilioRequestSummary;
+  candidateUrls: string[];
+  hasSignature: boolean;
+  responseBody?: string;
+}) {
+  console.warn(`Unsigned Twilio ${input.label} webhook allowed by env override`, {
+    ...input.requestSummary,
+    candidateUrls: input.candidateUrls,
+    hasSignature: input.hasSignature,
+  });
+
+  await logWebhookEvent({
+    source: input.source,
+    payload: input.payload,
+    responseStatus: 200,
+    responseBody:
+      input.responseBody ?? `Allowed unsigned Twilio ${input.label} webhook by env override.`,
+    error: `Unsigned/invalid Twilio signature. Candidate URLs: ${input.candidateUrls.join(" | ")}`,
+  });
+}
+
 function requestPathAndSearch(requestUrl: string) {
   const url = new URL(requestUrl);
   return `${url.pathname}${url.search}`;

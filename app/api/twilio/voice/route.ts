@@ -2,6 +2,7 @@ import { env } from "@/lib/env";
 import { logWebhookEvent } from "@/lib/supabase";
 import {
   formDataToRecord,
+  logUnsignedTwilioWebhook,
   rejectInvalidTwilioSignature,
   summarizeTwilioRequest,
   validateTwilioWebhook,
@@ -60,27 +61,6 @@ function validationLogNote(input: {
   }
 
   return input.smsStatus ? `Forwarding mode SMS status: ${input.smsStatus}` : null;
-}
-
-async function logUnsignedOverride(input: {
-  payload: Record<string, string>;
-  requestSummary: ReturnType<typeof summarizeTwilioRequest>;
-  candidateUrls: string[];
-  hasSignature: boolean;
-}) {
-  console.warn("Unsigned Twilio voice webhook allowed by env override", {
-    ...input.requestSummary,
-    candidateUrls: input.candidateUrls,
-    hasSignature: input.hasSignature,
-  });
-
-  await logWebhookEvent({
-    source: VOICE_WEBHOOK_SOURCE,
-    payload: input.payload,
-    responseStatus: 200,
-    responseBody: "Allowed unsigned Twilio voice webhook by env override.",
-    error: `Unsigned/invalid Twilio signature. Candidate URLs: ${input.candidateUrls.join(" | ")}`,
-  });
 }
 
 async function handleForwardingMode(input: {
@@ -190,11 +170,14 @@ export async function POST(request: Request) {
   }
 
   if (validation.wasAllowedByOverride) {
-    await logUnsignedOverride({
+    await logUnsignedTwilioWebhook({
+      source: VOICE_WEBHOOK_SOURCE,
+      label: "voice",
       payload,
       requestSummary,
       candidateUrls: validation.candidateUrls,
       hasSignature: validation.hasSignature,
+      responseBody: "Allowed unsigned Twilio voice webhook by env override.",
     });
   }
 

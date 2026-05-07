@@ -2,6 +2,7 @@ import { logWebhookEvent } from "@/lib/supabase";
 import { env } from "@/lib/env";
 import {
   formDataToRecord,
+  logUnsignedTwilioWebhook,
   phoneLast4,
   rejectInvalidTwilioSignature,
   summarizeTwilioRequest,
@@ -49,27 +50,6 @@ function webhookEventNote(input: {
   }
 
   return notes.length > 0 ? notes.join(" ") : null;
-}
-
-async function logUnsignedOverride(input: {
-  payload: Record<string, string>;
-  requestSummary: ReturnType<typeof summarizeTwilioRequest>;
-  candidateUrls: string[];
-  hasSignature: boolean;
-}) {
-  console.warn("Unsigned Twilio dial status webhook allowed by env override", {
-    ...input.requestSummary,
-    candidateUrls: input.candidateUrls,
-    hasSignature: input.hasSignature,
-  });
-
-  await logWebhookEvent({
-    source: DIAL_STATUS_WEBHOOK_SOURCE,
-    payload: input.payload,
-    responseStatus: 200,
-    responseBody: "Allowed unsigned Twilio dial status webhook by env override.",
-    error: `Unsigned/invalid Twilio signature. Candidate URLs: ${input.candidateUrls.join(" | ")}`,
-  });
 }
 
 async function processDialStatus(input: {
@@ -136,11 +116,14 @@ export async function POST(request: Request) {
   }
 
   if (validation.wasAllowedByOverride) {
-    await logUnsignedOverride({
+    await logUnsignedTwilioWebhook({
+      source: DIAL_STATUS_WEBHOOK_SOURCE,
+      label: "dial status",
       payload,
       requestSummary,
       candidateUrls: validation.candidateUrls,
       hasSignature: validation.hasSignature,
+      responseBody: "Allowed unsigned Twilio dial status webhook by env override.",
     });
   }
 

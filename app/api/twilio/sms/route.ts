@@ -3,6 +3,7 @@ import { normalizePhoneNumber } from "@/lib/phone";
 import { createInboundMessageIfNew, logWebhookEvent, recordOptOut } from "@/lib/supabase";
 import {
   formDataToRecord,
+  logUnsignedTwilioWebhook,
   phoneLast4,
   rejectInvalidTwilioSignature,
   summarizeTwilioRequest,
@@ -74,27 +75,6 @@ function webhookEventNote(input: {
   return notes.join(" ");
 }
 
-async function logUnsignedOverride(input: {
-  payload: Record<string, string>;
-  requestSummary: ReturnType<typeof summarizeTwilioRequest>;
-  candidateUrls: string[];
-  hasSignature: boolean;
-}) {
-  console.warn("Unsigned Twilio inbound SMS webhook allowed by env override", {
-    ...input.requestSummary,
-    candidateUrls: input.candidateUrls,
-    hasSignature: input.hasSignature,
-  });
-
-  await logWebhookEvent({
-    source: INBOUND_SMS_WEBHOOK_SOURCE,
-    payload: input.payload,
-    responseStatus: 200,
-    responseBody: "Allowed unsigned Twilio inbound SMS webhook by env override.",
-    error: `Unsigned/invalid Twilio signature. Candidate URLs: ${input.candidateUrls.join(" | ")}`,
-  });
-}
-
 async function handleInboundSms(input: ReturnType<typeof parseInboundSmsPayload>) {
   if (input.messageSid && input.from && input.body) {
     const inboundMessage = await createInboundMessageIfNew({
@@ -162,11 +142,14 @@ export async function POST(request: Request) {
   }
 
   if (validation.wasAllowedByOverride) {
-    await logUnsignedOverride({
+    await logUnsignedTwilioWebhook({
+      source: INBOUND_SMS_WEBHOOK_SOURCE,
+      label: "inbound SMS",
       payload,
       requestSummary,
       candidateUrls: validation.candidateUrls,
       hasSignature: validation.hasSignature,
+      responseBody: "Allowed unsigned Twilio inbound SMS webhook by env override.",
     });
   }
 
