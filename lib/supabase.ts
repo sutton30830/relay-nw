@@ -382,6 +382,7 @@ export async function updateLeadRecordingByCallSid(input: {
 
 export async function updateLead(input: {
   id: string;
+  name?: string | null;
   status?: LeadStatus;
   notes?: string | null;
   bookedAt?: string | null;
@@ -392,11 +393,16 @@ export async function updateLead(input: {
   }
 
   const updates: {
+    name?: string | null;
     status?: LeadStatus;
     notes?: string | null;
     booked_at?: string | null;
     job_value_cents?: number | null;
   } = {};
+
+  if (typeof input.name !== "undefined") {
+    updates.name = input.name;
+  }
 
   if (input.status) {
     updates.status = input.status;

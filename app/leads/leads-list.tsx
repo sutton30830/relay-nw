@@ -24,6 +24,7 @@ type LeadCounts = Record<Filter, number> & {
 };
 
 type LeadPatch = {
+  name?: string | null;
   status?: LeadStatus;
   notes?: string | null;
   booked?: boolean;
@@ -415,6 +416,7 @@ function LeadDrawer({
   onClose,
   onStatus,
   onBooked,
+  onName,
   onNotes,
   onJobValue,
 }: {
@@ -422,11 +424,17 @@ function LeadDrawer({
   onClose: () => void;
   onStatus: (id: string, status: LeadStatus) => void;
   onBooked: (id: string, booked: boolean) => void;
+  onName: (id: string, name: string | null) => void;
   onNotes: (id: string, notes: string) => void;
   onJobValue: (id: string, jobValueCents: number | null) => void;
 }) {
+  const [name, setName] = useState(lead.name ?? "");
   const [notes, setNotes] = useState(lead.notes ?? "");
   const booked = isBookedLead(lead);
+
+  useEffect(() => {
+    setName(lead.name ?? "");
+  }, [lead.id, lead.name]);
 
   useEffect(() => {
     setNotes(lead.notes ?? "");
@@ -439,6 +447,19 @@ function LeadDrawer({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
+
+  function saveName() {
+    const nextName = name.trim();
+    const savedName = nextName || null;
+
+    if (name !== nextName) {
+      setName(nextName);
+    }
+
+    if ((lead.name ?? null) !== savedName) {
+      onName(lead.id, savedName);
+    }
+  }
 
   return (
     <>
@@ -469,6 +490,17 @@ function LeadDrawer({
             <p className="t-mono" style={{ margin: "4px 0 0", color: "var(--ink-2)", fontSize: 15 }}>
               {formatPhone(lead.phone)}
             </p>
+            <label className="drawer__name-field">
+              <span className="t-eyebrow">Caller name</span>
+              <input
+                className="field"
+                maxLength={100}
+                placeholder="Add caller name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                onBlur={saveName}
+              />
+            </label>
             <div className="mt-3 flex flex-wrap gap-2">
               <StatusPill status={lead.status} />
               <BookedBadge lead={lead} />
@@ -739,6 +771,19 @@ export function LeadsList({
     if (!saved) setItems(previousItems);
   }
 
+  async function updateName(id: string, name: string | null) {
+    if (sampleMode) {
+      updateLocalLead(id, { name });
+      return;
+    }
+
+    const previousItems = items;
+    updateLocalLead(id, { name });
+
+    const saved = await patchLead(id, { name });
+    if (!saved) setItems(previousItems);
+  }
+
   async function updateBooked(id: string, booked: boolean) {
     const currentLead = activeItems.find((lead) => lead.id === id);
     const bookedAt = booked ? currentLead?.booked_at ?? new Date().toISOString() : null;
@@ -943,6 +988,7 @@ export function LeadsList({
             onClose={() => setOpenId(null)}
             onStatus={updateStatus}
             onBooked={updateBooked}
+            onName={updateName}
             onNotes={updateNotes}
             onJobValue={updateJobValue}
         />

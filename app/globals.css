@@ -1915,6 +1915,17 @@ code {
   padding: 24px 24px 20px;
 }
 
+.drawer__name-field {
+  display: block;
+  max-width: 360px;
+  margin-top: 14px;
+}
+
+.drawer__name-field > span {
+  display: block;
+  margin-bottom: 6px;
+}
+
 .drawer__status-row {
   display: flex;
   align-items: center;

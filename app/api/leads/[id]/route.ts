@@ -3,10 +3,12 @@ import { isValidLeadsSessionCookie, LEADS_COOKIE_NAME } from "@/lib/leads-auth";
 import { type LeadStatus, updateLead } from "@/lib/supabase";
 
 const MAX_NOTES_LENGTH = 2000;
+const MAX_NAME_LENGTH = 100;
 const MAX_JOB_VALUE_CENTS = 100_000_000;
 const VALID_STATUSES = new Set<LeadStatus>(["new", "contacted", "booked", "dead"]);
 
 type LeadPatchBody = {
+  name?: string | null;
   status?: LeadStatus;
   notes?: string | null;
   booked?: boolean;
@@ -14,6 +16,7 @@ type LeadPatchBody = {
 };
 
 type LeadUpdate = {
+  name?: string | null;
   status?: LeadStatus;
   notes?: string | null;
   bookedAt?: string | null;
@@ -39,6 +42,16 @@ function validateLeadUpdate(body: LeadPatchBody | null): LeadUpdate | { error: s
     return { error: "Invalid request body" };
   }
 
+  if (body.name !== null && typeof body.name !== "undefined" && typeof body.name !== "string") {
+    return { error: "Invalid name" };
+  }
+
+  const name = typeof body.name === "string" ? body.name.trim() || null : body.name;
+
+  if (typeof name === "string" && name.length > MAX_NAME_LENGTH) {
+    return { error: "Name is too long" };
+  }
+
   if (body.status && !VALID_STATUSES.has(body.status)) {
     return { error: "Invalid status" };
   }
@@ -62,6 +75,7 @@ function validateLeadUpdate(body: LeadPatchBody | null): LeadUpdate | { error: s
   }
 
   if (
+    typeof body.name === "undefined" &&
     !body.status &&
     typeof body.notes === "undefined" &&
     typeof body.booked === "undefined" &&
@@ -71,6 +85,7 @@ function validateLeadUpdate(body: LeadPatchBody | null): LeadUpdate | { error: s
   }
 
   return {
+    name,
     status: body.status,
     notes: typeof body.notes === "undefined" ? undefined : body.notes,
     bookedAt: typeof body.booked === "undefined" ? undefined : body.booked ? new Date().toISOString() : null,
