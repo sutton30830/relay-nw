@@ -185,7 +185,9 @@ export async function POST(request: Request) {
       source: "intake_form",
     });
   } catch (error) {
-    console.error("Failed to save Relay NW setup request", error);
+    const message = error instanceof Error ? error.message : "Unknown setup request error";
+
+    console.error("Failed to save Relay NW setup request", { error: message });
     redirect("/intake?error=1");
   }
 

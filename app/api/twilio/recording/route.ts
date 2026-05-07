@@ -2,6 +2,7 @@ import { env } from "@/lib/env";
 import { logWebhookEvent, updateLeadRecordingByCallSid } from "@/lib/supabase";
 import {
   formDataToRecord,
+  phoneLast4,
   summarizeTwilioRequest,
   twilioWebhookUrls,
   validateTwilioRequest,
@@ -130,7 +131,7 @@ async function updateLeadRecording(input: ReturnType<typeof parseRecordingPayloa
   } else if (result.matchedBy === "phone") {
     console.info("Recording webhook matched a recent lead by caller phone fallback", {
       callSid: input.callSid,
-      callerPhone: input.callerPhone,
+      callerLast4: phoneLast4(input.callerPhone),
       recordingSid: input.recordingSid,
     });
   }
@@ -189,7 +190,10 @@ export async function POST(request: Request) {
       error: message,
     });
 
-    console.error("Failed to handle Twilio recording webhook", error);
+    console.error("Failed to handle Twilio recording webhook", {
+      ...requestSummary,
+      error: message,
+    });
   }
 
   return twimlResponse(xml);

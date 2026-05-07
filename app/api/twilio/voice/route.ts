@@ -168,7 +168,10 @@ async function handleForwardingMode(input: {
       error: message,
     });
 
-    console.error("Failed to handle forwarded missed call", error);
+    console.error("Failed to handle forwarded missed call", {
+      ...input.requestSummary,
+      error: message,
+    });
   }
 
   return twimlResponse(xml);
@@ -196,13 +199,14 @@ async function handleDirectMode(input: {
   return twimlResponse(xml);
 }
 
-export async function GET(request: Request) {
-  const xml =
-    env.callMode === "forwarding"
-      ? missedCallTwiml(request)
-      : directCallTwiml(request, env.twilioPhoneNumber);
-
-  return twimlResponse(xml);
+export async function GET() {
+  return new Response("Twilio voice webhook requires POST.", {
+    status: 405,
+    headers: {
+      Allow: "POST",
+      "Content-Type": "text/plain; charset=utf-8",
+    },
+  });
 }
 
 export async function POST(request: Request) {

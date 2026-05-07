@@ -11,8 +11,8 @@ type TwilioRequestSummary = {
   messageSid: string | null;
   recordingSid: string | null;
   recordingStatus: string | null;
-  from: string | null;
-  to: string | null;
+  fromLast4: string | null;
+  toLast4: string | null;
   dialCallStatus: string | null;
   callMode: typeof env.callMode;
   hasOwnerPhoneNumber: boolean;
@@ -106,6 +106,19 @@ export function formDataToRecord(formData: FormData) {
   return values;
 }
 
+export function phoneLast4(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const digits = value.replace(/\D/g, "");
+  if (digits.length < 4) {
+    return null;
+  }
+
+  return digits.slice(-4);
+}
+
 export function summarizeTwilioRequest(
   request: Request,
   payload: Record<string, string>,
@@ -119,8 +132,8 @@ export function summarizeTwilioRequest(
     messageSid: payload.MessageSid ?? payload.SmsSid ?? null,
     recordingSid: payload.RecordingSid ?? null,
     recordingStatus: payload.RecordingStatus ?? null,
-    from: payload.From ?? null,
-    to: payload.To ?? null,
+    fromLast4: phoneLast4(payload.From),
+    toLast4: phoneLast4(payload.To),
     dialCallStatus: payload.DialCallStatus ?? null,
     callMode: env.callMode,
     hasOwnerPhoneNumber: Boolean(env.ownerPhoneNumber),

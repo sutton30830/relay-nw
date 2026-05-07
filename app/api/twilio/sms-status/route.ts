@@ -159,7 +159,10 @@ export async function POST(request: Request) {
       error: message,
     });
 
-    console.error("Failed to handle Twilio SMS status", error);
+    console.error("Failed to handle Twilio SMS status", {
+      ...requestSummary,
+      error: message,
+    });
   }
 
   return twimlResponse(xml);

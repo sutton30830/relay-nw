@@ -2,6 +2,7 @@ import { logWebhookEvent } from "@/lib/supabase";
 import { env } from "@/lib/env";
 import {
   formDataToRecord,
+  phoneLast4,
   summarizeTwilioRequest,
   twilioWebhookUrls,
   validateTwilioRequest,
@@ -212,7 +213,11 @@ export async function POST(request: Request) {
       error: message,
     });
 
-    console.error("Failed to handle Twilio dial status", error);
+    console.error("Failed to handle Twilio dial status", {
+      ...requestSummary,
+      callerLast4: phoneLast4(callerPhone),
+      error: message,
+    });
   }
 
   return twimlResponse(xml);

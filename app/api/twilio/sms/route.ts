@@ -3,6 +3,7 @@ import { normalizePhoneNumber } from "@/lib/phone";
 import { createInboundMessageIfNew, logWebhookEvent, recordOptOut } from "@/lib/supabase";
 import {
   formDataToRecord,
+  phoneLast4,
   summarizeTwilioRequest,
   twilioClient,
   twilioWebhookUrls,
@@ -156,8 +157,8 @@ async function handleInboundSms(input: ReturnType<typeof parseInboundSmsPayload>
 
   if (input.shouldNotifyOwner && !env.smsEnabled) {
     console.info("Inbound SMS owner notification suppressed because SMS_ENABLED is false", {
-      from: input.from,
-      to: input.to,
+      fromLast4: phoneLast4(input.from),
+      toLast4: phoneLast4(input.to),
     });
 
     return "sms_disabled" as const;
@@ -232,7 +233,10 @@ export async function POST(request: Request) {
       error: errorMessage,
     });
 
-    console.error("Failed to handle inbound Twilio SMS", error);
+    console.error("Failed to handle inbound Twilio SMS", {
+      ...requestSummary,
+      error: errorMessage,
+    });
   }
 
   return twimlResponse(xml);
