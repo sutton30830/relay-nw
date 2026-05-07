@@ -64,6 +64,24 @@ export function validateTwilioRequest(input: {
   return { isValid: false, matchedUrl: null as string | null };
 }
 
+export function validateTwilioWebhook(request: Request, payload: Record<string, string>) {
+  const candidateUrls = twilioWebhookUrls(request);
+  const signature = request.headers.get("x-twilio-signature");
+  const validation = validateTwilioRequest({
+    urls: candidateUrls,
+    params: payload,
+    signature,
+  });
+
+  return {
+    ...validation,
+    candidateUrls,
+    hasSignature: Boolean(signature),
+    shouldReject: !validation.isValid && !env.allowUnsignedTwilioWebhooks,
+    wasAllowedByOverride: !validation.isValid && env.allowUnsignedTwilioWebhooks,
+  };
+}
+
 function requestPathAndSearch(requestUrl: string) {
   const url = new URL(requestUrl);
   return `${url.pathname}${url.search}`;

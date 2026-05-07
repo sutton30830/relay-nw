@@ -4,8 +4,7 @@ import {
   formDataToRecord,
   phoneLast4,
   summarizeTwilioRequest,
-  twilioWebhookUrls,
-  validateTwilioRequest,
+  validateTwilioWebhook,
 } from "@/lib/twilio";
 import { emptyTwiml, twimlResponse } from "@/lib/twiml";
 import { normalizePhoneNumber } from "@/lib/phone";
@@ -22,24 +21,6 @@ function parseDuration(value: string | null) {
 function recordingMediaUrl(value: string | null) {
   if (!value) return null;
   return value.endsWith(".mp3") || value.endsWith(".wav") ? value : `${value}.mp3`;
-}
-
-function validateRecordingWebhook(request: Request, payload: Record<string, string>) {
-  const candidateUrls = twilioWebhookUrls(request);
-  const signature = request.headers.get("x-twilio-signature");
-  const validation = validateTwilioRequest({
-    urls: candidateUrls,
-    params: payload,
-    signature,
-  });
-
-  return {
-    ...validation,
-    candidateUrls,
-    hasSignature: Boolean(signature),
-    shouldReject: !validation.isValid && !env.allowUnsignedTwilioWebhooks,
-    wasAllowedByOverride: !validation.isValid && env.allowUnsignedTwilioWebhooks,
-  };
 }
 
 function parseRecordingPayload(payload: Record<string, string>) {
@@ -143,7 +124,7 @@ export async function POST(request: Request) {
   const formData = await request.formData();
   const payload = formDataToRecord(formData);
   const requestSummary = summarizeTwilioRequest(request, payload);
-  const validation = validateRecordingWebhook(request, payload);
+  const validation = validateTwilioWebhook(request, payload);
   const recording = parseRecordingPayload(payload);
   const xml = emptyTwiml();
 

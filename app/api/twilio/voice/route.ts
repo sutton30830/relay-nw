@@ -3,8 +3,7 @@ import { logWebhookEvent } from "@/lib/supabase";
 import {
   formDataToRecord,
   summarizeTwilioRequest,
-  twilioWebhookUrls,
-  validateTwilioRequest,
+  validateTwilioWebhook,
 } from "@/lib/twilio";
 import { handleMissedCall } from "@/lib/missed-call";
 import { dialForwardTwiml, forwardedMissedCallTwiml, twimlResponse } from "@/lib/twiml";
@@ -62,24 +61,6 @@ function validationLogNote(input: {
   return input.smsStatus ? `Forwarding mode SMS status: ${input.smsStatus}` : null;
 }
 
-function validateVoiceWebhook(request: Request, payload: Record<string, string>) {
-  const candidateUrls = twilioWebhookUrls(request);
-  const signature = request.headers.get("x-twilio-signature");
-  const validation = validateTwilioRequest({
-    urls: candidateUrls,
-    params: payload,
-    signature,
-  });
-
-  return {
-    ...validation,
-    candidateUrls,
-    hasSignature: Boolean(signature),
-    shouldReject: !validation.isValid && !env.allowUnsignedTwilioWebhooks,
-    wasAllowedByOverride: !validation.isValid && env.allowUnsignedTwilioWebhooks,
-  };
-}
-
 async function rejectInvalidSignature(input: {
   payload: Record<string, string>;
   requestSummary: ReturnType<typeof summarizeTwilioRequest>;
@@ -128,7 +109,7 @@ async function handleForwardingMode(input: {
   request: Request;
   payload: Record<string, string>;
   requestSummary: ReturnType<typeof summarizeTwilioRequest>;
-  validation: ReturnType<typeof validateVoiceWebhook>;
+  validation: ReturnType<typeof validateTwilioWebhook>;
   callerPhone: string;
 }) {
   const callSid = input.payload.CallSid ?? "";
@@ -180,7 +161,7 @@ async function handleForwardingMode(input: {
 async function handleDirectMode(input: {
   request: Request;
   payload: Record<string, string>;
-  validation: ReturnType<typeof validateVoiceWebhook>;
+  validation: ReturnType<typeof validateTwilioWebhook>;
   callerPhone: string;
 }) {
   const xml = directCallTwiml(input.request, input.callerPhone);
@@ -213,7 +194,7 @@ export async function POST(request: Request) {
   const formData = await request.formData();
   const payload = formDataToRecord(formData);
   const requestSummary = summarizeTwilioRequest(request, payload);
-  const validation = validateVoiceWebhook(request, payload);
+  const validation = validateTwilioWebhook(request, payload);
   const callerPhone = payload.From || env.twilioPhoneNumber;
 
   console.info("Twilio voice webhook received", requestSummary);

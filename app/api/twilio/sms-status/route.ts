@@ -3,8 +3,7 @@ import { logWebhookEvent, type SmsStatus, updateLeadSmsStatusByMessageSid } from
 import {
   formDataToRecord,
   summarizeTwilioRequest,
-  twilioWebhookUrls,
-  validateTwilioRequest,
+  validateTwilioWebhook,
 } from "@/lib/twilio";
 import { emptyTwiml, twimlResponse } from "@/lib/twiml";
 
@@ -17,24 +16,6 @@ const TRACKED_SMS_STATUSES = new Set([
   "failed",
   "undelivered",
 ]);
-
-function validateSmsStatusWebhook(request: Request, payload: Record<string, string>) {
-  const candidateUrls = twilioWebhookUrls(request);
-  const signature = request.headers.get("x-twilio-signature");
-  const validation = validateTwilioRequest({
-    urls: candidateUrls,
-    params: payload,
-    signature,
-  });
-
-  return {
-    ...validation,
-    candidateUrls,
-    hasSignature: Boolean(signature),
-    shouldReject: !validation.isValid && !env.allowUnsignedTwilioWebhooks,
-    wasAllowedByOverride: !validation.isValid && env.allowUnsignedTwilioWebhooks,
-  };
-}
 
 function parseSmsStatusPayload(payload: Record<string, string>) {
   const messageSid = (payload.MessageSid ?? payload.SmsSid ?? "").trim();
@@ -108,7 +89,7 @@ export async function POST(request: Request) {
   const formData = await request.formData();
   const payload = formDataToRecord(formData);
   const requestSummary = summarizeTwilioRequest(request, payload);
-  const validation = validateSmsStatusWebhook(request, payload);
+  const validation = validateTwilioWebhook(request, payload);
   const status = parseSmsStatusPayload(payload);
   const xml = emptyTwiml();
 

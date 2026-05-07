@@ -4,8 +4,7 @@ import {
   formDataToRecord,
   phoneLast4,
   summarizeTwilioRequest,
-  twilioWebhookUrls,
-  validateTwilioRequest,
+  validateTwilioWebhook,
 } from "@/lib/twilio";
 import { handleMissedCall } from "@/lib/missed-call";
 import { emptyTwiml, twimlResponse } from "@/lib/twiml";
@@ -13,24 +12,6 @@ import { emptyTwiml, twimlResponse } from "@/lib/twiml";
 const DIAL_STATUS_WEBHOOK_SOURCE = "twilio_dial_status";
 const MISSED_DIAL_STATUSES = ["no-answer", "busy", "failed", "canceled"] as const;
 const CONNECTED_DIAL_STATUSES = ["completed", "answered"] as const;
-
-function validateDialStatusWebhook(request: Request, payload: Record<string, string>) {
-  const candidateUrls = twilioWebhookUrls(request);
-  const signature = request.headers.get("x-twilio-signature");
-  const validation = validateTwilioRequest({
-    urls: candidateUrls,
-    params: payload,
-    signature,
-  });
-
-  return {
-    ...validation,
-    candidateUrls,
-    hasSignature: Boolean(signature),
-    shouldReject: !validation.isValid && !env.allowUnsignedTwilioWebhooks,
-    wasAllowedByOverride: !validation.isValid && env.allowUnsignedTwilioWebhooks,
-  };
-}
 
 function isMissedDialStatus(status: string) {
   return (MISSED_DIAL_STATUSES as readonly string[]).includes(status);
@@ -156,7 +137,7 @@ export async function POST(request: Request) {
   const formData = await request.formData();
   const payload = formDataToRecord(formData);
   const requestSummary = summarizeTwilioRequest(request, payload);
-  const validation = validateDialStatusWebhook(request, payload);
+  const validation = validateTwilioWebhook(request, payload);
   const dialCallStatus = payload.DialCallStatus ?? "";
   const callerPhone = (payload.From ?? "").trim();
   const callSid = (payload.CallSid ?? "").trim();

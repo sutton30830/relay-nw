@@ -6,8 +6,7 @@ import {
   phoneLast4,
   summarizeTwilioRequest,
   twilioClient,
-  twilioWebhookUrls,
-  validateTwilioRequest,
+  validateTwilioWebhook,
 } from "@/lib/twilio";
 import { emptyTwiml, twimlResponse } from "@/lib/twiml";
 
@@ -16,24 +15,6 @@ const OPT_OUT_WORDS = new Set(["STOP", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"]);
 
 function normalizeBody(value: string) {
   return value.trim().toUpperCase();
-}
-
-function validateInboundSmsWebhook(request: Request, payload: Record<string, string>) {
-  const candidateUrls = twilioWebhookUrls(request);
-  const signature = request.headers.get("x-twilio-signature");
-  const validation = validateTwilioRequest({
-    urls: candidateUrls,
-    params: payload,
-    signature,
-  });
-
-  return {
-    ...validation,
-    candidateUrls,
-    hasSignature: Boolean(signature),
-    shouldReject: !validation.isValid && !env.allowUnsignedTwilioWebhooks,
-    wasAllowedByOverride: !validation.isValid && env.allowUnsignedTwilioWebhooks,
-  };
 }
 
 function parseInboundSmsPayload(payload: Record<string, string>) {
@@ -181,7 +162,7 @@ export async function POST(request: Request) {
   const formData = await request.formData();
   const payload = formDataToRecord(formData);
   const requestSummary = summarizeTwilioRequest(request, payload);
-  const validation = validateInboundSmsWebhook(request, payload);
+  const validation = validateTwilioWebhook(request, payload);
   const message = parseInboundSmsPayload(payload);
   const xml = emptyTwiml();
 
