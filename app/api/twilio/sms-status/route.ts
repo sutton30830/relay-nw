@@ -2,6 +2,7 @@ import { env } from "@/lib/env";
 import { logWebhookEvent, type SmsStatus, updateLeadSmsStatusByMessageSid } from "@/lib/supabase";
 import {
   formDataToRecord,
+  rejectInvalidTwilioSignature,
   summarizeTwilioRequest,
   validateTwilioWebhook,
 } from "@/lib/twilio";
@@ -62,29 +63,6 @@ function webhookEventNote(input: {
   return notes.join(" ");
 }
 
-async function rejectInvalidSignature(input: {
-  payload: Record<string, string>;
-  requestSummary: ReturnType<typeof summarizeTwilioRequest>;
-  candidateUrls: string[];
-  hasSignature: boolean;
-}) {
-  console.warn("Twilio SMS status signature validation failed", {
-    ...input.requestSummary,
-    candidateUrls: input.candidateUrls,
-    hasSignature: input.hasSignature,
-  });
-
-  await logWebhookEvent({
-    source: SMS_STATUS_WEBHOOK_SOURCE,
-    payload: input.payload,
-    responseStatus: 403,
-    responseBody: "Forbidden",
-    error: `Invalid Twilio signature. Candidate URLs: ${input.candidateUrls.join(" | ")}`,
-  });
-
-  return new Response("Forbidden", { status: 403 });
-}
-
 export async function POST(request: Request) {
   const formData = await request.formData();
   const payload = formDataToRecord(formData);
@@ -100,7 +78,9 @@ export async function POST(request: Request) {
   });
 
   if (validation.shouldReject) {
-    return rejectInvalidSignature({
+    return rejectInvalidTwilioSignature({
+      source: SMS_STATUS_WEBHOOK_SOURCE,
+      label: "SMS status",
       payload,
       requestSummary,
       candidateUrls: validation.candidateUrls,

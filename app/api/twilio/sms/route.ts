@@ -4,6 +4,7 @@ import { createInboundMessageIfNew, logWebhookEvent, recordOptOut } from "@/lib/
 import {
   formDataToRecord,
   phoneLast4,
+  rejectInvalidTwilioSignature,
   summarizeTwilioRequest,
   twilioClient,
   validateTwilioWebhook,
@@ -71,29 +72,6 @@ function webhookEventNote(input: {
   }
 
   return notes.join(" ");
-}
-
-async function rejectInvalidSignature(input: {
-  payload: Record<string, string>;
-  requestSummary: ReturnType<typeof summarizeTwilioRequest>;
-  candidateUrls: string[];
-  hasSignature: boolean;
-}) {
-  console.warn("Twilio inbound SMS signature validation failed", {
-    ...input.requestSummary,
-    candidateUrls: input.candidateUrls,
-    hasSignature: input.hasSignature,
-  });
-
-  await logWebhookEvent({
-    source: INBOUND_SMS_WEBHOOK_SOURCE,
-    payload: input.payload,
-    responseStatus: 403,
-    responseBody: "Forbidden",
-    error: `Invalid Twilio signature. Candidate URLs: ${input.candidateUrls.join(" | ")}`,
-  });
-
-  return new Response("Forbidden", { status: 403 });
 }
 
 async function logUnsignedOverride(input: {
@@ -173,7 +151,9 @@ export async function POST(request: Request) {
   });
 
   if (validation.shouldReject) {
-    return rejectInvalidSignature({
+    return rejectInvalidTwilioSignature({
+      source: INBOUND_SMS_WEBHOOK_SOURCE,
+      label: "inbound SMS",
       payload,
       requestSummary,
       candidateUrls: validation.candidateUrls,

@@ -2,6 +2,7 @@ import { env } from "@/lib/env";
 import { logWebhookEvent } from "@/lib/supabase";
 import {
   formDataToRecord,
+  rejectInvalidTwilioSignature,
   summarizeTwilioRequest,
   validateTwilioWebhook,
 } from "@/lib/twilio";
@@ -59,29 +60,6 @@ function validationLogNote(input: {
   }
 
   return input.smsStatus ? `Forwarding mode SMS status: ${input.smsStatus}` : null;
-}
-
-async function rejectInvalidSignature(input: {
-  payload: Record<string, string>;
-  requestSummary: ReturnType<typeof summarizeTwilioRequest>;
-  candidateUrls: string[];
-  hasSignature: boolean;
-}) {
-  console.warn("Twilio voice signature validation failed", {
-    ...input.requestSummary,
-    candidateUrls: input.candidateUrls,
-    hasSignature: input.hasSignature,
-  });
-
-  await logWebhookEvent({
-    source: VOICE_WEBHOOK_SOURCE,
-    payload: input.payload,
-    responseStatus: 403,
-    responseBody: "Rejected invalid Twilio signature for voice webhook.",
-    error: `Invalid Twilio signature. Candidate URLs: ${input.candidateUrls.join(" | ")}`,
-  });
-
-  return new Response("Forbidden", { status: 403 });
 }
 
 async function logUnsignedOverride(input: {
@@ -200,11 +178,14 @@ export async function POST(request: Request) {
   console.info("Twilio voice webhook received", requestSummary);
 
   if (validation.shouldReject) {
-    return rejectInvalidSignature({
+    return rejectInvalidTwilioSignature({
+      source: VOICE_WEBHOOK_SOURCE,
+      label: "voice",
       payload,
       requestSummary,
       candidateUrls: validation.candidateUrls,
       hasSignature: validation.hasSignature,
+      responseBody: "Rejected invalid Twilio signature for voice webhook.",
     });
   }
 

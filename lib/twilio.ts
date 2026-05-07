@@ -1,5 +1,6 @@
 import twilio from "twilio";
 import { env } from "@/lib/env";
+import { logWebhookEvent, type WebhookEventSource } from "@/lib/supabase";
 
 const DEFAULT_MISSED_CALL_SMS_TEMPLATE =
   "Hi, this is {BUSINESS_NAME} - sorry we missed your call. Book or reply here: {INTAKE_URL}. Reply STOP to opt out.";
@@ -80,6 +81,34 @@ export function validateTwilioWebhook(request: Request, payload: Record<string, 
     shouldReject: !validation.isValid && !env.allowUnsignedTwilioWebhooks,
     wasAllowedByOverride: !validation.isValid && env.allowUnsignedTwilioWebhooks,
   };
+}
+
+export async function rejectInvalidTwilioSignature(input: {
+  source: WebhookEventSource;
+  label: string;
+  payload: Record<string, string>;
+  requestSummary: TwilioRequestSummary;
+  candidateUrls: string[];
+  hasSignature: boolean;
+  responseBody?: string;
+}) {
+  console.warn(`Twilio ${input.label} signature validation failed`, {
+    ...input.requestSummary,
+    candidateUrls: input.candidateUrls,
+    hasSignature: input.hasSignature,
+  });
+
+  const responseBody = input.responseBody ?? "Forbidden";
+
+  await logWebhookEvent({
+    source: input.source,
+    payload: input.payload,
+    responseStatus: 403,
+    responseBody,
+    error: `Invalid Twilio signature. Candidate URLs: ${input.candidateUrls.join(" | ")}`,
+  });
+
+  return new Response("Forbidden", { status: 403 });
 }
 
 function requestPathAndSearch(requestUrl: string) {

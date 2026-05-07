@@ -3,6 +3,7 @@ import { logWebhookEvent, updateLeadRecordingByCallSid } from "@/lib/supabase";
 import {
   formDataToRecord,
   phoneLast4,
+  rejectInvalidTwilioSignature,
   summarizeTwilioRequest,
   validateTwilioWebhook,
 } from "@/lib/twilio";
@@ -68,29 +69,6 @@ function webhookEventNote(input: {
   return notes.length > 0 ? notes.join(" ") : null;
 }
 
-async function rejectInvalidSignature(input: {
-  payload: Record<string, string>;
-  requestSummary: ReturnType<typeof summarizeTwilioRequest>;
-  candidateUrls: string[];
-  hasSignature: boolean;
-}) {
-  console.warn("Twilio recording signature validation failed", {
-    ...input.requestSummary,
-    candidateUrls: input.candidateUrls,
-    hasSignature: input.hasSignature,
-  });
-
-  await logWebhookEvent({
-    source: RECORDING_WEBHOOK_SOURCE,
-    payload: input.payload,
-    responseStatus: 403,
-    responseBody: "Forbidden",
-    error: `Invalid Twilio signature. Candidate URLs: ${input.candidateUrls.join(" | ")}`,
-  });
-
-  return new Response("Forbidden", { status: 403 });
-}
-
 async function updateLeadRecording(input: ReturnType<typeof parseRecordingPayload>) {
   if (!input.callSid) {
     console.warn("Skipping recording update because CallSid was missing", {
@@ -136,7 +114,9 @@ export async function POST(request: Request) {
   });
 
   if (validation.shouldReject) {
-    return rejectInvalidSignature({
+    return rejectInvalidTwilioSignature({
+      source: RECORDING_WEBHOOK_SOURCE,
+      label: "recording",
       payload,
       requestSummary,
       candidateUrls: validation.candidateUrls,

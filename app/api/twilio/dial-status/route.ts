@@ -3,6 +3,7 @@ import { env } from "@/lib/env";
 import {
   formDataToRecord,
   phoneLast4,
+  rejectInvalidTwilioSignature,
   summarizeTwilioRequest,
   validateTwilioWebhook,
 } from "@/lib/twilio";
@@ -48,29 +49,6 @@ function webhookEventNote(input: {
   }
 
   return notes.length > 0 ? notes.join(" ") : null;
-}
-
-async function rejectInvalidSignature(input: {
-  payload: Record<string, string>;
-  requestSummary: ReturnType<typeof summarizeTwilioRequest>;
-  candidateUrls: string[];
-  hasSignature: boolean;
-}) {
-  console.warn("Twilio dial status signature validation failed", {
-    ...input.requestSummary,
-    candidateUrls: input.candidateUrls,
-    hasSignature: input.hasSignature,
-  });
-
-  await logWebhookEvent({
-    source: DIAL_STATUS_WEBHOOK_SOURCE,
-    payload: input.payload,
-    responseStatus: 403,
-    responseBody: "Rejected invalid Twilio signature for dial status webhook.",
-    error: `Invalid Twilio signature. Candidate URLs: ${input.candidateUrls.join(" | ")}`,
-  });
-
-  return new Response("Forbidden", { status: 403 });
 }
 
 async function logUnsignedOverride(input: {
@@ -146,11 +124,14 @@ export async function POST(request: Request) {
   console.info("Twilio dial status webhook received", requestSummary);
 
   if (validation.shouldReject) {
-    return rejectInvalidSignature({
+    return rejectInvalidTwilioSignature({
+      source: DIAL_STATUS_WEBHOOK_SOURCE,
+      label: "dial status",
       payload,
       requestSummary,
       candidateUrls: validation.candidateUrls,
       hasSignature: validation.hasSignature,
+      responseBody: "Rejected invalid Twilio signature for dial status webhook.",
     });
   }
 
