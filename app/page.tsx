@@ -59,7 +59,7 @@ export default function HomePage() {
           </p>
           <div className="home-hero__actions">
             <Link className="btn btn-primary" href="/intake">
-              <Icon name="settings" size={14} /> Start catching missed calls
+              <Icon name="settings" size={14} /> Start setup
             </Link>
           </div>
           <p className="home-hero__note">

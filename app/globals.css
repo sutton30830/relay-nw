@@ -2297,15 +2297,6 @@ code {
     text-align: center;
   }
 
-  .app-head__right--primary {
-    display: flex;
-    width: 100%;
-  }
-
-  .app-head__right--primary .btn-header {
-    flex: 0 0 auto;
-  }
-
   .home-hero__note {
     font-size: 13.5px;
     line-height: 1.45;
@@ -2356,6 +2347,17 @@ code {
     display: grid;
     grid-template-columns: 1fr auto;
     gap: 8px;
+  }
+
+  .home-view .app-head__right--primary {
+    display: flex;
+    width: 100%;
+    align-items: center;
+  }
+
+  .home-view .app-head__right--primary .btn-header {
+    width: auto;
+    flex: 0 0 auto;
   }
 
   .app-head__right .search {
