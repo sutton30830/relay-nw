@@ -420,6 +420,31 @@ export async function updateLead(input: {
     updates.job_value_cents = input.jobValueCents;
   }
 
+  if (typeof input.name !== "undefined") {
+    const { data: lead, error: leadError } = await supabaseAdmin
+      .from("leads")
+      .select("phone")
+      .eq("id", input.id)
+      .maybeSingle();
+
+    throwIfSupabaseError(leadError);
+
+    if (lead?.phone) {
+      const { error: nameError } = await supabaseAdmin
+        .from("leads")
+        .update({ name: input.name })
+        .eq("phone", lead.phone);
+
+      throwIfSupabaseError(nameError);
+    }
+
+    delete updates.name;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return;
+  }
+
   const { error } = await supabaseAdmin
     .from("leads")
     .update(updates)

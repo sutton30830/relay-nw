@@ -758,6 +758,11 @@ export function LeadsList({
     setter((current) => current.map((lead) => (lead.id === id ? { ...lead, ...updates } : lead)));
   }
 
+  function updateLocalLeadsByPhone(phone: string, updates: Partial<Lead>) {
+    const setter = sampleMode ? setSampleItems : setItems;
+    setter((current) => current.map((lead) => (lead.phone === phone ? { ...lead, ...updates } : lead)));
+  }
+
   async function updateStatus(id: string, status: LeadStatus) {
     if (sampleMode) {
       updateLocalLead(id, { status });
@@ -772,13 +777,19 @@ export function LeadsList({
   }
 
   async function updateName(id: string, name: string | null) {
+    const currentLead = activeItems.find((lead) => lead.id === id);
+
+    if (!currentLead) {
+      return;
+    }
+
     if (sampleMode) {
-      updateLocalLead(id, { name });
+      updateLocalLeadsByPhone(currentLead.phone, { name });
       return;
     }
 
     const previousItems = items;
-    updateLocalLead(id, { name });
+    updateLocalLeadsByPhone(currentLead.phone, { name });
 
     const saved = await patchLead(id, { name });
     if (!saved) setItems(previousItems);
