@@ -361,7 +361,7 @@ function BookedBadge({ lead }: { lead: Lead }) {
 
 function SourceBadge({ source }: { source: Lead["source"] }) {
   return (
-    <span className="chip" style={{ textTransform: "none", letterSpacing: 0, fontSize: 12 }}>
+    <span className="chip source-badge" style={{ textTransform: "none", letterSpacing: 0, fontSize: 12 }}>
       <Icon name={source === "missed_call" ? "phoneMissed" : "inbox"} size={12} />
       {sourceLabel(source)}
     </span>
@@ -372,24 +372,24 @@ function SmsBadge({ lead }: { lead: Lead }) {
   if (!lead.sms_status || lead.source !== "missed_call") return null;
 
   if (lead.sms_status === "failed" || lead.sms_status === "undelivered") {
-    return <span className="chip chip-danger"><Icon name="alertTriangle" size={12} /> SMS failed</span>;
+    return <span className="chip chip-danger sms-badge sms-badge--failed"><Icon name="alertTriangle" size={12} /> SMS failed</span>;
   }
   if (lead.sms_status === "delivered") {
-    return <span className="chip chip-good"><Icon name="checkDouble" size={12} /> SMS delivered</span>;
+    return <span className="chip chip-good sms-badge sms-badge--delivered"><Icon name="checkDouble" size={12} /> SMS delivered</span>;
   }
   if (lead.sms_status === "sent") {
-    return <span className="chip chip-good"><Icon name="checkDouble" size={12} /> SMS sent</span>;
+    return <span className="chip chip-good sms-badge sms-badge--sent"><Icon name="checkDouble" size={12} /> SMS sent</span>;
   }
   if (lead.sms_status === "skipped_opt_out") {
-    return <span className="chip chip-warn"><Icon name="shield" size={12} /> Opted out</span>;
+    return <span className="chip chip-warn sms-badge sms-badge--optout"><Icon name="shield" size={12} /> Opted out</span>;
   }
   if (lead.sms_status === "skipped_recent") {
-    return <span className="chip"><Icon name="clock" size={12} /> Recently texted</span>;
+    return <span className="chip sms-badge sms-badge--recent"><Icon name="clock" size={12} /> Recently texted</span>;
   }
   if (lead.sms_status === "skipped_disabled") {
-    return <span className="chip chip-warn"><Icon name="shield" size={12} /> SMS off</span>;
+    return <span className="chip chip-warn sms-badge sms-badge--disabled"><Icon name="shield" size={12} /> SMS off</span>;
   }
-  return <span className="chip chip-warn"><Icon name="clock" size={12} /> SMS pending</span>;
+  return <span className="chip chip-warn sms-badge sms-badge--pending"><Icon name="clock" size={12} /> SMS pending</span>;
 }
 
 function VoicemailBadge({ lead }: { lead: Lead }) {
@@ -1136,11 +1136,11 @@ export function LeadsList({
             />
             <span className="kbd">⌘K</span>
           </div>
-          <button className="btn btn-ghost btn-sm" type="button" onClick={() => router.refresh()} aria-label="Refresh">
+          <button className="btn btn-ghost btn-sm app-head__refresh" type="button" onClick={() => router.refresh()} aria-label="Refresh">
             <Icon name="refresh" size={14} />
           </button>
           <button
-            className={`btn btn-secondary btn-sm ${sampleMode ? "btn-sample-on" : ""}`}
+            className={`btn btn-secondary btn-sm app-head__sample ${sampleMode ? "btn-sample-on" : ""}`}
             type="button"
             onClick={() => {
               setSampleMode((value) => !value);
@@ -1149,7 +1149,7 @@ export function LeadsList({
           >
             Sample data
           </button>
-          <form action="/api/leads-logout" method="POST">
+          <form className="app-head__logout" action="/api/leads-logout" method="POST">
             <button className="btn btn-secondary btn-sm">Log out</button>
           </form>
         </div>

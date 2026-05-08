@@ -2271,6 +2271,154 @@ code {
   .search {
     width: 100%;
   }
+
+  .leads-view {
+    padding: 18px 12px 44px;
+  }
+
+  .app-head {
+    gap: 14px;
+    padding-bottom: 14px;
+  }
+
+  .app-head__brand {
+    width: 100%;
+  }
+
+  .app-head__brand .brand-mark {
+    width: 34px;
+    height: 34px;
+  }
+
+  .app-head__brand .t-display {
+    font-size: 20px !important;
+  }
+
+  .live-dot {
+    margin-left: auto;
+    padding: 3px 8px;
+  }
+
+  .app-head__right {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+  }
+
+  .app-head__right .search {
+    grid-column: 1 / -1;
+  }
+
+  .app-head__sample,
+  .kbd,
+  .sort-pill,
+  .source-badge,
+  .sms-badge--disabled {
+    display: none;
+  }
+
+  .app-head__logout {
+    justify-self: end;
+  }
+
+  .page-head {
+    gap: 16px;
+    padding: 24px 0 18px;
+  }
+
+  .page-head__title {
+    margin-top: 4px;
+    font-size: 31px;
+    line-height: 1.08;
+  }
+
+  .revenue-summary {
+    width: 100%;
+    padding: 12px 14px;
+  }
+
+  .filters {
+    margin-right: -12px;
+    margin-left: -12px;
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .attention-group {
+    border-radius: 12px;
+    padding: 12px;
+  }
+
+  .lead-card {
+    border-radius: 12px;
+    padding: 14px 13px;
+  }
+
+  .lead-card__head {
+    gap: 8px;
+  }
+
+  .lead-card__id {
+    gap: 10px;
+  }
+
+  .lead-card__avatar {
+    width: 34px;
+    height: 34px;
+    font-size: 12px;
+  }
+
+  .lead-card__name {
+    font-size: 17px;
+  }
+
+  .lead-card__meta {
+    gap: 5px;
+    font-size: 12.5px;
+  }
+
+  .lead-card__badges {
+    gap: 5px;
+  }
+
+  .lead-card__msg {
+    margin-top: 10px;
+    padding: 9px 10px;
+    font-size: 13.5px;
+    line-height: 1.45;
+  }
+
+  .lead-card__actions {
+    display: grid;
+    gap: 9px;
+    margin-top: 12px;
+  }
+
+  .lead-card__primary-actions {
+    display: grid;
+    width: 100%;
+    grid-template-columns: minmax(92px, 0.9fr) minmax(0, 1fr) minmax(0, 1fr);
+    gap: 7px;
+  }
+
+  .lead-card__utility-actions {
+    width: 100%;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-left: 0;
+  }
+
+  .lead-card__primary-actions .btn,
+  .lead-card__utility-actions .btn {
+    min-width: 0;
+    padding: 0 9px;
+  }
+
+  .lead-card__utility-actions .btn {
+    min-height: 28px;
+    color: var(--ink-3);
+    font-size: 12.5px;
+  }
 }
 
 @media (max-width: 560px) {
@@ -2291,17 +2439,6 @@ code {
   .money-field,
   .money-field--compact {
     width: 100%;
-  }
-
-  .revenue-summary {
-    width: 100%;
-  }
-
-  .filters {
-    margin-right: -18px;
-    margin-left: -18px;
-    padding-right: 18px;
-    padding-left: 18px;
   }
 
   .filter-pill {
@@ -2339,6 +2476,16 @@ code {
     flex: 1;
     padding: 8px 6px;
     text-align: center;
+  }
+}
+
+@media (max-width: 420px) {
+  .lead-card__primary-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lead-card__primary-actions .btn-primary {
+    grid-column: 1 / -1;
   }
 }
 
