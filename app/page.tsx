@@ -39,10 +39,10 @@ export default function HomePage() {
         </div>
         <div className="app-head__right app-head__right--primary">
           <Link className="btn btn-primary btn-header" href="/intake">
-            <Icon name="settings" size={13} /> Start catching missed calls
+            <Icon name="settings" size={13} /> Get started
           </Link>
           <Link className="btn btn-secondary btn-header" href="/leads">
-            <Icon name="inbox" size={13} /> Open inbox
+            <Icon name="inbox" size={13} /> Inbox
           </Link>
         </div>
       </header>
@@ -59,11 +59,11 @@ export default function HomePage() {
           </p>
           <div className="home-hero__actions">
             <Link className="btn btn-primary" href="/intake">
-              <Icon name="settings" size={14} /> Start catching missed calls - $99/month
+              <Icon name="settings" size={14} /> Start catching missed calls
             </Link>
           </div>
           <p className="home-hero__note">
-            Try it for 30 days. If it doesn&apos;t help, we&apos;ll refund you.
+            $99/month. No contracts. 30-day refund if it doesn&apos;t help.
           </p>
         </div>
 
@@ -124,7 +124,7 @@ export default function HomePage() {
           <span>Missed call → instant text → customer replies → you call back → job booked.</span>
           <p className="home-optional__punch">Every missed call is a job someone else takes.</p>
           <Link className="btn btn-primary home-optional__cta" href="/intake">
-            Start catching missed calls
+            Start setup
           </Link>
         </div>
       </section>
