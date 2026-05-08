@@ -130,6 +130,44 @@ async function summarizeTranscript(transcript: string) {
   return summary;
 }
 
+async function clarifyTranscript(transcript: string) {
+  if (!env.openaiApiKey) {
+    throw new Error("OPENAI_API_KEY is not configured.");
+  }
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.openaiApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: env.openaiSummaryModel,
+      max_output_tokens: 180,
+      input: [
+        {
+          role: "system",
+          content:
+            "Clean up a voicemail transcript for a local home service business. Fix obvious transcription mistakes and home-service homophones. Preserve the caller's meaning. Do not summarize. Do not add urgency, names, dates, problems, or details that are not clearly present. If a phrase is unclear, leave it plain rather than guessing.",
+        },
+        {
+          role: "user",
+          content: transcript.slice(0, 4000),
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await openAIError("OpenAI transcript cleanup", response));
+  }
+
+  const data = await response.json() as OpenAIResponsesResponse;
+  const clarified = extractResponseText(data)?.trim();
+
+  return clarified || transcript;
+}
+
 async function openAIError(label: string, response: Response) {
   const body = await response.text();
   const detail = body ? ` ${body.slice(0, 500)}` : "";
@@ -166,7 +204,8 @@ export async function transcribeLeadVoicemail(leadId: string) {
 
   try {
     const audio = await fetchRecordingAudio(lead.recording_sid);
-    const transcript = await transcribeAudio(audio);
+    const rawTranscript = await transcribeAudio(audio);
+    const transcript = await clarifyTranscript(rawTranscript);
     const summary = await summarizeTranscript(transcript);
 
     await updateLeadVoicemailTranscription({
