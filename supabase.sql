@@ -17,6 +17,11 @@ create table if not exists public.leads (
   recording_url text,
   recording_duration integer,
   recording_status text,
+  voicemail_transcript text,
+  voicemail_summary text,
+  voicemail_transcription_status text check (voicemail_transcription_status is null or voicemail_transcription_status in ('pending', 'processing', 'completed', 'failed')),
+  voicemail_transcription_error text,
+  voicemail_transcribed_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -32,6 +37,11 @@ alter table public.leads add column if not exists recording_sid text;
 alter table public.leads add column if not exists recording_url text;
 alter table public.leads add column if not exists recording_duration integer;
 alter table public.leads add column if not exists recording_status text;
+alter table public.leads add column if not exists voicemail_transcript text;
+alter table public.leads add column if not exists voicemail_summary text;
+alter table public.leads add column if not exists voicemail_transcription_status text;
+alter table public.leads add column if not exists voicemail_transcription_error text;
+alter table public.leads add column if not exists voicemail_transcribed_at timestamptz;
 alter table public.leads drop constraint if exists leads_status_check;
 alter table public.leads
   add constraint leads_status_check check (status in ('new', 'contacted', 'booked', 'dead'));
@@ -48,6 +58,12 @@ update public.leads
 alter table public.leads drop constraint if exists leads_sms_status_check;
 alter table public.leads
   add constraint leads_sms_status_check check (sms_status in ('pending', 'queued', 'sending', 'sent', 'delivered', 'failed', 'undelivered', 'skipped_disabled', 'skipped_opt_out', 'skipped_recent'));
+alter table public.leads drop constraint if exists leads_voicemail_transcription_status_check;
+alter table public.leads
+  add constraint leads_voicemail_transcription_status_check check (
+    voicemail_transcription_status is null
+    or voicemail_transcription_status in ('pending', 'processing', 'completed', 'failed')
+  );
 
 create index if not exists leads_created_at_idx on public.leads (created_at desc);
 create index if not exists leads_phone_created_at_idx on public.leads (phone, created_at desc);

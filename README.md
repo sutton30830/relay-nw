@@ -99,6 +99,9 @@ Optional:
 - `MISSED_CALL_SMS_COOLDOWN_HOURS`: defaults to `24`; prevents repeated missed-call texts to the same caller inside this window
 - `WEBHOOK_EVENT_RETENTION_DAYS`: defaults to `30`; old webhook debug logs are pruned during normal webhook activity
 - `INBOUND_MESSAGE_RETENTION_DAYS`: defaults to `90`; old inbound SMS reply bodies are pruned during normal webhook activity
+- `OPENAI_API_KEY`: optional; enables voicemail transcription and quick summaries from the lead drawer
+- `OPENAI_TRANSCRIPTION_MODEL`: optional; defaults to `whisper-1`
+- `OPENAI_SUMMARY_MODEL`: optional; defaults to `gpt-4o-mini`
 - `ALLOW_UNSIGNED_TWILIO_WEBHOOKS`: defaults to `false`; use `true` only for local manual webhook testing, never production
 
 Use phone numbers in E.164 format, like `+12065551234`.

@@ -31,6 +31,12 @@ type LeadPatch = {
   jobValueCents?: number | null;
 };
 
+type TranscribeResponse = {
+  transcript: string;
+  summary: string;
+  status: "completed";
+};
+
 const FILTERS: Array<{ key: Filter; label: string }> = [
   { key: "all", label: "All" },
   { key: "new", label: "New" },
@@ -70,6 +76,11 @@ function createSampleLeads(): Lead[] {
       recording_url: null,
       recording_duration: 18,
       recording_status: "completed",
+      voicemail_transcript: "Hi, this is Marcus. My kitchen sink is backing up and the disposal is humming. I am hoping someone can come by today if possible.",
+      voicemail_summary: "Kitchen sink is backing up and the disposal is humming; wants someone today if possible.",
+      voicemail_transcription_status: "completed",
+      voicemail_transcription_error: null,
+      voicemail_transcribed_at: new Date(now - 12 * 60_000).toISOString(),
       created_at: new Date(now - 14 * 60_000).toISOString(),
     },
     {
@@ -91,6 +102,11 @@ function createSampleLeads(): Lead[] {
       recording_url: null,
       recording_duration: null,
       recording_status: null,
+      voicemail_transcript: null,
+      voicemail_summary: null,
+      voicemail_transcription_status: null,
+      voicemail_transcription_error: null,
+      voicemail_transcribed_at: null,
       created_at: new Date(now - 52 * 60_000).toISOString(),
     },
     {
@@ -112,6 +128,11 @@ function createSampleLeads(): Lead[] {
       recording_url: null,
       recording_duration: null,
       recording_status: null,
+      voicemail_transcript: null,
+      voicemail_summary: null,
+      voicemail_transcription_status: null,
+      voicemail_transcription_error: null,
+      voicemail_transcribed_at: null,
       created_at: new Date(now - 3 * 60 * 60_000).toISOString(),
     },
   ];
@@ -207,7 +228,15 @@ function leadMatchesSearch(lead: Lead, query: string) {
     return true;
   }
 
-  return [lead.name, lead.phone, lead.message, lead.notes, sourceLabel(lead.source)]
+  return [
+    lead.name,
+    lead.phone,
+    lead.message,
+    lead.notes,
+    lead.voicemail_summary,
+    lead.voicemail_transcript,
+    sourceLabel(lead.source),
+  ]
     .filter(Boolean)
     .some((value) => String(value).toLowerCase().includes(needle));
 }
@@ -231,6 +260,23 @@ async function patchLead(id: string, body: LeadPatch) {
   } catch (error) {
     console.error("Failed to update lead from inbox", { leadId: id, error });
     return false;
+  }
+}
+
+async function requestVoicemailSummary(id: string) {
+  try {
+    const response = await fetch(`/api/leads/${id}/transcribe`, {
+      method: "POST",
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return await response.json() as TranscribeResponse;
+  } catch (error) {
+    console.error("Failed to summarize voicemail from inbox", { leadId: id, error });
+    return null;
   }
 }
 
@@ -421,6 +467,8 @@ function LeadDrawer({
   onName,
   onNotes,
   onJobValue,
+  onTranscribe,
+  isTranscribing,
 }: {
   lead: Lead;
   onClose: () => void;
@@ -429,6 +477,8 @@ function LeadDrawer({
   onName: (id: string, name: string | null) => void;
   onNotes: (id: string, notes: string) => void;
   onJobValue: (id: string, jobValueCents: number | null) => void;
+  onTranscribe: (id: string) => void;
+  isTranscribing: boolean;
 }) {
   const [name, setName] = useState(lead.name ?? "");
   const [notes, setNotes] = useState(lead.notes ?? "");
@@ -550,6 +600,38 @@ function LeadDrawer({
             <audio className="voicemail-card__audio" controls src={`/api/recordings/${lead.recording_sid}`}>
               <a href={`/api/recordings/${lead.recording_sid}`}>Open voicemail</a>
             </audio>
+            <div className="voicemail-ai">
+              {lead.voicemail_summary ? (
+                <div className="voicemail-ai__summary">
+                  <p className="t-eyebrow">Quick summary</p>
+                  <p>{lead.voicemail_summary}</p>
+                </div>
+              ) : null}
+              {lead.voicemail_transcript ? (
+                <details className="voicemail-ai__transcript">
+                  <summary>Transcript</summary>
+                  <p>{lead.voicemail_transcript}</p>
+                </details>
+              ) : null}
+              {lead.voicemail_transcription_status === "failed" ? (
+                <p className="voicemail-ai__error">
+                  Summary failed. Try again or listen to the voicemail.
+                </p>
+              ) : null}
+              {!lead.voicemail_summary ? (
+                <button
+                  className="btn btn-secondary btn-sm"
+                  type="button"
+                  disabled={isTranscribing || lead.voicemail_transcription_status === "processing"}
+                  onClick={() => onTranscribe(lead.id)}
+                >
+                  <Icon name="sparkle" size={13} />
+                  {isTranscribing || lead.voicemail_transcription_status === "processing"
+                    ? "Summarizing..."
+                    : "Summarize voicemail"}
+                </button>
+              ) : null}
+            </div>
           </div>
         ) : null}
 
@@ -654,6 +736,12 @@ function LeadCard({
         <p className="lead-card__msg">{lead.message}</p>
       ) : null}
 
+      {lead.voicemail_summary ? (
+        <p className="lead-card__msg lead-card__summary">
+          <strong>Voicemail:</strong> {lead.voicemail_summary}
+        </p>
+      ) : null}
+
       {attention ? (
         <div className="lead-card__alert">
           <Icon name="alertTriangle" size={14} />
@@ -713,6 +801,7 @@ export function LeadsList({
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [transcribingIds, setTranscribingIds] = useState<Set<string>>(() => new Set());
   const activeItems = sampleMode ? sampleItems : items;
 
   useEffect(() => {
@@ -846,6 +935,48 @@ export function LeadsList({
 
     const saved = await patchLead(id, { jobValueCents });
     if (!saved) setItems(previousItems);
+  }
+
+  async function transcribeVoicemail(id: string) {
+    if (sampleMode) {
+      updateLocalLead(id, {
+        voicemail_transcript: "The caller needs help with a kitchen sink backup and wants service today if possible.",
+        voicemail_summary: "Kitchen sink backup; wants service today if possible.",
+        voicemail_transcription_status: "completed",
+        voicemail_transcription_error: null,
+        voicemail_transcribed_at: new Date().toISOString(),
+      });
+      return;
+    }
+
+    setTranscribingIds((current) => new Set(current).add(id));
+    updateLocalLead(id, {
+      voicemail_transcription_status: "processing",
+      voicemail_transcription_error: null,
+    });
+
+    const result = await requestVoicemailSummary(id);
+
+    if (result) {
+      updateLocalLead(id, {
+        voicemail_transcript: result.transcript,
+        voicemail_summary: result.summary,
+        voicemail_transcription_status: result.status,
+        voicemail_transcription_error: null,
+        voicemail_transcribed_at: new Date().toISOString(),
+      });
+    } else {
+      updateLocalLead(id, {
+        voicemail_transcription_status: "failed",
+        voicemail_transcription_error: "Unable to summarize voicemail.",
+      });
+    }
+
+    setTranscribingIds((current) => {
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
   }
 
   return (
@@ -1006,6 +1137,8 @@ export function LeadsList({
             onName={updateName}
             onNotes={updateNotes}
             onJobValue={updateJobValue}
+            onTranscribe={transcribeVoicemail}
+            isTranscribing={transcribingIds.has(openLead.id)}
         />
       ) : null}
 

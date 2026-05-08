@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { env } from "@/lib/env";
 
 const LEAD_SELECT_COLUMNS =
-  "id, call_sid, name, phone, message, notes, booked_at, job_value_cents, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, created_at";
+  "id, call_sid, name, phone, message, notes, booked_at, job_value_cents, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, voicemail_transcript, voicemail_summary, voicemail_transcription_status, voicemail_transcription_error, voicemail_transcribed_at, created_at";
 const LEGACY_LEAD_SELECT_COLUMNS =
   "id, call_sid, name, phone, message, notes, job_value_cents, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, created_at";
 
@@ -20,6 +20,7 @@ export type SmsStatus =
   | "skipped_opt_out"
   | "skipped_recent"
   | null;
+export type VoicemailTranscriptionStatus = "pending" | "processing" | "completed" | "failed" | null;
 export type WebhookEventSource =
   | "twilio_voice"
   | "twilio_dial_status"
@@ -56,6 +57,11 @@ export type Lead = {
   recording_url: string | null;
   recording_duration: number | null;
   recording_status: string | null;
+  voicemail_transcript: string | null;
+  voicemail_summary: string | null;
+  voicemail_transcription_status: VoicemailTranscriptionStatus;
+  voicemail_transcription_error: string | null;
+  voicemail_transcribed_at: string | null;
   created_at: string;
 };
 
@@ -96,14 +102,34 @@ function isMissingBookedAtColumnError(error: { message: string } | null) {
   return Boolean(error?.message.includes("booked_at"));
 }
 
+function isMissingOptionalLeadColumnError(error: { message: string } | null) {
+  return Boolean(
+    error?.message.includes("booked_at") ||
+      error?.message.includes("voicemail_transcript") ||
+      error?.message.includes("voicemail_summary") ||
+      error?.message.includes("voicemail_transcription_status") ||
+      error?.message.includes("voicemail_transcription_error") ||
+      error?.message.includes("voicemail_transcribed_at"),
+  );
+}
+
 function normalizeLead(lead: Lead): Lead {
-  if (lead.status !== "booked") {
-    return lead;
+  const normalizedLead = {
+    ...lead,
+    voicemail_transcript: lead.voicemail_transcript ?? null,
+    voicemail_summary: lead.voicemail_summary ?? null,
+    voicemail_transcription_status: lead.voicemail_transcription_status ?? null,
+    voicemail_transcription_error: lead.voicemail_transcription_error ?? null,
+    voicemail_transcribed_at: lead.voicemail_transcribed_at ?? null,
+  };
+
+  if (normalizedLead.status !== "booked") {
+    return normalizedLead;
   }
 
   return {
-    ...lead,
-    booked_at: lead.booked_at ?? lead.created_at,
+    ...normalizedLead,
+    booked_at: normalizedLead.booked_at ?? normalizedLead.created_at,
     status: "dead",
   };
 }
@@ -254,8 +280,8 @@ export async function getLeads() {
     .order("created_at", { ascending: false });
   const { data, error } = await query;
 
-  if (error && error.message.includes("booked_at")) {
-    console.warn("leads.booked_at is missing. Run supabase.sql to enable booked outcome tracking.");
+  if (isMissingOptionalLeadColumnError(error)) {
+    console.warn("Some optional leads columns are missing. Run supabase.sql to enable all inbox features.");
 
     const { data: legacyData, error: legacyError } = await supabaseAdmin
       .from("leads")
@@ -309,6 +335,61 @@ export async function recordingBelongsToLead(recordingSid: string) {
   throwIfSupabaseError(error);
 
   return Boolean(data?.id);
+}
+
+export async function getLeadForVoicemailTranscription(id: string) {
+  if (isPlaceholderSupabaseConfig()) {
+    return null;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("leads")
+    .select("id, recording_sid")
+    .eq("id", id)
+    .maybeSingle();
+
+  throwIfSupabaseError(error);
+
+  return data as { id: string; recording_sid: string | null } | null;
+}
+
+export async function updateLeadVoicemailTranscription(input: {
+  id: string;
+  transcript?: string | null;
+  summary?: string | null;
+  status: VoicemailTranscriptionStatus;
+  error?: string | null;
+}) {
+  if (shouldSkipDatabaseWrite("voicemail transcription update", input)) {
+    return;
+  }
+
+  const updates: {
+    voicemail_transcript?: string | null;
+    voicemail_summary?: string | null;
+    voicemail_transcription_status: VoicemailTranscriptionStatus;
+    voicemail_transcription_error: string | null;
+    voicemail_transcribed_at: string | null;
+  } = {
+    voicemail_transcription_status: input.status,
+    voicemail_transcription_error: input.error ?? null,
+    voicemail_transcribed_at: input.status === "completed" ? new Date().toISOString() : null,
+  };
+
+  if (typeof input.transcript !== "undefined") {
+    updates.voicemail_transcript = input.transcript;
+  }
+
+  if (typeof input.summary !== "undefined") {
+    updates.voicemail_summary = input.summary;
+  }
+
+  const { error } = await supabaseAdmin
+    .from("leads")
+    .update(updates)
+    .eq("id", input.id);
+
+  throwIfSupabaseError(error);
 }
 
 export async function updateLeadRecordingByCallSid(input: {

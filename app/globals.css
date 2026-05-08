@@ -1777,6 +1777,14 @@ code {
   line-height: 1.55;
 }
 
+.lead-card__summary {
+  background: color-mix(in oklab, var(--brand-soft) 55%, var(--panel));
+}
+
+.lead-card__summary strong {
+  color: var(--brand-ink);
+}
+
 .lead-card__alert {
   display: flex;
   align-items: center;
@@ -2008,6 +2016,49 @@ code {
 .voicemail-card__audio {
   width: 100%;
   max-width: 100%;
+}
+
+.voicemail-ai {
+  display: grid;
+  gap: 10px;
+}
+
+.voicemail-ai__summary {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 12px;
+}
+
+.voicemail-ai__summary p:last-child {
+  margin: 8px 0 0;
+  line-height: 1.5;
+}
+
+.voicemail-ai__transcript {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  color: var(--ink-2);
+}
+
+.voicemail-ai__transcript summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.voicemail-ai__transcript p {
+  margin: 8px 0 0;
+  line-height: 1.55;
+}
+
+.voicemail-ai__error {
+  margin: 0;
+  border-radius: 8px;
+  background: #fde8e8;
+  padding: 10px 12px;
+  color: #b42318;
+  font-weight: 700;
 }
 
 .drawer__section-head {
