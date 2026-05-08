@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
@@ -515,10 +515,42 @@ function LeadDrawer({
   onTranscribe: (id: string) => void;
   isTranscribing: boolean;
 }) {
+  const drawerRef = useRef<HTMLElement | null>(null);
+  const drawerHeadRef = useRef<HTMLElement | null>(null);
   const [name, setName] = useState(lead.name ?? "");
   const [notes, setNotes] = useState(lead.notes ?? "");
   const [summary, setSummary] = useState(lead.voicemail_summary ?? "");
   const booked = isBookedLead(lead);
+
+  function resetDrawerScroll() {
+    window.scrollTo({ top: 0, behavior: "auto" });
+
+    if (drawerRef.current) {
+      drawerRef.current.scrollTop = 0;
+    }
+
+    drawerHeadRef.current?.focus({ preventScroll: false });
+  }
+
+  useLayoutEffect(() => {
+    resetDrawerScroll();
+  }, [lead.id]);
+
+  useEffect(() => {
+    resetDrawerScroll();
+
+    const firstFrame = window.requestAnimationFrame(resetDrawerScroll);
+    const secondFrame = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(resetDrawerScroll);
+    });
+    const finalReset = window.setTimeout(resetDrawerScroll, 80);
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+      window.clearTimeout(finalReset);
+    };
+  }, [lead.id]);
 
   useEffect(() => {
     setName(lead.name ?? "");
@@ -556,8 +588,13 @@ function LeadDrawer({
   return (
     <>
       <div className="drawer-backdrop" onClick={onClose} />
-      <aside className="drawer" role="dialog" aria-label={`Lead ${lead.name || lead.phone}`}>
-        <header className="drawer__head">
+      <aside
+        ref={drawerRef}
+        className="drawer"
+        role="dialog"
+        aria-label={`Lead ${lead.name || lead.phone}`}
+      >
+        <header ref={drawerHeadRef} className="drawer__head" tabIndex={-1}>
           <button className="btn btn-ghost btn-sm" type="button" onClick={onClose}>
             <Icon name="x" size={14} /> Close
           </button>
@@ -1263,6 +1300,7 @@ export function LeadsList({
 
       {openLead ? (
         <LeadDrawer
+          key={openLead.id}
           lead={openLead}
           onClose={() => setOpenId(null)}
           onStatus={updateStatus}
