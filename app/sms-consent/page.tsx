@@ -11,16 +11,8 @@ export default function SmsConsentPage() {
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = event.currentTarget;
-    const consent = form.elements.namedItem("smsConsent");
-
     if (!phone.trim()) {
       setError("Please enter your phone number.");
-      return;
-    }
-
-    if (!(consent instanceof HTMLInputElement) || !consent.checked) {
-      setError("Please check the SMS consent box before submitting.");
       return;
     }
 
@@ -85,13 +77,13 @@ export default function SmsConsentPage() {
                 </label>
 
                 <label className="consent-row">
-                  <input type="checkbox" name="smsConsent" required />
+                  <input type="checkbox" name="smsConsent" />
                   <span>
-                    I consent to receive a one-time text message from Relay NW regarding my inquiry.
-                    Message frequency varies. Message & data rates may apply. Reply STOP to opt
-                    out. Reply HELP for help. Read our{" "}
-                    <Link href="/privacy">Privacy Policy</Link> and{" "}
-                    <Link href="/terms">Terms</Link>.
+                    I agree to receive SMS messages from Relay NW regarding missed-call follow-up
+                    and responses to my inquiry. Message frequency varies. Message and data rates
+                    may apply. Reply STOP to opt out or HELP for help. Consent is not required to
+                    use our services. View our <Link href="/terms">Terms</Link> and{" "}
+                    <Link href="/privacy">Privacy Policy</Link>.
                   </span>
                 </label>
 
