@@ -17,6 +17,17 @@ type OpenAIResponsesResponse = {
   }>;
 };
 
+const TRANSCRIPTION_CONTEXT =
+  "This voicemail is for a local home service business. Common words include sink, faucet, toilet, drain, leak, leaking, water heater, HVAC, furnace, electrical, breaker, outlet, estimate, quote, appointment, callback, and service call.";
+
+const TRANSCRIPT_REPLACEMENTS: Array<[RegExp, string]> = [
+  [/\bsync\b/gi, "sink"],
+  [/\bsynced\b/gi, "sink"],
+  [/\bfoss it\b/gi, "faucet"],
+  [/\bfaucett\b/gi, "faucet"],
+  [/\bhot water tank\b/gi, "water heater"],
+];
+
 function twilioRecordingUrl(recordingSid: string) {
   return `https://api.twilio.com/2010-04-01/Accounts/${env.twilioAccountSid}/Recordings/${recordingSid}.mp3`;
 }
@@ -46,6 +57,7 @@ async function transcribeAudio(audio: Blob) {
   form.append("file", audio, "voicemail.mp3");
   form.append("model", env.openaiTranscriptionModel);
   form.append("response_format", "json");
+  form.append("prompt", TRANSCRIPTION_CONTEXT);
 
   const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
     method: "POST",
@@ -66,7 +78,14 @@ async function transcribeAudio(audio: Blob) {
     throw new Error("OpenAI transcription returned no text.");
   }
 
-  return transcript;
+  return cleanTranscript(transcript);
+}
+
+function cleanTranscript(transcript: string) {
+  return TRANSCRIPT_REPLACEMENTS.reduce(
+    (cleaned, [pattern, replacement]) => cleaned.replace(pattern, replacement),
+    transcript,
+  );
 }
 
 async function summarizeTranscript(transcript: string) {
