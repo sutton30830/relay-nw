@@ -37,6 +37,10 @@ type TranscribeResponse = {
   status: "completed";
 };
 
+type TranscribeResult =
+  | { ok: true; data: TranscribeResponse }
+  | { ok: false; error: string };
+
 const FILTERS: Array<{ key: Filter; label: string }> = [
   { key: "all", label: "All" },
   { key: "new", label: "New" },
@@ -263,21 +267,49 @@ async function patchLead(id: string, body: LeadPatch) {
   }
 }
 
-async function requestVoicemailSummary(id: string) {
+async function requestVoicemailSummary(id: string): Promise<TranscribeResult> {
   try {
     const response = await fetch(`/api/leads/${id}/transcribe`, {
       method: "POST",
     });
 
+    const data = await response.json().catch(() => null) as TranscribeResponse | { error?: string } | null;
+
     if (!response.ok) {
-      return null;
+      return {
+        ok: false,
+        error: humanVoicemailError(data && "error" in data ? data.error : null),
+      };
     }
 
-    return await response.json() as TranscribeResponse;
+    return { ok: true, data: data as TranscribeResponse };
   } catch (error) {
     console.error("Failed to summarize voicemail from inbox", { leadId: id, error });
-    return null;
+    return {
+      ok: false,
+      error: "Relay could not reach the transcription service. Try again in a minute.",
+    };
   }
+}
+
+function humanVoicemailError(error: string | null | undefined) {
+  if (!error) {
+    return "Unable to summarize this voicemail. Try again or listen to the recording.";
+  }
+
+  if (error.includes("Twilio recording download failed with 404")) {
+    return "Twilio no longer has this recording available. Try a newer voicemail or listen from Twilio.";
+  }
+
+  if (error.includes("insufficient_quota")) {
+    return "OpenAI billing or quota is blocking transcription.";
+  }
+
+  if (error.includes("Missing scopes") || error.includes("insufficient permissions")) {
+    return "The OpenAI API key does not have permission to transcribe audio.";
+  }
+
+  return "Unable to summarize this voicemail. Try again or listen to the recording.";
 }
 
 function followUpStatusText(lead: Lead) {
@@ -615,7 +647,8 @@ function LeadDrawer({
               ) : null}
               {lead.voicemail_transcription_status === "failed" ? (
                 <p className="voicemail-ai__error">
-                  Summary failed. Try again or listen to the voicemail.
+                  {lead.voicemail_transcription_error ??
+                    "Unable to summarize this voicemail. Try again or listen to the recording."}
                 </p>
               ) : null}
               {!lead.voicemail_summary ? (
@@ -957,18 +990,18 @@ export function LeadsList({
 
     const result = await requestVoicemailSummary(id);
 
-    if (result) {
+    if (result.ok) {
       updateLocalLead(id, {
-        voicemail_transcript: result.transcript,
-        voicemail_summary: result.summary,
-        voicemail_transcription_status: result.status,
+        voicemail_transcript: result.data.transcript,
+        voicemail_summary: result.data.summary,
+        voicemail_transcription_status: result.data.status,
         voicemail_transcription_error: null,
         voicemail_transcribed_at: new Date().toISOString(),
       });
     } else {
       updateLocalLead(id, {
         voicemail_transcription_status: "failed",
-        voicemail_transcription_error: "Unable to summarize voicemail.",
+        voicemail_transcription_error: result.error,
       });
     }
 
