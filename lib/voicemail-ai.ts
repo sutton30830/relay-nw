@@ -148,7 +148,7 @@ async function clarifyTranscript(transcript: string) {
         {
           role: "system",
           content:
-            "Clean up a voicemail transcript for a local home service business. Fix obvious transcription mistakes and home-service homophones. Preserve the caller's meaning. Do not summarize. Do not add urgency, names, dates, problems, or details that are not clearly present. If a phrase is unclear, leave it plain rather than guessing.",
+            "Clean up a voicemail transcript for a local home service business. Fix obvious transcription mistakes and home-service homophones. Preserve the caller's meaning. Do not summarize. Do not change names, pronouns, or personal identifiers. Do not add urgency, names, dates, problems, or details that are not clearly present. If a phrase is unclear, leave it plain rather than guessing.",
         },
         {
           role: "user",
@@ -194,6 +194,18 @@ export async function transcribeLeadVoicemail(leadId: string) {
 
   if (!lead?.recording_sid) {
     throw new Error("Lead does not have a voicemail recording.");
+  }
+
+  if (lead.voicemail_transcription_status === "processing") {
+    throw new Error("Voicemail summary is already generating.");
+  }
+
+  if (lead.voicemail_summary && lead.voicemail_transcript) {
+    return {
+      transcript: lead.voicemail_transcript,
+      summary: lead.voicemail_summary,
+      status: "completed" as const,
+    };
   }
 
   await updateLeadVoicemailTranscription({

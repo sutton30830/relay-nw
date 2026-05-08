@@ -1,5 +1,7 @@
+import { after } from "next/server";
 import { env } from "@/lib/env";
 import { logWebhookEvent, updateLeadRecordingByCallSid } from "@/lib/supabase";
+import { transcribeLeadVoicemail } from "@/lib/voicemail-ai";
 import {
   formDataToRecord,
   phoneLast4,
@@ -76,7 +78,7 @@ async function updateLeadRecording(input: ReturnType<typeof parseRecordingPayloa
       recordingStatus: input.recordingStatus,
     });
 
-    return { updated: false, missingCallSid: true };
+    return { updated: false, leadId: null, missingCallSid: true };
   }
 
   const result = await updateLeadRecordingByCallSid(input);
@@ -95,7 +97,20 @@ async function updateLeadRecording(input: ReturnType<typeof parseRecordingPayloa
     });
   }
 
-  return { updated: result.updated, missingCallSid: false, matchedBy: result.matchedBy };
+  return {
+    updated: result.updated,
+    leadId: result.leadId,
+    missingCallSid: false,
+    matchedBy: result.matchedBy,
+  };
+}
+
+function shouldAutoTranscribeRecording(input: ReturnType<typeof parseRecordingPayload>) {
+  if (!input.recordingSid) {
+    return false;
+  }
+
+  return input.recordingStatus === "completed" || !input.recordingStatus;
 }
 
 export async function POST(request: Request) {
@@ -126,6 +141,22 @@ export async function POST(request: Request) {
 
   try {
     const result = await updateLeadRecording(recording);
+
+    if (result.leadId && shouldAutoTranscribeRecording(recording)) {
+      after(async () => {
+        try {
+          await transcribeLeadVoicemail(result.leadId!);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unknown voicemail transcription error";
+
+          console.error("Automatic voicemail transcription failed", {
+            leadId: result.leadId,
+            recordingSid: recording.recordingSid,
+            error: message,
+          });
+        }
+      });
+    }
 
     await logWebhookEvent({
       source: RECORDING_WEBHOOK_SOURCE,

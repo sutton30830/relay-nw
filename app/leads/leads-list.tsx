@@ -29,6 +29,7 @@ type LeadPatch = {
   notes?: string | null;
   booked?: boolean;
   jobValueCents?: number | null;
+  voicemailSummary?: string | null;
 };
 
 type TranscribeResponse = {
@@ -498,6 +499,7 @@ function LeadDrawer({
   onBooked,
   onName,
   onNotes,
+  onSummary,
   onJobValue,
   onTranscribe,
   isTranscribing,
@@ -508,12 +510,14 @@ function LeadDrawer({
   onBooked: (id: string, booked: boolean) => void;
   onName: (id: string, name: string | null) => void;
   onNotes: (id: string, notes: string) => void;
+  onSummary: (id: string, summary: string) => void;
   onJobValue: (id: string, jobValueCents: number | null) => void;
   onTranscribe: (id: string) => void;
   isTranscribing: boolean;
 }) {
   const [name, setName] = useState(lead.name ?? "");
   const [notes, setNotes] = useState(lead.notes ?? "");
+  const [summary, setSummary] = useState(lead.voicemail_summary ?? "");
   const booked = isBookedLead(lead);
 
   useEffect(() => {
@@ -523,6 +527,10 @@ function LeadDrawer({
   useEffect(() => {
     setNotes(lead.notes ?? "");
   }, [lead.id, lead.notes]);
+
+  useEffect(() => {
+    setSummary(lead.voicemail_summary ?? "");
+  }, [lead.id, lead.voicemail_summary]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -635,9 +643,22 @@ function LeadDrawer({
             <div className="voicemail-ai">
               {lead.voicemail_summary ? (
                 <div className="voicemail-ai__summary">
-                  <p className="t-eyebrow">Quick summary</p>
-                  <p>{lead.voicemail_summary}</p>
+                  <label>
+                    <span className="t-eyebrow">Quick summary</span>
+                    <textarea
+                      className="field voicemail-ai__summary-field"
+                      rows={2}
+                      value={summary}
+                      onChange={(event) => setSummary(event.target.value)}
+                      onBlur={() => onSummary(lead.id, summary)}
+                    />
+                  </label>
                 </div>
+              ) : null}
+              {!lead.voicemail_summary && lead.voicemail_transcription_status === "processing" ? (
+                <p className="voicemail-ai__status">
+                  <Icon name="sparkle" size={13} /> Generating summary...
+                </p>
               ) : null}
               {lead.voicemail_transcript ? (
                 <details className="voicemail-ai__transcript">
@@ -651,17 +672,19 @@ function LeadDrawer({
                     "Unable to summarize this voicemail. Try again or listen to the recording."}
                 </p>
               ) : null}
-              {!lead.voicemail_summary ? (
+              {!lead.voicemail_summary && lead.voicemail_transcription_status !== "processing" ? (
                 <button
                   className="btn btn-secondary btn-sm"
                   type="button"
-                  disabled={isTranscribing || lead.voicemail_transcription_status === "processing"}
+                  disabled={isTranscribing}
                   onClick={() => onTranscribe(lead.id)}
                 >
                   <Icon name="sparkle" size={13} />
-                  {isTranscribing || lead.voicemail_transcription_status === "processing"
+                  {isTranscribing
                     ? "Summarizing..."
-                    : "Summarize voicemail"}
+                    : lead.voicemail_transcription_status === "failed"
+                      ? "Retry summary"
+                      : "Summarize voicemail"}
                 </button>
               ) : null}
             </div>
@@ -772,6 +795,12 @@ function LeadCard({
       {lead.voicemail_summary ? (
         <p className="lead-card__msg lead-card__summary">
           <strong>Voicemail:</strong> {lead.voicemail_summary}
+        </p>
+      ) : null}
+
+      {!lead.voicemail_summary && lead.voicemail_transcription_status === "processing" ? (
+        <p className="lead-card__msg lead-card__summary lead-card__summary--pending">
+          <Icon name="sparkle" size={13} /> Generating voicemail summary...
         </p>
       ) : null}
 
@@ -954,6 +983,21 @@ export function LeadsList({
     updateLocalLead(id, { notes });
 
     const saved = await patchLead(id, { notes });
+    if (!saved) setItems(previousItems);
+  }
+
+  async function updateVoicemailSummary(id: string, voicemailSummary: string) {
+    const normalizedSummary = voicemailSummary.trim() || null;
+
+    if (sampleMode) {
+      updateLocalLead(id, { voicemail_summary: normalizedSummary });
+      return;
+    }
+
+    const previousItems = items;
+    updateLocalLead(id, { voicemail_summary: normalizedSummary });
+
+    const saved = await patchLead(id, { voicemailSummary: normalizedSummary });
     if (!saved) setItems(previousItems);
   }
 
@@ -1163,15 +1207,16 @@ export function LeadsList({
 
       {openLead ? (
         <LeadDrawer
-            lead={openLead}
-            onClose={() => setOpenId(null)}
-            onStatus={updateStatus}
-            onBooked={updateBooked}
-            onName={updateName}
-            onNotes={updateNotes}
-            onJobValue={updateJobValue}
-            onTranscribe={transcribeVoicemail}
-            isTranscribing={transcribingIds.has(openLead.id)}
+          lead={openLead}
+          onClose={() => setOpenId(null)}
+          onStatus={updateStatus}
+          onBooked={updateBooked}
+          onName={updateName}
+          onNotes={updateNotes}
+          onSummary={updateVoicemailSummary}
+          onJobValue={updateJobValue}
+          onTranscribe={transcribeVoicemail}
+          isTranscribing={transcribingIds.has(openLead.id)}
         />
       ) : null}
 

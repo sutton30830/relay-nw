@@ -4,6 +4,7 @@ import { type LeadStatus, updateLead } from "@/lib/supabase";
 
 const MAX_NOTES_LENGTH = 2000;
 const MAX_NAME_LENGTH = 100;
+const MAX_VOICEMAIL_SUMMARY_LENGTH = 500;
 const MAX_JOB_VALUE_CENTS = 100_000_000;
 const VALID_STATUSES = new Set<LeadStatus>(["new", "contacted", "booked", "dead"]);
 
@@ -13,6 +14,7 @@ type LeadPatchBody = {
   notes?: string | null;
   booked?: boolean;
   jobValueCents?: number | null;
+  voicemailSummary?: string | null;
 };
 
 type LeadUpdate = {
@@ -21,6 +23,7 @@ type LeadUpdate = {
   notes?: string | null;
   bookedAt?: string | null;
   jobValueCents?: number | null;
+  voicemailSummary?: string | null;
 };
 
 async function isAuthorized() {
@@ -60,6 +63,21 @@ function validateLeadUpdate(body: LeadPatchBody | null): LeadUpdate | { error: s
     return { error: "Notes are too long" };
   }
 
+  if (
+    body.voicemailSummary !== null &&
+    typeof body.voicemailSummary !== "undefined" &&
+    typeof body.voicemailSummary !== "string"
+  ) {
+    return { error: "Invalid voicemail summary" };
+  }
+
+  const voicemailSummary =
+    typeof body.voicemailSummary === "string" ? body.voicemailSummary.trim() || null : body.voicemailSummary;
+
+  if (typeof voicemailSummary === "string" && voicemailSummary.length > MAX_VOICEMAIL_SUMMARY_LENGTH) {
+    return { error: "Voicemail summary is too long" };
+  }
+
   if (typeof body.booked !== "undefined" && typeof body.booked !== "boolean") {
     return { error: "Invalid booked state" };
   }
@@ -79,7 +97,8 @@ function validateLeadUpdate(body: LeadPatchBody | null): LeadUpdate | { error: s
     !body.status &&
     typeof body.notes === "undefined" &&
     typeof body.booked === "undefined" &&
-    typeof body.jobValueCents === "undefined"
+    typeof body.jobValueCents === "undefined" &&
+    typeof body.voicemailSummary === "undefined"
   ) {
     return { error: "Nothing to update" };
   }
@@ -90,6 +109,7 @@ function validateLeadUpdate(body: LeadPatchBody | null): LeadUpdate | { error: s
     notes: typeof body.notes === "undefined" ? undefined : body.notes,
     bookedAt: typeof body.booked === "undefined" ? undefined : body.booked ? new Date().toISOString() : null,
     jobValueCents: typeof body.jobValueCents === "undefined" ? undefined : body.jobValueCents,
+    voicemailSummary,
   };
 }
 

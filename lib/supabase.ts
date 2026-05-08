@@ -344,13 +344,19 @@ export async function getLeadForVoicemailTranscription(id: string) {
 
   const { data, error } = await supabaseAdmin
     .from("leads")
-    .select("id, recording_sid")
+    .select("id, recording_sid, voicemail_transcript, voicemail_summary, voicemail_transcription_status")
     .eq("id", id)
     .maybeSingle();
 
   throwIfSupabaseError(error);
 
-  return data as { id: string; recording_sid: string | null } | null;
+  return data as {
+    id: string;
+    recording_sid: string | null;
+    voicemail_transcript: string | null;
+    voicemail_summary: string | null;
+    voicemail_transcription_status: VoicemailTranscriptionStatus;
+  } | null;
 }
 
 export async function updateLeadVoicemailTranscription(input: {
@@ -468,6 +474,7 @@ export async function updateLead(input: {
   notes?: string | null;
   bookedAt?: string | null;
   jobValueCents?: number | null;
+  voicemailSummary?: string | null;
 }) {
   if (shouldSkipDatabaseWrite("lead update", input)) {
     return;
@@ -479,6 +486,7 @@ export async function updateLead(input: {
     notes?: string | null;
     booked_at?: string | null;
     job_value_cents?: number | null;
+    voicemail_summary?: string | null;
   } = {};
 
   if (typeof input.name !== "undefined") {
@@ -499,6 +507,10 @@ export async function updateLead(input: {
 
   if (typeof input.jobValueCents !== "undefined") {
     updates.job_value_cents = input.jobValueCents;
+  }
+
+  if (typeof input.voicemailSummary !== "undefined") {
+    updates.voicemail_summary = input.voicemailSummary;
   }
 
   if (typeof input.name !== "undefined") {
