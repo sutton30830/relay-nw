@@ -728,7 +728,7 @@ function LeadDrawer({
         </div>
 
         <div className="drawer__notes">
-          <p className="t-eyebrow" style={{ marginBottom: 8 }}>Owner notes</p>
+          <p className="t-eyebrow" style={{ marginBottom: 8 }}>Private notes</p>
           <textarea
             className="field"
             rows={3}
@@ -800,7 +800,7 @@ function LeadCard({
 
       {lead.voicemail_summary ? (
         <p className="lead-card__msg lead-card__summary">
-          <strong>Voicemail:</strong> {lead.voicemail_summary}
+          <strong>Voicemail summary:</strong> {lead.voicemail_summary}
         </p>
       ) : null}
 
@@ -832,7 +832,7 @@ function LeadCard({
         <div className="lead-card__details" onClick={(event) => event.stopPropagation()}>
           {lead.notes ? (
             <section>
-              <p className="t-eyebrow">Owner notes</p>
+              <p className="t-eyebrow">Private notes</p>
               <p>{lead.notes}</p>
             </section>
           ) : null}
