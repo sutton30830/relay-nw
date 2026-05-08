@@ -87,7 +87,7 @@ async function summarizeTranscript(transcript: string) {
         {
           role: "system",
           content:
-            "Summarize a voicemail for a local service business owner. Use one concise sentence. Include the problem, urgency, and callback preference if mentioned. Do not invent details.",
+            "Summarize a voicemail for a local service business owner. Use one short sentence. State only what the caller explicitly said. Do not infer urgency. Do not say urgent, emergency, ASAP, today, or immediate unless the caller clearly said that. If the caller only says they want help, a quote, a callback, or to check something out, describe it as a normal request. Include callback timing only if the caller mentioned one. Do not invent details.",
         },
         {
           role: "user",
