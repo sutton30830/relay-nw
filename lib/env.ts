@@ -12,6 +12,18 @@ function getOptionalEnv(name: string): string | undefined {
   return process.env[name] || undefined;
 }
 
+function getOptionalEnvAliases(...names: string[]): string | undefined {
+  for (const name of names) {
+    const value = getOptionalEnv(name);
+
+    if (value) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
 function getOptionalBooleanEnv(name: string, fallback: boolean): boolean {
   const value = process.env[name];
 
@@ -95,8 +107,10 @@ export const env = {
   missedCallSmsCooldownHours: getOptionalNumberEnv("MISSED_CALL_SMS_COOLDOWN_HOURS", 24),
   webhookEventRetentionDays: getOptionalNumberEnv("WEBHOOK_EVENT_RETENTION_DAYS", 30),
   inboundMessageRetentionDays: getOptionalNumberEnv("INBOUND_MESSAGE_RETENTION_DAYS", 90),
-  openaiApiKey: getOptionalEnv("OPENAI_API_KEY"),
-  openaiTranscriptionModel: getOptionalEnv("OPENAI_TRANSCRIPTION_MODEL") ?? "whisper-1",
+  openaiApiKey: getOptionalEnvAliases("OPENAI_API_KEY", "OPEN_AI_KEY"),
+  openaiTranscriptionModel:
+    getOptionalEnvAliases("OPENAI_TRANSCRIPTION_MODEL", "OPEN_AI_TRANSCRIPTION_MODEL") ??
+    "whisper-1",
   openaiSummaryModel: getOptionalEnv("OPENAI_SUMMARY_MODEL") ?? "gpt-4o-mini",
   leadsPassword: getRequiredEnv("LEADS_PASSWORD"),
   leadsCookieSecret: getLeadsCookieSecret(),

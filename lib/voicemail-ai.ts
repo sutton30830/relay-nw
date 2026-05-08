@@ -8,11 +8,12 @@ type OpenAITranscriptionResponse = {
   text?: string;
 };
 
-type OpenAIChatResponse = {
-  choices?: Array<{
-    message?: {
-      content?: string;
-    };
+type OpenAIResponsesResponse = {
+  output_text?: string;
+  output?: Array<{
+    content?: Array<{
+      text?: string;
+    }>;
   }>;
 };
 
@@ -55,7 +56,7 @@ async function transcribeAudio(audio: Blob) {
   });
 
   if (!response.ok) {
-    throw new Error(`OpenAI transcription failed with ${response.status}.`);
+    throw new Error(await openAIError("OpenAI transcription", response));
   }
 
   const data = await response.json() as OpenAITranscriptionResponse;
@@ -73,7 +74,7 @@ async function summarizeTranscript(transcript: string) {
     throw new Error("OPENAI_API_KEY is not configured.");
   }
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${env.openaiApiKey}`,
@@ -81,9 +82,8 @@ async function summarizeTranscript(transcript: string) {
     },
     body: JSON.stringify({
       model: env.openaiSummaryModel,
-      temperature: 0.2,
-      max_tokens: 80,
-      messages: [
+      max_output_tokens: 120,
+      input: [
         {
           role: "system",
           content:
@@ -98,17 +98,38 @@ async function summarizeTranscript(transcript: string) {
   });
 
   if (!response.ok) {
-    throw new Error(`OpenAI summary failed with ${response.status}.`);
+    throw new Error(await openAIError("OpenAI summary", response));
   }
 
-  const data = await response.json() as OpenAIChatResponse;
-  const summary = data.choices?.[0]?.message?.content?.trim();
+  const data = await response.json() as OpenAIResponsesResponse;
+  const summary = extractResponseText(data);
 
   if (!summary) {
     throw new Error("OpenAI summary returned no text.");
   }
 
   return summary;
+}
+
+async function openAIError(label: string, response: Response) {
+  const body = await response.text();
+  const detail = body ? ` ${body.slice(0, 500)}` : "";
+
+  return `${label} failed with ${response.status}.${detail}`;
+}
+
+function extractResponseText(data: OpenAIResponsesResponse) {
+  const directText = data.output_text?.trim();
+
+  if (directText) {
+    return directText;
+  }
+
+  return data.output
+    ?.flatMap((item) => item.content ?? [])
+    .map((content) => content.text)
+    .find((text) => text?.trim())
+    ?.trim();
 }
 
 export async function transcribeLeadVoicemail(leadId: string) {
