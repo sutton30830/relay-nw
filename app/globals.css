@@ -1860,6 +1860,23 @@ code {
   align-items: center;
   margin-top: 14px;
   gap: 8px;
+  justify-content: space-between;
+}
+
+.lead-card__primary-actions,
+.lead-card__utility-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.lead-card__utility-actions {
+  margin-left: auto;
+}
+
+.lead-card__utility-actions .btn {
+  color: var(--ink-3);
 }
 
 .booked-toggle {
