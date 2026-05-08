@@ -49,6 +49,8 @@ const FILTERS: Array<{ key: Filter; label: string }> = [
   { key: "dead", label: "Closed" },
 ];
 
+const SHOW_DETAILS_STORAGE_KEY = "relay-nw-show-lead-details";
+
 const QUICK_REPLIES = [
   "Thanks for reaching out. I can call you shortly.",
   "Can I come by tomorrow morning?",
@@ -750,6 +752,10 @@ function LeadCard({
   onStatus,
   onBooked,
   onJobValue,
+  showDetails,
+  expanded,
+  collapsed,
+  onToggleDetails,
 }: {
   lead: Lead;
   now: number;
@@ -757,9 +763,15 @@ function LeadCard({
   onStatus: (id: string, status: LeadStatus) => void;
   onBooked: (id: string, booked: boolean) => void;
   onJobValue: (id: string, jobValueCents: number | null) => void;
+  showDetails: boolean;
+  expanded: boolean;
+  collapsed: boolean;
+  onToggleDetails: (id: string) => void;
 }) {
   const attention = needsAttention(lead);
   const booked = isBookedLead(lead);
+  const hasDetails = Boolean(lead.voicemail_transcript || lead.notes || lead.recording_sid);
+  const detailsVisible = hasDetails && (showDetails ? !collapsed : expanded);
 
   return (
     <article
@@ -822,6 +834,28 @@ function LeadCard({
         </div>
       ) : null}
 
+      {detailsVisible ? (
+        <div className="lead-card__details" onClick={(event) => event.stopPropagation()}>
+          {lead.notes ? (
+            <section>
+              <p className="t-eyebrow">Owner notes</p>
+              <p>{lead.notes}</p>
+            </section>
+          ) : null}
+          {lead.recording_sid ? (
+            <audio className="lead-card__audio" controls src={`/api/recordings/${lead.recording_sid}`}>
+              <a href={`/api/recordings/${lead.recording_sid}`}>Open voicemail</a>
+            </audio>
+          ) : null}
+          {lead.voicemail_transcript ? (
+            <details className="lead-card__transcript">
+              <summary>Transcript</summary>
+              <p>{lead.voicemail_transcript}</p>
+            </details>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="lead-card__actions" onClick={(event) => event.stopPropagation()}>
         <a className="btn btn-primary btn-sm" href={`tel:${lead.phone}`}>
           <Icon name="phone" size={13} /> Call
@@ -837,6 +871,11 @@ function LeadCard({
         {!booked ? (
           <button className="btn btn-secondary btn-sm" type="button" onClick={() => onBooked(lead.id, true)}>
             Mark booked
+          </button>
+        ) : null}
+        {hasDetails ? (
+          <button className="btn btn-ghost btn-sm" type="button" onClick={() => onToggleDetails(lead.id)}>
+            {detailsVisible ? "Hide details" : "Show details"}
           </button>
         ) : null}
         <button className="btn btn-ghost btn-sm ml-auto" type="button" onClick={() => onOpen(lead.id)}>
@@ -864,6 +903,9 @@ export function LeadsList({
   const [openId, setOpenId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [transcribingIds, setTranscribingIds] = useState<Set<string>>(() => new Set());
+  const [showDetailsOnCards, setShowDetailsOnCards] = useState(false);
+  const [expandedLeadIds, setExpandedLeadIds] = useState<Set<string>>(() => new Set());
+  const [collapsedLeadIds, setCollapsedLeadIds] = useState<Set<string>>(() => new Set());
   const activeItems = sampleMode ? sampleItems : items;
 
   useEffect(() => {
@@ -879,6 +921,10 @@ export function LeadsList({
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    setShowDetailsOnCards(window.localStorage.getItem(SHOW_DETAILS_STORAGE_KEY) === "true");
   }, []);
 
   useEffect(() => {
@@ -916,6 +962,32 @@ export function LeadsList({
   function updateLocalLeadsByPhone(phone: string, updates: Partial<Lead>) {
     const setter = sampleMode ? setSampleItems : setItems;
     setter((current) => current.map((lead) => (lead.phone === phone ? { ...lead, ...updates } : lead)));
+  }
+
+  function toggleShowDetailsOnCards() {
+    setShowDetailsOnCards((current) => {
+      const next = !current;
+      window.localStorage.setItem(SHOW_DETAILS_STORAGE_KEY, String(next));
+      return next;
+    });
+    setExpandedLeadIds(new Set());
+    setCollapsedLeadIds(new Set());
+  }
+
+  function toggleLeadDetails(id: string) {
+    const setter = showDetailsOnCards ? setCollapsedLeadIds : setExpandedLeadIds;
+
+    setter((current) => {
+      const next = new Set(current);
+
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+
+      return next;
+    });
   }
 
   async function updateStatus(id: string, status: LeadStatus) {
@@ -1147,6 +1219,14 @@ export function LeadsList({
         <span className="sort-pill">
           <Icon name="clock" size={12} /> Newest first
         </span>
+        <button
+          className={`filter-pill filter-pill--toggle ${showDetailsOnCards ? "filter-pill--on" : ""}`}
+          type="button"
+          onClick={toggleShowDetailsOnCards}
+          aria-pressed={showDetailsOnCards}
+        >
+          Show details
+        </button>
       </nav>
 
       <div className="leads-list">
@@ -1172,6 +1252,10 @@ export function LeadsList({
                   onStatus={updateStatus}
                   onBooked={updateBooked}
                   onJobValue={updateJobValue}
+                  showDetails={showDetailsOnCards}
+                  expanded={expandedLeadIds.has(lead.id)}
+                  collapsed={collapsedLeadIds.has(lead.id)}
+                  onToggleDetails={toggleLeadDetails}
                 />
               ))}
             </div>
@@ -1187,6 +1271,10 @@ export function LeadsList({
             onStatus={updateStatus}
             onBooked={updateBooked}
             onJobValue={updateJobValue}
+            showDetails={showDetailsOnCards}
+            expanded={expandedLeadIds.has(lead.id)}
+            collapsed={collapsedLeadIds.has(lead.id)}
+            onToggleDetails={toggleLeadDetails}
           />
         ))}
 

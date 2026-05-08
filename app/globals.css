@@ -1797,6 +1797,45 @@ code {
   font-size: 13px;
 }
 
+.lead-card__details {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+  margin-top: 12px;
+  padding: 12px;
+}
+
+.lead-card__details section {
+  min-width: 0;
+}
+
+.lead-card__details p {
+  margin: 6px 0 0;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.lead-card__audio {
+  width: 100%;
+  max-width: 100%;
+}
+
+.lead-card__transcript {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  color: var(--ink-2);
+}
+
+.lead-card__transcript summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .lead-card__value {
   display: inline-flex;
   align-items: center;
