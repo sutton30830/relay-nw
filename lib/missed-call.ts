@@ -11,7 +11,7 @@ import { missedCallSmsBody, phoneLast4, twilioClient } from "@/lib/twilio";
 export async function handleMissedCall(input: {
   callerPhone: string;
   callSid: string;
-  message: string;
+  message: string | null;
 }) {
   const callerPhone = normalizePhoneNumber(input.callerPhone);
   const callSid = input.callSid.trim();

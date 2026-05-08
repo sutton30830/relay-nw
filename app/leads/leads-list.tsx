@@ -45,6 +45,8 @@ const QUICK_REPLIES = [
   "I can get you on the schedule today.",
 ];
 
+const LEGACY_FORWARDING_MESSAGE = "Forwarded missed call from existing business number.";
+
 function createSampleLeads(): Lead[] {
   const now = Date.now();
 
@@ -648,7 +650,9 @@ function LeadCard({
         </div>
       </div>
 
-      {lead.message ? <p className="lead-card__msg">{lead.message}</p> : null}
+      {lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE ? (
+        <p className="lead-card__msg">{lead.message}</p>
+      ) : null}
 
       {attention ? (
         <div className="lead-card__alert">

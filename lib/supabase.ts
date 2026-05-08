@@ -210,7 +210,7 @@ export async function createLead(input: {
 export async function createMissedCallLeadIfNew(input: {
   callSid: string;
   phone: string;
-  message: string;
+  message: string | null;
 }) {
   if (shouldSkipDatabaseWrite("missed call lead insert", input)) {
     return { inserted: true, leadId: null };

@@ -77,7 +77,7 @@ async function handleForwardingMode(input: {
     const result = await handleMissedCall({
       callSid,
       callerPhone: input.callerPhone,
-      message: "Forwarded missed call from existing business number.",
+      message: null,
     });
 
     console.info("Handled forwarded missed call", {
