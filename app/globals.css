@@ -2288,12 +2288,22 @@ code {
   }
 
   .home-hero__actions .btn {
-    width: 100%;
+    width: fit-content;
+    max-width: 100%;
     min-height: 48px;
     justify-content: center;
     padding-right: 14px;
     padding-left: 14px;
     text-align: center;
+  }
+
+  .app-head__right--primary {
+    display: flex;
+    width: 100%;
+  }
+
+  .app-head__right--primary .btn-header {
+    flex: 0 0 auto;
   }
 
   .home-hero__note {
