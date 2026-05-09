@@ -835,6 +835,26 @@ function LeadCard({
   const booked = isBookedLead(lead);
   const hasDetails = Boolean(lead.voicemail_transcript || lead.notes || lead.recording_sid);
   const detailsVisible = hasDetails && expanded;
+  const hasUsefulMessage = Boolean(lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE);
+  const summaryGenerating = !lead.voicemail_summary && lead.voicemail_transcription_status === "processing";
+  const summaryPreparing =
+    shouldShowVoicemailSummaryProgress(lead, now) && lead.voicemail_transcription_status !== "processing";
+  const requestLabel = lead.voicemail_summary
+    ? "What they need"
+    : hasUsefulMessage
+      ? "Request"
+      : lead.recording_sid
+        ? "Voicemail"
+        : "Missed call";
+  const requestText = lead.voicemail_summary
+    ? lead.voicemail_summary
+    : hasUsefulMessage
+      ? lead.message
+      : lead.recording_sid
+        ? lead.voicemail_transcription_status === "failed"
+          ? "Voicemail saved. Summary unavailable. Open the lead to listen."
+          : "Voicemail saved. Open the lead to listen or summarize."
+        : "No voicemail left. Call back while the request is still fresh.";
 
   return (
     <article
@@ -863,33 +883,25 @@ function LeadCard({
         </div>
       </div>
 
-      {lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE ? (
-        <p className="lead-card__msg">{lead.message}</p>
-      ) : null}
-
-      {lead.voicemail_summary ? (
-        <p className="lead-card__msg lead-card__summary">
-          <strong>Voicemail summary:</strong> {lead.voicemail_summary}
-        </p>
-      ) : null}
-
-      {!lead.voicemail_summary && lead.voicemail_transcription_status === "processing" ? (
-        <div className="lead-card__msg lead-card__summary lead-card__summary--pending" role="status">
-          <div className="lead-card__summary-pending-label">
-            <Icon name="sparkle" size={13} /> Generating voicemail summary...
-          </div>
-          <div className="lead-card__summary-progress" aria-hidden="true" />
+      <section
+        className={`lead-card__request ${lead.voicemail_summary ? "lead-card__request--summary" : ""} ${
+          summaryGenerating || summaryPreparing ? "lead-card__request--pending" : ""
+        }`}
+        aria-label={requestLabel}
+      >
+        <div className="lead-card__request-label">
+          <Icon name={summaryGenerating || summaryPreparing ? "sparkle" : "message"} size={13} />
+          {requestLabel}
         </div>
-      ) : null}
-
-      {shouldShowVoicemailSummaryProgress(lead, now) && lead.voicemail_transcription_status !== "processing" ? (
-        <div className="lead-card__msg lead-card__summary lead-card__summary--pending" role="status">
-          <div className="lead-card__summary-pending-label">
-            <Icon name="sparkle" size={13} /> Preparing voicemail summary...
+        {summaryGenerating || summaryPreparing ? (
+          <div role="status">
+            <p>{summaryGenerating ? "Generating voicemail summary..." : "Preparing voicemail summary..."}</p>
+            <div className="lead-card__summary-progress" aria-hidden="true" />
           </div>
-          <div className="lead-card__summary-progress" aria-hidden="true" />
-        </div>
-      ) : null}
+        ) : (
+          <p>{requestText}</p>
+        )}
+      </section>
 
       {attention ? (
         <div className="lead-card__alert">
@@ -934,7 +946,7 @@ function LeadCard({
       <div className="lead-card__actions" onClick={(event) => event.stopPropagation()}>
         <div className="lead-card__primary-actions">
           <a className="btn btn-primary btn-sm" href={`tel:${lead.phone}`}>
-            <Icon name="phone" size={13} /> Call
+            <Icon name="phone" size={13} /> Call back
           </a>
           {lead.status === "new" ? (
             <button className="btn btn-secondary btn-sm" type="button" onClick={() => onStatus(lead.id, "contacted")}>
