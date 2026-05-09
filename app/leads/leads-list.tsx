@@ -539,7 +539,7 @@ function PriorityBadge({ priority }: { priority: ReplyPriority }) {
   if (priority.level === "normal") return null;
 
   return (
-    <span className={`chip priority-badge priority-badge--${priority.level}`} title={priority.reason ?? undefined}>
+    <span className={`chip priority-badge priority-badge--${priority.level}`}>
       <Icon name={priority.level === "fast" ? "alertTriangle" : "clock"} size={12} />
       {priority.label}
     </span>
