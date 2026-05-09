@@ -43,7 +43,7 @@ type TranscribeResult =
   | { ok: false; error: string };
 
 const AUTO_VOICEMAIL_SUMMARY_LIMIT = 3;
-const AUTO_VOICEMAIL_SUMMARY_LOOKBACK_MS = 48 * 60 * 60 * 1000;
+const AUTO_VOICEMAIL_SUMMARY_LOOKBACK_MS = 10 * 60 * 1000;
 const INBOX_REFRESH_MS = 8_000;
 const RELATIVE_TIME_TICK_MS = 15_000;
 
@@ -251,15 +251,25 @@ function leadMatchesSearch(lead: Lead, query: string) {
     .some((value) => String(value).toLowerCase().includes(needle));
 }
 
-function shouldShowVoicemailSummaryProgress(lead: Lead) {
+function isRecentLead(lead: Lead, now: number) {
+  const createdAt = Date.parse(lead.created_at);
+  return Number.isFinite(createdAt) && now - createdAt <= AUTO_VOICEMAIL_SUMMARY_LOOKBACK_MS;
+}
+
+function shouldShowVoicemailSummaryProgress(lead: Lead, now: number) {
   return Boolean(
     lead.recording_sid &&
       !lead.voicemail_summary &&
-      lead.voicemail_transcription_status !== "failed",
+      lead.voicemail_transcription_status !== "failed" &&
+      (lead.voicemail_transcription_status === "processing" || isRecentLead(lead, now)),
   );
 }
 
-function shouldAutoSummarizeVoicemail(lead: Lead, now: number) {
+function shouldAutoSummarizeVoicemail(lead: Lead, now: number, initiallyLoadedLeadIds: Set<string>) {
+  if (initiallyLoadedLeadIds.has(lead.id)) {
+    return false;
+  }
+
   if (!lead.recording_sid || lead.voicemail_summary || lead.voicemail_transcript) {
     return false;
   }
@@ -268,12 +278,7 @@ function shouldAutoSummarizeVoicemail(lead: Lead, now: number) {
     return false;
   }
 
-  const createdAt = Date.parse(lead.created_at);
-  if (!Number.isFinite(createdAt)) {
-    return false;
-  }
-
-  return now - createdAt <= AUTO_VOICEMAIL_SUMMARY_LOOKBACK_MS;
+  return isRecentLead(lead, now);
 }
 
 function filterLeads(leads: Lead[], filter: Filter, query: string) {
@@ -877,7 +882,7 @@ function LeadCard({
         </div>
       ) : null}
 
-      {shouldShowVoicemailSummaryProgress(lead) && lead.voicemail_transcription_status !== "processing" ? (
+      {shouldShowVoicemailSummaryProgress(lead, now) && lead.voicemail_transcription_status !== "processing" ? (
         <div className="lead-card__msg lead-card__summary lead-card__summary--pending" role="status">
           <div className="lead-card__summary-pending-label">
             <Icon name="sparkle" size={13} /> Preparing voicemail summary...
@@ -969,6 +974,7 @@ export function LeadsList({
 }) {
   const router = useRouter();
   const searchRef = useRef<HTMLInputElement | null>(null);
+  const initiallyLoadedLeadIds = useRef<Set<string>>(new Set(leads.map((lead) => lead.id)));
   const autoSummaryStartedIds = useRef<Set<string>>(new Set());
   const [items, setItems] = useState(leads);
   const [sampleItems, setSampleItems] = useState(() => createSampleLeads());
@@ -1022,7 +1028,7 @@ export function LeadsList({
 
     const remaining = AUTO_VOICEMAIL_SUMMARY_LIMIT - autoSummaryStartedIds.current.size;
     const candidates = activeItems
-      .filter((lead) => shouldAutoSummarizeVoicemail(lead, now))
+      .filter((lead) => shouldAutoSummarizeVoicemail(lead, now, initiallyLoadedLeadIds.current))
       .filter((lead) => !autoSummaryStartedIds.current.has(lead.id) && !transcribingIds.has(lead.id))
       .slice(0, remaining);
 
