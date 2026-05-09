@@ -297,13 +297,12 @@ type NextAction = {
   tone: "danger" | "good" | "normal" | "warning";
 };
 
-function getLeadNextAction(lead: Lead, now: number): NextAction {
+function getLeadNextAction(lead: Lead, now: number): NextAction | null {
   const priority = getLeadPriority(lead);
   const summaryGenerating =
     !lead.voicemail_summary && lead.voicemail_transcription_status === "processing";
   const summaryPreparing =
     shouldShowVoicemailSummaryProgress(lead, now) && lead.voicemail_transcription_status !== "processing";
-  const hasUsefulMessage = Boolean(lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE);
 
   if (needsAttention(lead)) {
     return {
@@ -320,24 +319,6 @@ function getLeadNextAction(lead: Lead, now: number): NextAction {
       detail: "Track what this booked job was worth.",
       icon: "star",
       tone: "good",
-    };
-  }
-
-  if (isBookedLead(lead)) {
-    return {
-      label: "Booked",
-      detail: "This job is counted in booked value.",
-      icon: "check",
-      tone: "good",
-    };
-  }
-
-  if (lead.status === "dead") {
-    return {
-      label: "Closed",
-      detail: "No more follow-up needed.",
-      icon: "check",
-      tone: "normal",
     };
   }
 
@@ -368,39 +349,7 @@ function getLeadNextAction(lead: Lead, now: number): NextAction {
     };
   }
 
-  if (lead.voicemail_summary) {
-    return {
-      label: "Call back with context",
-      detail: "Review what they need, then follow up.",
-      icon: "phone",
-      tone: "normal",
-    };
-  }
-
-  if (lead.recording_sid) {
-    return {
-      label: "Listen to voicemail",
-      detail: "Use the recording to understand what they need.",
-      icon: "message",
-      tone: "normal",
-    };
-  }
-
-  if (hasUsefulMessage) {
-    return {
-      label: "Call about this request",
-      detail: "They left details. Follow up while it is fresh.",
-      icon: "phone",
-      tone: "normal",
-    };
-  }
-
-  return {
-    label: "Call back",
-    detail: "No voicemail left. Follow up before they move on.",
-    icon: "phone",
-    tone: "normal",
-  };
+  return null;
 }
 
 function prioritySortScore(lead: Lead) {
@@ -1170,15 +1119,17 @@ function LeadCard({
         </div>
       </div>
 
-      <section className={`lead-card__next-action lead-card__next-action--${nextAction.tone}`}>
-        <div className="lead-card__next-action-icon">
-          <Icon name={nextAction.icon} size={15} />
-        </div>
-        <div>
-          <p className="lead-card__next-action-label">{nextAction.label}</p>
-          <p className="lead-card__next-action-detail">{nextAction.detail}</p>
-        </div>
-      </section>
+      {nextAction ? (
+        <section className={`lead-card__next-action lead-card__next-action--${nextAction.tone}`}>
+          <div className="lead-card__next-action-icon">
+            <Icon name={nextAction.icon} size={15} />
+          </div>
+          <div>
+            <p className="lead-card__next-action-label">{nextAction.label}</p>
+            <p className="lead-card__next-action-detail">{nextAction.detail}</p>
+          </div>
+        </section>
+      ) : null}
 
       <section
         className={`lead-card__request ${lead.voicemail_summary ? "lead-card__request--summary" : ""} ${
