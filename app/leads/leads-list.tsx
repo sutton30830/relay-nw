@@ -740,27 +740,30 @@ function LeadDrawer({
             <Icon name={lead.sms_status === "failed" || lead.sms_status === "skipped_disabled" ? "alertTriangle" : "message"} size={15} />
             <span>{followUpStatusText(lead)}</span>
           </div>
-          <div className="follow-up-quick">
-            {QUICK_REPLIES.map((template) => (
-              <a
-                key={template}
-                className="quick-reply"
-                href={`sms:${lead.phone}?&body=${encodeURIComponent(template)}`}
-              >
-                {template}
-              </a>
-            ))}
-          </div>
           <div className="follow-up-actions">
-            <a className="btn btn-primary" href={`sms:${lead.phone}`}>
-              <Icon name="message" size={14} /> Text from your phone
-            </a>
-            <a className="btn btn-secondary" href={`tel:${lead.phone}`}>
+            <a className="btn btn-primary follow-up-actions__primary" href={`tel:${lead.phone}`}>
               <Icon name="phone" size={14} /> Call back
             </a>
+            <a className="btn btn-secondary" href={`sms:${lead.phone}`}>
+              <Icon name="message" size={14} /> Text
+            </a>
           </div>
+          <details className="follow-up-shortcuts">
+            <summary>Text shortcuts</summary>
+            <div className="follow-up-quick">
+              {QUICK_REPLIES.map((template) => (
+                <a
+                  key={template}
+                  className="quick-reply"
+                  href={`sms:${lead.phone}?&body=${encodeURIComponent(template)}`}
+                >
+                  {template}
+                </a>
+              ))}
+            </div>
+          </details>
           <p className="follow-up-hint">
-            Replies open your phone's messages app so follow-up stays personal and fast.
+            Texting opens your phone's messages app.
           </p>
         </div>
 
