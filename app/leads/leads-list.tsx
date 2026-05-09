@@ -44,6 +44,8 @@ type TranscribeResult =
 
 const AUTO_VOICEMAIL_SUMMARY_LIMIT = 3;
 const AUTO_VOICEMAIL_SUMMARY_LOOKBACK_MS = 48 * 60 * 60 * 1000;
+const INBOX_REFRESH_MS = 8_000;
+const RELATIVE_TIME_TICK_MS = 15_000;
 
 const FILTERS: Array<{ key: Filter; label: string }> = [
   { key: "all", label: "All" },
@@ -985,12 +987,31 @@ export function LeadsList({
   }, [leads]);
 
   useEffect(() => {
-    const id = window.setInterval(() => router.refresh(), 30_000);
-    return () => window.clearInterval(id);
+    function refreshInbox() {
+      router.refresh();
+      setNow(Date.now());
+    }
+
+    const id = window.setInterval(refreshInbox, INBOX_REFRESH_MS);
+
+    function onVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        refreshInbox();
+      }
+    }
+
+    window.addEventListener("focus", refreshInbox);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("focus", refreshInbox);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [router]);
 
   useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 30_000);
+    const id = window.setInterval(() => setNow(Date.now()), RELATIVE_TIME_TICK_MS);
     return () => window.clearInterval(id);
   }, []);
 
@@ -1209,7 +1230,7 @@ export function LeadsList({
             <p className="t-eyebrow" style={{ fontSize: 10 }}>Relay NW</p>
             <h1 className="t-display" style={{ fontSize: 22, margin: 0 }}>{businessName}</h1>
           </div>
-          <span className="live-dot" title="Auto-refreshes every 30 seconds">
+          <span className="live-dot" title="Auto-refreshes every few seconds">
             <span className="live-dot__pulse" />
             <span className="live-dot__core" />
             Live
