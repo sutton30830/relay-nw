@@ -360,9 +360,11 @@ function BookedBadge({ lead }: { lead: Lead }) {
 }
 
 function SourceBadge({ source }: { source: Lead["source"] }) {
+  if (source === "missed_call") return null;
+
   return (
     <span className="chip source-badge" style={{ textTransform: "none", letterSpacing: 0, fontSize: 12 }}>
-      <Icon name={source === "missed_call" ? "phoneMissed" : "inbox"} size={12} />
+      <Icon name="inbox" size={12} />
       {sourceLabel(source)}
     </span>
   );
