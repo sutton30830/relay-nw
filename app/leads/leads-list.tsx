@@ -1134,6 +1134,8 @@ function LeadCard({
       <section
         className={`lead-card__request ${lead.voicemail_summary ? "lead-card__request--summary" : ""} ${
           summaryGenerating || summaryPreparing ? "lead-card__request--pending" : ""
+        } ${
+          priority.level === "fast" && lead.status === "new" ? "lead-card__request--fast" : ""
         }`}
         aria-label={requestLabel}
       >

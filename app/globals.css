@@ -1875,6 +1875,15 @@ code {
   background: color-mix(in oklab, var(--brand-soft) 34%, var(--panel));
 }
 
+.lead-card__request--fast {
+  border-color: color-mix(in oklab, var(--danger) 58%, var(--line));
+  background: color-mix(in oklab, var(--danger-soft) 72%, var(--panel));
+}
+
+.lead-card__request--fast .lead-card__request-label {
+  color: color-mix(in oklab, var(--danger) 82%, var(--ink));
+}
+
 .lead-card__request-label {
   display: inline-flex;
   align-items: center;
