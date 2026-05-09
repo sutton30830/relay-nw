@@ -2102,6 +2102,56 @@ code {
   line-height: 1.35;
 }
 
+.drawer__request {
+  border-top: 1px solid var(--line);
+  background: color-mix(in oklab, var(--panel) 76%, var(--brand-soft));
+  padding: 18px 24px;
+}
+
+.drawer__request--summary {
+  background: color-mix(in oklab, var(--brand-soft) 38%, var(--panel));
+}
+
+.drawer__request-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.drawer__request p {
+  margin: 9px 0 0;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.drawer__request-summary {
+  margin-top: 10px;
+  min-height: 96px;
+  border-color: color-mix(in oklab, var(--brand) 18%, var(--line));
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.drawer__request-pending {
+  display: grid;
+  gap: 10px;
+}
+
+.drawer__request-pending p {
+  color: var(--brand-ink);
+}
+
 .money-field {
   display: inline-flex;
   min-width: 160px;
@@ -2633,6 +2683,19 @@ code {
     flex-direction: column;
     padding-right: 18px;
     padding-left: 18px;
+  }
+
+  .drawer__request {
+    padding: 16px 18px;
+  }
+
+  .drawer__request p {
+    font-size: 16px;
+  }
+
+  .drawer__request-summary {
+    min-height: 88px;
+    font-size: 15px;
   }
 
   .follow-up-panel {

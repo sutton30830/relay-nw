@@ -558,6 +558,24 @@ function LeadDrawer({
   const [notes, setNotes] = useState(lead.notes ?? "");
   const [summary, setSummary] = useState(lead.voicemail_summary ?? "");
   const booked = isBookedLead(lead);
+  const hasUsefulMessage = Boolean(lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE);
+  const summaryGenerating = !lead.voicemail_summary && lead.voicemail_transcription_status === "processing";
+  const requestLabel = lead.voicemail_summary
+    ? "What they need"
+    : hasUsefulMessage
+      ? "Request"
+      : lead.recording_sid
+        ? "Voicemail"
+        : "Missed call";
+  const requestText = lead.voicemail_summary
+    ? lead.voicemail_summary
+    : hasUsefulMessage
+      ? lead.message
+      : lead.recording_sid
+        ? lead.voicemail_transcription_status === "failed"
+          ? "Voicemail saved. Summary unavailable. Listen to the recording below."
+          : "Voicemail saved. Listen below or generate a quick summary."
+        : "No voicemail left. Call back while the request is still fresh.";
 
   function resetDrawerScroll() {
     window.scrollTo({ top: 0, behavior: "auto" });
@@ -669,6 +687,30 @@ function LeadDrawer({
           </div>
         </div>
 
+        <section className={`drawer__request ${lead.voicemail_summary ? "drawer__request--summary" : ""}`}>
+          <div className="drawer__request-label">
+            <Icon name={summaryGenerating ? "sparkle" : "message"} size={14} />
+            <span>{requestLabel}</span>
+          </div>
+          {lead.voicemail_summary ? (
+            <textarea
+              className="field drawer__request-summary"
+              rows={3}
+              value={summary}
+              onChange={(event) => setSummary(event.target.value)}
+              onBlur={() => onSummary(lead.id, summary)}
+              aria-label="What the caller needs"
+            />
+          ) : summaryGenerating ? (
+            <div className="drawer__request-pending" role="status">
+              <p>Generating voicemail summary...</p>
+              <div className="lead-card__summary-progress" aria-hidden="true" />
+            </div>
+          ) : (
+            <p>{requestText}</p>
+          )}
+        </section>
+
         <div className="drawer__status-row">
           <span className="t-eyebrow">Status</span>
           <StatusControl status={lead.status} onChange={(status) => onStatus(lead.id, status)} />
@@ -688,13 +730,6 @@ function LeadDrawer({
           />
         </div>
 
-        {lead.message ? (
-          <div className="drawer__message">
-            <p className="t-eyebrow">Request details</p>
-            <p style={{ margin: "8px 0 0", lineHeight: 1.55 }}>{lead.message}</p>
-          </div>
-        ) : null}
-
         {lead.recording_sid ? (
           <div className="drawer__message voicemail-card">
             <div>
@@ -707,20 +742,6 @@ function LeadDrawer({
               <a href={`/api/recordings/${lead.recording_sid}`}>Open voicemail</a>
             </audio>
             <div className="voicemail-ai">
-              {lead.voicemail_summary ? (
-                <div className="voicemail-ai__summary">
-                  <label>
-                    <span className="t-eyebrow">Quick summary</span>
-                    <textarea
-                      className="field voicemail-ai__summary-field"
-                      rows={2}
-                      value={summary}
-                      onChange={(event) => setSummary(event.target.value)}
-                      onBlur={() => onSummary(lead.id, summary)}
-                    />
-                  </label>
-                </div>
-              ) : null}
               {!lead.voicemail_summary && lead.voicemail_transcription_status === "processing" ? (
                 <p className="voicemail-ai__status">
                   <Icon name="sparkle" size={13} /> Generating summary...
