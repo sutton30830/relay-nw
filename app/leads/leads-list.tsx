@@ -423,6 +423,35 @@ function getFollowUpReason(lead: Lead) {
   return "New missed call. Call back before they move on.";
 }
 
+function getFollowUpCue(lead: Lead) {
+  if (needsAttention(lead)) {
+    return { label: "SMS failed", tone: "danger" };
+  }
+
+  const priority = getLeadPriority(lead).level;
+  if (priority === "fast") {
+    return { label: "Urgent", tone: "danger" };
+  }
+
+  if (priority === "today") {
+    return { label: "Today", tone: "warning" };
+  }
+
+  if (lead.voicemail_summary) {
+    return { label: "Summary ready", tone: "good" };
+  }
+
+  if (lead.recording_sid) {
+    return { label: "Voicemail", tone: "good" };
+  }
+
+  if (lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE) {
+    return { label: "Request details", tone: "normal" };
+  }
+
+  return { label: "Fresh call", tone: "normal" };
+}
+
 function isBookedLead(lead: Lead) {
   return Boolean(lead.booked_at || lead.status === "booked" || lead.job_value_cents);
 }
@@ -728,6 +757,7 @@ function FollowUpQueue({
         {leads.map((lead) => {
           const priority = getLeadPriority(lead);
           const urgent = needsAttention(lead) || priority.level === "fast";
+          const cue = getFollowUpCue(lead);
 
           return (
             <article
@@ -737,7 +767,10 @@ function FollowUpQueue({
               <div className="follow-up-item__main">
                 <div className="lead-card__avatar">{initials(lead) ?? <Icon name="user" size={14} />}</div>
                 <div>
-                  <h4>{lead.name || "Unknown caller"}</h4>
+                  <div className="follow-up-item__title">
+                    <h4>{lead.name || "Unknown caller"}</h4>
+                    <span className={`follow-up-cue follow-up-cue--${cue.tone}`}>{cue.label}</span>
+                  </div>
                   <p className="follow-up-item__meta">
                     <span className="t-mono">{formatPhone(lead.phone)}</span>
                     <span>·</span>
