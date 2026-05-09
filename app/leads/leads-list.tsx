@@ -370,6 +370,59 @@ function sortLeadsForWork(leads: Lead[]) {
   });
 }
 
+function followUpQueueScore(lead: Lead) {
+  if (needsAttention(lead)) return 0;
+
+  const priority = getLeadPriority(lead).level;
+  if (priority === "fast") return 1;
+  if (priority === "today") return 2;
+  if (lead.voicemail_summary) return 3;
+  if (lead.recording_sid) return 4;
+  if (lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE) return 5;
+  return 6;
+}
+
+function getFollowUpQueue(leads: Lead[]) {
+  return leads
+    .filter((lead) => lead.status === "new" && !isBookedLead(lead))
+    .sort((a, b) => {
+      const scoreDiff = followUpQueueScore(a) - followUpQueueScore(b);
+      if (scoreDiff !== 0) return scoreDiff;
+
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    })
+    .slice(0, 4);
+}
+
+function getFollowUpReason(lead: Lead) {
+  if (needsAttention(lead)) {
+    return "Auto-text did not go through. Call this person directly.";
+  }
+
+  const priority = getLeadPriority(lead);
+  if (priority.level === "fast") {
+    return priority.reason ? `Fast reply: ${priority.reason}.` : "This request looks time-sensitive.";
+  }
+
+  if (priority.level === "today") {
+    return priority.reason ? `Today: ${priority.reason}.` : "They may need help today.";
+  }
+
+  if (lead.voicemail_summary) {
+    return lead.voicemail_summary;
+  }
+
+  if (lead.recording_sid) {
+    return "Voicemail saved. Listen or call back while the job is fresh.";
+  }
+
+  if (lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE) {
+    return lead.message;
+  }
+
+  return "New missed call. Call back before they move on.";
+}
+
 function isBookedLead(lead: Lead) {
   return Boolean(lead.booked_at || lead.status === "booked" || lead.job_value_cents);
 }
@@ -643,6 +696,76 @@ function PriorityControl({
         })}
       </div>
     </div>
+  );
+}
+
+function FollowUpQueue({
+  leads,
+  now,
+  onOpen,
+  onStatus,
+  onBooked,
+}: {
+  leads: Lead[];
+  now: number;
+  onOpen: (id: string) => void;
+  onStatus: (id: string, status: LeadStatus) => void;
+  onBooked: (id: string, booked: boolean) => void;
+}) {
+  if (leads.length === 0) return null;
+
+  return (
+    <section className="follow-up-queue" aria-label="Call these leads first">
+      <div className="follow-up-queue__head">
+        <div>
+          <p className="t-eyebrow">Call these first</p>
+          <h3 className="t-display">Best chances to recover work.</h3>
+        </div>
+        <span>{leads.length} {leads.length === 1 ? "lead" : "leads"}</span>
+      </div>
+
+      <div className="follow-up-queue__list">
+        {leads.map((lead) => {
+          const priority = getLeadPriority(lead);
+          const urgent = needsAttention(lead) || priority.level === "fast";
+
+          return (
+            <article
+              key={lead.id}
+              className={`follow-up-item ${urgent ? "follow-up-item--urgent" : ""}`}
+            >
+              <div className="follow-up-item__main">
+                <div className="lead-card__avatar">{initials(lead) ?? <Icon name="user" size={14} />}</div>
+                <div>
+                  <h4>{lead.name || "Unknown caller"}</h4>
+                  <p className="follow-up-item__meta">
+                    <span className="t-mono">{formatPhone(lead.phone)}</span>
+                    <span>·</span>
+                    <span>{formatRelativeTime(lead.created_at, now)}</span>
+                  </p>
+                  <p className="follow-up-item__reason">{getFollowUpReason(lead)}</p>
+                </div>
+              </div>
+
+              <div className="follow-up-item__actions">
+                <a className="btn btn-primary btn-sm" href={`tel:${lead.phone}`}>
+                  <Icon name="phone" size={14} /> Call
+                </a>
+                <button className="btn btn-secondary btn-sm" type="button" onClick={() => onStatus(lead.id, "contacted")}>
+                  Mark contacted
+                </button>
+                <button className="btn btn-secondary btn-sm" type="button" onClick={() => onBooked(lead.id, true)}>
+                  Mark booked
+                </button>
+                <button className="btn btn-ghost btn-sm" type="button" onClick={() => onOpen(lead.id)}>
+                  Open <Icon name="arrowRight" size={14} />
+                </button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -1327,14 +1450,12 @@ export function LeadsList({
     () => filterLeads(activeItems, filter, query),
     [activeItems, filter, query],
   );
-  const attentionItems = useMemo(
-    () => sortLeadsForWork(filteredItems.filter(needsAttention)),
+  const sortedItems = useMemo(
+    () => sortLeadsForWork(filteredItems),
     [filteredItems],
   );
-  const normalItems = useMemo(
-    () => sortLeadsForWork(filteredItems.filter((lead) => !needsAttention(lead))),
-    [filteredItems],
-  );
+  const followUpItems = useMemo(() => getFollowUpQueue(activeItems), [activeItems]);
+  const showFollowUpQueue = filter === "all" && query.trim().length === 0;
 
   const openLead = activeItems.find((lead) => lead.id === openId) ?? null;
 
@@ -1584,6 +1705,16 @@ export function LeadsList({
         </aside>
       </section>
 
+      {showFollowUpQueue ? (
+        <FollowUpQueue
+          leads={followUpItems}
+          now={now}
+          onOpen={setOpenId}
+          onStatus={updateStatus}
+          onBooked={updateBooked}
+        />
+      ) : null}
+
       <nav className="filters clean-scroll" aria-label="Filter leads">
         {FILTERS.map((item) => {
           const count = counts[item.key];
@@ -1607,37 +1738,7 @@ export function LeadsList({
       </nav>
 
       <div className="leads-list">
-        {attentionItems.length > 0 ? (
-          <section className="attention-group" aria-label="Needs attention">
-            <div className="attention-group__head">
-              <div>
-                <p className="t-eyebrow">Needs attention</p>
-                <h3>Follow up manually</h3>
-              </div>
-              <span>{attentionItems.length} {attentionItems.length === 1 ? "lead" : "leads"}</span>
-            </div>
-            <p className="attention-group__note">
-              Auto-text did not complete for these callers. Call or text them directly.
-            </p>
-            <div className="attention-group__list">
-              {attentionItems.map((lead) => (
-                <LeadCard
-                  key={lead.id}
-                  lead={lead}
-                  now={now}
-                  onOpen={setOpenId}
-                  onStatus={updateStatus}
-                  onBooked={updateBooked}
-                  onJobValue={updateJobValue}
-                  expanded={expandedLeadIds.has(lead.id)}
-                  onToggleDetails={toggleLeadDetails}
-                />
-              ))}
-            </div>
-          </section>
-        ) : null}
-
-        {normalItems.map((lead) => (
+        {sortedItems.map((lead) => (
           <LeadCard
             key={lead.id}
             lead={lead}
