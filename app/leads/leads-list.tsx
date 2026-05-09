@@ -42,6 +42,12 @@ type TranscribeResult =
   | { ok: true; data: TranscribeResponse }
   | { ok: false; error: string };
 
+type ReplyPriority = {
+  level: "fast" | "today" | "normal";
+  label: string;
+  reason: string | null;
+};
+
 const AUTO_VOICEMAIL_SUMMARY_LIMIT = 3;
 const AUTO_VOICEMAIL_SUMMARY_LOOKBACK_MS = 10 * 60 * 1000;
 const INBOX_REFRESH_MS = 8_000;
@@ -62,6 +68,32 @@ const QUICK_REPLIES = [
 ];
 
 const LEGACY_FORWARDING_MESSAGE = "Forwarded missed call from existing business number.";
+
+const FAST_REPLY_PATTERNS = [
+  { pattern: /\bemergency\b/i, reason: "mentioned emergency" },
+  { pattern: /\basap\b/i, reason: "asked for ASAP help" },
+  { pattern: /\bright away\b/i, reason: "asked for help right away" },
+  { pattern: /\bimmediately\b/i, reason: "asked for immediate help" },
+  { pattern: /\bnow\b/i, reason: "asked for help now" },
+  { pattern: /\bflood(?:ing)?\b/i, reason: "mentioned flooding" },
+  { pattern: /\bburst\b/i, reason: "mentioned something burst" },
+  { pattern: /\bno heat\b/i, reason: "mentioned no heat" },
+  { pattern: /\bno power\b/i, reason: "mentioned no power" },
+  { pattern: /\blocked out\b/i, reason: "mentioned being locked out" },
+  { pattern: /\bnot working\b/i, reason: "said something is not working" },
+  { pattern: /\bwater everywhere\b/i, reason: "mentioned water everywhere" },
+];
+
+const TODAY_REPLY_PATTERNS = [
+  { pattern: /\btoday\b/i, reason: "asked about today" },
+  { pattern: /\btonight\b/i, reason: "asked about tonight" },
+  { pattern: /\bthis morning\b/i, reason: "mentioned this morning" },
+  { pattern: /\bthis afternoon\b/i, reason: "mentioned this afternoon" },
+  { pattern: /\bthis evening\b/i, reason: "mentioned this evening" },
+  { pattern: /\btomorrow\b/i, reason: "asked about tomorrow" },
+  { pattern: /\bsoon\b/i, reason: "asked for help soon" },
+  { pattern: /\bafter hours\b/i, reason: "mentioned after hours" },
+];
 
 function createSampleLeads(): Lead[] {
   const now = Date.now();
@@ -213,6 +245,53 @@ function needsAttention(lead: Lead) {
   return lead.status === "new" && (lead.sms_status === "failed" || lead.sms_status === "undelivered");
 }
 
+function leadPriorityText(lead: Lead) {
+  return [
+    lead.voicemail_summary,
+    lead.message === LEGACY_FORWARDING_MESSAGE ? null : lead.message,
+    lead.voicemail_transcript,
+    lead.notes,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function getLeadPriority(lead: Lead): ReplyPriority {
+  const text = leadPriorityText(lead);
+
+  for (const item of FAST_REPLY_PATTERNS) {
+    if (item.pattern.test(text)) {
+      return { level: "fast", label: "Fast reply", reason: item.reason };
+    }
+  }
+
+  for (const item of TODAY_REPLY_PATTERNS) {
+    if (item.pattern.test(text)) {
+      return { level: "today", label: "Today", reason: item.reason };
+    }
+  }
+
+  return { level: "normal", label: "Normal", reason: null };
+}
+
+function prioritySortScore(lead: Lead) {
+  if (lead.status !== "new") return 3;
+
+  const priority = getLeadPriority(lead).level;
+  if (priority === "fast") return 0;
+  if (priority === "today") return 1;
+  return 2;
+}
+
+function sortLeadsForWork(leads: Lead[]) {
+  return [...leads].sort((a, b) => {
+    const priorityDiff = prioritySortScore(a) - prioritySortScore(b);
+    if (priorityDiff !== 0) return priorityDiff;
+
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+}
+
 function isBookedLead(lead: Lead) {
   return Boolean(lead.booked_at || lead.status === "booked" || lead.job_value_cents);
 }
@@ -245,6 +324,7 @@ function leadMatchesSearch(lead: Lead, query: string) {
     lead.notes,
     lead.voicemail_summary,
     lead.voicemail_transcript,
+    getLeadPriority(lead).label,
     sourceLabel(lead.source),
   ]
     .filter(Boolean)
@@ -439,6 +519,17 @@ function VoicemailBadge({ lead }: { lead: Lead }) {
   );
 }
 
+function PriorityBadge({ priority }: { priority: ReplyPriority }) {
+  if (priority.level === "normal") return null;
+
+  return (
+    <span className={`chip priority-badge priority-badge--${priority.level}`} title={priority.reason ?? undefined}>
+      <Icon name={priority.level === "fast" ? "alertTriangle" : "clock"} size={12} />
+      {priority.label}
+    </span>
+  );
+}
+
 function formatDuration(seconds: number | null) {
   if (!seconds) return "Voice message";
   if (seconds < 60) return `${seconds}s voice message`;
@@ -558,6 +649,7 @@ function LeadDrawer({
   const [notes, setNotes] = useState(lead.notes ?? "");
   const [summary, setSummary] = useState(lead.voicemail_summary ?? "");
   const booked = isBookedLead(lead);
+  const priority = getLeadPriority(lead);
   const hasUsefulMessage = Boolean(lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE);
   const summaryGenerating = !lead.voicemail_summary && lead.voicemail_transcription_status === "processing";
   const requestLabel = lead.voicemail_summary
@@ -680,6 +772,7 @@ function LeadDrawer({
             <div className="mt-3 flex flex-wrap gap-2">
               <StatusPill status={lead.status} />
               <BookedBadge lead={lead} />
+              <PriorityBadge priority={priority} />
               <SourceBadge source={lead.source} />
               <SmsBadge lead={lead} />
               <VoicemailBadge lead={lead} />
@@ -692,6 +785,12 @@ function LeadDrawer({
             <Icon name={summaryGenerating ? "sparkle" : "message"} size={14} />
             <span>{requestLabel}</span>
           </div>
+          {priority.level !== "normal" ? (
+            <div className={`drawer__priority drawer__priority--${priority.level}`}>
+              <Icon name={priority.level === "fast" ? "alertTriangle" : "clock"} size={13} />
+              <span>{priority.label}{priority.reason ? ` because the caller ${priority.reason}.` : "."}</span>
+            </div>
+          ) : null}
           {lead.voicemail_summary ? (
             <textarea
               className="field drawer__request-summary"
@@ -854,6 +953,7 @@ function LeadCard({
 }) {
   const attention = needsAttention(lead);
   const booked = isBookedLead(lead);
+  const priority = getLeadPriority(lead);
   const hasDetails = Boolean(lead.voicemail_transcript || lead.notes || lead.recording_sid);
   const detailsVisible = hasDetails && expanded;
   const hasUsefulMessage = Boolean(lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE);
@@ -898,6 +998,7 @@ function LeadCard({
         <div className="lead-card__badges">
           <StatusPill status={lead.status} />
           <BookedBadge lead={lead} />
+          <PriorityBadge priority={priority} />
           <SourceBadge source={lead.source} />
           <SmsBadge lead={lead} />
           <VoicemailBadge lead={lead} />
@@ -1088,11 +1189,11 @@ export function LeadsList({
     [activeItems, filter, query],
   );
   const attentionItems = useMemo(
-    () => filteredItems.filter(needsAttention),
+    () => sortLeadsForWork(filteredItems.filter(needsAttention)),
     [filteredItems],
   );
   const normalItems = useMemo(
-    () => filteredItems.filter((lead) => !needsAttention(lead)),
+    () => sortLeadsForWork(filteredItems.filter((lead) => !needsAttention(lead))),
     [filteredItems],
   );
 
