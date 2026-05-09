@@ -2262,15 +2262,43 @@ code {
 .priority-control {
   display: grid;
   gap: 7px;
-  max-width: 240px;
   margin-top: 14px;
 }
 
-.priority-control__select {
-  min-height: 40px;
-  padding: 0 12px;
-  font-size: 14px;
-  font-weight: 750;
+.priority-control__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.priority-control__option {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  padding: 0 13px;
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 800;
+  line-height: 1;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+.priority-control__option:hover {
+  border-color: color-mix(in oklab, var(--brand) 34%, var(--line));
+  background: color-mix(in oklab, var(--brand-soft) 38%, var(--panel));
+}
+
+.priority-control__option:focus-visible {
+  border-color: var(--brand);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--brand) 20%, transparent);
+}
+
+.priority-control__option--active {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: white;
 }
 
 .drawer__request-summary {

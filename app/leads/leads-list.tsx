@@ -615,23 +615,34 @@ function PriorityControl({
   value: ReplyPriorityOverride;
   onChange: (value: ReplyPriorityOverride) => void;
 }) {
+  const options: Array<{ label: string; value: ReplyPriorityOverride }> = [
+    { label: "Auto detect", value: null },
+    { label: "Fast reply", value: "fast" },
+    { label: "Today", value: "today" },
+    { label: "Normal", value: "normal" },
+  ];
+
   return (
-    <label className="priority-control">
+    <div className="priority-control">
       <span className="t-eyebrow">Reply priority</span>
-      <select
-        className="field priority-control__select"
-        value={value ?? "auto"}
-        onChange={(event) => {
-          const next = event.target.value;
-          onChange(next === "auto" ? null : next as Exclude<ReplyPriorityOverride, null>);
-        }}
-      >
-        <option value="auto">Auto detect</option>
-        <option value="fast">Fast reply</option>
-        <option value="today">Today</option>
-        <option value="normal">Normal</option>
-      </select>
-    </label>
+      <div className="priority-control__options" role="group" aria-label="Reply priority">
+        {options.map((option) => {
+          const selected = value === option.value;
+
+          return (
+            <button
+              key={option.label}
+              type="button"
+              className={`priority-control__option ${selected ? "priority-control__option--active" : ""}`}
+              aria-pressed={selected}
+              onClick={() => onChange(option.value)}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
