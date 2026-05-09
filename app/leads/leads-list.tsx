@@ -628,14 +628,6 @@ function LeadDrawer({
           <button className="btn btn-ghost btn-sm" type="button" onClick={onClose}>
             <Icon name="x" size={14} /> Close
           </button>
-          <div className="drawer__head-actions">
-            <a className="btn btn-secondary btn-sm" href={`tel:${lead.phone}`}>
-              <Icon name="phone" size={13} /> Call
-            </a>
-            <button className="btn btn-ghost btn-sm" type="button" aria-label="More">
-              <Icon name="more" size={16} />
-            </button>
-          </div>
         </header>
 
         <div className="drawer__hero">
