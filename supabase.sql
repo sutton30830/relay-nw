@@ -7,6 +7,7 @@ create table if not exists public.leads (
   notes text,
   booked_at timestamptz,
   job_value_cents integer check (job_value_cents is null or job_value_cents >= 0),
+  reply_priority_override text check (reply_priority_override is null or reply_priority_override in ('fast', 'today', 'normal')),
   source text not null check (source in ('missed_call', 'intake_form')),
   status text not null default 'new' check (status in ('new', 'contacted', 'booked', 'dead')),
   sms_status text check (sms_status in ('pending', 'queued', 'sending', 'sent', 'delivered', 'failed', 'undelivered', 'skipped_disabled', 'skipped_opt_out', 'skipped_recent')),
@@ -29,6 +30,7 @@ alter table public.leads add column if not exists call_sid text;
 alter table public.leads add column if not exists notes text;
 alter table public.leads add column if not exists booked_at timestamptz;
 alter table public.leads add column if not exists job_value_cents integer;
+alter table public.leads add column if not exists reply_priority_override text;
 alter table public.leads add column if not exists sms_status text;
 alter table public.leads add column if not exists sms_error text;
 alter table public.leads add column if not exists twilio_message_sid text;
@@ -48,6 +50,11 @@ alter table public.leads
 alter table public.leads drop constraint if exists leads_job_value_cents_check;
 alter table public.leads
   add constraint leads_job_value_cents_check check (job_value_cents is null or job_value_cents >= 0);
+alter table public.leads drop constraint if exists leads_reply_priority_override_check;
+alter table public.leads
+  add constraint leads_reply_priority_override_check check (
+    reply_priority_override is null or reply_priority_override in ('fast', 'today', 'normal')
+  );
 update public.leads
   set booked_at = coalesce(booked_at, created_at)
   where booked_at is null

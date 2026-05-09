@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
-import type { Lead, LeadStatus } from "@/lib/supabase";
+import type { Lead, LeadStatus, ReplyPriorityOverride } from "@/lib/supabase";
 
 const STATUS_OPTIONS: LeadStatus[] = ["new", "contacted", "dead"];
 const STATUS_LABELS: Record<LeadStatus, string> = {
@@ -29,6 +29,7 @@ type LeadPatch = {
   notes?: string | null;
   booked?: boolean;
   jobValueCents?: number | null;
+  replyPriorityOverride?: ReplyPriorityOverride;
   voicemailSummary?: string | null;
 };
 
@@ -114,6 +115,7 @@ function createSampleLeads(): Lead[] {
       sms_error: "Auto-text could not be delivered.",
       twilio_message_sid: "sample-message-1",
       sms_updated_at: new Date(now - 13 * 60_000).toISOString(),
+      reply_priority_override: null,
       recording_sid: "sample-recording-1",
       recording_url: null,
       recording_duration: 18,
@@ -140,6 +142,7 @@ function createSampleLeads(): Lead[] {
       sms_error: null,
       twilio_message_sid: null,
       sms_updated_at: null,
+      reply_priority_override: null,
       recording_sid: null,
       recording_url: null,
       recording_duration: null,
@@ -166,6 +169,7 @@ function createSampleLeads(): Lead[] {
       sms_error: null,
       twilio_message_sid: "sample-message-2",
       sms_updated_at: new Date(now - 3 * 60 * 60_000).toISOString(),
+      reply_priority_override: null,
       recording_sid: null,
       recording_url: null,
       recording_duration: null,
@@ -257,6 +261,18 @@ function leadPriorityText(lead: Lead) {
 }
 
 function getLeadPriority(lead: Lead): ReplyPriority {
+  if (lead.reply_priority_override === "fast") {
+    return { level: "fast", label: "Fast reply", reason: "priority was set manually" };
+  }
+
+  if (lead.reply_priority_override === "today") {
+    return { level: "today", label: "Today", reason: "priority was set manually" };
+  }
+
+  if (lead.reply_priority_override === "normal") {
+    return { level: "normal", label: "Normal", reason: null };
+  }
+
   const text = leadPriorityText(lead);
 
   for (const item of FAST_REPLY_PATTERNS) {
@@ -530,6 +546,33 @@ function PriorityBadge({ priority }: { priority: ReplyPriority }) {
   );
 }
 
+function PriorityControl({
+  value,
+  onChange,
+}: {
+  value: ReplyPriorityOverride;
+  onChange: (value: ReplyPriorityOverride) => void;
+}) {
+  return (
+    <label className="priority-control">
+      <span className="t-eyebrow">Reply priority</span>
+      <select
+        className="field priority-control__select"
+        value={value ?? "auto"}
+        onChange={(event) => {
+          const next = event.target.value;
+          onChange(next === "auto" ? null : next as Exclude<ReplyPriorityOverride, null>);
+        }}
+      >
+        <option value="auto">Auto detect</option>
+        <option value="fast">Fast reply</option>
+        <option value="today">Today</option>
+        <option value="normal">Normal</option>
+      </select>
+    </label>
+  );
+}
+
 function formatDuration(seconds: number | null) {
   if (!seconds) return "Voice message";
   if (seconds < 60) return `${seconds}s voice message`;
@@ -629,6 +672,7 @@ function LeadDrawer({
   onNotes,
   onSummary,
   onJobValue,
+  onPriority,
   onTranscribe,
   isTranscribing,
 }: {
@@ -640,6 +684,7 @@ function LeadDrawer({
   onNotes: (id: string, notes: string) => void;
   onSummary: (id: string, summary: string) => void;
   onJobValue: (id: string, jobValueCents: number | null) => void;
+  onPriority: (id: string, priority: ReplyPriorityOverride) => void;
   onTranscribe: (id: string) => void;
   isTranscribing: boolean;
 }) {
@@ -791,6 +836,10 @@ function LeadDrawer({
               <span>{priority.label}{priority.reason ? ` because the caller ${priority.reason}.` : "."}</span>
             </div>
           ) : null}
+          <PriorityControl
+            value={lead.reply_priority_override}
+            onChange={(replyPriorityOverride) => onPriority(lead.id, replyPriorityOverride)}
+          />
           {lead.voicemail_summary ? (
             <textarea
               className="field drawer__request-summary"
@@ -979,7 +1028,9 @@ function LeadCard({
 
   return (
     <article
-      className={`lead-card ${attention ? "lead-card--attention" : ""}`}
+      className={`lead-card ${attention ? "lead-card--attention" : ""} ${
+        priority.level === "fast" && lead.status === "new" ? "lead-card--fast" : ""
+      }`}
       onClick={() => onOpen(lead.id)}
     >
       <div className="lead-card__head">
@@ -1319,6 +1370,19 @@ export function LeadsList({
     if (!saved) setItems(previousItems);
   }
 
+  async function updatePriority(id: string, replyPriorityOverride: ReplyPriorityOverride) {
+    if (sampleMode) {
+      updateLocalLead(id, { reply_priority_override: replyPriorityOverride });
+      return;
+    }
+
+    const previousItems = items;
+    updateLocalLead(id, { reply_priority_override: replyPriorityOverride });
+
+    const saved = await patchLead(id, { replyPriorityOverride });
+    if (!saved) setItems(previousItems);
+  }
+
   async function transcribeVoicemail(id: string) {
     if (sampleMode) {
       updateLocalLead(id, {
@@ -1525,6 +1589,7 @@ export function LeadsList({
           onNotes={updateNotes}
           onSummary={updateVoicemailSummary}
           onJobValue={updateJobValue}
+          onPriority={updatePriority}
           onTranscribe={transcribeVoicemail}
           isTranscribing={transcribingIds.has(openLead.id)}
         />

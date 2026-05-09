@@ -2,12 +2,13 @@ import { createClient } from "@supabase/supabase-js";
 import { env } from "@/lib/env";
 
 const LEAD_SELECT_COLUMNS =
-  "id, call_sid, name, phone, message, notes, booked_at, job_value_cents, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, voicemail_transcript, voicemail_summary, voicemail_transcription_status, voicemail_transcription_error, voicemail_transcribed_at, created_at";
+  "id, call_sid, name, phone, message, notes, booked_at, job_value_cents, reply_priority_override, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, voicemail_transcript, voicemail_summary, voicemail_transcription_status, voicemail_transcription_error, voicemail_transcribed_at, created_at";
 const LEGACY_LEAD_SELECT_COLUMNS =
   "id, call_sid, name, phone, message, notes, job_value_cents, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, created_at";
 
 export type LeadSource = "missed_call" | "intake_form";
 export type LeadStatus = "new" | "contacted" | "booked" | "dead";
+export type ReplyPriorityOverride = "fast" | "today" | "normal" | null;
 export type SmsStatus =
   | "pending"
   | "queued"
@@ -47,6 +48,7 @@ export type Lead = {
   notes: string | null;
   booked_at: string | null;
   job_value_cents: number | null;
+  reply_priority_override: ReplyPriorityOverride;
   source: LeadSource;
   status: LeadStatus;
   sms_status: SmsStatus;
@@ -102,6 +104,10 @@ function isMissingBookedAtColumnError(error: { message: string } | null) {
   return Boolean(error?.message.includes("booked_at"));
 }
 
+function isMissingReplyPriorityColumnError(error: { message: string } | null) {
+  return Boolean(error?.message.includes("reply_priority_override"));
+}
+
 function isMissingOptionalLeadColumnError(error: { message: string } | null) {
   return Boolean(
     error?.message.includes("booked_at") ||
@@ -109,7 +115,8 @@ function isMissingOptionalLeadColumnError(error: { message: string } | null) {
       error?.message.includes("voicemail_summary") ||
       error?.message.includes("voicemail_transcription_status") ||
       error?.message.includes("voicemail_transcription_error") ||
-      error?.message.includes("voicemail_transcribed_at"),
+      error?.message.includes("voicemail_transcribed_at") ||
+      error?.message.includes("reply_priority_override"),
   );
 }
 
@@ -121,6 +128,7 @@ function normalizeLead(lead: Lead): Lead {
     voicemail_transcription_status: lead.voicemail_transcription_status ?? null,
     voicemail_transcription_error: lead.voicemail_transcription_error ?? null,
     voicemail_transcribed_at: lead.voicemail_transcribed_at ?? null,
+    reply_priority_override: lead.reply_priority_override ?? null,
   };
 
   if (normalizedLead.status !== "booked") {
@@ -474,6 +482,7 @@ export async function updateLead(input: {
   notes?: string | null;
   bookedAt?: string | null;
   jobValueCents?: number | null;
+  replyPriorityOverride?: ReplyPriorityOverride;
   voicemailSummary?: string | null;
 }) {
   if (shouldSkipDatabaseWrite("lead update", input)) {
@@ -486,6 +495,7 @@ export async function updateLead(input: {
     notes?: string | null;
     booked_at?: string | null;
     job_value_cents?: number | null;
+    reply_priority_override?: ReplyPriorityOverride;
     voicemail_summary?: string | null;
   } = {};
 
@@ -507,6 +517,10 @@ export async function updateLead(input: {
 
   if (typeof input.jobValueCents !== "undefined") {
     updates.job_value_cents = input.jobValueCents;
+  }
+
+  if (typeof input.replyPriorityOverride !== "undefined") {
+    updates.reply_priority_override = input.replyPriorityOverride;
   }
 
   if (typeof input.voicemailSummary !== "undefined") {
@@ -547,6 +561,24 @@ export async function updateLead(input: {
     console.warn("leads.booked_at is missing. Run supabase.sql to persist booked outcome tracking.");
     const legacyUpdates = { ...updates };
     delete legacyUpdates.booked_at;
+
+    if (Object.keys(legacyUpdates).length === 0) {
+      return;
+    }
+
+    const { error: legacyError } = await supabaseAdmin
+      .from("leads")
+      .update(legacyUpdates)
+      .eq("id", input.id);
+
+    throwIfSupabaseError(legacyError);
+    return;
+  }
+
+  if (isMissingReplyPriorityColumnError(error) && typeof updates.reply_priority_override !== "undefined") {
+    console.warn("leads.reply_priority_override is missing. Run supabase.sql to persist manual reply priority.");
+    const legacyUpdates = { ...updates };
+    delete legacyUpdates.reply_priority_override;
 
     if (Object.keys(legacyUpdates).length === 0) {
       return;

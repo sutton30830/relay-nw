@@ -1,12 +1,13 @@
 import { cookies } from "next/headers";
 import { isValidLeadsSessionCookie, LEADS_COOKIE_NAME } from "@/lib/leads-auth";
-import { type LeadStatus, updateLead } from "@/lib/supabase";
+import { type LeadStatus, type ReplyPriorityOverride, updateLead } from "@/lib/supabase";
 
 const MAX_NOTES_LENGTH = 2000;
 const MAX_NAME_LENGTH = 100;
 const MAX_VOICEMAIL_SUMMARY_LENGTH = 500;
 const MAX_JOB_VALUE_CENTS = 100_000_000;
 const VALID_STATUSES = new Set<LeadStatus>(["new", "contacted", "booked", "dead"]);
+const VALID_REPLY_PRIORITY_OVERRIDES = new Set<Exclude<ReplyPriorityOverride, null>>(["fast", "today", "normal"]);
 
 type LeadPatchBody = {
   name?: string | null;
@@ -14,6 +15,7 @@ type LeadPatchBody = {
   notes?: string | null;
   booked?: boolean;
   jobValueCents?: number | null;
+  replyPriorityOverride?: ReplyPriorityOverride;
   voicemailSummary?: string | null;
 };
 
@@ -23,6 +25,7 @@ type LeadUpdate = {
   notes?: string | null;
   bookedAt?: string | null;
   jobValueCents?: number | null;
+  replyPriorityOverride?: ReplyPriorityOverride;
   voicemailSummary?: string | null;
 };
 
@@ -93,11 +96,20 @@ function validateLeadUpdate(body: LeadPatchBody | null): LeadUpdate | { error: s
   }
 
   if (
+    body.replyPriorityOverride !== null &&
+    typeof body.replyPriorityOverride !== "undefined" &&
+    !VALID_REPLY_PRIORITY_OVERRIDES.has(body.replyPriorityOverride)
+  ) {
+    return { error: "Invalid reply priority" };
+  }
+
+  if (
     typeof body.name === "undefined" &&
     !body.status &&
     typeof body.notes === "undefined" &&
     typeof body.booked === "undefined" &&
     typeof body.jobValueCents === "undefined" &&
+    typeof body.replyPriorityOverride === "undefined" &&
     typeof body.voicemailSummary === "undefined"
   ) {
     return { error: "Nothing to update" };
@@ -109,6 +121,8 @@ function validateLeadUpdate(body: LeadPatchBody | null): LeadUpdate | { error: s
     notes: typeof body.notes === "undefined" ? undefined : body.notes,
     bookedAt: typeof body.booked === "undefined" ? undefined : body.booked ? new Date().toISOString() : null,
     jobValueCents: typeof body.jobValueCents === "undefined" ? undefined : body.jobValueCents,
+    replyPriorityOverride:
+      typeof body.replyPriorityOverride === "undefined" ? undefined : body.replyPriorityOverride,
     voicemailSummary,
   };
 }

@@ -1702,6 +1702,17 @@ code {
   background: var(--panel);
 }
 
+.lead-card--fast {
+  border-color: color-mix(in oklab, var(--danger) 58%, var(--line));
+  background: linear-gradient(90deg, color-mix(in oklab, var(--danger-soft) 62%, var(--panel)) 0%, var(--panel) 36%);
+  box-shadow: inset 4px 0 0 var(--danger);
+}
+
+.lead-card--fast:hover {
+  border-color: color-mix(in oklab, var(--danger) 72%, var(--line));
+  box-shadow: inset 4px 0 0 var(--danger), var(--shadow-sm);
+}
+
 .lead-card__head,
 .lead-card__actions {
   display: flex;
@@ -1829,9 +1840,10 @@ code {
 }
 
 .priority-badge--fast {
-  border-color: color-mix(in oklab, var(--danger) 28%, var(--line));
-  background: color-mix(in oklab, var(--danger-soft) 70%, var(--panel));
+  border-color: color-mix(in oklab, var(--danger) 58%, var(--line));
+  background: color-mix(in oklab, var(--danger-soft) 84%, var(--panel));
   color: var(--danger);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--danger) 10%, transparent);
 }
 
 .priority-badge--today {
@@ -2162,8 +2174,8 @@ code {
 }
 
 .drawer__priority--fast {
-  border-color: color-mix(in oklab, var(--danger) 28%, var(--line));
-  background: color-mix(in oklab, var(--danger-soft) 72%, var(--panel));
+  border-color: color-mix(in oklab, var(--danger) 58%, var(--line));
+  background: color-mix(in oklab, var(--danger-soft) 86%, var(--panel));
   color: var(--danger);
 }
 
@@ -2171,6 +2183,20 @@ code {
   border-color: color-mix(in oklab, var(--accent) 24%, var(--line));
   background: color-mix(in oklab, var(--accent-soft) 72%, var(--panel));
   color: var(--accent);
+}
+
+.priority-control {
+  display: grid;
+  gap: 7px;
+  max-width: 240px;
+  margin-top: 14px;
+}
+
+.priority-control__select {
+  min-height: 40px;
+  padding: 0 12px;
+  font-size: 14px;
+  font-weight: 750;
 }
 
 .drawer__request-summary {
