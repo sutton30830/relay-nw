@@ -290,6 +290,119 @@ function getLeadPriority(lead: Lead): ReplyPriority {
   return { level: "normal", label: "Normal", reason: null };
 }
 
+type NextAction = {
+  label: string;
+  detail: string;
+  icon: "alertTriangle" | "check" | "clock" | "message" | "phone" | "sparkle" | "star";
+  tone: "danger" | "good" | "normal" | "warning";
+};
+
+function getLeadNextAction(lead: Lead, now: number): NextAction {
+  const priority = getLeadPriority(lead);
+  const summaryGenerating =
+    !lead.voicemail_summary && lead.voicemail_transcription_status === "processing";
+  const summaryPreparing =
+    shouldShowVoicemailSummaryProgress(lead, now) && lead.voicemail_transcription_status !== "processing";
+  const hasUsefulMessage = Boolean(lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE);
+
+  if (needsAttention(lead)) {
+    return {
+      label: "Call directly",
+      detail: "Auto-text did not go through.",
+      icon: "alertTriangle",
+      tone: "danger",
+    };
+  }
+
+  if (isBookedLead(lead) && !lead.job_value_cents) {
+    return {
+      label: "Add booked value",
+      detail: "Track what this booked job was worth.",
+      icon: "star",
+      tone: "good",
+    };
+  }
+
+  if (isBookedLead(lead)) {
+    return {
+      label: "Booked",
+      detail: "This job is counted in booked value.",
+      icon: "check",
+      tone: "good",
+    };
+  }
+
+  if (lead.status === "dead") {
+    return {
+      label: "Closed",
+      detail: "No more follow-up needed.",
+      icon: "check",
+      tone: "normal",
+    };
+  }
+
+  if (lead.status === "contacted") {
+    return {
+      label: "Choose outcome",
+      detail: "Mark booked or closed after follow-up.",
+      icon: "clock",
+      tone: "warning",
+    };
+  }
+
+  if (priority.level === "fast") {
+    return {
+      label: "Call back now",
+      detail: "This looks time-sensitive.",
+      icon: "alertTriangle",
+      tone: "danger",
+    };
+  }
+
+  if (summaryGenerating || summaryPreparing) {
+    return {
+      label: "Summary generating",
+      detail: "Relay is turning the voicemail into a quick request.",
+      icon: "sparkle",
+      tone: "normal",
+    };
+  }
+
+  if (lead.voicemail_summary) {
+    return {
+      label: "Call back with context",
+      detail: "Review what they need, then follow up.",
+      icon: "phone",
+      tone: "normal",
+    };
+  }
+
+  if (lead.recording_sid) {
+    return {
+      label: "Listen to voicemail",
+      detail: "Use the recording to understand what they need.",
+      icon: "message",
+      tone: "normal",
+    };
+  }
+
+  if (hasUsefulMessage) {
+    return {
+      label: "Call about this request",
+      detail: "They left details. Follow up while it is fresh.",
+      icon: "phone",
+      tone: "normal",
+    };
+  }
+
+  return {
+    label: "Call back",
+    detail: "No voicemail left. Follow up before they move on.",
+    icon: "phone",
+    tone: "normal",
+  };
+}
+
 function prioritySortScore(lead: Lead) {
   if (lead.status !== "new") return 3;
 
@@ -1003,6 +1116,7 @@ function LeadCard({
   const attention = needsAttention(lead);
   const booked = isBookedLead(lead);
   const priority = getLeadPriority(lead);
+  const nextAction = getLeadNextAction(lead, now);
   const hasDetails = Boolean(lead.voicemail_transcript || lead.notes || lead.recording_sid);
   const detailsVisible = hasDetails && expanded;
   const hasUsefulMessage = Boolean(lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE);
@@ -1055,6 +1169,16 @@ function LeadCard({
           <VoicemailBadge lead={lead} />
         </div>
       </div>
+
+      <section className={`lead-card__next-action lead-card__next-action--${nextAction.tone}`}>
+        <div className="lead-card__next-action-icon">
+          <Icon name={nextAction.icon} size={15} />
+        </div>
+        <div>
+          <p className="lead-card__next-action-label">{nextAction.label}</p>
+          <p className="lead-card__next-action-detail">{nextAction.detail}</p>
+        </div>
+      </section>
 
       <section
         className={`lead-card__request ${lead.voicemail_summary ? "lead-card__request--summary" : ""} ${

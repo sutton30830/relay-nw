@@ -1793,6 +1793,71 @@ code {
   line-height: 1.55;
 }
 
+.lead-card__next-action {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid color-mix(in oklab, var(--brand) 16%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--brand-soft) 38%, var(--panel));
+  margin-top: 14px;
+  padding: 12px 14px;
+}
+
+.lead-card__next-action--danger {
+  border-color: color-mix(in oklab, var(--danger) 48%, var(--line));
+  background: color-mix(in oklab, var(--danger-soft) 74%, var(--panel));
+}
+
+.lead-card__next-action--good {
+  border-color: color-mix(in oklab, var(--brand) 24%, var(--line));
+  background: color-mix(in oklab, var(--brand-soft) 58%, var(--panel));
+}
+
+.lead-card__next-action--warning {
+  border-color: color-mix(in oklab, var(--accent) 28%, var(--line));
+  background: color-mix(in oklab, var(--accent-soft) 62%, var(--panel));
+}
+
+.lead-card__next-action-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--brand);
+}
+
+.lead-card__next-action--danger .lead-card__next-action-icon {
+  color: var(--danger);
+}
+
+.lead-card__next-action--good .lead-card__next-action-icon {
+  color: var(--brand);
+}
+
+.lead-card__next-action--warning .lead-card__next-action-icon {
+  color: var(--accent);
+}
+
+.lead-card__next-action-label {
+  margin: 0;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.lead-card__next-action-detail {
+  margin: 3px 0 0;
+  color: var(--ink-2);
+  font-size: 13.5px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
 .lead-card__request {
   border: 1px solid color-mix(in oklab, var(--line) 82%, transparent);
   border-radius: 10px;
