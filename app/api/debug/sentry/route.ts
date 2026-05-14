@@ -13,5 +13,12 @@ export async function GET() {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
-  throw new Error("Relay NW Sentry verification error");
+  const Sentry = await import("@sentry/nextjs");
+  Sentry.captureException(new Error("Relay NW Sentry verification error"));
+  await Sentry.flush(2000);
+
+  return Response.json({
+    ok: true,
+    message: "Sent Relay NW Sentry verification error",
+  });
 }
