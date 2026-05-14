@@ -1,0 +1,42 @@
+import type { LeadPatch, TranscribeResponse, TranscribeResult } from "./_types";
+import { humanVoicemailError } from "./_utils";
+
+export async function patchLead(id: string, body: LeadPatch) {
+  try {
+    const response = await fetch(`/api/leads/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    return response.ok;
+  } catch (error) {
+    console.error("Failed to update lead from inbox", { leadId: id, error });
+    return false;
+  }
+}
+
+export async function requestVoicemailSummary(id: string): Promise<TranscribeResult> {
+  try {
+    const response = await fetch(`/api/leads/${id}/transcribe`, {
+      method: "POST",
+    });
+
+    const data = await response.json().catch(() => null) as TranscribeResponse | { error?: string } | null;
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: humanVoicemailError(data && "error" in data ? data.error : null),
+      };
+    }
+
+    return { ok: true, data: data as TranscribeResponse };
+  } catch (error) {
+    console.error("Failed to summarize voicemail from inbox", { leadId: id, error });
+    return {
+      ok: false,
+      error: "Relay could not reach the transcription service. Try again in a minute.",
+    };
+  }
+}
