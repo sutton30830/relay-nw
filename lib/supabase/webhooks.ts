@@ -46,6 +46,10 @@ function sanitizedWebhookPayload(payload: Record<string, string>) {
   };
 }
 
+function isMissingCorrelationIdColumnError(error: { message: string } | null) {
+  return Boolean(error?.message.includes("correlation_id"));
+}
+
 function retentionCutoff(days: number) {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 }
@@ -86,13 +90,29 @@ export async function getRecentWebhookEvents(limit = 20) {
     return [] as WebhookEvent[];
   }
 
-  const { data, error } = await supabaseAdmin
+  const query = supabaseAdmin
     .from("webhook_events")
-    .select("id, created_at, source, payload, response_status, response_body, error")
+    .select("id, created_at, source, correlation_id, payload, response_status, response_body, error")
     .order("created_at", { ascending: false })
     .limit(limit);
+  const { data, error } = await query;
 
   if (error) {
+    if (isMissingCorrelationIdColumnError(error)) {
+      const { data: legacyData, error: legacyError } = await supabaseAdmin
+        .from("webhook_events")
+        .select("id, created_at, source, payload, response_status, response_body, error")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+
+      if (!legacyError) {
+        return (legacyData ?? []).map((event) => ({
+          ...event,
+          correlation_id: null,
+        })) as WebhookEvent[];
+      }
+    }
+
     console.error("Failed to load recent webhook events", error);
     return [] as WebhookEvent[];
   }
@@ -102,6 +122,7 @@ export async function getRecentWebhookEvents(limit = 20) {
 
 export async function logWebhookEvent(input: {
   source: WebhookEventSource;
+  correlationId?: string | null;
   payload: Record<string, string>;
   responseStatus: number;
   responseBody?: string | null;
@@ -113,15 +134,30 @@ export async function logWebhookEvent(input: {
 
   await pruneOldOperationalData();
 
-  const { error } = await supabaseAdmin.from("webhook_events").insert({
+  const event = {
     source: input.source,
     payload: sanitizedWebhookPayload(input.payload),
     response_status: input.responseStatus,
     response_body: input.responseBody ?? null,
     error: input.error ?? null,
+  };
+  const { error } = await supabaseAdmin.from("webhook_events").insert({
+    ...event,
+    correlation_id: input.correlationId ?? null,
   });
 
   if (error) {
-    console.error("Failed to log webhook event", error);
+    if (isMissingCorrelationIdColumnError(error)) {
+      const { error: legacyError } = await supabaseAdmin.from("webhook_events").insert(event);
+
+      if (!legacyError) {
+        return;
+      }
+    }
+
+    console.error("Failed to log webhook event", {
+      correlationId: input.correlationId ?? null,
+      error,
+    });
   }
 }

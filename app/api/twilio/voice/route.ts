@@ -66,6 +66,7 @@ function validationLogNote(input: {
 async function handleForwardingMode(input: {
   request: Request;
   payload: Record<string, string>;
+  correlationId: string;
   requestSummary: ReturnType<typeof summarizeTwilioRequest>;
   validation: ReturnType<typeof validateTwilioWebhook>;
   callerPhone: string;
@@ -78,15 +79,18 @@ async function handleForwardingMode(input: {
       callSid,
       callerPhone: input.callerPhone,
       message: null,
+      correlationId: input.correlationId,
     });
 
     console.info("Handled forwarded missed call", {
+      correlationId: input.correlationId,
       ...input.requestSummary,
       smsStatus: result.smsStatus,
     });
 
     await logWebhookEvent({
       source: VOICE_WEBHOOK_SOURCE,
+      correlationId: input.correlationId,
       payload: input.payload,
       responseStatus: 200,
       responseBody: xml,
@@ -101,6 +105,7 @@ async function handleForwardingMode(input: {
 
     await logWebhookEvent({
       source: VOICE_WEBHOOK_SOURCE,
+      correlationId: input.correlationId,
       payload: input.payload,
       responseStatus: 200,
       responseBody: xml,
@@ -108,6 +113,7 @@ async function handleForwardingMode(input: {
     });
 
     console.error("Failed to handle forwarded missed call", {
+      correlationId: input.correlationId,
       ...input.requestSummary,
       error: message,
     });
@@ -119,6 +125,7 @@ async function handleForwardingMode(input: {
 async function handleDirectMode(input: {
   request: Request;
   payload: Record<string, string>;
+  correlationId: string;
   validation: ReturnType<typeof validateTwilioWebhook>;
   callerPhone: string;
 }) {
@@ -126,6 +133,7 @@ async function handleDirectMode(input: {
 
   await logWebhookEvent({
     source: VOICE_WEBHOOK_SOURCE,
+    correlationId: input.correlationId,
     payload: input.payload,
     responseStatus: 200,
     responseBody: xml,
@@ -151,17 +159,19 @@ export async function GET() {
 export async function POST(request: Request) {
   const formData = await request.formData();
   const payload = formDataToRecord(formData);
+  const correlationId = payload.CallSid || payload.MessageSid || payload.RecordingSid || crypto.randomUUID();
   const requestSummary = summarizeTwilioRequest(request, payload);
   const validation = validateTwilioWebhook(request, payload);
   const callerPhone = payload.From || env.twilioPhoneNumber;
 
-  console.info("Twilio voice webhook received", requestSummary);
+  console.info("Twilio voice webhook received", { correlationId, ...requestSummary });
 
   if (validation.shouldReject) {
     return rejectInvalidTwilioSignature({
       source: VOICE_WEBHOOK_SOURCE,
       label: "voice",
       payload,
+      correlationId,
       requestSummary,
       candidateUrls: validation.candidateUrls,
       hasSignature: validation.hasSignature,
@@ -174,6 +184,7 @@ export async function POST(request: Request) {
       source: VOICE_WEBHOOK_SOURCE,
       label: "voice",
       payload,
+      correlationId,
       requestSummary,
       candidateUrls: validation.candidateUrls,
       hasSignature: validation.hasSignature,
@@ -185,6 +196,7 @@ export async function POST(request: Request) {
     return handleForwardingMode({
       request,
       payload,
+      correlationId,
       requestSummary,
       validation,
       callerPhone,
@@ -194,6 +206,7 @@ export async function POST(request: Request) {
   return handleDirectMode({
     request,
     payload,
+    correlationId,
     validation,
     callerPhone,
   });

@@ -25,6 +25,7 @@ export type WebhookEvent = {
   id: string;
   created_at: string;
   source: WebhookEventSource;
+  correlation_id: string | null;
   payload: Record<string, unknown>;
   response_status: number;
   response_body: string | null;

@@ -71,9 +71,10 @@ function webhookEventNote(input: {
   return notes.length > 0 ? notes.join(" ") : null;
 }
 
-async function updateLeadRecording(input: ReturnType<typeof parseRecordingPayload>) {
+async function updateLeadRecording(input: ReturnType<typeof parseRecordingPayload>, correlationId: string) {
   if (!input.callSid) {
     console.warn("Skipping recording update because CallSid was missing", {
+      correlationId,
       recordingSid: input.recordingSid,
       recordingStatus: input.recordingStatus,
     });
@@ -85,12 +86,14 @@ async function updateLeadRecording(input: ReturnType<typeof parseRecordingPayloa
 
   if (!result.updated) {
     console.warn("Recording webhook did not match an existing lead", {
+      correlationId,
       callSid: input.callSid,
       recordingSid: input.recordingSid,
       recordingStatus: input.recordingStatus,
     });
   } else if (result.matchedBy === "phone") {
     console.info("Recording webhook matched a recent lead by caller phone fallback", {
+      correlationId,
       callSid: input.callSid,
       callerLast4: phoneLast4(input.callerPhone),
       recordingSid: input.recordingSid,
@@ -116,12 +119,14 @@ function shouldAutoTranscribeRecording(input: ReturnType<typeof parseRecordingPa
 export async function POST(request: Request) {
   const formData = await request.formData();
   const payload = formDataToRecord(formData);
+  const correlationId = payload.CallSid || payload.MessageSid || payload.RecordingSid || crypto.randomUUID();
   const requestSummary = summarizeTwilioRequest(request, payload);
   const validation = validateTwilioWebhook(request, payload);
   const recording = parseRecordingPayload(payload);
   const xml = emptyTwiml();
 
   console.info("Twilio recording webhook received", {
+    correlationId,
     ...requestSummary,
     recordingSid: recording.recordingSid,
     recordingDuration: recording.recordingDuration,
@@ -133,6 +138,7 @@ export async function POST(request: Request) {
       source: RECORDING_WEBHOOK_SOURCE,
       label: "recording",
       payload,
+      correlationId,
       requestSummary,
       candidateUrls: validation.candidateUrls,
       hasSignature: validation.hasSignature,
@@ -140,7 +146,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await updateLeadRecording(recording);
+    const result = await updateLeadRecording(recording, correlationId);
 
     if (result.leadId && shouldAutoTranscribeRecording(recording)) {
       after(async () => {
@@ -150,6 +156,7 @@ export async function POST(request: Request) {
           const message = error instanceof Error ? error.message : "Unknown voicemail transcription error";
 
           console.error("Automatic voicemail transcription failed", {
+            correlationId,
             leadId: result.leadId,
             recordingSid: recording.recordingSid,
             error: message,
@@ -160,6 +167,7 @@ export async function POST(request: Request) {
 
     await logWebhookEvent({
       source: RECORDING_WEBHOOK_SOURCE,
+      correlationId,
       payload,
       responseStatus: 200,
       responseBody: xml,
@@ -176,6 +184,7 @@ export async function POST(request: Request) {
 
     await logWebhookEvent({
       source: RECORDING_WEBHOOK_SOURCE,
+      correlationId,
       payload,
       responseStatus: 200,
       responseBody: xml,
@@ -183,6 +192,7 @@ export async function POST(request: Request) {
     });
 
     console.error("Failed to handle Twilio recording webhook", {
+      correlationId,
       ...requestSummary,
       error: message,
     });

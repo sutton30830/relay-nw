@@ -55,10 +55,12 @@ function webhookEventNote(input: {
 async function processDialStatus(input: {
   callSid: string;
   callerPhone: string;
+  correlationId: string;
   dialCallStatus: string;
   requestSummary: ReturnType<typeof summarizeTwilioRequest>;
 }) {
   console.info("Processing Twilio DialCallStatus", {
+    correlationId: input.correlationId,
     ...input.requestSummary,
     dialCallStatus: input.dialCallStatus,
   });
@@ -68,9 +70,11 @@ async function processDialStatus(input: {
       callSid: input.callSid,
       callerPhone: input.callerPhone,
       message: `Missed call. Dial status: ${input.dialCallStatus}.`,
+      correlationId: input.correlationId,
     });
 
     console.info("Handled direct-mode missed call", {
+      correlationId: input.correlationId,
       ...input.requestSummary,
       dialCallStatus: input.dialCallStatus,
       smsStatus: result.smsStatus,
@@ -83,7 +87,9 @@ async function processDialStatus(input: {
     return { smsStatus: null, unhandledStatus: false };
   }
 
-  console.warn(`Unhandled DialCallStatus: ${input.dialCallStatus}`);
+  console.warn(`Unhandled DialCallStatus: ${input.dialCallStatus}`, {
+    correlationId: input.correlationId,
+  });
   return { smsStatus: null, unhandledStatus: true };
 }
 
@@ -94,6 +100,7 @@ export async function GET() {
 export async function POST(request: Request) {
   const formData = await request.formData();
   const payload = formDataToRecord(formData);
+  const correlationId = payload.CallSid || payload.MessageSid || payload.RecordingSid || crypto.randomUUID();
   const requestSummary = summarizeTwilioRequest(request, payload);
   const validation = validateTwilioWebhook(request, payload);
   const dialCallStatus = payload.DialCallStatus ?? "";
@@ -101,13 +108,14 @@ export async function POST(request: Request) {
   const callSid = (payload.CallSid ?? "").trim();
   const xml = emptyTwiml();
 
-  console.info("Twilio dial status webhook received", requestSummary);
+  console.info("Twilio dial status webhook received", { correlationId, ...requestSummary });
 
   if (validation.shouldReject) {
     return rejectInvalidTwilioSignature({
       source: DIAL_STATUS_WEBHOOK_SOURCE,
       label: "dial status",
       payload,
+      correlationId,
       requestSummary,
       candidateUrls: validation.candidateUrls,
       hasSignature: validation.hasSignature,
@@ -120,6 +128,7 @@ export async function POST(request: Request) {
       source: DIAL_STATUS_WEBHOOK_SOURCE,
       label: "dial status",
       payload,
+      correlationId,
       requestSummary,
       candidateUrls: validation.candidateUrls,
       hasSignature: validation.hasSignature,
@@ -131,12 +140,14 @@ export async function POST(request: Request) {
     const result = await processDialStatus({
       callSid,
       callerPhone,
+      correlationId,
       dialCallStatus,
       requestSummary,
     });
 
     await logWebhookEvent({
       source: DIAL_STATUS_WEBHOOK_SOURCE,
+      correlationId,
       payload,
       responseStatus: 200,
       responseBody: xml,
@@ -152,6 +163,7 @@ export async function POST(request: Request) {
 
     await logWebhookEvent({
       source: DIAL_STATUS_WEBHOOK_SOURCE,
+      correlationId,
       payload,
       responseStatus: 200,
       responseBody: xml,
@@ -159,6 +171,7 @@ export async function POST(request: Request) {
     });
 
     console.error("Failed to handle Twilio dial status", {
+      correlationId,
       ...requestSummary,
       callerLast4: phoneLast4(callerPhone),
       error: message,
