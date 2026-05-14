@@ -16,6 +16,19 @@ export async function patchLead(id: string, body: LeadPatch) {
   }
 }
 
+export async function deleteLead(id: string) {
+  try {
+    const response = await fetch(`/api/leads/${id}`, {
+      method: "DELETE",
+    });
+
+    return response.ok;
+  } catch (error) {
+    console.error("Failed to delete lead from inbox", { leadId: id, error });
+    return false;
+  }
+}
+
 export async function requestVoicemailSummary(id: string): Promise<TranscribeResult> {
   try {
     const response = await fetch(`/api/leads/${id}/transcribe`, {

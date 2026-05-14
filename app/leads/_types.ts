@@ -1,6 +1,6 @@
 import type { LeadStatus, ReplyPriorityOverride } from "@/lib/supabase";
 
-export type Filter = "all" | Exclude<LeadStatus, "booked">;
+export type Filter = "all" | Exclude<LeadStatus, "booked"> | "trash";
 
 export type LeadCounts = Record<Filter, number> & {
   actionable: number;
@@ -17,6 +17,7 @@ export type LeadPatch = {
   jobValueCents?: number | null;
   replyPriorityOverride?: ReplyPriorityOverride;
   voicemailSummary?: string | null;
+  deleted?: boolean;
 };
 
 export type TranscribeResponse = {

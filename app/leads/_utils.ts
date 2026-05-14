@@ -31,6 +31,7 @@ export function createSampleLeads(): Lead[] {
       voicemail_transcription_status: "completed",
       voicemail_transcription_error: null,
       voicemail_transcribed_at: new Date(now - 12 * 60_000).toISOString(),
+      deleted_at: null,
       created_at: new Date(now - 14 * 60_000).toISOString(),
     },
     {
@@ -58,6 +59,7 @@ export function createSampleLeads(): Lead[] {
       voicemail_transcription_status: null,
       voicemail_transcription_error: null,
       voicemail_transcribed_at: null,
+      deleted_at: null,
       created_at: new Date(now - 52 * 60_000).toISOString(),
     },
     {
@@ -85,6 +87,7 @@ export function createSampleLeads(): Lead[] {
       voicemail_transcription_status: null,
       voicemail_transcription_error: null,
       voicemail_transcribed_at: null,
+      deleted_at: null,
       created_at: new Date(now - 3 * 60 * 60_000).toISOString(),
     },
   ];
@@ -252,6 +255,60 @@ export function getLeadNextAction(lead: Lead, now: number): NextAction | null {
   return null;
 }
 
+export function getFollowUpCue(lead: Lead) {
+  if (needsAttention(lead)) {
+    return { label: "Text failed", tone: "danger" };
+  }
+
+  if (isBookedLead(lead) && !lead.job_value_cents) {
+    return { label: "Add value", tone: "good" };
+  }
+
+  const priority = getLeadPriority(lead);
+  if (priority.level === "fast") {
+    return { label: priority.label, tone: "danger" };
+  }
+
+  if (priority.level === "today") {
+    return { label: priority.label, tone: "warning" };
+  }
+
+  if (lead.voicemail_summary) {
+    return { label: "Voicemail", tone: "good" };
+  }
+
+  return { label: "Follow up", tone: "normal" };
+}
+
+export function getFollowUpReason(lead: Lead) {
+  if (needsAttention(lead)) {
+    return "The automatic text did not go through, so call this person directly.";
+  }
+
+  if (isBookedLead(lead) && !lead.job_value_cents) {
+    return "This job is booked. Add the value so Relay can show what was recovered.";
+  }
+
+  const priority = getLeadPriority(lead);
+  if (priority.reason) {
+    return priority.reason;
+  }
+
+  if (lead.voicemail_summary) {
+    return lead.voicemail_summary;
+  }
+
+  if (lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE) {
+    return lead.message;
+  }
+
+  if (lead.recording_sid) {
+    return "A voicemail is attached. Listen before calling back.";
+  }
+
+  return "New missed call. Call back while the request is still fresh.";
+}
+
 export function prioritySortScore(lead: Lead) {
   if (lead.status !== "new") return 3;
 
@@ -270,104 +327,25 @@ export function sortLeadsForWork(leads: Lead[]) {
   });
 }
 
-export function followUpQueueScore(lead: Lead) {
-  if (needsAttention(lead)) return 0;
-
-  const priority = getLeadPriority(lead).level;
-  if (priority === "fast") return 1;
-  if (priority === "today") return 2;
-  if (lead.voicemail_summary) return 3;
-  if (lead.recording_sid) return 4;
-  if (lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE) return 5;
-  return 6;
-}
-
-export function getFollowUpQueue(leads: Lead[]) {
-  return leads
-    .filter((lead) => lead.status === "new" && !isBookedLead(lead))
-    .sort((a, b) => {
-      const scoreDiff = followUpQueueScore(a) - followUpQueueScore(b);
-      if (scoreDiff !== 0) return scoreDiff;
-
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    })
-    .slice(0, 4);
-}
-
-export function getFollowUpReason(lead: Lead) {
-  if (needsAttention(lead)) {
-    return "Auto-text did not go through. Call this person directly.";
-  }
-
-  const priority = getLeadPriority(lead);
-  if (priority.level === "fast") {
-    return priority.reason ? `Fast reply: ${priority.reason}.` : "This request looks time-sensitive.";
-  }
-
-  if (priority.level === "today") {
-    return priority.reason ? `Today: ${priority.reason}.` : "They may need help today.";
-  }
-
-  if (lead.voicemail_summary) {
-    return lead.voicemail_summary;
-  }
-
-  if (lead.recording_sid) {
-    return "Voicemail saved. Listen or call back while the job is fresh.";
-  }
-
-  if (lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE) {
-    return lead.message;
-  }
-
-  return "New missed call. Call back before they move on.";
-}
-
-export function getFollowUpCue(lead: Lead) {
-  if (needsAttention(lead)) {
-    return { label: "SMS failed", tone: "danger" };
-  }
-
-  const priority = getLeadPriority(lead).level;
-  if (priority === "fast") {
-    return { label: "Urgent", tone: "danger" };
-  }
-
-  if (priority === "today") {
-    return { label: "Today", tone: "warning" };
-  }
-
-  if (lead.voicemail_summary) {
-    return { label: "Summary ready", tone: "good" };
-  }
-
-  if (lead.recording_sid) {
-    return { label: "Voicemail", tone: "good" };
-  }
-
-  if (lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE) {
-    return { label: "Request details", tone: "normal" };
-  }
-
-  return { label: "Fresh call", tone: "normal" };
-}
-
 export function isBookedLead(lead: Lead) {
   return Boolean(lead.booked_at || lead.status === "booked" || lead.job_value_cents);
 }
 
 export function countLeads(leads: Lead[]): LeadCounts {
+  const visibleLeads = leads.filter((lead) => !lead.deleted_at);
+
   return {
-    all: leads.length,
-    new: leads.filter((lead) => lead.status === "new").length,
-    actionable: leads.filter((lead) => lead.status === "new" || lead.status === "contacted").length,
-    contacted: leads.filter((lead) => lead.status === "contacted").length,
-    dead: leads.filter((lead) => lead.status === "dead").length,
-    smsIssues: leads.filter(needsAttention).length,
-    bookedValueCents: leads
+    all: visibleLeads.length,
+    new: visibleLeads.filter((lead) => lead.status === "new").length,
+    actionable: visibleLeads.filter((lead) => lead.status === "new" || lead.status === "contacted").length,
+    contacted: visibleLeads.filter((lead) => lead.status === "contacted").length,
+    dead: visibleLeads.filter((lead) => lead.status === "dead").length,
+    trash: leads.filter((lead) => lead.deleted_at).length,
+    smsIssues: visibleLeads.filter(needsAttention).length,
+    bookedValueCents: visibleLeads
       .filter(isBookedLead)
       .reduce((total, lead) => total + (lead.job_value_cents ?? 0), 0),
-    bookedWithValue: leads.filter((lead) => isBookedLead(lead) && lead.job_value_cents).length,
+    bookedWithValue: visibleLeads.filter((lead) => isBookedLead(lead) && lead.job_value_cents).length,
   };
 }
 
@@ -423,6 +401,14 @@ export function shouldAutoSummarizeVoicemail(lead: Lead, now: number, initiallyL
 
 export function filterLeads(leads: Lead[], filter: Filter, query: string) {
   return leads.filter((lead) => {
+    if (filter === "trash") {
+      return Boolean(lead.deleted_at) && leadMatchesSearch(lead, query);
+    }
+
+    if (lead.deleted_at) {
+      return false;
+    }
+
     const matchesFilter = filter === "all" || lead.status === filter;
     return matchesFilter && leadMatchesSearch(lead, query);
   });

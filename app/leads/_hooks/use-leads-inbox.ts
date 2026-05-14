@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import type { Lead, LeadStatus, ReplyPriorityOverride } from "@/lib/supabase";
 import { AUTO_VOICEMAIL_SUMMARY_LIMIT, INBOX_REFRESH_MS, RELATIVE_TIME_TICK_MS } from "../_constants";
 import type { Filter } from "../_types";
-import { patchLead, requestVoicemailSummary } from "../_api";
-import { countLeads, createSampleLeads, filterLeads, getFollowUpQueue, shouldAutoSummarizeVoicemail, sortLeadsForWork } from "../_utils";
+import { deleteLead as deleteLeadRequest, patchLead, requestVoicemailSummary } from "../_api";
+import { countLeads, createSampleLeads, filterLeads, shouldAutoSummarizeVoicemail, sortLeadsForWork } from "../_utils";
 
 export function useLeadsInbox(leads: Lead[]) {
   const router = useRouter();
@@ -95,8 +95,6 @@ export function useLeadsInbox(leads: Lead[]) {
     () => sortLeadsForWork(filteredItems),
     [filteredItems],
   );
-  const followUpItems = useMemo(() => getFollowUpQueue(activeItems), [activeItems]);
-  const showFollowUpQueue = filter === "all" && query.trim().length === 0;
 
   const openLead = activeItems.find((lead) => lead.id === openId) ?? null;
 
@@ -134,6 +132,40 @@ export function useLeadsInbox(leads: Lead[]) {
     updateLocalLead(id, { status });
 
     const saved = await patchLead(id, { status });
+    if (!saved) setItems(previousItems);
+  }
+
+  async function deleteLead(id: string) {
+    const deletedAt = new Date().toISOString();
+
+    if (sampleMode) {
+      updateLocalLead(id, { deleted_at: deletedAt });
+      if (openId === id) setOpenId(null);
+      return;
+    }
+
+    const previousItems = items;
+    const previousOpenId = openId;
+    updateLocalLead(id, { deleted_at: deletedAt });
+    if (openId === id) setOpenId(null);
+
+    const deleted = await deleteLeadRequest(id);
+    if (!deleted) {
+      setItems(previousItems);
+      setOpenId(previousOpenId);
+    }
+  }
+
+  async function restoreLead(id: string) {
+    if (sampleMode) {
+      updateLocalLead(id, { deleted_at: null });
+      return;
+    }
+
+    const previousItems = items;
+    updateLocalLead(id, { deleted_at: null });
+
+    const saved = await patchLead(id, { deleted: false });
     if (!saved) setItems(previousItems);
   }
 
@@ -278,16 +310,15 @@ export function useLeadsInbox(leads: Lead[]) {
   return {
     activeItems,
     counts,
+    deleteLead,
     expandedLeadIds,
     filter,
     filteredItems,
-    followUpItems,
     now,
     openLead,
     query,
     sampleMode,
     searchRef,
-    showFollowUpQueue,
     sortedItems,
     transcribingIds,
     refreshInbox: () => router.refresh(),
@@ -299,6 +330,7 @@ export function useLeadsInbox(leads: Lead[]) {
       setSampleMode((value) => !value);
       setOpenId(null);
     },
+    restoreLead,
     transcribeVoicemail,
     updateBooked,
     updateJobValue,

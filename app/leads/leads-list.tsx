@@ -5,7 +5,6 @@ import { Icon } from "@/components/icon";
 import type { Lead } from "@/lib/supabase";
 import { FILTERS } from "./_constants";
 import { formatCurrency } from "./_utils";
-import { FollowUpQueue } from "./_components/follow-up-queue";
 import { LeadCard } from "./_components/lead-card";
 import { LeadDrawer } from "./_components/lead-drawer";
 import { useLeadsInbox } from "./_hooks/use-leads-inbox";
@@ -87,16 +86,6 @@ export function LeadsList({
         </aside>
       </section>
 
-      {inbox.showFollowUpQueue ? (
-        <FollowUpQueue
-          leads={inbox.followUpItems}
-          now={inbox.now}
-          onOpen={inbox.setOpenId}
-          onStatus={inbox.updateStatus}
-          onBooked={inbox.updateBooked}
-        />
-      ) : null}
-
       <nav className="filters clean-scroll" aria-label="Filter leads">
         {FILTERS.map((item) => {
           const count = inbox.counts[item.key];
@@ -129,6 +118,8 @@ export function LeadsList({
             onStatus={inbox.updateStatus}
             onBooked={inbox.updateBooked}
             onJobValue={inbox.updateJobValue}
+            onDelete={inbox.deleteLead}
+            onRestore={inbox.restoreLead}
             expanded={inbox.expandedLeadIds.has(lead.id)}
             onToggleDetails={inbox.toggleLeadDetails}
           />
@@ -138,12 +129,18 @@ export function LeadsList({
           <div className="empty-state">
             <div className="empty-state__icon"><Icon name="inbox" size={28} /></div>
             <h3 className="t-display" style={{ fontSize: 24, margin: "12px 0 4px" }}>
-              {inbox.activeItems.length === 0 ? "No missed calls yet." : "No leads in this view."}
+              {inbox.filter === "trash"
+                ? "Trash is empty."
+                : inbox.activeItems.length === 0
+                  ? "No missed calls yet."
+                  : "No leads in this view."}
             </h3>
             <p style={{ color: "var(--ink-3)", margin: 0 }}>
-              {inbox.activeItems.length === 0
-                ? "Once someone calls and you miss it, Relay NW will save the caller, voicemail, and follow-up status here."
-                : "Try another status filter or wait for new missed calls to come in."}
+              {inbox.filter === "trash"
+                ? "Deleted leads will appear here so you can restore them if you make a mistake."
+                : inbox.activeItems.length === 0
+                  ? "Once someone calls and you miss it, Relay NW will save the caller, voicemail, and follow-up status here."
+                  : "Try another status filter or wait for new missed calls to come in."}
             </p>
           </div>
         ) : null}

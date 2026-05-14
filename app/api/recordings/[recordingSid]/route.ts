@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { env } from "@/lib/env";
 import { isValidLeadsSessionCookie, LEADS_COOKIE_NAME } from "@/lib/leads-auth";
-import { recordingBelongsToLead } from "@/lib/supabase";
+import { getLeadRecordingForPlayback } from "@/lib/supabase";
 
 const PRIVATE_AUDIO_HEADERS = {
   "Cache-Control": "private, no-store, max-age=0",
@@ -14,9 +14,13 @@ export async function GET(
   { params }: { params: Promise<{ recordingSid: string }> },
 ) {
   const cookieStore = await cookies();
-  const isAllowed = isValidLeadsSessionCookie(cookieStore.get(LEADS_COOKIE_NAME)?.value);
+  const leadsCookie = cookieStore.get(LEADS_COOKIE_NAME)?.value;
+  const isAllowed = isValidLeadsSessionCookie(leadsCookie);
 
   if (!isAllowed) {
+    console.warn("Recording request blocked", {
+      reason: leadsCookie ? "invalid_leads_session" : "missing_leads_session",
+    });
     return new Response("Unauthorized", { status: 401 });
   }
 
@@ -26,8 +30,12 @@ export async function GET(
     return new Response("Invalid recording", { status: 400 });
   }
 
-  const isKnownRecording = await recordingBelongsToLead(recordingSid);
-  if (!isKnownRecording) {
+  const recording = await getLeadRecordingForPlayback(recordingSid);
+  if (!recording) {
+    console.warn("Recording request blocked", {
+      reason: "recording_not_linked_to_lead",
+      recordingSid,
+    });
     return new Response("Recording unavailable", {
       status: 404,
       headers: PRIVATE_AUDIO_HEADERS,
@@ -35,7 +43,8 @@ export async function GET(
   }
 
   const recordingUrl =
-    `https://api.twilio.com/2010-04-01/Accounts/${env.twilioAccountSid}/Recordings/${recordingSid}.mp3`;
+    recording.recording_url
+    ?? `https://api.twilio.com/2010-04-01/Accounts/${env.twilioAccountSid}/Recordings/${recordingSid}.mp3`;
   const auth = Buffer.from(`${env.twilioAccountSid}:${env.twilioAuthToken}`).toString("base64");
   const recordingResponse = await fetch(recordingUrl, {
     headers: {
@@ -45,6 +54,10 @@ export async function GET(
   });
 
   if (!recordingResponse.ok || !recordingResponse.body) {
+    console.warn("Twilio recording fetch failed", {
+      recordingSid,
+      status: recordingResponse.status,
+    });
     return new Response("Recording unavailable", {
       status: recordingResponse.status,
       headers: PRIVATE_AUDIO_HEADERS,

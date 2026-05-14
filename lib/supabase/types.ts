@@ -57,5 +57,6 @@ export type Lead = {
   voicemail_transcription_status: VoicemailTranscriptionStatus;
   voicemail_transcription_error: string | null;
   voicemail_transcribed_at: string | null;
+  deleted_at: string | null;
   created_at: string;
 };

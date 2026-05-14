@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { isValidLeadsSessionCookie, LEADS_COOKIE_NAME } from "@/lib/leads-auth";
-import { type LeadStatus, type ReplyPriorityOverride, updateLead } from "@/lib/supabase";
+import { deleteLead, type LeadStatus, type ReplyPriorityOverride, updateLead } from "@/lib/supabase";
 
 const MAX_NOTES_LENGTH = 2000;
 const MAX_NAME_LENGTH = 100;
@@ -17,6 +17,7 @@ type LeadPatchBody = {
   jobValueCents?: number | null;
   replyPriorityOverride?: ReplyPriorityOverride;
   voicemailSummary?: string | null;
+  deleted?: boolean;
 };
 
 type LeadUpdate = {
@@ -27,6 +28,7 @@ type LeadUpdate = {
   jobValueCents?: number | null;
   replyPriorityOverride?: ReplyPriorityOverride;
   voicemailSummary?: string | null;
+  deletedAt?: string | null;
 };
 
 async function isAuthorized() {
@@ -110,9 +112,14 @@ function validateLeadUpdate(body: LeadPatchBody | null): LeadUpdate | { error: s
     typeof body.booked === "undefined" &&
     typeof body.jobValueCents === "undefined" &&
     typeof body.replyPriorityOverride === "undefined" &&
-    typeof body.voicemailSummary === "undefined"
+    typeof body.voicemailSummary === "undefined" &&
+    typeof body.deleted === "undefined"
   ) {
     return { error: "Nothing to update" };
+  }
+
+  if (typeof body.deleted !== "undefined" && typeof body.deleted !== "boolean") {
+    return { error: "Invalid deleted state" };
   }
 
   return {
@@ -124,6 +131,7 @@ function validateLeadUpdate(body: LeadPatchBody | null): LeadUpdate | { error: s
     replyPriorityOverride:
       typeof body.replyPriorityOverride === "undefined" ? undefined : body.replyPriorityOverride,
     voicemailSummary,
+    deletedAt: typeof body.deleted === "undefined" ? undefined : body.deleted ? new Date().toISOString() : null,
   };
 }
 
@@ -148,6 +156,26 @@ export async function PATCH(
   } catch (error) {
     console.error("Failed to update lead", { leadId: id, error });
     return Response.json({ error: "Unable to update lead" }, { status: 500 });
+  }
+
+  return Response.json({ ok: true });
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  if (!(await isAuthorized())) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await params;
+
+  try {
+    await deleteLead(id);
+  } catch (error) {
+    console.error("Failed to delete lead", { leadId: id, error });
+    return Response.json({ error: "Unable to delete lead" }, { status: 500 });
   }
 
   return Response.json({ ok: true });

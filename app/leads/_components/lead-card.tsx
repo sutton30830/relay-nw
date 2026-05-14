@@ -6,6 +6,7 @@ import { LEGACY_FORWARDING_MESSAGE } from "../_constants";
 import { formatPhone, formatRelativeTime, getLeadNextAction, getLeadPriority, initials, isBookedLead, needsAttention, shouldShowVoicemailSummaryProgress } from "../_utils";
 import { BookedBadge, PriorityBadge, SmsBadge, SourceBadge, StatusPill, VoicemailBadge } from "./badges";
 import { BookedValueInput } from "./controls";
+import { VoicemailAudio } from "./voicemail-audio";
 
 export function LeadCard({
   lead,
@@ -14,6 +15,8 @@ export function LeadCard({
   onStatus,
   onBooked,
   onJobValue,
+  onDelete,
+  onRestore,
   expanded,
   onToggleDetails,
 }: {
@@ -23,11 +26,14 @@ export function LeadCard({
   onStatus: (id: string, status: LeadStatus) => void;
   onBooked: (id: string, booked: boolean) => void;
   onJobValue: (id: string, jobValueCents: number | null) => void;
+  onDelete: (id: string) => void;
+  onRestore: (id: string) => void;
   expanded: boolean;
   onToggleDetails: (id: string) => void;
 }) {
   const attention = needsAttention(lead);
   const booked = isBookedLead(lead);
+  const trashed = Boolean(lead.deleted_at);
   const priority = getLeadPriority(lead);
   const nextAction = getLeadNextAction(lead, now);
   const hasDetails = Boolean(lead.voicemail_transcript || lead.notes || lead.recording_sid);
@@ -57,7 +63,7 @@ export function LeadCard({
     <article
       className={`lead-card ${attention ? "lead-card--attention" : ""} ${
         priority.level === "fast" && lead.status === "new" ? "lead-card--fast" : ""
-      }`}
+      } ${trashed ? "lead-card--trashed" : ""}`}
       onClick={() => onOpen(lead.id)}
     >
       <div className="lead-card__head">
@@ -74,10 +80,10 @@ export function LeadCard({
         </div>
 
         <div className="lead-card__badges">
-          <StatusPill status={lead.status} />
+          {trashed ? <span className="chip chip-muted">Trash</span> : <StatusPill status={lead.status} />}
           <BookedBadge lead={lead} />
           <PriorityBadge priority={priority} />
-          <SourceBadge source={lead.source} />
+          {lead.source === "intake_form" ? <SourceBadge source={lead.source} /> : null}
           <SmsBadge lead={lead} />
           <VoicemailBadge lead={lead} />
         </div>
@@ -144,9 +150,7 @@ export function LeadCard({
             </section>
           ) : null}
           {lead.recording_sid ? (
-            <audio className="lead-card__audio" controls src={`/api/recordings/${lead.recording_sid}`}>
-              <a href={`/api/recordings/${lead.recording_sid}`}>Open voicemail</a>
-            </audio>
+            <VoicemailAudio className="lead-card__audio" recordingSid={lead.recording_sid} />
           ) : null}
           {lead.voicemail_transcript ? (
             <details className="lead-card__transcript">
@@ -159,33 +163,55 @@ export function LeadCard({
 
       <div className="lead-card__actions" onClick={(event) => event.stopPropagation()}>
         <div className="lead-card__primary-actions">
-          <a className="btn btn-primary btn-sm" href={`tel:${lead.phone}`}>
-            <Icon name="phone" size={13} /> Call back
-          </a>
-          {lead.status === "new" ? (
-            <button className="btn btn-secondary btn-sm" type="button" onClick={() => onStatus(lead.id, "contacted")}>
-              Mark contacted
+          {trashed ? (
+            <button className="btn btn-primary btn-sm" type="button" onClick={() => onRestore(lead.id)}>
+              Restore
             </button>
-          ) : null}
-          {!booked ? (
-            <button className="btn btn-secondary btn-sm" type="button" onClick={() => onBooked(lead.id, true)}>
-              Mark booked
-            </button>
-          ) : null}
+          ) : (
+            <>
+              <a className="btn btn-primary btn-sm" href={`tel:${lead.phone}`}>
+                <Icon name="phone" size={13} /> Call back
+              </a>
+              {lead.status === "new" ? (
+                <button className="btn btn-secondary btn-sm" type="button" onClick={() => onStatus(lead.id, "contacted")}>
+                  Mark contacted
+                </button>
+              ) : null}
+              {!booked ? (
+                <button className="btn btn-secondary btn-sm" type="button" onClick={() => onBooked(lead.id, true)}>
+                  Mark booked
+                </button>
+              ) : null}
+            </>
+          )}
         </div>
-        <div className="lead-card__utility-actions">
-          <a className="btn btn-ghost btn-sm" href={`sms:${lead.phone}`}>
-            <Icon name="message" size={13} /> Text
-          </a>
-          {hasDetails ? (
-            <button className="btn btn-ghost btn-sm" type="button" onClick={() => onToggleDetails(lead.id)}>
-              {detailsVisible ? "Hide details" : "Details"}
-            </button>
-          ) : null}
-          <button className="btn btn-ghost btn-sm" type="button" onClick={() => onOpen(lead.id)}>
-            Open <Icon name="chevronRight" size={13} />
-          </button>
-        </div>
+        {!trashed || hasDetails ? (
+          <div className="lead-card__utility-actions">
+            {!trashed ? (
+              <a className="btn btn-ghost btn-sm" href={`sms:${lead.phone}`}>
+                <Icon name="message" size={13} /> Text
+              </a>
+            ) : null}
+            {hasDetails ? (
+              <button className="btn btn-ghost btn-sm" type="button" onClick={() => onToggleDetails(lead.id)}>
+                {detailsVisible ? "Hide details" : "Details"}
+              </button>
+            ) : null}
+            {!trashed ? (
+              <button
+                className="btn btn-danger-ghost btn-sm"
+                type="button"
+                onClick={() => {
+                  if (window.confirm("Move this lead to Trash?")) {
+                    onDelete(lead.id);
+                  }
+                }}
+              >
+                Delete
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </article>
   );

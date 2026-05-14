@@ -279,6 +279,18 @@ code {
   color: var(--ink);
 }
 
+.btn-danger-ghost {
+  border-color: color-mix(in oklab, var(--danger) 32%, var(--line));
+  background: color-mix(in oklab, var(--danger-soft) 62%, var(--panel));
+  color: var(--danger);
+}
+
+.btn-danger-ghost:hover {
+  border-color: color-mix(in oklab, var(--danger) 52%, var(--line));
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
 .btn-sm {
   min-height: 30px;
   padding: 0 10px;
@@ -400,6 +412,12 @@ code {
   border-color: color-mix(in oklab, var(--danger) 25%, var(--line));
   background: var(--danger-soft);
   color: var(--danger);
+}
+
+.chip-muted {
+  border-color: var(--line);
+  background: color-mix(in oklab, var(--panel-2) 76%, var(--panel));
+  color: var(--ink-3);
 }
 
 .kbd {
@@ -1857,6 +1875,15 @@ code {
   box-shadow: inset 4px 0 0 var(--danger), var(--shadow-sm);
 }
 
+.lead-card--trashed {
+  border-color: color-mix(in oklab, var(--ink-4) 32%, var(--line));
+  background: color-mix(in oklab, var(--panel-2) 72%, var(--panel));
+}
+
+.lead-card--trashed:hover {
+  border-color: var(--ink-4);
+}
+
 .lead-card__head,
 .lead-card__actions {
   display: flex;
@@ -2521,6 +2548,16 @@ code {
 .voicemail-card__audio {
   width: 100%;
   max-width: 100%;
+}
+
+.voicemail-audio-status {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--panel) 72%, transparent);
+  padding: 12px 14px;
+  color: var(--ink-3);
+  font-size: 14px;
 }
 
 .voicemail-ai {

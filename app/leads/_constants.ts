@@ -19,6 +19,7 @@ export const FILTERS: Array<{ key: Filter; label: string }> = [
   { key: "new", label: "New" },
   { key: "contacted", label: "Contacted" },
   { key: "dead", label: "Closed" },
+  { key: "trash", label: "Trash" },
 ];
 
 export const QUICK_REPLIES = [

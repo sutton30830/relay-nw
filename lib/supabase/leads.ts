@@ -2,7 +2,7 @@ import { isPlaceholderSupabaseConfig, shouldSkipDatabaseWrite, supabaseAdmin, th
 import type { Lead, LeadSource, LeadStatus, ReplyPriorityOverride } from "./types";
 
 const LEAD_SELECT_COLUMNS =
-  "id, call_sid, name, phone, message, notes, booked_at, job_value_cents, reply_priority_override, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, voicemail_transcript, voicemail_summary, voicemail_transcription_status, voicemail_transcription_error, voicemail_transcribed_at, created_at";
+  "id, call_sid, name, phone, message, notes, booked_at, job_value_cents, reply_priority_override, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, voicemail_transcript, voicemail_summary, voicemail_transcription_status, voicemail_transcription_error, voicemail_transcribed_at, deleted_at, created_at";
 const LEGACY_LEAD_SELECT_COLUMNS =
   "id, call_sid, name, phone, message, notes, job_value_cents, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, created_at";
 
@@ -22,6 +22,7 @@ function isMissingOptionalLeadColumnError(error: { message: string } | null) {
       error?.message.includes("voicemail_transcription_status") ||
       error?.message.includes("voicemail_transcription_error") ||
       error?.message.includes("voicemail_transcribed_at") ||
+      error?.message.includes("deleted_at") ||
       error?.message.includes("reply_priority_override"),
   );
 }
@@ -34,6 +35,7 @@ function normalizeLead(lead: Lead): Lead {
     voicemail_transcription_status: lead.voicemail_transcription_status ?? null,
     voicemail_transcription_error: lead.voicemail_transcription_error ?? null,
     voicemail_transcribed_at: lead.voicemail_transcribed_at ?? null,
+    deleted_at: lead.deleted_at ?? null,
     reply_priority_override: lead.reply_priority_override ?? null,
   };
 
@@ -133,6 +135,7 @@ export async function getLeads() {
       normalizeLead({
         ...lead,
         booked_at: lead.status === "booked" ? lead.created_at : null,
+        deleted_at: null,
       } as Lead),
     );
   }
@@ -151,6 +154,7 @@ export async function updateLead(input: {
   jobValueCents?: number | null;
   replyPriorityOverride?: ReplyPriorityOverride;
   voicemailSummary?: string | null;
+  deletedAt?: string | null;
 }) {
   if (shouldSkipDatabaseWrite("lead update", input)) {
     return;
@@ -164,6 +168,7 @@ export async function updateLead(input: {
     job_value_cents?: number | null;
     reply_priority_override?: ReplyPriorityOverride;
     voicemail_summary?: string | null;
+    deleted_at?: string | null;
   } = {};
 
   if (typeof input.name !== "undefined") {
@@ -192,6 +197,10 @@ export async function updateLead(input: {
 
   if (typeof input.voicemailSummary !== "undefined") {
     updates.voicemail_summary = input.voicemailSummary;
+  }
+
+  if (typeof input.deletedAt !== "undefined") {
+    updates.deleted_at = input.deletedAt;
   }
 
   if (typeof input.name !== "undefined") {
@@ -259,6 +268,19 @@ export async function updateLead(input: {
     throwIfSupabaseError(legacyError);
     return;
   }
+
+  throwIfSupabaseError(error);
+}
+
+export async function deleteLead(id: string) {
+  if (shouldSkipDatabaseWrite("lead delete", { id })) {
+    return;
+  }
+
+  const { error } = await supabaseAdmin
+    .from("leads")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id);
 
   throwIfSupabaseError(error);
 }

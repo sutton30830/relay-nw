@@ -7,6 +7,7 @@ import { LEGACY_FORWARDING_MESSAGE, QUICK_REPLIES } from "../_constants";
 import { followUpStatusText, formatDuration, formatPhone, getLeadPriority, initials, isBookedLead } from "../_utils";
 import { BookedBadge, PriorityBadge, SmsBadge, SourceBadge, StatusPill, VoicemailBadge } from "./badges";
 import { BookedToggle, BookedValueInput, PriorityControl, StatusControl } from "./controls";
+import { VoicemailAudio } from "./voicemail-audio";
 
 export function LeadDrawer({
   lead,
@@ -231,9 +232,7 @@ export function LeadDrawer({
                 {formatDuration(lead.recording_duration)}
               </p>
             </div>
-            <audio className="voicemail-card__audio" controls src={`/api/recordings/${lead.recording_sid}`}>
-              <a href={`/api/recordings/${lead.recording_sid}`}>Open voicemail</a>
-            </audio>
+            <VoicemailAudio className="voicemail-card__audio" recordingSid={lead.recording_sid} />
             <div className="voicemail-ai">
               {!lead.voicemail_summary && lead.voicemail_transcription_status === "processing" ? (
                 <p className="voicemail-ai__status">

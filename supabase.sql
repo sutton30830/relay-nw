@@ -23,6 +23,7 @@ create table if not exists public.leads (
   voicemail_transcription_status text check (voicemail_transcription_status is null or voicemail_transcription_status in ('pending', 'processing', 'completed', 'failed')),
   voicemail_transcription_error text,
   voicemail_transcribed_at timestamptz,
+  deleted_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -44,6 +45,7 @@ alter table public.leads add column if not exists voicemail_summary text;
 alter table public.leads add column if not exists voicemail_transcription_status text;
 alter table public.leads add column if not exists voicemail_transcription_error text;
 alter table public.leads add column if not exists voicemail_transcribed_at timestamptz;
+alter table public.leads add column if not exists deleted_at timestamptz;
 alter table public.leads drop constraint if exists leads_status_check;
 alter table public.leads
   add constraint leads_status_check check (status in ('new', 'contacted', 'booked', 'dead'));
@@ -80,6 +82,7 @@ create unique index if not exists leads_call_sid_unique_idx
 create unique index if not exists leads_twilio_message_sid_unique_idx
   on public.leads (twilio_message_sid)
   where twilio_message_sid is not null;
+create index if not exists leads_deleted_at_idx on public.leads (deleted_at);
 
 alter table public.leads enable row level security;
 

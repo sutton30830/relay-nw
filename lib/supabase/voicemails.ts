@@ -18,6 +18,23 @@ export async function recordingBelongsToLead(recordingSid: string) {
   return Boolean(data?.id);
 }
 
+export async function getLeadRecordingForPlayback(recordingSid: string) {
+  if (isPlaceholderSupabaseConfig()) {
+    return null;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("leads")
+    .select("id, recording_url")
+    .eq("recording_sid", recordingSid)
+    .limit(1)
+    .maybeSingle();
+
+  throwIfSupabaseError(error);
+
+  return data as { id: string; recording_url: string | null } | null;
+}
+
 export async function getLeadForVoicemailTranscription(id: string) {
   if (isPlaceholderSupabaseConfig()) {
     return null;
