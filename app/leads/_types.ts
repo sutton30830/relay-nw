@@ -1,0 +1,43 @@
+import type { LeadStatus, ReplyPriorityOverride } from "@/lib/supabase";
+
+export type Filter = "all" | Exclude<LeadStatus, "booked">;
+
+export type LeadCounts = Record<Filter, number> & {
+  actionable: number;
+  smsIssues: number;
+  bookedValueCents: number;
+  bookedWithValue: number;
+};
+
+export type LeadPatch = {
+  name?: string | null;
+  status?: LeadStatus;
+  notes?: string | null;
+  booked?: boolean;
+  jobValueCents?: number | null;
+  replyPriorityOverride?: ReplyPriorityOverride;
+  voicemailSummary?: string | null;
+};
+
+export type TranscribeResponse = {
+  transcript: string;
+  summary: string;
+  status: "completed";
+};
+
+export type TranscribeResult =
+  | { ok: true; data: TranscribeResponse }
+  | { ok: false; error: string };
+
+export type ReplyPriority = {
+  level: "fast" | "today" | "normal";
+  label: string;
+  reason: string | null;
+};
+
+export type NextAction = {
+  label: string;
+  detail: string;
+  icon: "alertTriangle" | "check" | "clock" | "message" | "phone" | "sparkle" | "star";
+  tone: "danger" | "good" | "normal" | "warning";
+};

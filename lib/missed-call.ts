@@ -12,9 +12,11 @@ export async function handleMissedCall(input: {
   callerPhone: string;
   callSid: string;
   message: string | null;
+  correlationId?: string | null;
 }) {
   const callerPhone = normalizePhoneNumber(input.callerPhone);
   const callSid = input.callSid.trim();
+  const correlationId = input.correlationId ?? callSid;
 
   if (!callerPhone || !callSid) {
     throw new Error("Missing caller phone or CallSid on missed call webhook.");
@@ -38,6 +40,7 @@ export async function handleMissedCall(input: {
       });
     } catch (error) {
       console.warn("Could not mark SMS as disabled. Run supabase.sql to allow skipped_disabled.", {
+        correlationId,
         callSid,
         callerLast4: phoneLast4(callerPhone),
         leadId: leadResult.leadId,
@@ -46,6 +49,7 @@ export async function handleMissedCall(input: {
     }
 
     console.info("Missed-call SMS suppressed because SMS_ENABLED is false", {
+      correlationId,
       callSid,
       callerLast4: phoneLast4(callerPhone),
       leadId: leadResult.leadId,
@@ -93,6 +97,7 @@ export async function handleMissedCall(input: {
       const updateErrorMessage = error instanceof Error ? error.message : "Unknown SMS update error";
 
       console.error("Twilio accepted SMS, but Relay could not update the lead", {
+        correlationId,
         leadId: leadResult.leadId,
         twilioMessageSid: message.sid,
         error: updateErrorMessage,
@@ -116,6 +121,7 @@ export async function handleMissedCall(input: {
     });
 
     console.error("Failed to send missed call SMS", {
+      correlationId,
       callSid,
       callerLast4: phoneLast4(callerPhone),
       leadId: leadResult.leadId,

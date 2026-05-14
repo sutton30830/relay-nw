@@ -87,12 +87,14 @@ export async function rejectInvalidTwilioSignature(input: {
   source: WebhookEventSource;
   label: string;
   payload: Record<string, string>;
+  correlationId?: string | null;
   requestSummary: TwilioRequestSummary;
   candidateUrls: string[];
   hasSignature: boolean;
   responseBody?: string;
 }) {
   console.warn(`Twilio ${input.label} signature validation failed`, {
+    correlationId: input.correlationId,
     ...input.requestSummary,
     candidateUrls: input.candidateUrls,
     hasSignature: input.hasSignature,
@@ -102,6 +104,7 @@ export async function rejectInvalidTwilioSignature(input: {
 
   await logWebhookEvent({
     source: input.source,
+    correlationId: input.correlationId,
     payload: input.payload,
     responseStatus: 403,
     responseBody,
@@ -115,12 +118,14 @@ export async function logUnsignedTwilioWebhook(input: {
   source: WebhookEventSource;
   label: string;
   payload: Record<string, string>;
+  correlationId?: string | null;
   requestSummary: TwilioRequestSummary;
   candidateUrls: string[];
   hasSignature: boolean;
   responseBody?: string;
 }) {
   console.warn(`Unsigned Twilio ${input.label} webhook allowed by env override`, {
+    correlationId: input.correlationId,
     ...input.requestSummary,
     candidateUrls: input.candidateUrls,
     hasSignature: input.hasSignature,
@@ -128,6 +133,7 @@ export async function logUnsignedTwilioWebhook(input: {
 
   await logWebhookEvent({
     source: input.source,
+    correlationId: input.correlationId,
     payload: input.payload,
     responseStatus: 200,
     responseBody:

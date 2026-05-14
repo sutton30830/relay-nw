@@ -66,12 +66,14 @@ function webhookEventNote(input: {
 export async function POST(request: Request) {
   const formData = await request.formData();
   const payload = formDataToRecord(formData);
+  const correlationId = payload.CallSid || payload.MessageSid || payload.RecordingSid || crypto.randomUUID();
   const requestSummary = summarizeTwilioRequest(request, payload);
   const validation = validateTwilioWebhook(request, payload);
   const status = parseSmsStatusPayload(payload);
   const xml = emptyTwiml();
 
   console.info("Twilio SMS status webhook received", {
+    correlationId,
     ...requestSummary,
     messageSid: status.messageSid,
     messageStatus: status.rawStatus,
@@ -82,6 +84,7 @@ export async function POST(request: Request) {
       source: SMS_STATUS_WEBHOOK_SOURCE,
       label: "SMS status",
       payload,
+      correlationId,
       requestSummary,
       candidateUrls: validation.candidateUrls,
       hasSignature: validation.hasSignature,
@@ -99,6 +102,7 @@ export async function POST(request: Request) {
 
     await logWebhookEvent({
       source: SMS_STATUS_WEBHOOK_SOURCE,
+      correlationId,
       payload,
       responseStatus: 200,
       responseBody: xml,
@@ -114,6 +118,7 @@ export async function POST(request: Request) {
 
     await logWebhookEvent({
       source: SMS_STATUS_WEBHOOK_SOURCE,
+      correlationId,
       payload,
       responseStatus: 200,
       responseBody: xml,
@@ -121,6 +126,7 @@ export async function POST(request: Request) {
     });
 
     console.error("Failed to handle Twilio SMS status", {
+      correlationId,
       ...requestSummary,
       error: message,
     });

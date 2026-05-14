@@ -75,7 +75,7 @@ function webhookEventNote(input: {
   return notes.join(" ");
 }
 
-async function handleInboundSms(input: ReturnType<typeof parseInboundSmsPayload>) {
+async function handleInboundSms(input: ReturnType<typeof parseInboundSmsPayload>, correlationId: string) {
   if (input.messageSid && input.from && input.body) {
     const inboundMessage = await createInboundMessageIfNew({
       messageSid: input.messageSid,
@@ -96,6 +96,7 @@ async function handleInboundSms(input: ReturnType<typeof parseInboundSmsPayload>
 
   if (input.shouldNotifyOwner && !env.smsEnabled) {
     console.info("Inbound SMS owner notification suppressed because SMS_ENABLED is false", {
+      correlationId,
       fromLast4: phoneLast4(input.from),
       toLast4: phoneLast4(input.to),
     });
@@ -119,12 +120,14 @@ async function handleInboundSms(input: ReturnType<typeof parseInboundSmsPayload>
 export async function POST(request: Request) {
   const formData = await request.formData();
   const payload = formDataToRecord(formData);
+  const correlationId = payload.CallSid || payload.MessageSid || payload.RecordingSid || crypto.randomUUID();
   const requestSummary = summarizeTwilioRequest(request, payload);
   const validation = validateTwilioWebhook(request, payload);
   const message = parseInboundSmsPayload(payload);
   const xml = emptyTwiml();
 
   console.info("Twilio inbound SMS webhook received", {
+    correlationId,
     ...requestSummary,
     hasBody: Boolean(message.body),
     isOptOut: message.isOptOut,
@@ -135,6 +138,7 @@ export async function POST(request: Request) {
       source: INBOUND_SMS_WEBHOOK_SOURCE,
       label: "inbound SMS",
       payload,
+      correlationId,
       requestSummary,
       candidateUrls: validation.candidateUrls,
       hasSignature: validation.hasSignature,
@@ -146,6 +150,7 @@ export async function POST(request: Request) {
       source: INBOUND_SMS_WEBHOOK_SOURCE,
       label: "inbound SMS",
       payload,
+      correlationId,
       requestSummary,
       candidateUrls: validation.candidateUrls,
       hasSignature: validation.hasSignature,
@@ -154,10 +159,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const action = await handleInboundSms(message);
+    const action = await handleInboundSms(message, correlationId);
 
     await logWebhookEvent({
       source: INBOUND_SMS_WEBHOOK_SOURCE,
+      correlationId,
       payload,
       responseStatus: 200,
       responseBody: xml,
@@ -171,6 +177,7 @@ export async function POST(request: Request) {
 
     await logWebhookEvent({
       source: INBOUND_SMS_WEBHOOK_SOURCE,
+      correlationId,
       payload,
       responseStatus: 200,
       responseBody: xml,
@@ -178,6 +185,7 @@ export async function POST(request: Request) {
     });
 
     console.error("Failed to handle inbound Twilio SMS", {
+      correlationId,
       ...requestSummary,
       error: errorMessage,
     });
