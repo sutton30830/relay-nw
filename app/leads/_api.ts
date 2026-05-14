@@ -9,7 +9,17 @@ export async function patchLead(id: string, body: LeadPatch) {
       body: JSON.stringify(body),
     });
 
-    return response.ok;
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      console.error("Failed to update lead from inbox", {
+        leadId: id,
+        status: response.status,
+        body,
+      });
+      return false;
+    }
+
+    return true;
   } catch (error) {
     console.error("Failed to update lead from inbox", { leadId: id, error });
     return false;

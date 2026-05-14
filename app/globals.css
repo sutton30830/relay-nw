@@ -2468,8 +2468,32 @@ code {
 
 .priority-control__option--active {
   border-color: var(--brand);
-  background: var(--brand);
-  color: white;
+  background: color-mix(in oklab, var(--brand-soft) 58%, var(--panel));
+  color: var(--brand);
+  box-shadow: none;
+}
+
+.priority-control__option--active:hover,
+.priority-control__option--active:focus-visible {
+  border-color: var(--brand);
+  background: color-mix(in oklab, var(--brand-soft) 58%, var(--panel));
+  color: var(--brand);
+}
+
+.priority-control__option--fast.priority-control__option--active,
+.priority-control__option--fast.priority-control__option--active:hover,
+.priority-control__option--fast.priority-control__option--active:focus-visible {
+  border-color: color-mix(in oklab, var(--danger) 70%, var(--line));
+  background: color-mix(in oklab, var(--danger-soft) 88%, var(--panel));
+  color: var(--danger);
+}
+
+.priority-control__option--today.priority-control__option--active,
+.priority-control__option--today.priority-control__option--active:hover,
+.priority-control__option--today.priority-control__option--active:focus-visible {
+  border-color: color-mix(in oklab, var(--accent) 48%, var(--line));
+  background: color-mix(in oklab, var(--accent-soft) 82%, var(--panel));
+  color: var(--accent);
 }
 
 .drawer__request-summary {

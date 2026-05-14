@@ -4,14 +4,10 @@ import type { Lead, LeadSource, LeadStatus, ReplyPriorityOverride } from "./type
 const LEAD_SELECT_COLUMNS =
   "id, call_sid, name, phone, message, notes, booked_at, job_value_cents, reply_priority_override, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, voicemail_transcript, voicemail_summary, voicemail_transcription_status, voicemail_transcription_error, voicemail_transcribed_at, deleted_at, created_at";
 const LEGACY_LEAD_SELECT_COLUMNS =
-  "id, call_sid, name, phone, message, notes, job_value_cents, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, created_at";
+  "id, call_sid, name, phone, message, notes, job_value_cents, reply_priority_override, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, created_at";
 
 function isMissingBookedAtColumnError(error: { message: string } | null) {
   return Boolean(error?.message.includes("booked_at"));
-}
-
-function isMissingReplyPriorityColumnError(error: { message: string } | null) {
-  return Boolean(error?.message.includes("reply_priority_override"));
 }
 
 function isMissingOptionalLeadColumnError(error: { message: string } | null) {
@@ -237,24 +233,6 @@ export async function updateLead(input: {
     console.warn("leads.booked_at is missing. Run supabase.sql to persist booked outcome tracking.");
     const legacyUpdates = { ...updates };
     delete legacyUpdates.booked_at;
-
-    if (Object.keys(legacyUpdates).length === 0) {
-      return;
-    }
-
-    const { error: legacyError } = await supabaseAdmin
-      .from("leads")
-      .update(legacyUpdates)
-      .eq("id", input.id);
-
-    throwIfSupabaseError(legacyError);
-    return;
-  }
-
-  if (isMissingReplyPriorityColumnError(error) && typeof updates.reply_priority_override !== "undefined") {
-    console.warn("leads.reply_priority_override is missing. Run supabase.sql to persist manual reply priority.");
-    const legacyUpdates = { ...updates };
-    delete legacyUpdates.reply_priority_override;
 
     if (Object.keys(legacyUpdates).length === 0) {
       return;

@@ -13,6 +13,7 @@ export function useLeadsInbox(leads: Lead[]) {
   const searchRef = useRef<HTMLInputElement | null>(null);
   const initiallyLoadedLeadIds = useRef<Set<string>>(new Set(leads.map((lead) => lead.id)));
   const autoSummaryStartedIds = useRef<Set<string>>(new Set());
+  const pendingPriorityOverrides = useRef<Map<string, ReplyPriorityOverride>>(new Map());
   const [items, setItems] = useState(leads);
   const [sampleItems, setSampleItems] = useState(() => createSampleLeads());
   const [sampleMode, setSampleMode] = useState(false);
@@ -25,7 +26,7 @@ export function useLeadsInbox(leads: Lead[]) {
   const activeItems = sampleMode ? sampleItems : items;
 
   useEffect(() => {
-    setItems(leads);
+    setItems(applyPendingPriorityOverrides(leads));
     if (leads.length > 0) setSampleMode(false);
   }, [leads]);
 
@@ -101,6 +102,23 @@ export function useLeadsInbox(leads: Lead[]) {
   function updateLocalLead(id: string, updates: Partial<Lead>) {
     const setter = sampleMode ? setSampleItems : setItems;
     setter((current) => current.map((lead) => (lead.id === id ? { ...lead, ...updates } : lead)));
+  }
+
+  function applyPendingPriorityOverrides(nextItems: Lead[]) {
+    if (pendingPriorityOverrides.current.size === 0) {
+      return nextItems;
+    }
+
+    return nextItems.map((lead) => {
+      if (!pendingPriorityOverrides.current.has(lead.id)) {
+        return lead;
+      }
+
+      return {
+        ...lead,
+        reply_priority_override: pendingPriorityOverrides.current.get(lead.id) ?? null,
+      };
+    });
   }
 
   function updateLocalLeadsByPhone(phone: string, updates: Partial<Lead>) {
@@ -259,10 +277,15 @@ export function useLeadsInbox(leads: Lead[]) {
     }
 
     const previousItems = items;
+    pendingPriorityOverrides.current.set(id, replyPriorityOverride);
     updateLocalLead(id, { reply_priority_override: replyPriorityOverride });
 
     const saved = await patchLead(id, { replyPriorityOverride });
-    if (!saved) setItems(previousItems);
+    pendingPriorityOverrides.current.delete(id);
+
+    if (!saved) {
+      setItems(previousItems);
+    }
   }
 
   async function transcribeVoicemail(id: string) {

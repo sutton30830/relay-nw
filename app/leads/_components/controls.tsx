@@ -25,12 +25,13 @@ export function PriorityControl({
       <div className="priority-control__options" role="group" aria-label="Reply priority">
         {options.map((option) => {
           const selected = value === option.value;
+          const priorityClass = option.value ? `priority-control__option--${option.value}` : "priority-control__option--auto";
 
           return (
             <button
               key={option.label}
               type="button"
-              className={`priority-control__option ${selected ? "priority-control__option--active" : ""}`}
+              className={`priority-control__option ${priorityClass} ${selected ? "priority-control__option--active" : ""}`}
               aria-pressed={selected}
               onClick={() => onChange(option.value)}
             >
