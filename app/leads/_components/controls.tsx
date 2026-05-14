@@ -8,9 +8,11 @@ import { centsToInputValue, dollarsToCents } from "../_utils";
 export function PriorityControl({
   value,
   onChange,
+  label = "Reply priority",
 }: {
   value: ReplyPriorityOverride;
   onChange: (value: ReplyPriorityOverride) => void;
+  label?: string | null;
 }) {
   const options: Array<{ label: string; value: ReplyPriorityOverride }> = [
     { label: "Auto detect", value: null },
@@ -21,7 +23,7 @@ export function PriorityControl({
 
   return (
     <div className="priority-control">
-      <span className="t-eyebrow">Reply priority</span>
+      {label ? <span className="t-eyebrow">{label}</span> : null}
       <div className="priority-control__options" role="group" aria-label="Reply priority">
         {options.map((option) => {
           const selected = value === option.value;

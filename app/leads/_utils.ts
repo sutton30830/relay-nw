@@ -461,7 +461,7 @@ export function followUpStatusText(lead: Lead) {
   }
 
   if (lead.sms_status === "skipped_disabled") {
-    return "Auto-text is currently turned off. Follow up manually.";
+    return "Auto-text is off for now. Use your phone to follow up.";
   }
 
   return "Auto-text pending or waiting on SMS setup.";

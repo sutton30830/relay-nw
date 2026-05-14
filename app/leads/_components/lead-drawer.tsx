@@ -5,7 +5,7 @@ import { Icon } from "@/components/icon";
 import type { Lead, LeadStatus, ReplyPriorityOverride } from "@/lib/supabase";
 import { LEGACY_FORWARDING_MESSAGE, QUICK_REPLIES } from "../_constants";
 import { followUpStatusText, formatDuration, formatPhone, getLeadPriority, initials, isBookedLead } from "../_utils";
-import { BookedBadge, PriorityBadge, SmsBadge, SourceBadge, StatusPill, VoicemailBadge } from "./badges";
+import { BookedBadge, SmsBadge, StatusPill, VoicemailBadge } from "./badges";
 import { BookedToggle, BookedValueInput, PriorityControl, StatusControl } from "./controls";
 import { VoicemailAudio } from "./voicemail-audio";
 
@@ -49,7 +49,7 @@ export function LeadDrawer({
       ? "Request"
       : lead.recording_sid
         ? "Voicemail"
-        : "Missed call";
+        : "Next step";
   const requestText = lead.voicemail_summary
     ? lead.voicemail_summary
     : hasUsefulMessage
@@ -163,12 +163,15 @@ export function LeadDrawer({
             <div className="mt-3 flex flex-wrap gap-2">
               <StatusPill status={lead.status} />
               <BookedBadge lead={lead} />
-              <PriorityBadge priority={priority} />
-              <SourceBadge source={lead.source} />
               <SmsBadge lead={lead} />
               <VoicemailBadge lead={lead} />
             </div>
           </div>
+        </div>
+
+        <div className="drawer__status-row">
+          <span className="t-eyebrow">Status</span>
+          <StatusControl status={lead.status} onChange={(status) => onStatus(lead.id, status)} />
         </div>
 
         <section className={`drawer__request ${lead.voicemail_summary ? "drawer__request--summary" : ""}`}>
@@ -176,16 +179,6 @@ export function LeadDrawer({
             <Icon name={summaryGenerating ? "sparkle" : "message"} size={14} />
             <span>{requestLabel}</span>
           </div>
-          {priority.level !== "normal" ? (
-            <div className={`drawer__priority drawer__priority--${priority.level}`}>
-              <Icon name={priority.level === "fast" ? "alertTriangle" : "clock"} size={13} />
-              <span>{priority.label}{priority.reason ? ` because the caller ${priority.reason}.` : "."}</span>
-            </div>
-          ) : null}
-          <PriorityControl
-            value={lead.reply_priority_override}
-            onChange={(replyPriorityOverride) => onPriority(lead.id, replyPriorityOverride)}
-          />
           {lead.voicemail_summary ? (
             <textarea
               className="field drawer__request-summary"
@@ -205,9 +198,20 @@ export function LeadDrawer({
           )}
         </section>
 
-        <div className="drawer__status-row">
-          <span className="t-eyebrow">Status</span>
-          <StatusControl status={lead.status} onChange={(status) => onStatus(lead.id, status)} />
+        <div className="drawer__priority-row">
+          <div>
+            <p className="t-eyebrow">Reply timing</p>
+            {priority.level !== "normal" ? (
+              <p className="drawer__priority-note">
+                {priority.level === "fast" ? "Prioritize this callback." : "Follow up today."}
+              </p>
+            ) : null}
+          </div>
+          <PriorityControl
+            label={null}
+            value={lead.reply_priority_override}
+            onChange={(replyPriorityOverride) => onPriority(lead.id, replyPriorityOverride)}
+          />
         </div>
 
         <div className="drawer__value-row">
@@ -278,8 +282,8 @@ export function LeadDrawer({
         </div>
 
         <div className="follow-up-panel">
-          <div className={`follow-up-status ${lead.sms_status === "failed" || lead.sms_status === "skipped_disabled" ? "follow-up-status--warn" : ""}`}>
-            <Icon name={lead.sms_status === "failed" || lead.sms_status === "skipped_disabled" ? "alertTriangle" : "message"} size={15} />
+          <div className={`follow-up-status ${lead.sms_status === "failed" || lead.sms_status === "undelivered" ? "follow-up-status--warn" : ""}`}>
+            <Icon name={lead.sms_status === "failed" || lead.sms_status === "undelivered" ? "alertTriangle" : "message"} size={15} />
             <span>{followUpStatusText(lead)}</span>
           </div>
           <div className="follow-up-actions">

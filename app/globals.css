@@ -2357,8 +2357,37 @@ code {
   gap: 16px;
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
+  background: color-mix(in oklab, var(--brand-soft) 26%, var(--panel));
+  padding: 16px 24px;
+}
+
+.drawer__status-row .t-eyebrow {
+  color: var(--ink);
+}
+
+.drawer__priority-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
   background: var(--panel-2);
-  padding: 12px 24px;
+  padding: 13px 24px;
+}
+
+.drawer__priority-note {
+  margin: 4px 0 0;
+  color: var(--ink-3);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.drawer__priority-row .priority-control {
+  margin-top: 0;
+}
+
+.drawer__priority-row .priority-control__options {
+  justify-content: flex-end;
 }
 
 .drawer__value-row {
@@ -2443,13 +2472,13 @@ code {
 }
 
 .priority-control__option {
-  min-height: 38px;
+  min-height: 36px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--panel);
-  padding: 0 13px;
+  padding: 0 12px;
   color: var(--ink);
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 800;
   line-height: 1;
   transition: border-color 120ms ease, background 120ms ease, color 120ms ease, box-shadow 120ms ease;
@@ -3062,6 +3091,7 @@ code {
 
   .drawer__hero,
   .drawer__status-row,
+  .drawer__priority-row,
   .drawer__value-row,
   .lead-card__value {
     align-items: stretch;
@@ -3124,6 +3154,10 @@ code {
 
   .lead-card__status-ctrl {
     width: 100%;
+  }
+
+  .drawer__priority-row .priority-control__options {
+    justify-content: flex-start;
   }
 
   .status-seg {
