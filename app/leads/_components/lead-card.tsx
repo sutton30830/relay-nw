@@ -6,6 +6,7 @@ import { LEGACY_FORWARDING_MESSAGE } from "../_constants";
 import { formatPhone, formatRelativeTime, getLeadNextAction, getLeadPriority, initials, isBookedLead, needsAttention, shouldShowVoicemailSummaryProgress } from "../_utils";
 import { BookedBadge, PriorityBadge, SmsBadge, SourceBadge, StatusPill, VoicemailBadge } from "./badges";
 import { BookedValueInput } from "./controls";
+import { OverflowMenu } from "./overflow-menu";
 import { VoicemailAudio } from "./voicemail-audio";
 
 export function LeadCard({
@@ -172,16 +173,6 @@ export function LeadCard({
               <a className="btn btn-primary btn-sm" href={`tel:${lead.phone}`}>
                 <Icon name="phone" size={13} /> Call back
               </a>
-              {lead.status === "new" ? (
-                <button className="btn btn-secondary btn-sm" type="button" onClick={() => onStatus(lead.id, "contacted")}>
-                  Mark contacted
-                </button>
-              ) : null}
-              {!booked ? (
-                <button className="btn btn-secondary btn-sm" type="button" onClick={() => onBooked(lead.id, true)}>
-                  Mark booked
-                </button>
-              ) : null}
             </>
           )}
         </div>
@@ -198,17 +189,18 @@ export function LeadCard({
               </button>
             ) : null}
             {!trashed ? (
-              <button
-                className="btn btn-danger-ghost btn-sm"
-                type="button"
-                onClick={() => {
+              <OverflowMenu
+                showMarkContacted={lead.status === "new"}
+                showMarkBooked={!booked}
+                showDelete
+                onMarkContacted={() => onStatus(lead.id, "contacted")}
+                onMarkBooked={() => onBooked(lead.id, true)}
+                onDelete={() => {
                   if (window.confirm("Move this lead to Trash?")) {
                     onDelete(lead.id);
                   }
                 }}
-              >
-                Delete
-              </button>
+              />
             ) : null}
           </div>
         ) : null}
