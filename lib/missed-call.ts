@@ -61,7 +61,7 @@ export async function handleMissedCall(input: {
   const cooldownSince = new Date(
     Date.now() - env.missedCallSmsCooldownHours * 60 * 60 * 1000,
   );
-  const alreadyTextedRecently = await hasRecentMissedCallSms(callerPhone, cooldownSince);
+  const alreadyTextedRecently = await hasRecentMissedCallSms(callerPhone, cooldownSince, leadResult.leadId);
 
   if (alreadyTextedRecently) {
     await updateLeadSmsStatus({

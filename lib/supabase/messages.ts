@@ -59,19 +59,24 @@ export async function updateLeadSmsStatusByMessageSid(input: {
   return { updated: Boolean(data?.id), leadId: data?.id ?? null };
 }
 
-export async function hasRecentMissedCallSms(phone: string, since: Date) {
+export async function hasRecentMissedCallSms(phone: string, since: Date, excludeLeadId?: string) {
   if (isPlaceholderSupabaseConfig()) {
     return false;
   }
 
-  const { data, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from("leads")
     .select("id")
     .eq("phone", phone)
     .eq("source", "missed_call")
     .in("sms_status", ["pending", "queued", "sending", "sent", "delivered"])
-    .gte("created_at", since.toISOString())
-    .limit(1);
+    .gte("created_at", since.toISOString());
+
+  if (excludeLeadId) {
+    query = query.neq("id", excludeLeadId);
+  }
+
+  const { data, error } = await query.limit(1);
 
   throwIfSupabaseError(error);
 
