@@ -138,10 +138,10 @@ export function OverflowMenu({
           role="menu"
           onKeyDown={handleMenuKeyDown}
           style={{
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: 8,
-            boxShadow: "var(--shadow)",
+            background: "var(--panel)",
+            border: "1px solid var(--line)",
+            borderRadius: "var(--r-md)",
+            boxShadow: "var(--shadow-md)",
             display: "grid",
             gap: 4,
             minWidth: 176,
@@ -180,7 +180,7 @@ export function OverflowMenu({
           ) : null}
           {showDelete ? (
             <>
-              <div role="separator" style={{ borderTop: "1px solid var(--border)", margin: "2px 0" }} />
+              <div role="separator" style={{ borderTop: "1px solid var(--line)", margin: "2px 0" }} />
               <button
                 ref={(node) => {
                   itemRefs.current[2] = node;

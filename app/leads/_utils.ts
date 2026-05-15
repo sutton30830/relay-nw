@@ -225,15 +225,6 @@ export function getLeadNextAction(lead: Lead, now: number): NextAction | null {
     };
   }
 
-  if (lead.status === "contacted") {
-    return {
-      label: "Choose outcome",
-      detail: "Mark booked or closed after follow-up.",
-      icon: "clock",
-      tone: "warning",
-    };
-  }
-
   if (priority.level === "fast") {
     return {
       label: "Call back now",
