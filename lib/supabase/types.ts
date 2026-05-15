@@ -32,6 +32,15 @@ export type WebhookEvent = {
   error: string | null;
 };
 
+export type InboundMessage = {
+  id: string;
+  message_sid: string;
+  from_phone: string;
+  to_phone: string | null;
+  body: string;
+  created_at: string;
+};
+
 export type Lead = {
   id: string;
   call_sid: string | null;
@@ -57,6 +66,7 @@ export type Lead = {
   voicemail_transcription_status: VoicemailTranscriptionStatus;
   voicemail_transcription_error: string | null;
   voicemail_transcribed_at: string | null;
+  inbound_messages: InboundMessage[];
   deleted_at: string | null;
   created_at: string;
 };

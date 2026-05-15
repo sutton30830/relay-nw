@@ -1,5 +1,5 @@
 import { isPlaceholderSupabaseConfig, shouldSkipDatabaseWrite, supabaseAdmin, throwIfSupabaseError } from "./client";
-import type { Lead, LeadSource, LeadStatus, ReplyPriorityOverride } from "./types";
+import type { InboundMessage, Lead, LeadSource, LeadStatus, ReplyPriorityOverride } from "./types";
 
 const LEAD_SELECT_COLUMNS =
   "id, call_sid, name, phone, message, notes, booked_at, job_value_cents, reply_priority_override, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, voicemail_transcript, voicemail_summary, voicemail_transcription_status, voicemail_transcription_error, voicemail_transcribed_at, deleted_at, created_at";
@@ -31,6 +31,7 @@ function normalizeLead(lead: Lead): Lead {
     voicemail_transcription_status: lead.voicemail_transcription_status ?? null,
     voicemail_transcription_error: lead.voicemail_transcription_error ?? null,
     voicemail_transcribed_at: lead.voicemail_transcribed_at ?? null,
+    inbound_messages: lead.inbound_messages ?? [],
     deleted_at: lead.deleted_at ?? null,
     reply_priority_override: lead.reply_priority_override ?? null,
   };
@@ -45,6 +46,40 @@ function normalizeLead(lead: Lead): Lead {
     booked_at: normalizedLead.booked_at ?? normalizedLead.created_at,
     status: "dead",
   };
+}
+
+async function attachInboundMessages(leads: Lead[]) {
+  if (isPlaceholderSupabaseConfig() || leads.length === 0) {
+    return leads;
+  }
+
+  const phones = [...new Set(leads.map((lead) => lead.phone).filter(Boolean))];
+  const { data, error } = await supabaseAdmin
+    .from("inbound_messages")
+    .select("id, message_sid, from_phone, to_phone, body, created_at")
+    .in("from_phone", phones)
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  if (error) {
+    console.warn("Could not load inbound SMS replies for leads.", { error });
+    return leads;
+  }
+
+  const messagesByPhone = new Map<string, InboundMessage[]>();
+
+  for (const message of (data ?? []) as InboundMessage[]) {
+    const messages = messagesByPhone.get(message.from_phone) ?? [];
+    if (messages.length < 5) {
+      messages.push(message);
+      messagesByPhone.set(message.from_phone, messages);
+    }
+  }
+
+  return leads.map((lead) => ({
+    ...lead,
+    inbound_messages: messagesByPhone.get(lead.phone) ?? [],
+  }));
 }
 
 export async function createLead(input: {
@@ -127,18 +162,20 @@ export async function getLeads() {
 
     throwIfSupabaseError(legacyError);
 
-    return (legacyData ?? []).map((lead) =>
+    const legacyLeads = (legacyData ?? []).map((lead) =>
       normalizeLead({
         ...lead,
         booked_at: lead.status === "booked" ? lead.created_at : null,
         deleted_at: null,
       } as Lead),
     );
+
+    return attachInboundMessages(legacyLeads);
   }
 
   throwIfSupabaseError(error);
 
-  return ((data ?? []) as Lead[]).map(normalizeLead);
+  return attachInboundMessages(((data ?? []) as Lead[]).map(normalizeLead));
 }
 
 export async function updateLead(input: {

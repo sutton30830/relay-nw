@@ -31,6 +31,16 @@ export function createSampleLeads(): Lead[] {
       voicemail_transcription_status: "completed",
       voicemail_transcription_error: null,
       voicemail_transcribed_at: new Date(now - 12 * 60_000).toISOString(),
+      inbound_messages: [
+        {
+          id: "sample-message-reply-1",
+          message_sid: "sample-inbound-1",
+          from_phone: "+12065550134",
+          to_phone: "+14253689655",
+          body: "Can someone come this afternoon?",
+          created_at: new Date(now - 9 * 60_000).toISOString(),
+        },
+      ],
       deleted_at: null,
       created_at: new Date(now - 14 * 60_000).toISOString(),
     },
@@ -59,6 +69,7 @@ export function createSampleLeads(): Lead[] {
       voicemail_transcription_status: null,
       voicemail_transcription_error: null,
       voicemail_transcribed_at: null,
+      inbound_messages: [],
       deleted_at: null,
       created_at: new Date(now - 52 * 60_000).toISOString(),
     },
@@ -87,6 +98,7 @@ export function createSampleLeads(): Lead[] {
       voicemail_transcription_status: null,
       voicemail_transcription_error: null,
       voicemail_transcribed_at: null,
+      inbound_messages: [],
       deleted_at: null,
       created_at: new Date(now - 3 * 60 * 60_000).toISOString(),
     },
@@ -160,6 +172,7 @@ export function needsAttention(lead: Lead) {
 
 export function leadPriorityText(lead: Lead) {
   return [
+    lead.inbound_messages?.map((message) => message.body).join(" "),
     lead.voicemail_summary,
     lead.message === LEGACY_FORWARDING_MESSAGE ? null : lead.message,
     lead.voicemail_transcript,
@@ -206,6 +219,16 @@ export function getLeadNextAction(lead: Lead, now: number): NextAction | null {
     !lead.voicemail_summary && lead.voicemail_transcription_status === "processing";
   const summaryPreparing =
     shouldShowVoicemailSummaryProgress(lead, now) && lead.voicemail_transcription_status !== "processing";
+  const latestReply = lead.inbound_messages?.[0];
+
+  if (latestReply && lead.status === "new") {
+    return {
+      label: "Customer replied",
+      detail: latestReply.body,
+      icon: "message",
+      tone: "warning",
+    };
+  }
 
   if (needsAttention(lead)) {
     return {
@@ -351,6 +374,7 @@ export function leadMatchesSearch(lead: Lead, query: string) {
     lead.phone,
     lead.message,
     lead.notes,
+    lead.inbound_messages?.map((message) => message.body).join(" "),
     lead.voicemail_summary,
     lead.voicemail_transcript,
     getLeadPriority(lead).label,

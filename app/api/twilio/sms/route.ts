@@ -108,7 +108,7 @@ async function handleInboundSms(input: ReturnType<typeof parseInboundSmsPayload>
     await twilioClient.messages.create({
       to: env.ownerPhoneNumber,
       from: env.twilioPhoneNumber,
-      body: `Reply from ${input.from}: "${input.body}"`,
+      body: `New Relay reply from ${input.from}:\n${input.body}\n\nOpen leads: ${env.appBaseUrl}/leads`,
     });
 
     return "forwarded_to_owner" as const;

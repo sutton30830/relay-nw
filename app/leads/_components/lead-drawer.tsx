@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "@/components/icon";
 import type { Lead, LeadStatus, ReplyPriorityOverride } from "@/lib/supabase";
 import { LEGACY_FORWARDING_MESSAGE, QUICK_REPLIES } from "../_constants";
-import { followUpStatusText, formatDuration, formatPhone, getLeadPriority, initials, isBookedLead } from "../_utils";
+import { followUpStatusText, formatDuration, formatPhone, formatRelativeTime, getLeadPriority, initials, isBookedLead } from "../_utils";
 import { BookedBadge, SmsBadge, StatusPill, VoicemailBadge } from "./badges";
 import { BookedToggle, BookedValueInput, PriorityControl, StatusControl } from "./controls";
 import { VoicemailAudio } from "./voicemail-audio";
@@ -286,6 +286,31 @@ export function LeadDrawer({
             <Icon name={lead.sms_status === "failed" || lead.sms_status === "undelivered" ? "alertTriangle" : "message"} size={15} />
             <span>{followUpStatusText(lead)}</span>
           </div>
+          {lead.inbound_messages.length > 0 ? (
+            <div className="follow-up-replies">
+              <p className="t-eyebrow" style={{ margin: "0 0 8px" }}>
+                Customer replies
+              </p>
+              <div style={{ display: "grid", gap: 8 }}>
+                {lead.inbound_messages.map((message) => (
+                  <div
+                    key={message.id}
+                    style={{
+                      background: "var(--panel)",
+                      border: "1px solid var(--line)",
+                      borderRadius: "var(--r-sm)",
+                      padding: "10px 12px",
+                    }}
+                  >
+                    <p style={{ margin: 0 }}>{message.body}</p>
+                    <p style={{ color: "var(--ink-4)", fontSize: 12, margin: "6px 0 0" }}>
+                      {formatRelativeTime(message.created_at, Date.now())}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <div className="follow-up-actions">
             <a className="btn btn-primary follow-up-actions__primary" href={`tel:${lead.phone}`}>
               <Icon name="phone" size={14} /> Call back
