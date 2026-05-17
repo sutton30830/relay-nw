@@ -18,7 +18,7 @@ export function forwardingHealthFailureText(reason: ForwardingHealthCheckFailure
   }
 
   if (reason === "twilio_outbound_failed") {
-    return "Twilio could not place the test call.";
+    return "Relay could not start the forwarding test.";
   }
 
   if (reason === "webhook_error") {

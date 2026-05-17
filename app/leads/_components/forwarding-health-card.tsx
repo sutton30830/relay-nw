@@ -48,7 +48,7 @@ export function ForwardingHealthCard({ initialSummary }: { initialSummary: Forwa
   const displayStatus = isStalePending ? "failed" : summary.displayStatus;
   const statusLabel = isStalePending ? "Failed" : summary.statusLabel;
   const failureText = isStalePending
-    ? "Relay did not receive the forwarded call. Automated calls from the Relay Twilio number can be blocked by carrier forwarding loops."
+    ? "Relay did not receive a forwarded call during the listening window. Call the owner number from your personal cell and let it go unanswered."
     : summary.failureText;
   const isPending = displayStatus === "pending";
   const isButtonDisabled = isStarting || isPending || isCoolingDown;
@@ -133,14 +133,14 @@ export function ForwardingHealthCard({ initialSummary }: { initialSummary: Forwa
             <span>{lastPassed}</span>
           </h3>
           <p className="forwarding-health__note">
-            {error ?? failureText ?? "If this fails, call forwarding may be off, Live Voicemail may be intercepting calls, or the Twilio-originated test call may be blocked by carrier loop prevention."}
+            {error ?? failureText ?? "Click Start listening, then call the owner number from your personal cell and let it go unanswered."}
           </p>
         </div>
       </div>
 
       <button className="btn btn-secondary btn-sm" type="button" onClick={handleStart} disabled={isButtonDisabled}>
         <Icon name={isPending || isStarting ? "clock" : "phone"} size={14} />
-        {isPending ? "Testing..." : isStarting ? "Starting..." : isCoolingDown ? "Cooling down" : "Run test call"}
+        {isPending ? "Listening..." : isStarting ? "Starting..." : isCoolingDown ? "Cooling down" : "Start listening"}
       </button>
     </section>
   );

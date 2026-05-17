@@ -3,21 +3,13 @@ import {
   expirePendingForwardingHealthChecks,
   getForwardingHealthSummary,
   getLatestForwardingHealthCheck,
-  markForwardingHealthCheckFailed,
-  markForwardingHealthCheckOutboundCreated,
 } from "@/lib/supabase";
 import { env } from "@/lib/env";
 import { FORWARDING_HEALTH_CHECK_COOLDOWN_MS, forwardingHealthRetryAt } from "@/lib/forwarding-health";
-import { phoneLast4, twilioClient } from "@/lib/twilio";
+import { phoneLast4 } from "@/lib/twilio";
 import { isAuthorizedHealthCheckRequest } from "../_auth";
 
 export const dynamic = "force-dynamic";
-
-const OUTBOUND_TEST_CALL_TIMEOUT_SECONDS = 55;
-
-function healthCheckCallUrl() {
-  return `${env.appBaseUrl}/api/health-check/outbound-call`;
-}
 
 export async function POST() {
   if (!(await isAuthorizedHealthCheckRequest())) {
@@ -62,36 +54,8 @@ export async function POST() {
     console.info("health_check_started", {
       healthCheckId: healthCheck.id,
       phoneLast4: phoneLast4(env.ownerPhoneNumber),
+      mode: "manual_listening_window",
     });
-
-    try {
-      const call = await twilioClient.calls.create({
-        to: env.ownerPhoneNumber,
-        from: env.twilioPhoneNumber,
-        url: healthCheckCallUrl(),
-        method: "POST",
-        timeout: OUTBOUND_TEST_CALL_TIMEOUT_SECONDS,
-      });
-
-      await markForwardingHealthCheckOutboundCreated(healthCheck.id, call.sid);
-
-      console.info("outbound_test_call_created", {
-        healthCheckId: healthCheck.id,
-        outboundTwilioCallSid: call.sid,
-        phoneLast4: phoneLast4(env.ownerPhoneNumber),
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown Twilio outbound error";
-
-      await markForwardingHealthCheckFailed(healthCheck.id, "twilio_outbound_failed", {
-        message,
-      });
-
-      return Response.json(
-        { error: "Twilio could not place the health check call.", healthCheckId: healthCheck.id },
-        { status: 502, headers: { "Cache-Control": "no-store" } },
-      );
-    }
 
     const summary = await getForwardingHealthSummary();
     return Response.json(
