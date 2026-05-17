@@ -42,7 +42,15 @@ export function ForwardingHealthCard({ initialSummary }: { initialSummary: Forwa
 
   const canRunAt = summary.canRunAt ? new Date(summary.canRunAt).getTime() : null;
   const isCoolingDown = canRunAt !== null && canRunAt > now;
-  const isPending = summary.displayStatus === "pending";
+  const pendingStartedAt = summary.latest?.status === "pending" ? new Date(summary.latest.started_at).getTime() : null;
+  const isStalePending =
+    pendingStartedAt !== null && pendingStartedAt + FORWARDING_HEALTH_CHECK_WINDOW_MS + 5000 <= now;
+  const displayStatus = isStalePending ? "failed" : summary.displayStatus;
+  const statusLabel = isStalePending ? "Failed" : summary.statusLabel;
+  const failureText = isStalePending
+    ? "Relay did not receive the forwarded call. Automated calls from the Relay Twilio number can be blocked by carrier forwarding loops."
+    : summary.failureText;
+  const isPending = displayStatus === "pending";
   const isButtonDisabled = isStarting || isPending || isCoolingDown;
   const lastPassed = useMemo(() => formatDateTime(summary.lastPassedAt), [summary.lastPassedAt]);
 
@@ -83,6 +91,7 @@ export function ForwardingHealthCard({ initialSummary }: { initialSummary: Forwa
     }, 3000);
 
     const timeoutId = window.setTimeout(() => {
+      setNow(Date.now());
       void refreshStatus().catch((pollError) => {
         const message = pollError instanceof Error ? pollError.message : "Unable to refresh forwarding health status.";
         setError(message);
@@ -118,13 +127,13 @@ export function ForwardingHealthCard({ initialSummary }: { initialSummary: Forwa
         <div>
           <p className="t-eyebrow">Forwarding status</p>
           <h3 className="forwarding-health__title">
-            <span className={`forwarding-health__status ${statusClass(summary.displayStatus)}`}>
-              {summary.statusLabel}
+            <span className={`forwarding-health__status ${statusClass(displayStatus)}`}>
+              {statusLabel}
             </span>
             <span>{lastPassed}</span>
           </h3>
           <p className="forwarding-health__note">
-            {error ?? summary.failureText ?? "If this fails, call forwarding may be off or Live Voicemail may be intercepting calls."}
+            {error ?? failureText ?? "If this fails, call forwarding may be off, Live Voicemail may be intercepting calls, or the Twilio-originated test call may be blocked by carrier loop prevention."}
           </p>
         </div>
       </div>
