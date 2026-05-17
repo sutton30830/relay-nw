@@ -11,6 +11,8 @@ import { FORWARDING_HEALTH_CHECK_COOLDOWN_MS, forwardingHealthRetryAt } from "@/
 import { phoneLast4, twilioClient } from "@/lib/twilio";
 import { isAuthorizedHealthCheckRequest } from "../_auth";
 
+const OUTBOUND_TEST_CALL_TIMEOUT_SECONDS = 55;
+
 function healthCheckCallUrl() {
   return `${env.appBaseUrl}/api/health-check/outbound-call`;
 }
@@ -63,7 +65,7 @@ export async function POST() {
         from: env.twilioPhoneNumber,
         url: healthCheckCallUrl(),
         method: "POST",
-        timeout: 20,
+        timeout: OUTBOUND_TEST_CALL_TIMEOUT_SECONDS,
       });
 
       await markForwardingHealthCheckOutboundCreated(healthCheck.id, call.sid);
