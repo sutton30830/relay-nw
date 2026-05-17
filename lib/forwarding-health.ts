@@ -1,7 +1,7 @@
 import type { ForwardingHealthCheck, ForwardingHealthCheckFailureReason } from "@/lib/supabase";
 
 export const FORWARDING_HEALTH_CHECK_WINDOW_MS = 90_000;
-export const FORWARDING_HEALTH_CHECK_COOLDOWN_MS = 10 * 60_000;
+export const FORWARDING_HEALTH_CHECK_COOLDOWN_MS = 60_000;
 
 export type ForwardingHealthSummary = {
   latest: ForwardingHealthCheck | null;
