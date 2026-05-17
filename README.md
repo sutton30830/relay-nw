@@ -67,6 +67,9 @@ For the customer-by-customer onboarding checklist, see `docs/customer-setup.md`.
 - `/api/twilio/recording` Twilio voicemail recording callback
 - `/api/twilio/sms` Twilio inbound SMS webhook
 - `/api/twilio/sms-status` Twilio outbound SMS delivery callback
+- `/api/health-check/start` password-protected forwarding test call trigger
+- `/api/health-check/status` password-protected forwarding health status
+- `/api/health-check/expire-pending` password-protected pending health check cleanup
 
 ## Environment Variables
 
@@ -142,9 +145,12 @@ The schema includes:
 - `webhook_events`: basic Twilio webhook logs for debugging
 - `opt_outs`: phone numbers that replied STOP/UNSUBSCRIBE/CANCEL/END/QUIT
 - `inbound_messages`: deduped inbound SMS replies from customers
+- `forwarding_health_checks`: controlled forwarding test calls and sanitized results
 
 `leads.call_sid` is unique when present. This prevents Twilio retries from creating duplicate missed-call leads or sending duplicate SMS messages.
 `leads.twilio_message_sid` is unique when present. This lets SMS delivery callbacks update the matching lead.
+
+The forwarding health check table is created by the latest `supabase.sql`. Apply that SQL in Supabase before using the Run test call button. Pending health checks also expire opportunistically when the leads inbox or start/status API is loaded. If you want scheduled cleanup later, wire Vercel Cron to `POST /api/health-check/expire-pending` with the same leads-session protection or a dedicated cron secret.
 
 ## Local Development
 

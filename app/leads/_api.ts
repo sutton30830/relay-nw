@@ -1,5 +1,11 @@
 import type { LeadPatch, TranscribeResponse, TranscribeResult } from "./_types";
+import type { ForwardingHealthSummary } from "@/lib/forwarding-health";
 import { humanVoicemailError } from "./_utils";
+
+export type ForwardingHealthResponse = ForwardingHealthSummary & {
+  healthCheckId?: string;
+  error?: string;
+};
 
 export async function patchLead(id: string, body: LeadPatch) {
   try {
@@ -62,4 +68,26 @@ export async function requestVoicemailSummary(id: string): Promise<TranscribeRes
       error: "Relay could not reach the transcription service. Try again in a minute.",
     };
   }
+}
+
+export async function fetchForwardingHealthStatus() {
+  const response = await fetch("/api/health-check/status");
+  const data = await response.json().catch(() => null) as ForwardingHealthResponse | null;
+
+  if (!response.ok || !data) {
+    throw new Error(data?.error ?? "Unable to load forwarding health status.");
+  }
+
+  return data;
+}
+
+export async function startForwardingHealthCheck() {
+  const response = await fetch("/api/health-check/start", { method: "POST" });
+  const data = await response.json().catch(() => null) as ForwardingHealthResponse | null;
+
+  if (!response.ok || !data) {
+    throw new Error(data?.error ?? "Unable to start forwarding health check.");
+  }
+
+  return data;
 }

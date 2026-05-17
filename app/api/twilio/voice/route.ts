@@ -1,5 +1,10 @@
 import { env } from "@/lib/env";
-import { logWebhookEvent } from "@/lib/supabase";
+import {
+  findPendingForwardingHealthCheck,
+  logWebhookEvent,
+  markForwardingHealthCheckFailed,
+  markForwardingHealthCheckPassed,
+} from "@/lib/supabase";
 import {
   formDataToRecord,
   logUnsignedTwilioWebhook,
@@ -61,6 +66,60 @@ function validationLogNote(input: {
   }
 
   return input.smsStatus ? `Forwarding mode SMS status: ${input.smsStatus}` : null;
+}
+
+async function handleForwardingHealthCheck(input: {
+  payload: Record<string, string>;
+  correlationId: string;
+  requestSummary: ReturnType<typeof summarizeTwilioRequest>;
+}) {
+  const healthCheck = await findPendingForwardingHealthCheck();
+
+  if (!healthCheck) {
+    return null;
+  }
+
+  console.info("inbound_forwarded_call_detected", {
+    healthCheckId: healthCheck.id,
+    correlationId: input.correlationId,
+    ...input.requestSummary,
+  });
+
+  try {
+    await markForwardingHealthCheckPassed({
+      id: healthCheck.id,
+      inboundTwilioCallSid: input.payload.CallSid ?? null,
+      rawEventSummary: {
+        callSid: input.payload.CallSid ?? null,
+        fromLast4: input.requestSummary.fromLast4,
+        toLast4: input.requestSummary.toLast4,
+        callMode: input.requestSummary.callMode,
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown health check webhook error";
+    await markForwardingHealthCheckFailed(healthCheck.id, "webhook_error", {
+      message,
+      callSid: input.payload.CallSid ?? null,
+    });
+  }
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Joanna-Neural">Relay forwarding health check passed. Goodbye.</Say>
+  <Hangup />
+</Response>`;
+
+  await logWebhookEvent({
+    source: VOICE_WEBHOOK_SOURCE,
+    correlationId: input.correlationId,
+    payload: input.payload,
+    responseStatus: 200,
+    responseBody: xml,
+    error: `Forwarding health check matched: ${healthCheck.id}`,
+  });
+
+  return twimlResponse(xml);
 }
 
 async function handleForwardingMode(input: {
@@ -190,6 +249,19 @@ export async function POST(request: Request) {
       hasSignature: validation.hasSignature,
       responseBody: "Allowed unsigned Twilio voice webhook by env override.",
     });
+  }
+
+  const healthCheckResponse =
+    env.callMode === "forwarding"
+      ? await handleForwardingHealthCheck({
+          payload,
+          correlationId,
+          requestSummary,
+        })
+      : null;
+
+  if (healthCheckResponse) {
+    return healthCheckResponse;
   }
 
   if (env.callMode === "forwarding") {

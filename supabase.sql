@@ -123,5 +123,36 @@ create table if not exists public.inbound_messages (
 
 alter table public.inbound_messages enable row level security;
 
+create table if not exists public.forwarding_health_checks (
+  id uuid primary key default gen_random_uuid(),
+  phone_number_tested text not null,
+  status text not null check (status in ('pending', 'passed', 'failed', 'timeout', 'error')),
+  started_at timestamptz not null default now(),
+  completed_at timestamptz,
+  outbound_twilio_call_sid text,
+  inbound_twilio_call_sid text,
+  failure_reason text check (
+    failure_reason is null
+    or failure_reason in (
+      'no_forwarded_call_received',
+      'twilio_outbound_failed',
+      'webhook_error',
+      'rate_limited',
+      'unknown_error'
+    )
+  ),
+  raw_event_summary jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists forwarding_health_checks_created_at_idx
+  on public.forwarding_health_checks (created_at desc);
+create index if not exists forwarding_health_checks_pending_started_at_idx
+  on public.forwarding_health_checks (started_at desc)
+  where status = 'pending';
+
+alter table public.forwarding_health_checks enable row level security;
+
 -- This MVP uses the Supabase service role key from server-only Next.js routes.
 -- No browser/client table access is needed, so no public RLS policies are added.

@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { Icon } from "@/components/icon";
 import type { Lead } from "@/lib/supabase";
+import type { ForwardingHealthSummary } from "@/lib/forwarding-health";
 import { FILTERS } from "./_constants";
 import { formatCurrency } from "./_utils";
+import { ForwardingHealthCard } from "./_components/forwarding-health-card";
 import { LeadCard } from "./_components/lead-card";
 import { LeadDrawer } from "./_components/lead-drawer";
 import { useLeadsInbox } from "./_hooks/use-leads-inbox";
@@ -12,9 +14,11 @@ import { useLeadsInbox } from "./_hooks/use-leads-inbox";
 export function LeadsList({
   leads,
   businessName,
+  forwardingHealth,
 }: {
   leads: Lead[];
   businessName: string;
+  forwardingHealth: ForwardingHealthSummary;
 }) {
   const inbox = useLeadsInbox(leads);
 
@@ -85,6 +89,8 @@ export function LeadsList({
           </span>
         </aside>
       </section>
+
+      <ForwardingHealthCard initialSummary={forwardingHealth} />
 
       <nav className="filters clean-scroll" aria-label="Filter leads">
         {FILTERS.map((item) => {

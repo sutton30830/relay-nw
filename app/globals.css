@@ -1582,6 +1582,84 @@ code {
   line-height: 1.35;
 }
 
+.forwarding-health {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  padding: 14px 15px;
+}
+
+.forwarding-health__main {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.forwarding-health__icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+
+.forwarding-health__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 3px;
+  color: var(--ink);
+  font-size: 16px;
+  letter-spacing: 0;
+}
+
+.forwarding-health__status {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.forwarding-health__status--passed {
+  background: var(--good-soft);
+  color: var(--good);
+}
+
+.forwarding-health__status--pending {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.forwarding-health__status--failed {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.forwarding-health__status--unknown {
+  background: var(--paper-2);
+  color: var(--ink-3);
+}
+
+.forwarding-health__note {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .filters {
   display: flex;
   align-items: center;
@@ -2943,6 +3021,19 @@ code {
   .revenue-summary {
     width: 100%;
     padding: 12px 14px;
+  }
+
+  .forwarding-health {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding: 13px;
+  }
+
+  .forwarding-health .btn {
+    justify-content: center;
+    width: 100%;
   }
 
   .filters {
