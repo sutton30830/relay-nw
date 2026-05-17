@@ -11,6 +11,8 @@ import { FORWARDING_HEALTH_CHECK_COOLDOWN_MS, forwardingHealthRetryAt } from "@/
 import { phoneLast4, twilioClient } from "@/lib/twilio";
 import { isAuthorizedHealthCheckRequest } from "../_auth";
 
+export const dynamic = "force-dynamic";
+
 const OUTBOUND_TEST_CALL_TIMEOUT_SECONDS = 55;
 
 function healthCheckCallUrl() {
@@ -44,14 +46,17 @@ export async function POST() {
           canRunAt,
           cooldownMs: FORWARDING_HEALTH_CHECK_COOLDOWN_MS,
         },
-        { status: 429 },
+        { status: 429, headers: { "Cache-Control": "no-store" } },
       );
     }
 
     const healthCheck = await createPendingForwardingHealthCheck(env.ownerPhoneNumber);
 
     if (!healthCheck) {
-      return Response.json({ error: "Health check storage is not configured." }, { status: 500 });
+      return Response.json(
+        { error: "Health check storage is not configured." },
+        { status: 500, headers: { "Cache-Control": "no-store" } },
+      );
     }
 
     console.info("health_check_started", {
@@ -84,14 +89,20 @@ export async function POST() {
 
       return Response.json(
         { error: "Twilio could not place the health check call.", healthCheckId: healthCheck.id },
-        { status: 502 },
+        { status: 502, headers: { "Cache-Control": "no-store" } },
       );
     }
 
     const summary = await getForwardingHealthSummary();
-    return Response.json({ ...summary, healthCheckId: healthCheck.id });
+    return Response.json(
+      { ...summary, healthCheckId: healthCheck.id },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (error) {
     console.error("Failed to start forwarding health check", { error });
-    return Response.json({ error: "Unable to start health check" }, { status: 500 });
+    return Response.json(
+      { error: "Unable to start health check" },
+      { status: 500, headers: { "Cache-Control": "no-store" } },
+    );
   }
 }

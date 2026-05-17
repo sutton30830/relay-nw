@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icon";
-import type { ForwardingHealthSummary } from "@/lib/forwarding-health";
+import { FORWARDING_HEALTH_CHECK_WINDOW_MS, type ForwardingHealthSummary } from "@/lib/forwarding-health";
 import { fetchForwardingHealthStatus, startForwardingHealthCheck } from "../_api";
 
 function formatDateTime(value: string | null) {
@@ -46,6 +46,11 @@ export function ForwardingHealthCard({ initialSummary }: { initialSummary: Forwa
   const isButtonDisabled = isStarting || isPending || isCoolingDown;
   const lastPassed = useMemo(() => formatDateTime(summary.lastPassedAt), [summary.lastPassedAt]);
 
+  async function refreshStatus() {
+    setSummary(await fetchForwardingHealthStatus());
+    setError(null);
+  }
+
   useEffect(() => {
     const currentTime = Date.now();
 
@@ -63,17 +68,31 @@ export function ForwardingHealthCard({ initialSummary }: { initialSummary: Forwa
       return;
     }
 
+    void refreshStatus().catch((pollError) => {
+      const message = pollError instanceof Error ? pollError.message : "Unable to refresh forwarding health status.";
+      setError(message);
+    });
+
     const intervalId = window.setInterval(async () => {
       try {
-        setSummary(await fetchForwardingHealthStatus());
-        setError(null);
+        await refreshStatus();
       } catch (pollError) {
         const message = pollError instanceof Error ? pollError.message : "Unable to refresh forwarding health status.";
         setError(message);
       }
     }, 3000);
 
-    return () => window.clearInterval(intervalId);
+    const timeoutId = window.setTimeout(() => {
+      void refreshStatus().catch((pollError) => {
+        const message = pollError instanceof Error ? pollError.message : "Unable to refresh forwarding health status.";
+        setError(message);
+      });
+    }, FORWARDING_HEALTH_CHECK_WINDOW_MS + 5000);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.clearTimeout(timeoutId);
+    };
   }, [isPending]);
 
   async function handleStart() {

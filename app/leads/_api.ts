@@ -71,7 +71,7 @@ export async function requestVoicemailSummary(id: string): Promise<TranscribeRes
 }
 
 export async function fetchForwardingHealthStatus() {
-  const response = await fetch("/api/health-check/status");
+  const response = await fetch("/api/health-check/status", { cache: "no-store" });
   const data = await response.json().catch(() => null) as ForwardingHealthResponse | null;
 
   if (!response.ok || !data) {
@@ -82,7 +82,7 @@ export async function fetchForwardingHealthStatus() {
 }
 
 export async function startForwardingHealthCheck() {
-  const response = await fetch("/api/health-check/start", { method: "POST" });
+  const response = await fetch("/api/health-check/start", { method: "POST", cache: "no-store" });
   const data = await response.json().catch(() => null) as ForwardingHealthResponse | null;
 
   if (!response.ok || !data) {
