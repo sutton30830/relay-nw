@@ -69,7 +69,7 @@ export function SmsHealthCard() {
     ?? failureDetail
     ?? (result?.messageSid
       ? `Test text sent to owner phone ending in ${result.toLast4 ?? "----"}.`
-      : "Send a test text to the owner phone to confirm Twilio SMS is working.");
+      : "Sends one owner-only text to confirm Twilio outbound SMS is working.");
 
   return (
     <section className="sms-health" aria-live="polite">
@@ -89,7 +89,7 @@ export function SmsHealthCard() {
         </div>
       </div>
 
-      <button className="btn btn-secondary btn-sm" type="button" onClick={handleStart} disabled={isSending || isPolling}>
+      <button className="btn btn-secondary btn-sm health-action-btn" type="button" onClick={handleStart} disabled={isSending || isPolling}>
         <Icon name={isSending || isPolling ? "clock" : "send"} size={14} />
         {isSending ? "Sending..." : isPolling ? "Checking..." : "Send test SMS"}
       </button>

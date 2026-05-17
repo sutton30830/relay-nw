@@ -1672,6 +1672,15 @@ code {
   line-height: 1.4;
 }
 
+.health-action-btn {
+  width: 176px;
+  justify-content: center;
+}
+
+.health-action-btn svg {
+  flex: 0 0 auto;
+}
+
 .forwarding-health__main {
   display: flex;
   min-width: 0;
@@ -3110,10 +3119,9 @@ code {
     padding: 13px;
   }
 
-  .sms-health .btn,
-  .forwarding-health .btn {
-    justify-content: center;
+  .health-action-btn {
     width: 100%;
+    justify-content: center;
   }
 
   .filters {

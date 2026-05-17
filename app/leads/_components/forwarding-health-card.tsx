@@ -138,7 +138,7 @@ export function ForwardingHealthCard({ initialSummary }: { initialSummary: Forwa
         </div>
       </div>
 
-      <button className="btn btn-secondary btn-sm" type="button" onClick={handleStart} disabled={isButtonDisabled}>
+      <button className="btn btn-secondary btn-sm health-action-btn" type="button" onClick={handleStart} disabled={isButtonDisabled}>
         <Icon name={isPending || isStarting ? "clock" : "phone"} size={14} />
         {isPending ? "Listening..." : isStarting ? "Starting..." : isCoolingDown ? "Cooling down" : "Start listening"}
       </button>
