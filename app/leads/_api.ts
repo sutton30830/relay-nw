@@ -7,6 +7,26 @@ export type ForwardingHealthResponse = ForwardingHealthSummary & {
   error?: string;
 };
 
+export type SmsTestStatus =
+  | "accepted"
+  | "queued"
+  | "sending"
+  | "sent"
+  | "delivered"
+  | "failed"
+  | "undelivered";
+
+export type SmsTestResponse = {
+  messageSid?: string;
+  status?: SmsTestStatus;
+  toLast4?: string | null;
+  error?: string;
+  detail?: string;
+  errorCode?: number | null;
+  errorMessage?: string | null;
+  dateUpdated?: string | null;
+};
+
 export async function patchLead(id: string, body: LeadPatch) {
   try {
     const response = await fetch(`/api/leads/${id}`, {
@@ -87,6 +107,30 @@ export async function startForwardingHealthCheck() {
 
   if (!response.ok || !data) {
     throw new Error(data?.error ?? "Unable to start forwarding health check.");
+  }
+
+  return data;
+}
+
+export async function startSmsTest() {
+  const response = await fetch("/api/sms-test/start", { method: "POST", cache: "no-store" });
+  const data = await response.json().catch(() => null) as SmsTestResponse | null;
+
+  if (!response.ok || !data) {
+    throw new Error(data?.error ?? "Unable to send SMS test.");
+  }
+
+  return data;
+}
+
+export async function fetchSmsTestStatus(messageSid: string) {
+  const response = await fetch(`/api/sms-test/status?messageSid=${encodeURIComponent(messageSid)}`, {
+    cache: "no-store",
+  });
+  const data = await response.json().catch(() => null) as SmsTestResponse | null;
+
+  if (!response.ok || !data) {
+    throw new Error(data?.error ?? "Unable to load SMS test status.");
   }
 
   return data;

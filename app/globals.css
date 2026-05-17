@@ -1594,6 +1594,84 @@ code {
   padding: 14px 15px;
 }
 
+.sms-health {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  padding: 14px 15px;
+}
+
+.sms-health__main {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.sms-health__icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--good-soft);
+  color: var(--good);
+}
+
+.sms-health__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 3px;
+  color: var(--ink);
+  font-size: 16px;
+  letter-spacing: 0;
+}
+
+.sms-health__status {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.sms-health__status--good {
+  background: var(--good-soft);
+  color: var(--good);
+}
+
+.sms-health__status--pending {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.sms-health__status--bad {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.sms-health__status--unknown {
+  background: var(--paper-2);
+  color: var(--ink-3);
+}
+
+.sms-health__note {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .forwarding-health__main {
   display: flex;
   min-width: 0;
@@ -3023,6 +3101,7 @@ code {
     padding: 12px 14px;
   }
 
+  .sms-health,
   .forwarding-health {
     align-items: stretch;
     flex-direction: column;
@@ -3031,6 +3110,7 @@ code {
     padding: 13px;
   }
 
+  .sms-health .btn,
   .forwarding-health .btn {
     justify-content: center;
     width: 100%;

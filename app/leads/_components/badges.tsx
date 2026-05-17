@@ -4,7 +4,7 @@ import { Icon } from "@/components/icon";
 import type { Lead, LeadStatus } from "@/lib/supabase";
 import type { ReplyPriority } from "../_types";
 import { STATUS_LABELS } from "../_constants";
-import { formatCurrency, isBookedLead, sourceLabel } from "../_utils";
+import { formatCurrency, formatRelativeTime, isBookedLead, sourceLabel } from "../_utils";
 
 export function StatusPill({ status }: { status: LeadStatus }) {
   return <span className={`chip status-pill--${status}`}>{STATUS_LABELS[status]}</span>;
@@ -34,25 +34,32 @@ export function SourceBadge({ source }: { source: Lead["source"] }) {
 export function SmsBadge({ lead }: { lead: Lead }) {
   if (!lead.sms_status || lead.source !== "missed_call") return null;
 
+  const updated = lead.sms_updated_at
+    ? ` · ${formatRelativeTime(lead.sms_updated_at, Date.now())}`
+    : "";
+
   if (lead.sms_status === "failed" || lead.sms_status === "undelivered") {
-    return <span className="chip chip-danger sms-badge sms-badge--failed"><Icon name="alertTriangle" size={12} /> SMS failed</span>;
+    return <span className="chip chip-danger sms-badge sms-badge--failed"><Icon name="alertTriangle" size={12} /> SMS failed{updated}</span>;
   }
   if (lead.sms_status === "delivered") {
-    return <span className="chip chip-good sms-badge sms-badge--delivered"><Icon name="checkDouble" size={12} /> SMS delivered</span>;
+    return <span className="chip chip-good sms-badge sms-badge--delivered"><Icon name="checkDouble" size={12} /> SMS delivered{updated}</span>;
   }
   if (lead.sms_status === "sent") {
-    return <span className="chip chip-good sms-badge sms-badge--sent"><Icon name="checkDouble" size={12} /> SMS sent</span>;
+    return <span className="chip chip-good sms-badge sms-badge--sent"><Icon name="checkDouble" size={12} /> SMS sent{updated}</span>;
+  }
+  if (lead.sms_status === "queued" || lead.sms_status === "sending" || lead.sms_status === "pending") {
+    return <span className="chip chip-warn sms-badge sms-badge--pending"><Icon name="clock" size={12} /> SMS {lead.sms_status}{updated}</span>;
   }
   if (lead.sms_status === "skipped_opt_out") {
-    return <span className="chip chip-warn sms-badge sms-badge--optout"><Icon name="shield" size={12} /> Opted out</span>;
+    return <span className="chip chip-warn sms-badge sms-badge--optout"><Icon name="shield" size={12} /> SMS skipped: opted out{updated}</span>;
   }
   if (lead.sms_status === "skipped_recent") {
-    return <span className="chip sms-badge sms-badge--recent"><Icon name="clock" size={12} /> Recently texted</span>;
+    return <span className="chip sms-badge sms-badge--recent"><Icon name="clock" size={12} /> SMS skipped: recent text{updated}</span>;
   }
   if (lead.sms_status === "skipped_disabled") {
-    return <span className="chip chip-warn sms-badge sms-badge--disabled"><Icon name="shield" size={12} /> SMS off</span>;
+    return <span className="chip chip-warn sms-badge sms-badge--disabled"><Icon name="shield" size={12} /> SMS off{updated}</span>;
   }
-  return <span className="chip chip-warn sms-badge sms-badge--pending"><Icon name="clock" size={12} /> SMS pending</span>;
+  return <span className="chip chip-warn sms-badge sms-badge--pending"><Icon name="clock" size={12} /> SMS {lead.sms_status}{updated}</span>;
 }
 
 export function VoicemailBadge({ lead }: { lead: Lead }) {

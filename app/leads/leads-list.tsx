@@ -9,6 +9,7 @@ import { formatCurrency } from "./_utils";
 import { ForwardingHealthCard } from "./_components/forwarding-health-card";
 import { LeadCard } from "./_components/lead-card";
 import { LeadDrawer } from "./_components/lead-drawer";
+import { SmsHealthCard } from "./_components/sms-health-card";
 import { useLeadsInbox } from "./_hooks/use-leads-inbox";
 
 export function LeadsList({
@@ -91,6 +92,7 @@ export function LeadsList({
       </section>
 
       <ForwardingHealthCard initialSummary={forwardingHealth} />
+      <SmsHealthCard />
 
       <nav className="filters clean-scroll" aria-label="Filter leads">
         {FILTERS.map((item) => {

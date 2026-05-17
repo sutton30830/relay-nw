@@ -70,6 +70,8 @@ For the customer-by-customer onboarding checklist, see `docs/customer-setup.md`.
 - `/api/health-check/start` password-protected forwarding listening-window trigger
 - `/api/health-check/status` password-protected forwarding health status
 - `/api/health-check/expire-pending` password-protected pending health check cleanup
+- `/api/sms-test/start` password-protected owner-only SMS test trigger
+- `/api/sms-test/status` password-protected Twilio SMS test status lookup
 
 ## Environment Variables
 
