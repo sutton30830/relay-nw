@@ -68,7 +68,7 @@ export function SmsHealthCard() {
   const note = error
     ?? failureDetail
     ?? (result?.messageSid
-      ? `Test text sent to owner phone ending in ${result.toLast4 ?? "----"}.`
+      ? "Owner phone test completed."
       : "Sends one owner-only text to confirm Twilio outbound SMS is working.");
 
   return (
@@ -83,7 +83,7 @@ export function SmsHealthCard() {
             <span className={`sms-health__status ${smsStatusClass(status)}`}>
               {smsStatusLabel(status)}
             </span>
-            {messageSid ? <span className="t-mono">...{messageSid.slice(-6)}</span> : null}
+            <span>Owner phone</span>
           </h3>
           <p className="sms-health__note">{note}</p>
         </div>

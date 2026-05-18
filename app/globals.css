@@ -1635,6 +1635,11 @@ code {
   letter-spacing: 0;
 }
 
+.sms-health__title > span:last-child {
+  color: var(--ink-2);
+  font-weight: 650;
+}
+
 .sms-health__status {
   display: inline-flex;
   min-height: 24px;
