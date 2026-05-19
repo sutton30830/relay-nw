@@ -1,5 +1,71 @@
+create extension if not exists pgcrypto;
+
+create table if not exists public.accounts (
+  id uuid primary key default gen_random_uuid(),
+  slug text not null unique,
+  name text not null,
+  status text not null default 'active' check (status in ('active', 'paused', 'archived')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.accounts enable row level security;
+
+create table if not exists public.account_settings (
+  account_id uuid primary key references public.accounts(id) on delete cascade,
+  business_name text not null,
+  owner_phone_number text not null,
+  intake_url text not null,
+  scheduling_url text,
+  call_mode text not null default 'forwarding' check (call_mode in ('direct', 'forwarding')),
+  sms_enabled boolean not null default false,
+  sms_template text,
+  missed_call_voice_message text,
+  missed_call_voice_name text not null default 'Polly.Joanna-Neural',
+  missed_call_greeting_audio_url text,
+  voicemail_max_seconds integer not null default 60 check (voicemail_max_seconds > 0),
+  dial_timeout_seconds integer not null default 18 check (dial_timeout_seconds > 0),
+  missed_call_sms_cooldown_hours integer not null default 24 check (missed_call_sms_cooldown_hours > 0),
+  voicemail_transcription_enabled boolean not null default true,
+  a2p_registration_status text not null default 'not_started' check (
+    a2p_registration_status in ('not_started', 'in_progress', 'approved', 'rejected', 'paused')
+  ),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.account_settings enable row level security;
+
+create table if not exists public.account_phone_numbers (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  phone_number text not null unique,
+  label text,
+  is_primary boolean not null default false,
+  twilio_sid text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists account_phone_numbers_account_id_idx
+  on public.account_phone_numbers (account_id);
+
+alter table public.account_phone_numbers enable row level security;
+
+create table if not exists public.account_users (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  email text,
+  role text not null default 'owner' check (role in ('owner', 'admin', 'viewer')),
+  created_at timestamptz not null default now(),
+  unique (account_id, email)
+);
+
+alter table public.account_users enable row level security;
+
 create table if not exists public.leads (
   id uuid primary key default gen_random_uuid(),
+  account_id uuid references public.accounts(id),
   call_sid text,
   name text,
   phone text not null,
@@ -27,6 +93,7 @@ create table if not exists public.leads (
   created_at timestamptz not null default now()
 );
 
+alter table public.leads add column if not exists account_id uuid references public.accounts(id);
 alter table public.leads add column if not exists call_sid text;
 alter table public.leads add column if not exists notes text;
 alter table public.leads add column if not exists booked_at timestamptz;
@@ -75,19 +142,28 @@ alter table public.leads
   );
 
 create index if not exists leads_created_at_idx on public.leads (created_at desc);
+create index if not exists leads_account_created_at_idx on public.leads (account_id, created_at desc);
 create index if not exists leads_phone_created_at_idx on public.leads (phone, created_at desc);
+create index if not exists leads_account_phone_created_at_idx on public.leads (account_id, phone, created_at desc);
 create unique index if not exists leads_call_sid_unique_idx
   on public.leads (call_sid)
   where call_sid is not null;
+create unique index if not exists leads_account_call_sid_unique_idx
+  on public.leads (account_id, call_sid)
+  where account_id is not null and call_sid is not null;
 create unique index if not exists leads_twilio_message_sid_unique_idx
   on public.leads (twilio_message_sid)
   where twilio_message_sid is not null;
+create unique index if not exists leads_account_twilio_message_sid_unique_idx
+  on public.leads (account_id, twilio_message_sid)
+  where account_id is not null and twilio_message_sid is not null;
 create index if not exists leads_deleted_at_idx on public.leads (deleted_at);
 
 alter table public.leads enable row level security;
 
 create table if not exists public.webhook_events (
   id uuid primary key default gen_random_uuid(),
+  account_id uuid references public.accounts(id),
   created_at timestamptz not null default now(),
   source text not null check (source in ('twilio_voice', 'twilio_dial_status', 'twilio_inbound_sms', 'twilio_sms_status', 'twilio_recording')),
   payload jsonb not null default '{}'::jsonb,
@@ -96,24 +172,45 @@ create table if not exists public.webhook_events (
   error text
 );
 
+alter table public.webhook_events add column if not exists account_id uuid references public.accounts(id);
+alter table public.webhook_events add column if not exists correlation_id text;
 alter table public.webhook_events drop constraint if exists webhook_events_source_check;
 alter table public.webhook_events
   add constraint webhook_events_source_check check (source in ('twilio_voice', 'twilio_dial_status', 'twilio_inbound_sms', 'twilio_sms_status', 'twilio_recording'));
 
 create index if not exists webhook_events_created_at_idx
   on public.webhook_events (created_at desc);
+create index if not exists webhook_events_account_created_at_idx
+  on public.webhook_events (account_id, created_at desc);
+create index if not exists webhook_events_correlation_id_idx
+  on public.webhook_events (correlation_id);
 
 alter table public.webhook_events enable row level security;
 
 create table if not exists public.opt_outs (
-  phone text primary key,
-  created_at timestamptz not null default now()
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid references public.accounts(id),
+  phone text not null,
+  created_at timestamptz not null default now(),
+  unique (account_id, phone)
 );
+
+alter table public.opt_outs drop constraint if exists opt_outs_pkey;
+alter table public.opt_outs add column if not exists id uuid default gen_random_uuid();
+update public.opt_outs set id = gen_random_uuid() where id is null;
+alter table public.opt_outs alter column id set not null;
+alter table public.opt_outs add constraint opt_outs_pkey primary key (id);
+alter table public.opt_outs add column if not exists account_id uuid references public.accounts(id);
+alter table public.opt_outs alter column phone set not null;
+create unique index if not exists opt_outs_account_phone_unique_idx
+  on public.opt_outs (account_id, phone)
+  where account_id is not null;
 
 alter table public.opt_outs enable row level security;
 
 create table if not exists public.inbound_messages (
   id uuid primary key default gen_random_uuid(),
+  account_id uuid references public.accounts(id),
   message_sid text not null unique,
   from_phone text not null,
   to_phone text,
@@ -121,10 +218,68 @@ create table if not exists public.inbound_messages (
   created_at timestamptz not null default now()
 );
 
+alter table public.inbound_messages add column if not exists account_id uuid references public.accounts(id);
+create unique index if not exists inbound_messages_account_message_sid_unique_idx
+  on public.inbound_messages (account_id, message_sid)
+  where account_id is not null;
+create index if not exists inbound_messages_account_from_created_at_idx
+  on public.inbound_messages (account_id, from_phone, created_at desc);
+
 alter table public.inbound_messages enable row level security;
+
+create table if not exists public.calls (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  call_sid text not null,
+  parent_call_sid text,
+  from_phone text,
+  to_phone text,
+  direction text not null default 'inbound',
+  status text,
+  dial_call_status text,
+  lead_id uuid references public.leads(id) on delete set null,
+  recording_sid text,
+  recording_url text,
+  recording_duration integer,
+  recording_status text,
+  raw_summary jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (account_id, call_sid)
+);
+
+create index if not exists calls_account_created_at_idx on public.calls (account_id, created_at desc);
+create index if not exists calls_account_from_created_at_idx on public.calls (account_id, from_phone, created_at desc);
+create index if not exists calls_call_sid_idx on public.calls (call_sid);
+
+alter table public.calls enable row level security;
+
+create table if not exists public.messages (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  lead_id uuid references public.leads(id) on delete set null,
+  call_id uuid references public.calls(id) on delete set null,
+  twilio_message_sid text,
+  direction text not null check (direction in ('inbound', 'outbound')),
+  from_phone text,
+  to_phone text,
+  body text,
+  status text,
+  error text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (account_id, twilio_message_sid)
+);
+
+create index if not exists messages_account_created_at_idx on public.messages (account_id, created_at desc);
+create index if not exists messages_account_phone_created_at_idx on public.messages (account_id, from_phone, to_phone, created_at desc);
+create index if not exists messages_twilio_message_sid_idx on public.messages (twilio_message_sid);
+
+alter table public.messages enable row level security;
 
 create table if not exists public.forwarding_health_checks (
   id uuid primary key default gen_random_uuid(),
+  account_id uuid references public.accounts(id),
   phone_number_tested text not null,
   status text not null check (status in ('pending', 'passed', 'failed', 'timeout', 'error')),
   started_at timestamptz not null default now(),
@@ -146,8 +301,11 @@ create table if not exists public.forwarding_health_checks (
   updated_at timestamptz not null default now()
 );
 
+alter table public.forwarding_health_checks add column if not exists account_id uuid references public.accounts(id);
 create index if not exists forwarding_health_checks_created_at_idx
   on public.forwarding_health_checks (created_at desc);
+create index if not exists forwarding_health_checks_account_created_at_idx
+  on public.forwarding_health_checks (account_id, created_at desc);
 create index if not exists forwarding_health_checks_pending_started_at_idx
   on public.forwarding_health_checks (started_at desc)
   where status = 'pending';

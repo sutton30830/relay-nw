@@ -189,8 +189,8 @@ function extractResponseText(data: OpenAIResponsesResponse) {
     ?.trim();
 }
 
-export async function transcribeLeadVoicemail(leadId: string) {
-  const lead = await getLeadForVoicemailTranscription(leadId);
+export async function transcribeLeadVoicemail(leadId: string, accountId?: string | null) {
+  const lead = await getLeadForVoicemailTranscription(leadId, accountId);
 
   if (!lead?.recording_sid) {
     throw new Error("Lead does not have a voicemail recording.");
@@ -209,6 +209,7 @@ export async function transcribeLeadVoicemail(leadId: string) {
   }
 
   await updateLeadVoicemailTranscription({
+    accountId,
     id: leadId,
     status: "processing",
     error: null,
@@ -221,6 +222,7 @@ export async function transcribeLeadVoicemail(leadId: string) {
     const summary = await summarizeTranscript(transcript);
 
     await updateLeadVoicemailTranscription({
+      accountId,
       id: leadId,
       transcript,
       summary,
@@ -237,6 +239,7 @@ export async function transcribeLeadVoicemail(leadId: string) {
     const message = error instanceof Error ? error.message : "Voicemail transcription failed.";
 
     await updateLeadVoicemailTranscription({
+      accountId,
       id: leadId,
       status: "failed",
       error: message,

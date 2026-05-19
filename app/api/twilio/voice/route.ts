@@ -1,9 +1,12 @@
 import { env } from "@/lib/env";
 import {
+  type AccountRuntimeConfig,
   findPendingForwardingHealthCheck,
   logWebhookEvent,
   markForwardingHealthCheckFailed,
   markForwardingHealthCheckPassed,
+  resolveAccountByTwilioNumber,
+  upsertCall,
 } from "@/lib/supabase";
 import {
   formDataToRecord,
@@ -29,22 +32,22 @@ function callbackUrl(request: Request, path: string) {
   return `${requestOrigin || env.appBaseUrl}${path}`;
 }
 
-function directCallTwiml(request: Request, callerPhone: string) {
+function directCallTwiml(request: Request, callerPhone: string, account: AccountRuntimeConfig) {
   return dialForwardTwiml({
-    ownerPhoneNumber: env.ownerPhoneNumber,
+    ownerPhoneNumber: account.ownerPhoneNumber,
     callerId: callerPhone,
     actionUrl: callbackUrl(request, "/api/twilio/voice-status"),
-    timeoutSeconds: env.dialTimeoutSeconds,
+    timeoutSeconds: account.dialTimeoutSeconds,
   });
 }
 
-function missedCallTwiml(request: Request) {
+function missedCallTwiml(request: Request, account: AccountRuntimeConfig) {
   return forwardedMissedCallTwiml({
-    message: env.missedCallVoiceMessage,
-    voiceName: env.missedCallVoiceName,
-    greetingAudioUrl: env.missedCallGreetingAudioUrl,
+    message: account.missedCallVoiceMessage ?? undefined,
+    voiceName: account.missedCallVoiceName,
+    greetingAudioUrl: account.missedCallGreetingAudioUrl ?? undefined,
     recordingActionUrl: callbackUrl(request, "/api/twilio/recording"),
-    maxLengthSeconds: env.voicemailMaxSeconds,
+    maxLengthSeconds: account.voicemailMaxSeconds,
   });
 }
 
@@ -69,6 +72,7 @@ function validationLogNote(input: {
 }
 
 async function handleForwardingHealthCheck(input: {
+  account: AccountRuntimeConfig;
   payload: Record<string, string>;
   correlationId: string;
   requestSummary: ReturnType<typeof summarizeTwilioRequest>;
@@ -111,6 +115,7 @@ async function handleForwardingHealthCheck(input: {
 </Response>`;
 
   await logWebhookEvent({
+    accountId: input.account.accountId,
     source: VOICE_WEBHOOK_SOURCE,
     correlationId: input.correlationId,
     payload: input.payload,
@@ -123,6 +128,7 @@ async function handleForwardingHealthCheck(input: {
 }
 
 async function handleForwardingMode(input: {
+  account: AccountRuntimeConfig;
   request: Request;
   payload: Record<string, string>;
   correlationId: string;
@@ -131,10 +137,21 @@ async function handleForwardingMode(input: {
   callerPhone: string;
 }) {
   const callSid = input.payload.CallSid ?? "";
-  const xml = missedCallTwiml(input.request);
+  const xml = missedCallTwiml(input.request, input.account);
+
+  await upsertCall({
+    accountId: input.account.accountId,
+    callSid,
+    parentCallSid: input.payload.ParentCallSid ?? null,
+    fromPhone: input.callerPhone,
+    toPhone: input.payload.To ?? null,
+    status: "missed",
+    rawSummary: input.requestSummary,
+  });
 
   try {
     const result = await handleMissedCall({
+      account: input.account,
       callSid,
       callerPhone: input.callerPhone,
       message: null,
@@ -148,6 +165,7 @@ async function handleForwardingMode(input: {
     });
 
     await logWebhookEvent({
+      accountId: input.account.accountId,
       source: VOICE_WEBHOOK_SOURCE,
       correlationId: input.correlationId,
       payload: input.payload,
@@ -163,6 +181,7 @@ async function handleForwardingMode(input: {
     const message = error instanceof Error ? error.message : "Unknown forwarding-mode error";
 
     await logWebhookEvent({
+      accountId: input.account.accountId,
       source: VOICE_WEBHOOK_SOURCE,
       correlationId: input.correlationId,
       payload: input.payload,
@@ -182,15 +201,28 @@ async function handleForwardingMode(input: {
 }
 
 async function handleDirectMode(input: {
+  account: AccountRuntimeConfig;
   request: Request;
   payload: Record<string, string>;
   correlationId: string;
   validation: ReturnType<typeof validateTwilioWebhook>;
   callerPhone: string;
 }) {
-  const xml = directCallTwiml(input.request, input.callerPhone);
+  const callSid = input.payload.CallSid ?? "";
+  const xml = directCallTwiml(input.request, input.callerPhone, input.account);
+
+  await upsertCall({
+    accountId: input.account.accountId,
+    callSid,
+    parentCallSid: input.payload.ParentCallSid ?? null,
+    fromPhone: input.callerPhone,
+    toPhone: input.payload.To ?? null,
+    status: "ringing",
+    rawSummary: summarizeTwilioRequest(input.request, input.payload),
+  });
 
   await logWebhookEvent({
+    accountId: input.account.accountId,
     source: VOICE_WEBHOOK_SOURCE,
     correlationId: input.correlationId,
     payload: input.payload,
@@ -221,13 +253,20 @@ export async function POST(request: Request) {
   const correlationId = payload.CallSid || payload.MessageSid || payload.RecordingSid || crypto.randomUUID();
   const requestSummary = summarizeTwilioRequest(request, payload);
   const validation = validateTwilioWebhook(request, payload);
-  const callerPhone = payload.From || env.twilioPhoneNumber;
+  const account = await resolveAccountByTwilioNumber(payload.To);
+  const callerPhone = payload.From || account.twilioPhoneNumber;
 
-  console.info("Twilio voice webhook received", { correlationId, ...requestSummary });
+  console.info("Twilio voice webhook received", {
+    correlationId,
+    accountId: account.accountId,
+    accountSlug: account.accountSlug,
+    ...requestSummary,
+  });
 
   if (validation.shouldReject) {
     return rejectInvalidTwilioSignature({
       source: VOICE_WEBHOOK_SOURCE,
+      accountId: account.accountId,
       label: "voice",
       payload,
       correlationId,
@@ -241,6 +280,7 @@ export async function POST(request: Request) {
   if (validation.wasAllowedByOverride) {
     await logUnsignedTwilioWebhook({
       source: VOICE_WEBHOOK_SOURCE,
+      accountId: account.accountId,
       label: "voice",
       payload,
       correlationId,
@@ -252,8 +292,9 @@ export async function POST(request: Request) {
   }
 
   const healthCheckResponse =
-    env.callMode === "forwarding"
+    account.callMode === "forwarding"
       ? await handleForwardingHealthCheck({
+          account,
           payload,
           correlationId,
           requestSummary,
@@ -264,8 +305,9 @@ export async function POST(request: Request) {
     return healthCheckResponse;
   }
 
-  if (env.callMode === "forwarding") {
+  if (account.callMode === "forwarding") {
     return handleForwardingMode({
+      account,
       request,
       payload,
       correlationId,
@@ -276,6 +318,7 @@ export async function POST(request: Request) {
   }
 
   return handleDirectMode({
+    account,
     request,
     payload,
     correlationId,

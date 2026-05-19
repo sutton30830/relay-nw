@@ -31,6 +31,7 @@ export type WebhookEventSource =
 
 export type WebhookEvent = {
   id: string;
+  account_id?: string | null;
   created_at: string;
   source: WebhookEventSource;
   correlation_id: string | null;
@@ -42,6 +43,7 @@ export type WebhookEvent = {
 
 export type InboundMessage = {
   id: string;
+  account_id?: string | null;
   message_sid: string;
   from_phone: string;
   to_phone: string | null;
@@ -65,6 +67,7 @@ export type ForwardingHealthCheck = {
 
 export type Lead = {
   id: string;
+  account_id?: string | null;
   call_sid: string | null;
   name: string | null;
   phone: string;

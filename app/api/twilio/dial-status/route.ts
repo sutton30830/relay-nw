@@ -1,4 +1,9 @@
-import { logWebhookEvent } from "@/lib/supabase";
+import {
+  logWebhookEvent,
+  resolveAccountByCallSid,
+  type AccountRuntimeConfig,
+  upsertCall,
+} from "@/lib/supabase";
 import { env } from "@/lib/env";
 import {
   formDataToRecord,
@@ -53,6 +58,7 @@ function webhookEventNote(input: {
 }
 
 async function processDialStatus(input: {
+  account: AccountRuntimeConfig;
   callSid: string;
   callerPhone: string;
   correlationId: string;
@@ -61,12 +67,14 @@ async function processDialStatus(input: {
 }) {
   console.info("Processing Twilio DialCallStatus", {
     correlationId: input.correlationId,
+    accountId: input.account.accountId,
     ...input.requestSummary,
     dialCallStatus: input.dialCallStatus,
   });
 
   if (isMissedDialStatus(input.dialCallStatus)) {
     const result = await handleMissedCall({
+      account: input.account,
       callSid: input.callSid,
       callerPhone: input.callerPhone,
       message: `Missed call. Dial status: ${input.dialCallStatus}.`,
@@ -106,13 +114,20 @@ export async function POST(request: Request) {
   const dialCallStatus = payload.DialCallStatus ?? "";
   const callerPhone = (payload.From ?? "").trim();
   const callSid = (payload.CallSid ?? "").trim();
+  const account = await resolveAccountByCallSid(callSid);
   const xml = emptyTwiml();
 
-  console.info("Twilio dial status webhook received", { correlationId, ...requestSummary });
+  console.info("Twilio dial status webhook received", {
+    correlationId,
+    accountId: account.accountId,
+    accountSlug: account.accountSlug,
+    ...requestSummary,
+  });
 
   if (validation.shouldReject) {
     return rejectInvalidTwilioSignature({
       source: DIAL_STATUS_WEBHOOK_SOURCE,
+      accountId: account.accountId,
       label: "dial status",
       payload,
       correlationId,
@@ -126,6 +141,7 @@ export async function POST(request: Request) {
   if (validation.wasAllowedByOverride) {
     await logUnsignedTwilioWebhook({
       source: DIAL_STATUS_WEBHOOK_SOURCE,
+      accountId: account.accountId,
       label: "dial status",
       payload,
       correlationId,
@@ -137,7 +153,18 @@ export async function POST(request: Request) {
   }
 
   try {
+    await upsertCall({
+      accountId: account.accountId,
+      callSid,
+      fromPhone: callerPhone,
+      toPhone: payload.To ?? null,
+      status: isMissedDialStatus(dialCallStatus) ? "missed" : dialCallStatus || null,
+      dialCallStatus,
+      rawSummary: requestSummary,
+    });
+
     const result = await processDialStatus({
+      account,
       callSid,
       callerPhone,
       correlationId,
@@ -146,6 +173,7 @@ export async function POST(request: Request) {
     });
 
     await logWebhookEvent({
+      accountId: account.accountId,
       source: DIAL_STATUS_WEBHOOK_SOURCE,
       correlationId,
       payload,
@@ -162,6 +190,7 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : "Unknown dial-status error";
 
     await logWebhookEvent({
+      accountId: account.accountId,
       source: DIAL_STATUS_WEBHOOK_SOURCE,
       correlationId,
       payload,

@@ -112,6 +112,7 @@ export const env = {
     getOptionalEnvAliases("OPENAI_TRANSCRIPTION_MODEL", "OPEN_AI_TRANSCRIPTION_MODEL") ??
     "whisper-1",
   openaiSummaryModel: getOptionalEnv("OPENAI_SUMMARY_MODEL") ?? "gpt-4o-mini",
+  defaultAccountSlug: getOptionalEnv("RELAY_DEFAULT_ACCOUNT_SLUG") ?? "relay-nw",
   leadsPassword: getRequiredEnv("LEADS_PASSWORD"),
   leadsCookieSecret: getLeadsCookieSecret(),
   appBaseUrl: normalizeBaseUrl(getRequiredEnv("APP_BASE_URL")),

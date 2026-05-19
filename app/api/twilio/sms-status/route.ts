@@ -1,5 +1,11 @@
 import { env } from "@/lib/env";
-import { logWebhookEvent, type SmsStatus, updateLeadSmsStatusByMessageSid } from "@/lib/supabase";
+import {
+  logWebhookEvent,
+  resolveAccountByMessageSid,
+  type SmsStatus,
+  updateLeadSmsStatusByMessageSid,
+  updateMessageStatusBySid,
+} from "@/lib/supabase";
 import {
   formDataToRecord,
   rejectInvalidTwilioSignature,
@@ -70,10 +76,13 @@ export async function POST(request: Request) {
   const requestSummary = summarizeTwilioRequest(request, payload);
   const validation = validateTwilioWebhook(request, payload);
   const status = parseSmsStatusPayload(payload);
+  const account = await resolveAccountByMessageSid(status.messageSid);
   const xml = emptyTwiml();
 
   console.info("Twilio SMS status webhook received", {
     correlationId,
+    accountId: account.accountId,
+    accountSlug: account.accountSlug,
     ...requestSummary,
     messageSid: status.messageSid,
     messageStatus: status.rawStatus,
@@ -82,6 +91,7 @@ export async function POST(request: Request) {
   if (validation.shouldReject) {
     return rejectInvalidTwilioSignature({
       source: SMS_STATUS_WEBHOOK_SOURCE,
+      accountId: account.accountId,
       label: "SMS status",
       payload,
       correlationId,
@@ -94,13 +104,24 @@ export async function POST(request: Request) {
   try {
     const result = status.messageSid && status.smsStatus
       ? await updateLeadSmsStatusByMessageSid({
+        accountId: account.accountId,
         twilioMessageSid: status.messageSid,
         smsStatus: status.smsStatus,
         smsError: status.error,
       })
       : { updated: false };
 
+    if (status.messageSid && status.smsStatus) {
+      await updateMessageStatusBySid({
+        accountId: account.accountId,
+        twilioMessageSid: status.messageSid,
+        status: status.smsStatus,
+        error: status.error,
+      });
+    }
+
     await logWebhookEvent({
+      accountId: account.accountId,
       source: SMS_STATUS_WEBHOOK_SOURCE,
       correlationId,
       payload,
@@ -117,6 +138,7 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : "Unknown SMS status error";
 
     await logWebhookEvent({
+      accountId: account.accountId,
       source: SMS_STATUS_WEBHOOK_SOURCE,
       correlationId,
       payload,

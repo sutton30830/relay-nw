@@ -1,6 +1,7 @@
 import twilio from "twilio";
 import { env } from "@/lib/env";
 import { logWebhookEvent, type WebhookEventSource } from "@/lib/supabase";
+import type { AccountRuntimeConfig } from "@/lib/supabase/accounts";
 
 const DEFAULT_MISSED_CALL_SMS_TEMPLATE =
   "Hi, this is {BUSINESS_NAME} - sorry we missed your call. Book or reply here: {INTAKE_URL}. Reply STOP to opt out.";
@@ -33,10 +34,22 @@ function replaceTemplateValues(template: string, values: Record<string, string>)
 }
 
 export function missedCallSmsBody() {
-  return replaceTemplateValues(env.smsTemplate || DEFAULT_MISSED_CALL_SMS_TEMPLATE, {
-    BUSINESS_NAME: env.businessName,
-    INTAKE_URL: env.intakeUrl,
-    SCHEDULING_URL: env.schedulingUrl,
+  return missedCallSmsBodyForAccount({
+    businessName: env.businessName,
+    intakeUrl: env.intakeUrl,
+    schedulingUrl: env.schedulingUrl,
+    smsTemplate: env.smsTemplate ?? null,
+  });
+}
+
+export function missedCallSmsBodyForAccount(config: Pick<
+  AccountRuntimeConfig,
+  "businessName" | "intakeUrl" | "schedulingUrl" | "smsTemplate"
+>) {
+  return replaceTemplateValues(config.smsTemplate || DEFAULT_MISSED_CALL_SMS_TEMPLATE, {
+    BUSINESS_NAME: config.businessName,
+    INTAKE_URL: config.intakeUrl,
+    SCHEDULING_URL: config.schedulingUrl,
   });
 }
 
@@ -84,6 +97,7 @@ export function validateTwilioWebhook(request: Request, payload: Record<string, 
 }
 
 export async function rejectInvalidTwilioSignature(input: {
+  accountId?: string | null;
   source: WebhookEventSource;
   label: string;
   payload: Record<string, string>;
@@ -103,6 +117,7 @@ export async function rejectInvalidTwilioSignature(input: {
   const responseBody = input.responseBody ?? "Forbidden";
 
   await logWebhookEvent({
+    accountId: input.accountId,
     source: input.source,
     correlationId: input.correlationId,
     payload: input.payload,
@@ -115,6 +130,7 @@ export async function rejectInvalidTwilioSignature(input: {
 }
 
 export async function logUnsignedTwilioWebhook(input: {
+  accountId?: string | null;
   source: WebhookEventSource;
   label: string;
   payload: Record<string, string>;
@@ -132,6 +148,7 @@ export async function logUnsignedTwilioWebhook(input: {
   });
 
   await logWebhookEvent({
+    accountId: input.accountId,
     source: input.source,
     correlationId: input.correlationId,
     payload: input.payload,

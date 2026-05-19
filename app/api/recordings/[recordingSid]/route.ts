@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { env } from "@/lib/env";
 import { isValidLeadsSessionCookie, LEADS_COOKIE_NAME } from "@/lib/leads-auth";
-import { getLeadRecordingForPlayback } from "@/lib/supabase";
+import { getDefaultAccountConfig, getLeadRecordingForPlayback } from "@/lib/supabase";
 
 const PRIVATE_AUDIO_HEADERS = {
   "Cache-Control": "private, no-store, max-age=0",
@@ -30,7 +30,8 @@ export async function GET(
     return new Response("Invalid recording", { status: 400 });
   }
 
-  const recording = await getLeadRecordingForPlayback(recordingSid);
+  const account = await getDefaultAccountConfig();
+  const recording = await getLeadRecordingForPlayback(recordingSid, account.accountId);
   if (!recording) {
     console.warn("Recording request blocked", {
       reason: "recording_not_linked_to_lead",

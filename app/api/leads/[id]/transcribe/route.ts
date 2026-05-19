@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { isValidLeadsSessionCookie, LEADS_COOKIE_NAME } from "@/lib/leads-auth";
+import { getDefaultAccountConfig } from "@/lib/supabase";
 import { transcribeLeadVoicemail } from "@/lib/voicemail-ai";
 
 export const runtime = "nodejs";
@@ -21,7 +22,8 @@ export async function POST(
   const { id } = await params;
 
   try {
-    const result = await transcribeLeadVoicemail(id);
+    const account = await getDefaultAccountConfig();
+    const result = await transcribeLeadVoicemail(id, account.accountId);
     return Response.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to summarize voicemail.";

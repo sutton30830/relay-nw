@@ -1,6 +1,12 @@
 import { cookies } from "next/headers";
 import { isValidLeadsSessionCookie, LEADS_COOKIE_NAME } from "@/lib/leads-auth";
-import { deleteLead, type LeadStatus, type ReplyPriorityOverride, updateLead } from "@/lib/supabase";
+import {
+  deleteLead,
+  getDefaultAccountConfig,
+  type LeadStatus,
+  type ReplyPriorityOverride,
+  updateLead,
+} from "@/lib/supabase";
 
 const MAX_NOTES_LENGTH = 2000;
 const MAX_NAME_LENGTH = 100;
@@ -152,7 +158,8 @@ export async function PATCH(
   }
 
   try {
-    await updateLead({ id, ...update });
+    const account = await getDefaultAccountConfig();
+    await updateLead({ accountId: account.accountId, id, ...update });
   } catch (error) {
     console.error("Failed to update lead", { leadId: id, error });
     return Response.json({ error: "Unable to update lead" }, { status: 500 });
@@ -172,7 +179,8 @@ export async function DELETE(
   const { id } = await params;
 
   try {
-    await deleteLead(id);
+    const account = await getDefaultAccountConfig();
+    await deleteLead(id, account.accountId);
   } catch (error) {
     console.error("Failed to delete lead", { leadId: id, error });
     return Response.json({ error: "Unable to delete lead" }, { status: 500 });

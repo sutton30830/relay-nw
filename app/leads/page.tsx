@@ -3,16 +3,16 @@ import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { LeadsList } from "@/app/leads/leads-list";
 import { publicBusinessName } from "@/lib/display-name";
-import { env } from "@/lib/env";
 import { isValidLeadsSessionCookie, LEADS_COOKIE_NAME } from "@/lib/leads-auth";
-import { getForwardingHealthSummary, getLeads } from "@/lib/supabase";
+import { getDefaultAccountConfig, getForwardingHealthSummary, getLeadsForAccount } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
 export default async function LeadsPage() {
   const cookieStore = await cookies();
   const isAllowed = isValidLeadsSessionCookie(cookieStore.get(LEADS_COOKIE_NAME)?.value);
-  const businessName = publicBusinessName(env.businessName);
+  const account = await getDefaultAccountConfig();
+  const businessName = publicBusinessName(account.businessName);
 
   if (!isAllowed) {
     return (
@@ -58,7 +58,7 @@ export default async function LeadsPage() {
   }
 
   const [leads, forwardingHealth] = await Promise.all([
-    getLeads(),
+    getLeadsForAccount(account.accountId),
     getForwardingHealthSummary(),
   ]);
 

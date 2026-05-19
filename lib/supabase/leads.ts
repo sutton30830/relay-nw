@@ -2,9 +2,9 @@ import { isPlaceholderSupabaseConfig, shouldSkipDatabaseWrite, supabaseAdmin, th
 import type { InboundMessage, Lead, LeadSource, LeadStatus, ReplyPriorityOverride } from "./types";
 
 const LEAD_SELECT_COLUMNS =
-  "id, call_sid, name, phone, message, notes, booked_at, job_value_cents, reply_priority_override, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, voicemail_transcript, voicemail_summary, voicemail_transcription_status, voicemail_transcription_error, voicemail_transcribed_at, deleted_at, created_at";
+  "id, account_id, call_sid, name, phone, message, notes, booked_at, job_value_cents, reply_priority_override, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, voicemail_transcript, voicemail_summary, voicemail_transcription_status, voicemail_transcription_error, voicemail_transcribed_at, deleted_at, created_at";
 const LEGACY_LEAD_SELECT_COLUMNS =
-  "id, call_sid, name, phone, message, notes, job_value_cents, reply_priority_override, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, created_at";
+  "id, account_id, call_sid, name, phone, message, notes, job_value_cents, reply_priority_override, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, created_at";
 
 function isMissingBookedAtColumnError(error: { message: string } | null) {
   return Boolean(error?.message.includes("booked_at"));
@@ -48,18 +48,24 @@ function normalizeLead(lead: Lead): Lead {
   };
 }
 
-async function attachInboundMessages(leads: Lead[]) {
+async function attachInboundMessages(leads: Lead[], accountId?: string | null) {
   if (isPlaceholderSupabaseConfig() || leads.length === 0) {
     return leads;
   }
 
   const phones = [...new Set(leads.map((lead) => lead.phone).filter(Boolean))];
-  const { data, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from("inbound_messages")
     .select("id, message_sid, from_phone, to_phone, body, created_at")
     .in("from_phone", phones)
     .order("created_at", { ascending: false })
     .limit(200);
+
+  if (accountId) {
+    query = query.eq("account_id", accountId);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     console.warn("Could not load inbound SMS replies for leads.", { error });
@@ -83,6 +89,7 @@ async function attachInboundMessages(leads: Lead[]) {
 }
 
 export async function createLead(input: {
+  accountId?: string | null;
   name?: string | null;
   phone: string;
   message?: string | null;
@@ -94,6 +101,7 @@ export async function createLead(input: {
   }
 
   const { error } = await supabaseAdmin.from("leads").insert({
+    account_id: input.accountId ?? null,
     call_sid: input.callSid ?? null,
     name: input.name ?? null,
     phone: input.phone,
@@ -106,6 +114,7 @@ export async function createLead(input: {
 }
 
 export async function createMissedCallLeadIfNew(input: {
+  accountId?: string | null;
   callSid: string;
   phone: string;
   message: string | null;
@@ -117,6 +126,7 @@ export async function createMissedCallLeadIfNew(input: {
   const { data, error } = await supabaseAdmin
     .from("leads")
     .insert({
+      account_id: input.accountId ?? null,
       call_sid: input.callSid,
       phone: input.phone,
       message: input.message,
@@ -142,23 +152,38 @@ export async function createMissedCallLeadIfNew(input: {
 }
 
 export async function getLeads() {
+  return getLeadsForAccount(null);
+}
+
+export async function getLeadsForAccount(accountId: string | null) {
   if (isPlaceholderSupabaseConfig()) {
     return [] as Lead[];
   }
 
-  const query = supabaseAdmin
+  let query = supabaseAdmin
     .from("leads")
     .select(LEAD_SELECT_COLUMNS)
     .order("created_at", { ascending: false });
+
+  if (accountId) {
+    query = query.eq("account_id", accountId);
+  }
+
   const { data, error } = await query;
 
   if (isMissingOptionalLeadColumnError(error)) {
     console.warn("Some optional leads columns are missing. Run supabase.sql to enable all inbox features.");
 
-    const { data: legacyData, error: legacyError } = await supabaseAdmin
+    let legacyQuery = supabaseAdmin
       .from("leads")
       .select(LEGACY_LEAD_SELECT_COLUMNS)
       .order("created_at", { ascending: false });
+
+    if (accountId) {
+      legacyQuery = legacyQuery.eq("account_id", accountId);
+    }
+
+    const { data: legacyData, error: legacyError } = await legacyQuery;
 
     throwIfSupabaseError(legacyError);
 
@@ -170,15 +195,16 @@ export async function getLeads() {
       } as Lead),
     );
 
-    return attachInboundMessages(legacyLeads);
+    return attachInboundMessages(legacyLeads, accountId);
   }
 
   throwIfSupabaseError(error);
 
-  return attachInboundMessages(((data ?? []) as Lead[]).map(normalizeLead));
+  return attachInboundMessages(((data ?? []) as Lead[]).map(normalizeLead), accountId);
 }
 
 export async function updateLead(input: {
+  accountId?: string | null;
   id: string;
   name?: string | null;
   status?: LeadStatus;
@@ -241,6 +267,7 @@ export async function updateLead(input: {
       .from("leads")
       .select("phone")
       .eq("id", input.id)
+      .match(input.accountId ? { account_id: input.accountId } : {})
       .maybeSingle();
 
     throwIfSupabaseError(leadError);
@@ -249,7 +276,8 @@ export async function updateLead(input: {
       const { error: nameError } = await supabaseAdmin
         .from("leads")
         .update({ name: input.name })
-        .eq("phone", lead.phone);
+        .eq("phone", lead.phone)
+        .match(input.accountId ? { account_id: input.accountId } : {});
 
       throwIfSupabaseError(nameError);
     }
@@ -264,7 +292,8 @@ export async function updateLead(input: {
   const { error } = await supabaseAdmin
     .from("leads")
     .update(updates)
-    .eq("id", input.id);
+    .eq("id", input.id)
+    .match(input.accountId ? { account_id: input.accountId } : {});
 
   if (isMissingBookedAtColumnError(error) && typeof updates.booked_at !== "undefined") {
     console.warn("leads.booked_at is missing. Run supabase.sql to persist booked outcome tracking.");
@@ -278,7 +307,8 @@ export async function updateLead(input: {
     const { error: legacyError } = await supabaseAdmin
       .from("leads")
       .update(legacyUpdates)
-      .eq("id", input.id);
+      .eq("id", input.id)
+      .match(input.accountId ? { account_id: input.accountId } : {});
 
     throwIfSupabaseError(legacyError);
     return;
@@ -287,15 +317,16 @@ export async function updateLead(input: {
   throwIfSupabaseError(error);
 }
 
-export async function deleteLead(id: string) {
-  if (shouldSkipDatabaseWrite("lead delete", { id })) {
+export async function deleteLead(id: string, accountId?: string | null) {
+  if (shouldSkipDatabaseWrite("lead delete", { id, accountId })) {
     return;
   }
 
   const { error } = await supabaseAdmin
     .from("leads")
     .update({ deleted_at: new Date().toISOString() })
-    .eq("id", id);
+    .eq("id", id)
+    .match(accountId ? { account_id: accountId } : {});
 
   throwIfSupabaseError(error);
 }

@@ -1,14 +1,19 @@
 import { env } from "@/lib/env";
 import { normalizePhoneNumber } from "@/lib/phone";
 import {
+  createMessageIfNew,
   createMissedCallLeadIfNew,
   hasRecentMissedCallSms,
   isOptedOut,
+  type AccountRuntimeConfig,
+  updateCallForMissedLead,
   updateLeadSmsStatus,
 } from "@/lib/supabase";
-import { missedCallSmsBody, phoneLast4, twilioClient } from "@/lib/twilio";
+import { envAccountConfig } from "@/lib/supabase/accounts";
+import { missedCallSmsBodyForAccount, phoneLast4, twilioClient } from "@/lib/twilio";
 
 export async function handleMissedCall(input: {
+  account?: AccountRuntimeConfig;
   callerPhone: string;
   callSid: string;
   message: string | null;
@@ -17,12 +22,14 @@ export async function handleMissedCall(input: {
   const callerPhone = normalizePhoneNumber(input.callerPhone);
   const callSid = input.callSid.trim();
   const correlationId = input.correlationId ?? callSid;
+  const account = input.account ?? envAccountConfig();
 
   if (!callerPhone || !callSid) {
     throw new Error("Missing caller phone or CallSid on missed call webhook.");
   }
 
   const leadResult = await createMissedCallLeadIfNew({
+    accountId: account.accountId,
     callSid,
     phone: callerPhone,
     message: input.message,
@@ -32,9 +39,17 @@ export async function handleMissedCall(input: {
     return { inserted: false, smsStatus: "duplicate" as const };
   }
 
-  if (!env.smsEnabled) {
+  await updateCallForMissedLead({
+    accountId: account.accountId,
+    callSid,
+    leadId: leadResult.leadId,
+    status: "missed",
+  });
+
+  if (!account.smsEnabled) {
     try {
       await updateLeadSmsStatus({
+        accountId: account.accountId,
         id: leadResult.leadId,
         smsStatus: "skipped_disabled",
       });
@@ -59,20 +74,27 @@ export async function handleMissedCall(input: {
   }
 
   const cooldownSince = new Date(
-    Date.now() - env.missedCallSmsCooldownHours * 60 * 60 * 1000,
+    Date.now() - account.missedCallSmsCooldownHours * 60 * 60 * 1000,
   );
-  const alreadyTextedRecently = await hasRecentMissedCallSms(callerPhone, cooldownSince, leadResult.leadId);
+  const alreadyTextedRecently = await hasRecentMissedCallSms(
+    callerPhone,
+    cooldownSince,
+    leadResult.leadId,
+    account.accountId,
+  );
 
   if (alreadyTextedRecently) {
     await updateLeadSmsStatus({
+      accountId: account.accountId,
       id: leadResult.leadId,
       smsStatus: "skipped_recent",
     });
     return { inserted: true, smsStatus: "skipped_recent" as const };
   }
 
-  if (await isOptedOut(callerPhone)) {
+  if (await isOptedOut(callerPhone, account.accountId)) {
     await updateLeadSmsStatus({
+      accountId: account.accountId,
       id: leadResult.leadId,
       smsStatus: "skipped_opt_out",
     });
@@ -82,13 +104,25 @@ export async function handleMissedCall(input: {
   try {
     const message = await twilioClient.messages.create({
       to: callerPhone,
-      from: env.twilioPhoneNumber,
-      body: missedCallSmsBody(),
+      from: account.twilioPhoneNumber,
+      body: missedCallSmsBodyForAccount(account),
       statusCallback: `${env.appBaseUrl}/api/twilio/sms-status`,
+    });
+
+    await createMessageIfNew({
+      accountId: account.accountId,
+      leadId: leadResult.leadId,
+      twilioMessageSid: message.sid,
+      direction: "outbound",
+      fromPhone: account.twilioPhoneNumber,
+      toPhone: callerPhone,
+      body: missedCallSmsBodyForAccount(account),
+      status: "sent",
     });
 
     try {
       await updateLeadSmsStatus({
+        accountId: account.accountId,
         id: leadResult.leadId,
         smsStatus: "sent",
         twilioMessageSid: message.sid,
@@ -115,6 +149,7 @@ export async function handleMissedCall(input: {
     const message = error instanceof Error ? error.message : "Unknown SMS send error";
 
     await updateLeadSmsStatus({
+      accountId: account.accountId,
       id: leadResult.leadId,
       smsStatus: "failed",
       smsError: message,

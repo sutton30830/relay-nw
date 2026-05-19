@@ -1,7 +1,7 @@
 import { isPlaceholderSupabaseConfig, shouldSkipDatabaseWrite, supabaseAdmin, throwIfSupabaseError } from "./client";
 import type { VoicemailTranscriptionStatus } from "./types";
 
-export async function recordingBelongsToLead(recordingSid: string) {
+export async function recordingBelongsToLead(recordingSid: string, accountId?: string | null) {
   if (isPlaceholderSupabaseConfig()) {
     return false;
   }
@@ -10,6 +10,7 @@ export async function recordingBelongsToLead(recordingSid: string) {
     .from("leads")
     .select("id")
     .eq("recording_sid", recordingSid)
+    .match(accountId ? { account_id: accountId } : {})
     .limit(1)
     .maybeSingle();
 
@@ -18,7 +19,7 @@ export async function recordingBelongsToLead(recordingSid: string) {
   return Boolean(data?.id);
 }
 
-export async function getLeadRecordingForPlayback(recordingSid: string) {
+export async function getLeadRecordingForPlayback(recordingSid: string, accountId?: string | null) {
   if (isPlaceholderSupabaseConfig()) {
     return null;
   }
@@ -27,6 +28,7 @@ export async function getLeadRecordingForPlayback(recordingSid: string) {
     .from("leads")
     .select("id, recording_url")
     .eq("recording_sid", recordingSid)
+    .match(accountId ? { account_id: accountId } : {})
     .limit(1)
     .maybeSingle();
 
@@ -35,7 +37,7 @@ export async function getLeadRecordingForPlayback(recordingSid: string) {
   return data as { id: string; recording_url: string | null } | null;
 }
 
-export async function getLeadForVoicemailTranscription(id: string) {
+export async function getLeadForVoicemailTranscription(id: string, accountId?: string | null) {
   if (isPlaceholderSupabaseConfig()) {
     return null;
   }
@@ -44,6 +46,7 @@ export async function getLeadForVoicemailTranscription(id: string) {
     .from("leads")
     .select("id, recording_sid, voicemail_transcript, voicemail_summary, voicemail_transcription_status")
     .eq("id", id)
+    .match(accountId ? { account_id: accountId } : {})
     .maybeSingle();
 
   throwIfSupabaseError(error);
@@ -58,6 +61,7 @@ export async function getLeadForVoicemailTranscription(id: string) {
 }
 
 export async function updateLeadVoicemailTranscription(input: {
+  accountId?: string | null;
   id: string;
   transcript?: string | null;
   summary?: string | null;
@@ -91,12 +95,14 @@ export async function updateLeadVoicemailTranscription(input: {
   const { error } = await supabaseAdmin
     .from("leads")
     .update(updates)
-    .eq("id", input.id);
+    .eq("id", input.id)
+    .match(input.accountId ? { account_id: input.accountId } : {});
 
   throwIfSupabaseError(error);
 }
 
 export async function updateLeadRecordingByCallSid(input: {
+  accountId?: string | null;
   callSid: string;
   callerPhone?: string | null;
   recordingSid?: string | null;
@@ -117,6 +123,7 @@ export async function updateLeadRecordingByCallSid(input: {
       recording_status: input.recordingStatus ?? null,
     })
     .eq("call_sid", input.callSid)
+    .match(input.accountId ? { account_id: input.accountId } : {})
     .select("id")
     .maybeSingle();
 
@@ -132,6 +139,7 @@ export async function updateLeadRecordingByCallSid(input: {
     .select("id")
     .eq("phone", input.callerPhone)
     .eq("source", "missed_call")
+    .match(input.accountId ? { account_id: input.accountId } : {})
     .is("recording_sid", null)
     .gte("created_at", thirtyMinutesAgo)
     .order("created_at", { ascending: false })

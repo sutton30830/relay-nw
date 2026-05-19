@@ -1,6 +1,13 @@
 import { env } from "@/lib/env";
 import { normalizePhoneNumber } from "@/lib/phone";
-import { createInboundMessageIfNew, logWebhookEvent, recordOptOut } from "@/lib/supabase";
+import {
+  createInboundMessageIfNew,
+  createMessageIfNew,
+  logWebhookEvent,
+  recordOptOut,
+  resolveAccountByTwilioNumber,
+  type AccountRuntimeConfig,
+} from "@/lib/supabase";
 import {
   formDataToRecord,
   logUnsignedTwilioWebhook,
@@ -75,9 +82,14 @@ function webhookEventNote(input: {
   return notes.join(" ");
 }
 
-async function handleInboundSms(input: ReturnType<typeof parseInboundSmsPayload>, correlationId: string) {
+async function handleInboundSms(
+  account: AccountRuntimeConfig,
+  input: ReturnType<typeof parseInboundSmsPayload>,
+  correlationId: string,
+) {
   if (input.messageSid && input.from && input.body) {
     const inboundMessage = await createInboundMessageIfNew({
+      accountId: account.accountId,
       messageSid: input.messageSid,
       fromPhone: input.from,
       toPhone: input.to || null,
@@ -87,14 +99,24 @@ async function handleInboundSms(input: ReturnType<typeof parseInboundSmsPayload>
     if (!inboundMessage.inserted) {
       return "duplicate_ignored" as const;
     }
+
+    await createMessageIfNew({
+      accountId: account.accountId,
+      twilioMessageSid: input.messageSid,
+      direction: "inbound",
+      fromPhone: input.from,
+      toPhone: input.to || null,
+      body: input.body,
+      status: "received",
+    });
   }
 
   if (input.isOptOut) {
-    await recordOptOut(input.from);
+    await recordOptOut(input.from, account.accountId);
     return "recorded_opt_out" as const;
   }
 
-  if (input.shouldNotifyOwner && !env.smsEnabled) {
+  if (input.shouldNotifyOwner && !account.smsEnabled) {
     console.info("Inbound SMS owner notification suppressed because SMS_ENABLED is false", {
       correlationId,
       fromLast4: phoneLast4(input.from),
@@ -106,8 +128,8 @@ async function handleInboundSms(input: ReturnType<typeof parseInboundSmsPayload>
 
   if (input.shouldNotifyOwner) {
     await twilioClient.messages.create({
-      to: env.ownerPhoneNumber,
-      from: env.twilioPhoneNumber,
+      to: account.ownerPhoneNumber,
+      from: account.twilioPhoneNumber,
       body: `New Relay reply from ${input.from}:\n${input.body}\n\nOpen leads: ${env.appBaseUrl}/leads`,
     });
 
@@ -124,10 +146,13 @@ export async function POST(request: Request) {
   const requestSummary = summarizeTwilioRequest(request, payload);
   const validation = validateTwilioWebhook(request, payload);
   const message = parseInboundSmsPayload(payload);
+  const account = await resolveAccountByTwilioNumber(message.to || payload.To);
   const xml = emptyTwiml();
 
   console.info("Twilio inbound SMS webhook received", {
     correlationId,
+    accountId: account.accountId,
+    accountSlug: account.accountSlug,
     ...requestSummary,
     hasBody: Boolean(message.body),
     isOptOut: message.isOptOut,
@@ -136,6 +161,7 @@ export async function POST(request: Request) {
   if (validation.shouldReject) {
     return rejectInvalidTwilioSignature({
       source: INBOUND_SMS_WEBHOOK_SOURCE,
+      accountId: account.accountId,
       label: "inbound SMS",
       payload,
       correlationId,
@@ -148,6 +174,7 @@ export async function POST(request: Request) {
   if (validation.wasAllowedByOverride) {
     await logUnsignedTwilioWebhook({
       source: INBOUND_SMS_WEBHOOK_SOURCE,
+      accountId: account.accountId,
       label: "inbound SMS",
       payload,
       correlationId,
@@ -159,9 +186,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    const action = await handleInboundSms(message, correlationId);
+    const action = await handleInboundSms(account, message, correlationId);
 
     await logWebhookEvent({
+      accountId: account.accountId,
       source: INBOUND_SMS_WEBHOOK_SOURCE,
       correlationId,
       payload,
@@ -176,6 +204,7 @@ export async function POST(request: Request) {
     const errorMessage = error instanceof Error ? error.message : "Unknown inbound SMS error";
 
     await logWebhookEvent({
+      accountId: account.accountId,
       source: INBOUND_SMS_WEBHOOK_SOURCE,
       correlationId,
       payload,
