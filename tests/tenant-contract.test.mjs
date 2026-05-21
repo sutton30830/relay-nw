@@ -5,6 +5,9 @@ import test from "node:test";
 const sql = await readFile(new URL("../supabase.sql", import.meta.url), "utf8");
 const envTs = await readFile(new URL("../lib/env.ts", import.meta.url), "utf8");
 const twilioTs = await readFile(new URL("../lib/twilio.ts", import.meta.url), "utf8");
+const authTs = await readFile(new URL("../lib/auth.ts", import.meta.url), "utf8");
+const leadsPageTsx = await readFile(new URL("../app/leads/page.tsx", import.meta.url), "utf8");
+const opsPageTsx = await readFile(new URL("../app/ops/page.tsx", import.meta.url), "utf8");
 
 test("tenant core tables are present", () => {
   for (const table of [
@@ -17,6 +20,21 @@ test("tenant core tables are present", () => {
   ]) {
     assert.match(sql, new RegExp(`create table if not exists ${table.replace(".", "\\.")}`));
   }
+});
+
+test("account users can bind Supabase Auth users to accounts", () => {
+  assert.match(sql, /alter table public\.account_users add column if not exists user_id uuid/);
+  assert.match(sql, /account_users_user_id_unique_idx/);
+  assert.match(sql, /account_users_email_idx/);
+});
+
+test("human-facing pages require authenticated account context", () => {
+  assert.match(authTs, /export async function requireAccountUser\(\)/);
+  assert.match(authTs, /account_users/);
+  assert.match(leadsPageTsx, /requireAccountUser\(\)/);
+  assert.match(opsPageTsx, /requireAccountUser\(\)/);
+  assert.doesNotMatch(leadsPageTsx, /getDefaultAccountConfig/);
+  assert.doesNotMatch(opsPageTsx, /getDefaultAccountConfig/);
 });
 
 test("business-owned tables carry account_id", () => {

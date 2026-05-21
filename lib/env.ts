@@ -74,24 +74,6 @@ function getAllowUnsignedTwilioWebhooks() {
   return value;
 }
 
-function isVercelProduction() {
-  return process.env.VERCEL === "1" && process.env.VERCEL_ENV === "production";
-}
-
-function getLeadsCookieSecret() {
-  const value = getOptionalEnv("LEADS_COOKIE_SECRET");
-
-  if (value) {
-    return value;
-  }
-
-  if (isVercelProduction()) {
-    throw new Error("Missing required environment variable: LEADS_COOKIE_SECRET");
-  }
-
-  return getRequiredEnv("LEADS_PASSWORD");
-}
-
 export const env = {
   callMode: getCallMode(),
   smsEnabled: getOptionalBooleanEnv("SMS_ENABLED", false),
@@ -113,8 +95,6 @@ export const env = {
     "whisper-1",
   openaiSummaryModel: getOptionalEnv("OPENAI_SUMMARY_MODEL") ?? "gpt-4o-mini",
   defaultAccountSlug: getOptionalEnv("RELAY_DEFAULT_ACCOUNT_SLUG") ?? "relay-nw",
-  leadsPassword: getRequiredEnv("LEADS_PASSWORD"),
-  leadsCookieSecret: getLeadsCookieSecret(),
   appBaseUrl: normalizeBaseUrl(getRequiredEnv("APP_BASE_URL")),
   allowUnsignedTwilioWebhooks: getAllowUnsignedTwilioWebhooks(),
   twilioAccountSid: getRequiredEnv("TWILIO_ACCOUNT_SID"),
@@ -122,5 +102,6 @@ export const env = {
   twilioPhoneNumber: getRequiredEnv("TWILIO_PHONE_NUMBER"),
   ownerPhoneNumber: getRequiredEnv("OWNER_PHONE_NUMBER"),
   supabaseUrl: getOptionalEnv("SUPABASE_URL") ?? getRequiredEnv("NEXT_PUBLIC_SUPABASE_URL"),
+  supabaseAnonKey: getOptionalEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY") ?? "missing-anon-key",
   supabaseServiceRoleKey: getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY"),
 };

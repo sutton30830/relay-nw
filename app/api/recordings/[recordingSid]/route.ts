@@ -1,7 +1,6 @@
-import { cookies } from "next/headers";
 import { env } from "@/lib/env";
-import { isValidLeadsSessionCookie, LEADS_COOKIE_NAME } from "@/lib/leads-auth";
-import { getDefaultAccountConfig, getLeadRecordingForPlayback } from "@/lib/supabase";
+import { requireAccountUserJson } from "@/lib/auth";
+import { getLeadRecordingForPlayback } from "@/lib/supabase";
 
 const PRIVATE_AUDIO_HEADERS = {
   "Cache-Control": "private, no-store, max-age=0",
@@ -13,16 +12,8 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ recordingSid: string }> },
 ) {
-  const cookieStore = await cookies();
-  const leadsCookie = cookieStore.get(LEADS_COOKIE_NAME)?.value;
-  const isAllowed = isValidLeadsSessionCookie(leadsCookie);
-
-  if (!isAllowed) {
-    console.warn("Recording request blocked", {
-      reason: leadsCookie ? "invalid_leads_session" : "missing_leads_session",
-    });
-    return new Response("Unauthorized", { status: 401 });
-  }
+  const auth = await requireAccountUserJson();
+  if (auth.response) return new Response("Unauthorized", { status: 401 });
 
   const { recordingSid } = await params;
 
@@ -30,8 +21,7 @@ export async function GET(
     return new Response("Invalid recording", { status: 400 });
   }
 
-  const account = await getDefaultAccountConfig();
-  const recording = await getLeadRecordingForPlayback(recordingSid, account.accountId);
+  const recording = await getLeadRecordingForPlayback(recordingSid, auth.session.accountId);
   if (!recording) {
     console.warn("Recording request blocked", {
       reason: "recording_not_linked_to_lead",
@@ -46,10 +36,10 @@ export async function GET(
   const recordingUrl =
     recording.recording_url
     ?? `https://api.twilio.com/2010-04-01/Accounts/${env.twilioAccountSid}/Recordings/${recordingSid}.mp3`;
-  const auth = Buffer.from(`${env.twilioAccountSid}:${env.twilioAuthToken}`).toString("base64");
+  const twilioAuth = Buffer.from(`${env.twilioAccountSid}:${env.twilioAuthToken}`).toString("base64");
   const recordingResponse = await fetch(recordingUrl, {
     headers: {
-      Authorization: `Basic ${auth}`,
+      Authorization: `Basic ${twilioAuth}`,
     },
     cache: "no-store",
   });

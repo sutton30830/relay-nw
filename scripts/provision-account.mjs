@@ -89,10 +89,24 @@ const { error: phoneError } = await supabase
 
 if (phoneError) throw phoneError;
 
+const ownerEmail = optionalEnv("OWNER_EMAIL");
+if (ownerEmail) {
+  const { error: userError } = await supabase
+    .from("account_users")
+    .upsert({
+      account_id: accountId,
+      email: ownerEmail.toLowerCase(),
+      role: "owner",
+    }, { onConflict: "account_id,email" });
+
+  if (userError) throw userError;
+}
+
 console.log(JSON.stringify({
   ok: true,
   accountId,
   slug,
   businessName,
   twilioPhoneNumber: normalizePhoneNumber(env("TWILIO_PHONE_NUMBER")),
+  ownerEmail,
 }, null, 2));

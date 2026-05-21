@@ -53,6 +53,7 @@ export type InboundMessage = {
 
 export type ForwardingHealthCheck = {
   id: string;
+  account_id?: string | null;
   phone_number_tested: string;
   status: ForwardingHealthCheckStatus;
   started_at: string;

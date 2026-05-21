@@ -1,15 +1,14 @@
 import { getForwardingHealthSummary } from "@/lib/supabase";
-import { isAuthorizedHealthCheckRequest } from "../_auth";
+import { authorizeHealthCheckRequest } from "../_auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  if (!(await isAuthorizedHealthCheckRequest())) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await authorizeHealthCheckRequest();
+  if (auth.response) return auth.response;
 
   try {
-    const summary = await getForwardingHealthSummary();
+    const summary = await getForwardingHealthSummary(auth.session.accountId);
     return Response.json(summary, {
       headers: {
         "Cache-Control": "no-store",

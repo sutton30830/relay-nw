@@ -12,12 +12,21 @@ BUSINESS_NAME="ABC Plumbing" \
 OWNER_PHONE_NUMBER="+15557654321" \
 TWILIO_PHONE_NUMBER="+15551234567" \
 INTAKE_URL="https://relay-nw.com/intake" \
+OWNER_EMAIL="owner@example.com" \
 CALL_MODE="forwarding" \
 SMS_ENABLED="false" \
 npm run provision:account
 ```
 
-Keep `RELAY_DEFAULT_ACCOUNT_SLUG` pointed at the active pilot account until per-user account selection exists.
+Then create or invite the same owner email in Supabase Auth. The first successful magic-link login binds that Supabase Auth user to the `account_users` row when `user_id` is still empty.
+
+Human access is now resolved from:
+
+```text
+Supabase Auth user -> account_users -> account_id -> account settings and scoped data
+```
+
+`RELAY_DEFAULT_ACCOUNT_SLUG` remains only a fallback for legacy/manual flows. Do not use it as the isolation boundary for customer access.
 
 ## 2. Configure Twilio
 
@@ -41,6 +50,8 @@ Track the customer campaign status in `account_settings.a2p_registration_status`
 - `ALLOW_UNSIGNED_TWILIO_WEBHOOKS=false`.
 - `SMS_ENABLED=false` until A2P is ready or a controlled test is planned.
 - Customer-specific settings live in `account_settings` and `account_phone_numbers`, not only env vars.
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` is set so Supabase Auth magic links work.
+- Each owner email exists in both Supabase Auth and `account_users`.
 - Secrets remain env-only: Supabase service role key, Twilio auth token, OpenAI key, Sentry token, and future email provider keys.
 
 ## 5. Acceptance Test
@@ -56,4 +67,5 @@ Before charging the pilot:
 - inbound reply appears in the lead inbox
 - SMS status callback updates lead/message state
 - recent webhook events show account, CallSid/MessageSid, and sanitized payload metadata
+- owner can sign in at `/login` and can only see their account's `/leads`, `/ops`, recordings, health-check, and SMS-test routes
 - Sentry captures a forced server-side test error

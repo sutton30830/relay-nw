@@ -4,31 +4,29 @@ import {
   getForwardingHealthSummary,
   getLatestForwardingHealthCheck,
 } from "@/lib/supabase";
-import { env } from "@/lib/env";
 import { FORWARDING_HEALTH_CHECK_COOLDOWN_MS, forwardingHealthRetryAt } from "@/lib/forwarding-health";
 import { phoneLast4 } from "@/lib/twilio";
-import { isAuthorizedHealthCheckRequest } from "../_auth";
+import { authorizeHealthCheckRequest } from "../_auth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST() {
-  if (!(await isAuthorizedHealthCheckRequest())) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await authorizeHealthCheckRequest();
+  if (auth.response) return auth.response;
 
-  if (env.callMode !== "forwarding") {
+  if (auth.session.account.callMode !== "forwarding") {
     return Response.json({ error: "Forwarding health checks only run when CALL_MODE is forwarding." }, { status: 409 });
   }
 
   try {
-    await expirePendingForwardingHealthChecks();
+    await expirePendingForwardingHealthChecks(auth.session.accountId);
 
-    const latest = await getLatestForwardingHealthCheck();
+    const latest = await getLatestForwardingHealthCheck(auth.session.accountId);
     const canRunAt = forwardingHealthRetryAt(latest);
 
     if (canRunAt) {
       console.info("health_check_rate_limited", {
-        phoneLast4: phoneLast4(env.ownerPhoneNumber),
+        phoneLast4: phoneLast4(auth.session.account.ownerPhoneNumber),
         canRunAt,
       });
 
@@ -42,7 +40,10 @@ export async function POST() {
       );
     }
 
-    const healthCheck = await createPendingForwardingHealthCheck(env.ownerPhoneNumber);
+    const healthCheck = await createPendingForwardingHealthCheck(
+      auth.session.account.ownerPhoneNumber,
+      auth.session.accountId,
+    );
 
     if (!healthCheck) {
       return Response.json(
@@ -53,11 +54,11 @@ export async function POST() {
 
     console.info("health_check_started", {
       healthCheckId: healthCheck.id,
-      phoneLast4: phoneLast4(env.ownerPhoneNumber),
+      phoneLast4: phoneLast4(auth.session.account.ownerPhoneNumber),
       mode: "manual_listening_window",
     });
 
-    const summary = await getForwardingHealthSummary();
+    const summary = await getForwardingHealthSummary(auth.session.accountId);
     return Response.json(
       { ...summary, healthCheckId: healthCheck.id },
       { headers: { "Cache-Control": "no-store" } },

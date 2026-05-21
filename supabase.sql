@@ -55,11 +55,20 @@ alter table public.account_phone_numbers enable row level security;
 create table if not exists public.account_users (
   id uuid primary key default gen_random_uuid(),
   account_id uuid not null references public.accounts(id) on delete cascade,
+  user_id uuid,
   email text,
   role text not null default 'owner' check (role in ('owner', 'admin', 'viewer')),
   created_at timestamptz not null default now(),
   unique (account_id, email)
 );
+
+alter table public.account_users add column if not exists user_id uuid;
+create unique index if not exists account_users_user_id_unique_idx
+  on public.account_users (user_id)
+  where user_id is not null;
+create index if not exists account_users_email_idx
+  on public.account_users (lower(email))
+  where email is not null;
 
 alter table public.account_users enable row level security;
 

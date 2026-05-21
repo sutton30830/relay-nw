@@ -1,8 +1,6 @@
-import { cookies } from "next/headers";
-import { isValidLeadsSessionCookie, LEADS_COOKIE_NAME } from "@/lib/leads-auth";
+import { requireAccountUserJson } from "@/lib/auth";
 import {
   deleteLead,
-  getDefaultAccountConfig,
   type LeadStatus,
   type ReplyPriorityOverride,
   updateLead,
@@ -36,11 +34,6 @@ type LeadUpdate = {
   voicemailSummary?: string | null;
   deletedAt?: string | null;
 };
-
-async function isAuthorized() {
-  const cookieStore = await cookies();
-  return isValidLeadsSessionCookie(cookieStore.get(LEADS_COOKIE_NAME)?.value);
-}
 
 async function readPatchBody(request: Request): Promise<LeadPatchBody | null> {
   try {
@@ -145,9 +138,8 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!(await isAuthorized())) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAccountUserJson();
+  if (auth.response) return auth.response;
 
   const { id } = await params;
   const body = await readPatchBody(request);
@@ -158,8 +150,7 @@ export async function PATCH(
   }
 
   try {
-    const account = await getDefaultAccountConfig();
-    await updateLead({ accountId: account.accountId, id, ...update });
+    await updateLead({ accountId: auth.session.accountId, id, ...update });
   } catch (error) {
     console.error("Failed to update lead", { leadId: id, error });
     return Response.json({ error: "Unable to update lead" }, { status: 500 });
@@ -172,15 +163,13 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!(await isAuthorized())) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAccountUserJson();
+  if (auth.response) return auth.response;
 
   const { id } = await params;
 
   try {
-    const account = await getDefaultAccountConfig();
-    await deleteLead(id, account.accountId);
+    await deleteLead(id, auth.session.accountId);
   } catch (error) {
     console.error("Failed to delete lead", { leadId: id, error });
     return Response.json({ error: "Unable to delete lead" }, { status: 500 });

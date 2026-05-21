@@ -1,7 +1,6 @@
-import { cookies } from "next/headers";
 import Link from "next/link";
-import { getDefaultAccountConfig, getRecentWebhookEventsForAccount } from "@/lib/supabase";
-import { isValidLeadsSessionCookie, LEADS_COOKIE_NAME } from "@/lib/leads-auth";
+import { requireAccountUser } from "@/lib/auth";
+import { getRecentWebhookEventsForAccount } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
@@ -26,25 +25,9 @@ export default async function OpsPage({
 }: {
   searchParams: Promise<{ q?: string }>;
 }) {
-  const cookieStore = await cookies();
-  const isAllowed = isValidLeadsSessionCookie(cookieStore.get(LEADS_COOKIE_NAME)?.value);
-
-  if (!isAllowed) {
-    return (
-      <main className="gate-view">
-        <section className="gate-card">
-          <p className="t-eyebrow">Relay NW · Protected</p>
-          <h1 className="t-display gate-title">Ops debug</h1>
-          <p className="gate-sub">Open the lead inbox first, then return to ops.</p>
-          <Link className="btn btn-primary" href="/leads">Open leads</Link>
-        </section>
-      </main>
-    );
-  }
-
-  const account = await getDefaultAccountConfig();
+  const { account, accountId } = await requireAccountUser();
   const { q = "" } = await searchParams;
-  const events = (await getRecentWebhookEventsForAccount(account.accountId, 50))
+  const events = (await getRecentWebhookEventsForAccount(accountId, 50))
     .filter((event) => eventMatchesQuery(event, q));
 
   return (

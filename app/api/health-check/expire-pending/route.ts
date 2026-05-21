@@ -1,13 +1,12 @@
 import { expirePendingForwardingHealthChecks } from "@/lib/supabase";
-import { isAuthorizedHealthCheckRequest } from "../_auth";
+import { authorizeHealthCheckRequest } from "../_auth";
 
 export async function POST() {
-  if (!(await isAuthorizedHealthCheckRequest())) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await authorizeHealthCheckRequest();
+  if (auth.response) return auth.response;
 
   try {
-    const expired = await expirePendingForwardingHealthChecks();
+    const expired = await expirePendingForwardingHealthChecks(auth.session.accountId);
     return Response.json({ ok: true, expired });
   } catch (error) {
     console.error("Failed to expire forwarding health checks", { error });

@@ -110,7 +110,7 @@ async function getPrimaryAccountPhoneNumber(accountId: string) {
   return data?.phone_number ?? env.twilioPhoneNumber;
 }
 
-async function getAccountConfigByAccountId(accountId: string | null | undefined) {
+export async function getAccountConfigByAccountId(accountId: string | null | undefined) {
   if (!accountId || isPlaceholderSupabaseConfig()) {
     return null;
   }

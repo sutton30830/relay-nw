@@ -77,7 +77,7 @@ async function handleForwardingHealthCheck(input: {
   correlationId: string;
   requestSummary: ReturnType<typeof summarizeTwilioRequest>;
 }) {
-  const healthCheck = await findPendingForwardingHealthCheck();
+  const healthCheck = await findPendingForwardingHealthCheck(input.account.accountId);
 
   if (!healthCheck) {
     return null;

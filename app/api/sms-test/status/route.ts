@@ -1,12 +1,11 @@
 import { twilioClient } from "@/lib/twilio";
-import { isAuthorizedSmsTestRequest } from "../_auth";
+import { authorizeSmsTestRequest } from "../_auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  if (!(await isAuthorizedSmsTestRequest())) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await authorizeSmsTestRequest();
+  if (auth.response) return auth.response;
 
   const url = new URL(request.url);
   const messageSid = url.searchParams.get("messageSid")?.trim();

@@ -14,7 +14,7 @@ import type {
 } from "./types";
 
 const HEALTH_CHECK_SELECT =
-  "id, phone_number_tested, status, started_at, completed_at, outbound_twilio_call_sid, inbound_twilio_call_sid, failure_reason, raw_event_summary, created_at, updated_at";
+  "id, account_id, phone_number_tested, status, started_at, completed_at, outbound_twilio_call_sid, inbound_twilio_call_sid, failure_reason, raw_event_summary, created_at, updated_at";
 
 function nowIso() {
   return new Date().toISOString();
@@ -54,13 +54,13 @@ function healthSummary(latest: ForwardingHealthCheck | null, lastPassedAt: strin
   };
 }
 
-export async function expirePendingForwardingHealthChecks() {
+export async function expirePendingForwardingHealthChecks(accountId?: string | null) {
   if (isPlaceholderSupabaseConfig()) {
     return 0;
   }
 
   const cutoff = new Date(Date.now() - FORWARDING_HEALTH_CHECK_WINDOW_MS).toISOString();
-  const { data, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from("forwarding_health_checks")
     .update({
       status: "timeout" satisfies ForwardingHealthCheckStatus,
@@ -69,8 +69,13 @@ export async function expirePendingForwardingHealthChecks() {
       updated_at: nowIso(),
     })
     .eq("status", "pending")
-    .lt("started_at", cutoff)
-    .select("id");
+    .lt("started_at", cutoff);
+
+  if (accountId) {
+    query = query.eq("account_id", accountId);
+  }
+
+  const { data, error } = await query.select("id");
 
   if (isMissingHealthCheckTableError(error)) {
     logMissingHealthCheckTable("expire_pending");
@@ -89,19 +94,24 @@ export async function expirePendingForwardingHealthChecks() {
   return data?.length ?? 0;
 }
 
-export async function getForwardingHealthSummary() {
+export async function getForwardingHealthSummary(accountId?: string | null) {
   if (isPlaceholderSupabaseConfig()) {
     return emptySummary();
   }
 
-  await expirePendingForwardingHealthChecks();
+  await expirePendingForwardingHealthChecks(accountId);
 
-  const { data: latest, error: latestError } = await supabaseAdmin
+  let latestQuery = supabaseAdmin
     .from("forwarding_health_checks")
     .select(HEALTH_CHECK_SELECT)
     .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+
+  if (accountId) {
+    latestQuery = latestQuery.eq("account_id", accountId);
+  }
+
+  const { data: latest, error: latestError } = await latestQuery.maybeSingle();
 
   if (isMissingHealthCheckTableError(latestError)) {
     logMissingHealthCheckTable("summary_latest");
@@ -110,13 +120,18 @@ export async function getForwardingHealthSummary() {
 
   throwIfSupabaseError(latestError);
 
-  const { data: lastPassed, error: lastPassedError } = await supabaseAdmin
+  let lastPassedQuery = supabaseAdmin
     .from("forwarding_health_checks")
     .select("completed_at")
     .eq("status", "passed")
     .order("completed_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+
+  if (accountId) {
+    lastPassedQuery = lastPassedQuery.eq("account_id", accountId);
+  }
+
+  const { data: lastPassed, error: lastPassedError } = await lastPassedQuery.maybeSingle();
 
   if (isMissingHealthCheckTableError(lastPassedError)) {
     logMissingHealthCheckTable("summary_last_passed");
@@ -128,17 +143,22 @@ export async function getForwardingHealthSummary() {
   return healthSummary((latest ?? null) as ForwardingHealthCheck | null, lastPassed?.completed_at ?? null);
 }
 
-export async function getLatestForwardingHealthCheck() {
+export async function getLatestForwardingHealthCheck(accountId?: string | null) {
   if (isPlaceholderSupabaseConfig()) {
     return null;
   }
 
-  const { data, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from("forwarding_health_checks")
     .select(HEALTH_CHECK_SELECT)
     .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+
+  if (accountId) {
+    query = query.eq("account_id", accountId);
+  }
+
+  const { data, error } = await query.maybeSingle();
 
   if (isMissingHealthCheckTableError(error)) {
     logMissingHealthCheckTable("latest");
@@ -150,8 +170,8 @@ export async function getLatestForwardingHealthCheck() {
   return (data ?? null) as ForwardingHealthCheck | null;
 }
 
-export async function createPendingForwardingHealthCheck(phoneNumberTested: string) {
-  if (shouldSkipDatabaseWrite("forwarding health check insert", { phoneNumberTested })) {
+export async function createPendingForwardingHealthCheck(phoneNumberTested: string, accountId?: string | null) {
+  if (shouldSkipDatabaseWrite("forwarding health check insert", { phoneNumberTested, accountId })) {
     return null;
   }
 
@@ -159,6 +179,7 @@ export async function createPendingForwardingHealthCheck(phoneNumberTested: stri
   const { data, error } = await supabaseAdmin
     .from("forwarding_health_checks")
     .insert({
+      account_id: accountId ?? null,
       phone_number_tested: phoneNumberTested,
       status: "pending" satisfies ForwardingHealthCheckStatus,
       started_at: timestamp,
@@ -214,20 +235,25 @@ export async function markForwardingHealthCheckFailed(
   console.info("health_check_failed", { healthCheckId: id, failureReason });
 }
 
-export async function findPendingForwardingHealthCheck() {
+export async function findPendingForwardingHealthCheck(accountId?: string | null) {
   if (isPlaceholderSupabaseConfig()) {
     return null;
   }
 
   const cutoff = new Date(Date.now() - FORWARDING_HEALTH_CHECK_WINDOW_MS).toISOString();
-  const { data, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from("forwarding_health_checks")
     .select(HEALTH_CHECK_SELECT)
     .eq("status", "pending")
     .gte("started_at", cutoff)
     .order("started_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+
+  if (accountId) {
+    query = query.eq("account_id", accountId);
+  }
+
+  const { data, error } = await query.maybeSingle();
 
   if (isMissingHealthCheckTableError(error)) {
     logMissingHealthCheckTable("find_pending");
