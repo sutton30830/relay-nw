@@ -11,6 +11,7 @@ import {
 } from "@/lib/supabase";
 import { envAccountConfig } from "@/lib/supabase/accounts";
 import { missedCallSmsBodyForAccount, phoneLast4, twilioClient } from "@/lib/twilio";
+import { notifyAdminOperationalIssue, notifyOwnerNewMissedCallLead } from "@/lib/email";
 
 export async function handleMissedCall(input: {
   account?: AccountRuntimeConfig;
@@ -70,6 +71,13 @@ export async function handleMissedCall(input: {
       leadId: leadResult.leadId,
     });
 
+    await notifyOwnerNewMissedCallLead({
+      account,
+      leadId: leadResult.leadId,
+      callerPhone,
+      smsStatus: "skipped_disabled",
+    });
+
     return { inserted: true, smsStatus: "skipped_disabled" as const };
   }
 
@@ -96,6 +104,12 @@ export async function handleMissedCall(input: {
     await updateLeadSmsStatus({
       accountId: account.accountId,
       id: leadResult.leadId,
+      smsStatus: "skipped_opt_out",
+    });
+    await notifyOwnerNewMissedCallLead({
+      account,
+      leadId: leadResult.leadId,
+      callerPhone,
       smsStatus: "skipped_opt_out",
     });
     return { inserted: true, smsStatus: "skipped_opt_out" as const };
@@ -137,12 +151,26 @@ export async function handleMissedCall(input: {
         error: updateErrorMessage,
       });
 
+      await notifyAdminOperationalIssue({
+        account,
+        issue: "Twilio accepted SMS but lead update failed",
+        detail: updateErrorMessage,
+        correlationId,
+      });
+
       return {
         inserted: true,
         smsStatus: "sent_update_failed" as const,
         twilioMessageSid: message.sid,
       };
     }
+
+    await notifyOwnerNewMissedCallLead({
+      account,
+      leadId: leadResult.leadId,
+      callerPhone,
+      smsStatus: "sent",
+    });
 
     return { inserted: true, smsStatus: "sent" as const, twilioMessageSid: message.sid };
   } catch (error) {
@@ -161,6 +189,18 @@ export async function handleMissedCall(input: {
       callerLast4: phoneLast4(callerPhone),
       leadId: leadResult.leadId,
       error: message,
+    });
+    await notifyAdminOperationalIssue({
+      account,
+      issue: "Missed-call SMS send failed",
+      detail: message,
+      correlationId,
+    });
+    await notifyOwnerNewMissedCallLead({
+      account,
+      leadId: leadResult.leadId,
+      callerPhone,
+      smsStatus: "failed",
     });
     return { inserted: true, smsStatus: "failed" as const, smsError: message };
   }

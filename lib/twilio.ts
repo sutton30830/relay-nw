@@ -1,5 +1,6 @@
 import twilio from "twilio";
 import { env } from "@/lib/env";
+import { notifyAdminOperationalIssue } from "@/lib/email";
 import { logWebhookEvent, type WebhookEventSource } from "@/lib/supabase";
 import type { AccountRuntimeConfig } from "@/lib/supabase/accounts";
 
@@ -126,6 +127,15 @@ export async function rejectInvalidTwilioSignature(input: {
     error: `Invalid Twilio signature. Candidate URLs: ${input.candidateUrls.join(" | ")}`,
   });
 
+  if (process.env.NODE_ENV === "production") {
+    await notifyAdminOperationalIssue({
+      account: null,
+      issue: `Invalid Twilio ${input.label} webhook rejected`,
+      detail: `Candidate URLs: ${input.candidateUrls.join(" | ")}`,
+      correlationId: input.correlationId,
+    });
+  }
+
   return new Response("Forbidden", { status: 403 });
 }
 
@@ -157,6 +167,15 @@ export async function logUnsignedTwilioWebhook(input: {
       input.responseBody ?? `Allowed unsigned Twilio ${input.label} webhook by env override.`,
     error: `Unsigned/invalid Twilio signature. Candidate URLs: ${input.candidateUrls.join(" | ")}`,
   });
+
+  if (process.env.NODE_ENV === "production") {
+    await notifyAdminOperationalIssue({
+      account: null,
+      issue: `Unsigned Twilio ${input.label} webhook allowed`,
+      detail: `Candidate URLs: ${input.candidateUrls.join(" | ")}`,
+      correlationId: input.correlationId,
+    });
+  }
 }
 
 function requestPathAndSearch(requestUrl: string) {

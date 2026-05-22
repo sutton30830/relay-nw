@@ -14,6 +14,7 @@ alter table public.accounts enable row level security;
 create table if not exists public.account_settings (
   account_id uuid primary key references public.accounts(id) on delete cascade,
   business_name text not null,
+  owner_email text,
   owner_phone_number text not null,
   intake_url text not null,
   scheduling_url text,
@@ -33,6 +34,8 @@ create table if not exists public.account_settings (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.account_settings add column if not exists owner_email text;
 
 alter table public.account_settings enable row level security;
 

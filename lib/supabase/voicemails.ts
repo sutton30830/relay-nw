@@ -44,7 +44,7 @@ export async function getLeadForVoicemailTranscription(id: string, accountId?: s
 
   const { data, error } = await supabaseAdmin
     .from("leads")
-    .select("id, recording_sid, voicemail_transcript, voicemail_summary, voicemail_transcription_status")
+    .select("id, phone, recording_sid, voicemail_transcript, voicemail_summary, voicemail_transcription_status")
     .eq("id", id)
     .match(accountId ? { account_id: accountId } : {})
     .maybeSingle();
@@ -53,6 +53,7 @@ export async function getLeadForVoicemailTranscription(id: string, accountId?: s
 
   return data as {
     id: string;
+    phone: string | null;
     recording_sid: string | null;
     voicemail_transcript: string | null;
     voicemail_summary: string | null;

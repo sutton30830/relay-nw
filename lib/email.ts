@@ -1,0 +1,236 @@
+import { Resend } from "resend";
+import { env } from "@/lib/env";
+import { getOwnerNotificationEmail, type AccountRuntimeConfig } from "@/lib/supabase";
+
+let resendClient: Resend | null = null;
+
+function getResendClient() {
+  if (!env.resendApiKey) {
+    return null;
+  }
+
+  if (!resendClient) {
+    resendClient = new Resend(env.resendApiKey);
+  }
+
+  return resendClient;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function paragraph(value: string) {
+  return `<p style="margin:0 0 12px;color:#263532;line-height:1.5">${escapeHtml(value)}</p>`;
+}
+
+function phoneLast4(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const digits = value.replace(/\D/g, "");
+  return digits.length >= 4 ? digits.slice(-4) : null;
+}
+
+function emailHtml(input: {
+  title: string;
+  preview: string;
+  lines: string[];
+  actionLabel?: string;
+  actionUrl?: string;
+}) {
+  const action = input.actionLabel && input.actionUrl
+    ? `<p style="margin:20px 0"><a href="${escapeHtml(input.actionUrl)}" style="background:#0f4b44;color:#fff;text-decoration:none;padding:10px 14px;border-radius:6px;display:inline-block">${escapeHtml(input.actionLabel)}</a></p>`
+    : "";
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="x-apple-disable-message-reformatting" />
+    <title>${escapeHtml(input.title)}</title>
+  </head>
+  <body style="margin:0;background:#f5f3ee;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+    <span style="display:none;max-height:0;overflow:hidden">${escapeHtml(input.preview)}</span>
+    <main style="max-width:560px;margin:0 auto;padding:28px 18px">
+      <section style="background:#fffcf6;border:1px solid #ddd5c7;border-radius:8px;padding:22px">
+        <p style="margin:0 0 8px;color:#5f6b67;font-size:12px;letter-spacing:.08em;text-transform:uppercase">Relay NW</p>
+        <h1 style="margin:0 0 16px;color:#14211f;font-size:24px;line-height:1.2">${escapeHtml(input.title)}</h1>
+        ${input.lines.map(paragraph).join("")}
+        ${action}
+      </section>
+    </main>
+  </body>
+</html>`;
+}
+
+async function sendEmail(input: {
+  to: string | null | undefined;
+  subject: string;
+  html: string;
+  text: string;
+  tag: string;
+}) {
+  const client = getResendClient();
+
+  if (!client || !input.to) {
+    console.info("Email notification skipped", {
+      tag: input.tag,
+      hasResendApiKey: Boolean(env.resendApiKey),
+      hasRecipient: Boolean(input.to),
+    });
+    return { sent: false, skipped: true };
+  }
+
+  try {
+    const { data, error } = await client.emails.send({
+      from: env.alertFromEmail,
+      to: input.to,
+      subject: input.subject,
+      html: input.html,
+      text: input.text,
+    });
+
+    if (error) {
+      console.error("Email notification failed", { tag: input.tag, error });
+      return { sent: false, skipped: false, error };
+    }
+
+    console.info("Email notification sent", { tag: input.tag, id: data?.id });
+    return { sent: true, skipped: false, id: data?.id };
+  } catch (error) {
+    console.error("Email notification threw", {
+      tag: input.tag,
+      error: error instanceof Error ? error.message : "Unknown email error",
+    });
+    return { sent: false, skipped: false, error };
+  }
+}
+
+async function ownerEmail(account: AccountRuntimeConfig) {
+  return account.ownerEmail ?? await getOwnerNotificationEmail(account.accountId);
+}
+
+export async function notifyOwnerNewMissedCallLead(input: {
+  account: AccountRuntimeConfig;
+  leadId: string;
+  callerPhone: string;
+  smsStatus: string;
+}) {
+  const recipient = await ownerEmail(input.account);
+  const last4 = phoneLast4(input.callerPhone) ?? "unknown";
+  const smsLine = input.account.smsEnabled
+    ? `SMS status: ${input.smsStatus}.`
+    : "SMS is disabled until A2P/10DLC is approved.";
+  const lines = [
+    `New missed-call lead for ${input.account.businessName}.`,
+    `Caller ending in ${last4}.`,
+    smsLine,
+  ];
+
+  return sendEmail({
+    to: recipient,
+    subject: `New missed call for ${input.account.businessName}`,
+    html: emailHtml({
+      title: "New missed call",
+      preview: `Caller ending in ${last4}`,
+      lines,
+      actionLabel: "Open leads",
+      actionUrl: `${env.appBaseUrl}/leads`,
+    }),
+    text: `${lines.join("\n")}\n\nOpen leads: ${env.appBaseUrl}/leads`,
+    tag: "owner_new_missed_call",
+  });
+}
+
+export async function notifyOwnerVoicemailReady(input: {
+  account: AccountRuntimeConfig;
+  leadId: string;
+  callerPhone?: string | null;
+  summary: string;
+}) {
+  const recipient = await ownerEmail(input.account);
+  const last4 = phoneLast4(input.callerPhone) ?? "unknown";
+  const lines = [
+    `Voicemail summary for ${input.account.businessName}.`,
+    `Caller ending in ${last4}.`,
+    input.summary,
+  ];
+
+  return sendEmail({
+    to: recipient,
+    subject: `Voicemail ready for ${input.account.businessName}`,
+    html: emailHtml({
+      title: "Voicemail ready",
+      preview: input.summary,
+      lines,
+      actionLabel: "Open lead inbox",
+      actionUrl: `${env.appBaseUrl}/leads`,
+    }),
+    text: `${lines.join("\n")}\n\nOpen leads: ${env.appBaseUrl}/leads`,
+    tag: "owner_voicemail_ready",
+  });
+}
+
+export async function notifyOwnerInboundReply(input: {
+  account: AccountRuntimeConfig;
+  callerPhone: string;
+  body: string;
+}) {
+  const recipient = await ownerEmail(input.account);
+  const last4 = phoneLast4(input.callerPhone) ?? "unknown";
+  const preview = input.body.slice(0, 220);
+  const lines = [
+    `New reply for ${input.account.businessName}.`,
+    `Caller ending in ${last4}.`,
+    preview,
+  ];
+
+  return sendEmail({
+    to: recipient,
+    subject: `Reply from missed-call lead for ${input.account.businessName}`,
+    html: emailHtml({
+      title: "New caller reply",
+      preview,
+      lines,
+      actionLabel: "Open leads",
+      actionUrl: `${env.appBaseUrl}/leads`,
+    }),
+    text: `${lines.join("\n")}\n\nOpen leads: ${env.appBaseUrl}/leads`,
+    tag: "owner_inbound_reply",
+  });
+}
+
+export async function notifyAdminOperationalIssue(input: {
+  account?: AccountRuntimeConfig | null;
+  issue: string;
+  detail?: string | null;
+  correlationId?: string | null;
+}) {
+  const lines = [
+    `Issue: ${input.issue}`,
+    input.account ? `Account: ${input.account.accountSlug} (${input.account.businessName})` : "Account: unknown",
+    input.correlationId ? `Correlation: ${input.correlationId}` : null,
+    input.detail ? `Detail: ${input.detail.slice(0, 1000)}` : null,
+  ].filter((line): line is string => Boolean(line));
+
+  return sendEmail({
+    to: env.adminAlertEmail,
+    subject: `Relay NW alert: ${input.issue}`,
+    html: emailHtml({
+      title: "Operational alert",
+      preview: input.issue,
+      lines,
+      actionLabel: "Open ops",
+      actionUrl: `${env.appBaseUrl}/ops`,
+    }),
+    text: `${lines.join("\n")}\n\nOpen ops: ${env.appBaseUrl}/ops`,
+    tag: "admin_operational_issue",
+  });
+}

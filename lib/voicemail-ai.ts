@@ -1,8 +1,10 @@
 import { env } from "@/lib/env";
 import {
+  getAccountConfigByAccountId,
   getLeadForVoicemailTranscription,
   updateLeadVoicemailTranscription,
 } from "@/lib/supabase";
+import { notifyAdminOperationalIssue, notifyOwnerVoicemailReady } from "@/lib/email";
 
 type OpenAITranscriptionResponse = {
   text?: string;
@@ -230,6 +232,16 @@ export async function transcribeLeadVoicemail(leadId: string, accountId?: string
       error: null,
     });
 
+    const account = await getAccountConfigByAccountId(accountId);
+    if (account) {
+      await notifyOwnerVoicemailReady({
+        account,
+        leadId,
+        callerPhone: lead.phone,
+        summary,
+      });
+    }
+
     return {
       transcript,
       summary,
@@ -243,6 +255,13 @@ export async function transcribeLeadVoicemail(leadId: string, accountId?: string
       id: leadId,
       status: "failed",
       error: message,
+    });
+
+    const account = await getAccountConfigByAccountId(accountId);
+    await notifyAdminOperationalIssue({
+      account,
+      issue: "Voicemail transcription failed",
+      detail: message,
     });
 
     throw error;

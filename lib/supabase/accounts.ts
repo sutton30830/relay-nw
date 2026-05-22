@@ -6,6 +6,7 @@ export type AccountRuntimeConfig = {
   accountId: string | null;
   accountSlug: string;
   businessName: string;
+  ownerEmail: string | null;
   callMode: "direct" | "forwarding";
   smsEnabled: boolean;
   intakeUrl: string;
@@ -25,6 +26,7 @@ export type AccountRuntimeConfig = {
 type AccountSettingsRow = {
   account_id: string;
   business_name: string;
+  owner_email: string | null;
   owner_phone_number: string;
   intake_url: string;
   scheduling_url: string | null;
@@ -42,13 +44,14 @@ type AccountSettingsRow = {
 };
 
 const ACCOUNT_SETTINGS_SELECT =
-  "account_id, business_name, owner_phone_number, intake_url, scheduling_url, call_mode, sms_enabled, sms_template, missed_call_voice_message, missed_call_voice_name, missed_call_greeting_audio_url, voicemail_max_seconds, dial_timeout_seconds, missed_call_sms_cooldown_hours, voicemail_transcription_enabled, accounts(slug)";
+  "account_id, business_name, owner_email, owner_phone_number, intake_url, scheduling_url, call_mode, sms_enabled, sms_template, missed_call_voice_message, missed_call_voice_name, missed_call_greeting_audio_url, voicemail_max_seconds, dial_timeout_seconds, missed_call_sms_cooldown_hours, voicemail_transcription_enabled, accounts(slug)";
 
 export function envAccountConfig(): AccountRuntimeConfig {
   return {
     accountId: null,
     accountSlug: env.defaultAccountSlug,
     businessName: env.businessName,
+    ownerEmail: null,
     callMode: env.callMode as "direct" | "forwarding",
     smsEnabled: env.smsEnabled,
     intakeUrl: env.intakeUrl,
@@ -73,6 +76,7 @@ function configFromSettings(row: AccountSettingsRow, primaryNumber: string): Acc
     accountId: row.account_id,
     accountSlug: account?.slug ?? env.defaultAccountSlug,
     businessName: row.business_name,
+    ownerEmail: row.owner_email,
     callMode: row.call_mode,
     smsEnabled: row.sms_enabled,
     intakeUrl: row.intake_url,
@@ -243,6 +247,7 @@ export async function provisionAccount(input: {
   schedulingUrl?: string | null;
   callMode?: "direct" | "forwarding";
   smsEnabled?: boolean;
+  ownerEmail?: string | null;
 }) {
   if (shouldSkipDatabaseWrite("account provisioning", input)) {
     return null;
@@ -268,6 +273,7 @@ export async function provisionAccount(input: {
     .upsert({
       account_id: accountId,
       business_name: input.businessName,
+      owner_email: input.ownerEmail?.toLowerCase() ?? null,
       owner_phone_number: normalizePhoneNumber(input.ownerPhoneNumber),
       intake_url: input.intakeUrl,
       scheduling_url: input.schedulingUrl ?? input.intakeUrl,
@@ -291,4 +297,46 @@ export async function provisionAccount(input: {
   throwIfSupabaseError(phoneError);
 
   return accountId;
+}
+
+export async function getOwnerNotificationEmail(accountId: string | null | undefined) {
+  if (!accountId || isPlaceholderSupabaseConfig()) {
+    return null;
+  }
+
+  const { data: settings, error: settingsError } = await supabaseAdmin
+    .from("account_settings")
+    .select("owner_email")
+    .eq("account_id", accountId)
+    .maybeSingle();
+
+  if (settingsError && !settingsError.message.includes("owner_email")) {
+    throw settingsError;
+  }
+
+  const ownerEmail = typeof settings?.owner_email === "string"
+    ? settings.owner_email.trim().toLowerCase()
+    : null;
+
+  if (ownerEmail) {
+    return ownerEmail;
+  }
+
+  const { data: accountUser, error: userError } = await supabaseAdmin
+    .from("account_users")
+    .select("email")
+    .eq("account_id", accountId)
+    .in("role", ["owner", "admin"])
+    .not("email", "is", null)
+    .order("role", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (userError) {
+    throw userError;
+  }
+
+  return typeof accountUser?.email === "string"
+    ? accountUser.email.trim().toLowerCase()
+    : null;
 }

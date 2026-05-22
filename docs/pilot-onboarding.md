@@ -51,6 +51,7 @@ Track the customer campaign status in `account_settings.a2p_registration_status`
 - `SMS_ENABLED=false` until A2P is ready or a controlled test is planned.
 - Customer-specific settings live in `account_settings` and `account_phone_numbers`, not only env vars.
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` is set so Supabase Auth magic links work.
+- `RESEND_API_KEY`, `ALERT_FROM_EMAIL`, and `ADMIN_ALERT_EMAIL` are set before enabling owner/admin email alerts.
 - Each owner email exists in both Supabase Auth and `account_users`.
 - Secrets remain env-only: Supabase service role key, Twilio auth token, OpenAI key, Sentry token, and future email provider keys.
 
@@ -68,4 +69,7 @@ Before charging the pilot:
 - SMS status callback updates lead/message state
 - recent webhook events show account, CallSid/MessageSid, and sanitized payload metadata
 - owner can sign in at `/login` and can only see their account's `/leads`, `/ops`, recordings, health-check, and SMS-test routes
+- owner receives a new missed-call email alert
+- owner receives a voicemail-ready email when transcription completes
+- admin receives operational alerts for SMS, recording, transcription, or webhook failures
 - Sentry captures a forced server-side test error

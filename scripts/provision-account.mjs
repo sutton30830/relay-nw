@@ -59,21 +59,31 @@ const { data: account, error: accountError } = await supabase
 if (accountError) throw accountError;
 
 const accountId = account.id;
+const settingsPayload = {
+  account_id: accountId,
+  business_name: businessName,
+  owner_email: optionalEnv("OWNER_EMAIL")?.toLowerCase() ?? null,
+  owner_phone_number: normalizePhoneNumber(env("OWNER_PHONE_NUMBER")),
+  intake_url: env("INTAKE_URL"),
+  scheduling_url: optionalEnv("SCHEDULING_URL", env("INTAKE_URL")),
+  call_mode: optionalEnv("CALL_MODE", "forwarding"),
+  sms_enabled: optionalEnv("SMS_ENABLED", "false") === "true",
+  updated_at: now,
+};
+
+const missedCallVoiceMessage = optionalEnv("MISSED_CALL_VOICE_MESSAGE");
+if (missedCallVoiceMessage) {
+  settingsPayload.missed_call_voice_message = missedCallVoiceMessage;
+}
+
+const missedCallGreetingAudioUrl = optionalEnv("MISSED_CALL_GREETING_AUDIO_URL");
+if (missedCallGreetingAudioUrl) {
+  settingsPayload.missed_call_greeting_audio_url = missedCallGreetingAudioUrl;
+}
 
 const { error: settingsError } = await supabase
   .from("account_settings")
-  .upsert({
-    account_id: accountId,
-    business_name: businessName,
-    owner_phone_number: normalizePhoneNumber(env("OWNER_PHONE_NUMBER")),
-    intake_url: env("INTAKE_URL"),
-    scheduling_url: optionalEnv("SCHEDULING_URL", env("INTAKE_URL")),
-    call_mode: optionalEnv("CALL_MODE", "forwarding"),
-    sms_enabled: optionalEnv("SMS_ENABLED", "false") === "true",
-    missed_call_voice_message: optionalEnv("MISSED_CALL_VOICE_MESSAGE"),
-    missed_call_greeting_audio_url: optionalEnv("MISSED_CALL_GREETING_AUDIO_URL"),
-    updated_at: now,
-  }, { onConflict: "account_id" });
+  .upsert(settingsPayload, { onConflict: "account_id" });
 
 if (settingsError) throw settingsError;
 

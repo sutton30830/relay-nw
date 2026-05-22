@@ -1,5 +1,6 @@
 import { after } from "next/server";
 import { env } from "@/lib/env";
+import { notifyAdminOperationalIssue } from "@/lib/email";
 import {
   logWebhookEvent,
   resolveAccountByCallSid,
@@ -173,7 +174,7 @@ export async function POST(request: Request) {
     if (account.voicemailTranscriptionEnabled && result.leadId && shouldAutoTranscribeRecording(recording)) {
       after(async () => {
         try {
-          await transcribeLeadVoicemail(result.leadId!);
+          await transcribeLeadVoicemail(result.leadId!, account.accountId);
         } catch (error) {
           const message = error instanceof Error ? error.message : "Unknown voicemail transcription error";
 
@@ -202,6 +203,15 @@ export async function POST(request: Request) {
         unmatchedCallSid: !result.updated && !result.missingCallSid,
       }),
     });
+
+    if (!result.updated && !result.missingCallSid) {
+      await notifyAdminOperationalIssue({
+        account,
+        issue: "Recording did not attach to a lead",
+        detail: `CallSid ${recording.callSid || "missing"} RecordingSid ${recording.recordingSid || "missing"}`,
+        correlationId,
+      });
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown recording webhook error";
 
@@ -219,6 +229,12 @@ export async function POST(request: Request) {
       correlationId,
       ...requestSummary,
       error: message,
+    });
+    await notifyAdminOperationalIssue({
+      account,
+      issue: "Recording webhook failed",
+      detail: message,
+      correlationId,
     });
   }
 

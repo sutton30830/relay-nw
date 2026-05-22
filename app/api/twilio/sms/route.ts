@@ -1,4 +1,5 @@
 import { env } from "@/lib/env";
+import { notifyAdminOperationalIssue, notifyOwnerInboundReply } from "@/lib/email";
 import { normalizePhoneNumber } from "@/lib/phone";
 import {
   createInboundMessageIfNew,
@@ -46,6 +47,7 @@ function webhookEventNote(input: {
   matchedUrl: string | null;
   action:
     | "recorded_opt_out"
+    | "notified_owner"
     | "forwarded_to_owner"
     | "sms_disabled"
     | "ignored_empty_message"
@@ -65,6 +67,10 @@ function webhookEventNote(input: {
 
   if (input.action === "forwarded_to_owner") {
     notes.push("Forwarded inbound reply to owner.");
+  }
+
+  if (input.action === "notified_owner") {
+    notes.push("Notified owner by email.");
   }
 
   if (input.action === "sms_disabled") {
@@ -116,6 +122,14 @@ async function handleInboundSms(
     return "recorded_opt_out" as const;
   }
 
+  if (input.shouldNotifyOwner) {
+    await notifyOwnerInboundReply({
+      account,
+      callerPhone: input.from,
+      body: input.body,
+    });
+  }
+
   if (input.shouldNotifyOwner && !account.smsEnabled) {
     console.info("Inbound SMS owner notification suppressed because SMS_ENABLED is false", {
       correlationId,
@@ -123,7 +137,7 @@ async function handleInboundSms(
       toLast4: phoneLast4(input.to),
     });
 
-    return "sms_disabled" as const;
+    return "notified_owner" as const;
   }
 
   if (input.shouldNotifyOwner) {
@@ -217,6 +231,12 @@ export async function POST(request: Request) {
       correlationId,
       ...requestSummary,
       error: errorMessage,
+    });
+    await notifyAdminOperationalIssue({
+      account,
+      issue: "Inbound SMS handling failed",
+      detail: errorMessage,
+      correlationId,
     });
   }
 
