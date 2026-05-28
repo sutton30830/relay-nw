@@ -2255,10 +2255,6 @@ code {
   margin: 12px 0 0;
 }
 
-.setup-request--compact {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
 .setup-request__field {
   min-width: 0;
 }
@@ -3249,8 +3245,7 @@ code {
     line-height: 1.42;
   }
 
-  .setup-request,
-  .setup-request--compact {
+  .setup-request {
     grid-template-columns: 1fr;
     gap: 9px;
   }

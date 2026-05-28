@@ -195,6 +195,29 @@ export function parseSetupRequestMessage(message: string | null | undefined): Se
     .filter((field): field is SetupRequestField => Boolean(field));
 }
 
+export function setupRequestSummary(fields: SetupRequestField[]) {
+  if (fields.length === 0) return null;
+
+  const fieldValue = (label: string) => fields.find((field) => field.label === label)?.value;
+  const businessName = fieldValue("Business name");
+  const ownerName = fieldValue("Owner name");
+  const businessType = fieldValue("Business type");
+
+  if (businessName && ownerName && businessType) {
+    return `${ownerName} requested setup for ${businessName}, a ${businessType.toLowerCase()} business.`;
+  }
+
+  if (businessName && ownerName) {
+    return `${ownerName} requested setup for ${businessName}.`;
+  }
+
+  if (businessName) {
+    return `Setup request for ${businessName}.`;
+  }
+
+  return "New setup request from the intake form.";
+}
+
 export function needsAttention(lead: Lead) {
   return lead.status === "new" && (lead.sms_status === "failed" || lead.sms_status === "undelivered");
 }

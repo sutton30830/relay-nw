@@ -3,11 +3,10 @@
 import { Icon } from "@/components/icon";
 import type { Lead, LeadStatus } from "@/lib/supabase";
 import { LEGACY_FORWARDING_MESSAGE } from "../_constants";
-import { formatPhone, formatRelativeTime, getLeadNextAction, getLeadPriority, initials, isBookedLead, needsAttention, parseSetupRequestMessage, shouldShowVoicemailSummaryProgress } from "../_utils";
+import { formatPhone, formatRelativeTime, getLeadNextAction, getLeadPriority, initials, isBookedLead, needsAttention, parseSetupRequestMessage, setupRequestSummary, shouldShowVoicemailSummaryProgress } from "../_utils";
 import { BookedBadge, PriorityBadge, SmsBadge, SourceBadge, StatusPill, VoicemailBadge } from "./badges";
 import { BookedValueInput } from "./controls";
 import { OverflowMenu } from "./overflow-menu";
-import { SetupRequestDetails } from "./setup-request-details";
 import { VoicemailAudio } from "./voicemail-audio";
 
 export function LeadCard({
@@ -42,6 +41,7 @@ export function LeadCard({
   const detailsVisible = hasDetails && expanded;
   const hasUsefulMessage = Boolean(lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE);
   const setupRequestFields = lead.source === "intake_form" ? parseSetupRequestMessage(lead.message) : [];
+  const setupSummary = setupRequestSummary(setupRequestFields);
   const summaryGenerating = !lead.voicemail_summary && lead.voicemail_transcription_status === "processing";
   const summaryPreparing =
     shouldShowVoicemailSummaryProgress(lead, now) && lead.voicemail_transcription_status !== "processing";
@@ -56,6 +56,8 @@ export function LeadCard({
         : "Missed call";
   const requestText = lead.voicemail_summary
     ? lead.voicemail_summary
+    : setupSummary
+      ? setupSummary
     : hasUsefulMessage
       ? lead.message
       : lead.recording_sid
@@ -124,11 +126,7 @@ export function LeadCard({
             <div className="lead-card__summary-progress" aria-hidden="true" />
           </div>
         ) : (
-          setupRequestFields.length > 0 ? (
-            <SetupRequestDetails fields={setupRequestFields} compact />
-          ) : (
-            <p>{requestText}</p>
-          )
+          <p>{requestText}</p>
         )}
       </section>
 

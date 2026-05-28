@@ -118,11 +118,13 @@ test("setup SMS consent is optional", () => {
 test("setup request leads render as structured fields in the inbox", () => {
   assert.match(intakeRouteTs, /\.join\("\\n"\)/);
   assert.match(leadUtilsTs, /parseSetupRequestMessage/);
+  assert.match(leadUtilsTs, /setupRequestSummary/);
   assert.match(leadUtilsTs, /Relay NW setup request/);
   assert.match(setupRequestDetailsTsx, /<dl className=/);
   assert.match(setupRequestDetailsTsx, /<dt>{field\.label}<\/dt>/);
   assert.match(setupRequestDetailsTsx, /<dd>{field\.value}<\/dd>/);
-  assert.match(leadCardTsx, /<SetupRequestDetails fields={setupRequestFields} compact \/>/);
+  assert.match(leadCardTsx, /setupRequestSummary\(setupRequestFields\)/);
+  assert.doesNotMatch(leadCardTsx, /<SetupRequestDetails/);
   assert.match(leadDrawerTsx, /<SetupRequestDetails fields={setupRequestFields} \/>/);
   assert.match(globalsCss, /\.setup-request/);
 });
