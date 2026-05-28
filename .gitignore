@@ -6,4 +6,5 @@ node_modules
 tsconfig.tsbuildinfo
 .vercel
 public/audio/
+New Recording *.mp3
 .DS_Store
