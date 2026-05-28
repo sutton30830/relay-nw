@@ -1,13 +1,16 @@
 import { isPlaceholderSupabaseConfig, shouldSkipDatabaseWrite, supabaseAdmin, throwIfSupabaseError } from "./client";
+import { assertAccountId } from "./tenant";
 import type { SmsStatus } from "./types";
 
 export async function updateLeadSmsStatus(input: {
-  accountId?: string | null;
+  accountId: string;
   id: string;
   smsStatus: Exclude<SmsStatus, null>;
   smsError?: string | null;
   twilioMessageSid?: string | null;
 }) {
+  const accountId = assertAccountId(input.accountId, "updateLeadSmsStatus");
+
   if (shouldSkipDatabaseWrite("SMS status update", input)) {
     return;
   }
@@ -31,17 +34,19 @@ export async function updateLeadSmsStatus(input: {
     .from("leads")
     .update(updates)
     .eq("id", input.id)
-    .match(input.accountId ? { account_id: input.accountId } : {});
+    .eq("account_id", accountId);
 
   throwIfSupabaseError(error);
 }
 
 export async function updateLeadSmsStatusByMessageSid(input: {
-  accountId?: string | null;
+  accountId: string;
   twilioMessageSid: string;
   smsStatus: Exclude<SmsStatus, null>;
   smsError?: string | null;
 }) {
+  const accountId = assertAccountId(input.accountId, "updateLeadSmsStatusByMessageSid");
+
   if (shouldSkipDatabaseWrite("SMS status callback update", input)) {
     return { updated: false };
   }
@@ -54,7 +59,7 @@ export async function updateLeadSmsStatusByMessageSid(input: {
       sms_updated_at: new Date().toISOString(),
     })
     .eq("twilio_message_sid", input.twilioMessageSid)
-    .match(input.accountId ? { account_id: input.accountId } : {})
+    .eq("account_id", accountId)
     .select("id")
     .maybeSingle();
 
@@ -66,9 +71,11 @@ export async function updateLeadSmsStatusByMessageSid(input: {
 export async function hasRecentMissedCallSms(
   phone: string,
   since: Date,
+  inputAccountId: string,
   excludeLeadId?: string,
-  accountId?: string | null,
 ) {
+  const accountId = assertAccountId(inputAccountId, "hasRecentMissedCallSms");
+
   if (isPlaceholderSupabaseConfig()) {
     return false;
   }
@@ -78,12 +85,9 @@ export async function hasRecentMissedCallSms(
     .select("id")
     .eq("phone", phone)
     .eq("source", "missed_call")
+    .eq("account_id", accountId)
     .in("sms_status", ["pending", "queued", "sending", "sent", "delivered"])
     .gte("created_at", since.toISOString());
-
-  if (accountId) {
-    query = query.eq("account_id", accountId);
-  }
 
   if (excludeLeadId) {
     query = query.neq("id", excludeLeadId);
@@ -96,7 +100,9 @@ export async function hasRecentMissedCallSms(
   return Boolean(data?.length);
 }
 
-export async function isOptedOut(phone: string, accountId?: string | null) {
+export async function isOptedOut(phone: string, inputAccountId: string) {
+  const accountId = assertAccountId(inputAccountId, "isOptedOut");
+
   if (isPlaceholderSupabaseConfig()) {
     return false;
   }
@@ -105,7 +111,7 @@ export async function isOptedOut(phone: string, accountId?: string | null) {
     .from("opt_outs")
     .select("phone")
     .eq("phone", phone)
-    .match(accountId ? { account_id: accountId } : {})
+    .eq("account_id", accountId)
     .maybeSingle();
 
   throwIfSupabaseError(error);
@@ -113,20 +119,16 @@ export async function isOptedOut(phone: string, accountId?: string | null) {
   return Boolean(data);
 }
 
-export async function recordOptOut(phone: string, accountId?: string | null) {
+export async function recordOptOut(phone: string, inputAccountId: string) {
+  const accountId = assertAccountId(inputAccountId, "recordOptOut");
+
   if (shouldSkipDatabaseWrite("opt-out insert", { phone, accountId })) {
     return;
   }
 
-  const query = accountId
-    ? supabaseAdmin
-        .from("opt_outs")
-        .upsert({ phone, account_id: accountId }, { onConflict: "account_id,phone" })
-    : supabaseAdmin
-        .from("opt_outs")
-        .insert({ phone, account_id: null });
-
-  const { error } = await query;
+  const { error } = await supabaseAdmin
+    .from("opt_outs")
+    .upsert({ phone, account_id: accountId }, { onConflict: "account_id,phone" });
 
   if (error && error.code !== "23505") {
     throw error;
@@ -134,18 +136,20 @@ export async function recordOptOut(phone: string, accountId?: string | null) {
 }
 
 export async function createInboundMessageIfNew(input: {
-  accountId?: string | null;
+  accountId: string;
   messageSid: string;
   fromPhone: string;
   toPhone?: string | null;
   body: string;
 }) {
+  const accountId = assertAccountId(input.accountId, "createInboundMessageIfNew");
+
   if (shouldSkipDatabaseWrite("inbound message insert", input)) {
     return { inserted: true };
   }
 
   const { error } = await supabaseAdmin.from("inbound_messages").insert({
-    account_id: input.accountId ?? null,
+    account_id: accountId,
     message_sid: input.messageSid,
     from_phone: input.fromPhone,
     to_phone: input.toPhone ?? null,
@@ -164,7 +168,7 @@ export async function createInboundMessageIfNew(input: {
 }
 
 export async function createMessageIfNew(input: {
-  accountId: string | null;
+  accountId: string;
   leadId?: string | null;
   callId?: string | null;
   twilioMessageSid?: string | null;
@@ -175,12 +179,14 @@ export async function createMessageIfNew(input: {
   status?: string | null;
   error?: string | null;
 }) {
-  if (!input.accountId || shouldSkipDatabaseWrite("message insert", input)) {
+  const accountId = assertAccountId(input.accountId, "createMessageIfNew");
+
+  if (shouldSkipDatabaseWrite("message insert", input)) {
     return { inserted: true };
   }
 
   const { error } = await supabaseAdmin.from("messages").insert({
-    account_id: input.accountId,
+    account_id: accountId,
     lead_id: input.leadId ?? null,
     call_id: input.callId ?? null,
     twilio_message_sid: input.twilioMessageSid ?? null,
@@ -204,12 +210,14 @@ export async function createMessageIfNew(input: {
 }
 
 export async function updateMessageStatusBySid(input: {
-  accountId?: string | null;
+  accountId: string;
   twilioMessageSid: string;
   status: string;
   error?: string | null;
 }) {
-  if (!input.accountId || shouldSkipDatabaseWrite("message status update", input)) {
+  const accountId = assertAccountId(input.accountId, "updateMessageStatusBySid");
+
+  if (shouldSkipDatabaseWrite("message status update", input)) {
     return { updated: false };
   }
 
@@ -220,7 +228,7 @@ export async function updateMessageStatusBySid(input: {
       error: input.error ?? null,
       updated_at: new Date().toISOString(),
     })
-    .eq("account_id", input.accountId)
+    .eq("account_id", accountId)
     .eq("twilio_message_sid", input.twilioMessageSid)
     .select("id")
     .maybeSingle();

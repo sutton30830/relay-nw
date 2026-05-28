@@ -2,12 +2,13 @@ import { env } from "@/lib/env";
 import { notifyAdminOperationalIssue, notifyOwnerInboundReply } from "@/lib/email";
 import { normalizePhoneNumber } from "@/lib/phone";
 import {
+  assertTenantAccount,
   createInboundMessageIfNew,
   createMessageIfNew,
   logWebhookEvent,
   recordOptOut,
   resolveAccountByTwilioNumber,
-  type AccountRuntimeConfig,
+  type TenantAccountRuntimeConfig,
 } from "@/lib/supabase";
 import {
   formDataToRecord,
@@ -90,7 +91,7 @@ function webhookEventNote(input: {
 }
 
 async function handleInboundSms(
-  account: AccountRuntimeConfig,
+  account: TenantAccountRuntimeConfig,
   input: ReturnType<typeof parseInboundSmsPayload>,
   correlationId: string,
 ) {
@@ -213,7 +214,7 @@ export async function POST(request: Request) {
     });
   }
 
-  const account = accountResolution.account;
+  const account = assertTenantAccount(accountResolution.account, "inbound SMS webhook");
 
   try {
     const action = await handleInboundSms(account, message, correlationId);

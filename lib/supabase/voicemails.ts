@@ -1,7 +1,10 @@
 import { isPlaceholderSupabaseConfig, shouldSkipDatabaseWrite, supabaseAdmin, throwIfSupabaseError } from "./client";
+import { assertAccountId } from "./tenant";
 import type { VoicemailTranscriptionStatus } from "./types";
 
-export async function recordingBelongsToLead(recordingSid: string, accountId?: string | null) {
+export async function recordingBelongsToLead(recordingSid: string, inputAccountId: string) {
+  const accountId = assertAccountId(inputAccountId, "recordingBelongsToLead");
+
   if (isPlaceholderSupabaseConfig()) {
     return false;
   }
@@ -10,7 +13,7 @@ export async function recordingBelongsToLead(recordingSid: string, accountId?: s
     .from("leads")
     .select("id")
     .eq("recording_sid", recordingSid)
-    .match(accountId ? { account_id: accountId } : {})
+    .eq("account_id", accountId)
     .limit(1)
     .maybeSingle();
 
@@ -19,7 +22,9 @@ export async function recordingBelongsToLead(recordingSid: string, accountId?: s
   return Boolean(data?.id);
 }
 
-export async function getLeadRecordingForPlayback(recordingSid: string, accountId?: string | null) {
+export async function getLeadRecordingForPlayback(recordingSid: string, inputAccountId: string) {
+  const accountId = assertAccountId(inputAccountId, "getLeadRecordingForPlayback");
+
   if (isPlaceholderSupabaseConfig()) {
     return null;
   }
@@ -28,7 +33,7 @@ export async function getLeadRecordingForPlayback(recordingSid: string, accountI
     .from("leads")
     .select("id, recording_url")
     .eq("recording_sid", recordingSid)
-    .match(accountId ? { account_id: accountId } : {})
+    .eq("account_id", accountId)
     .limit(1)
     .maybeSingle();
 
@@ -37,7 +42,9 @@ export async function getLeadRecordingForPlayback(recordingSid: string, accountI
   return data as { id: string; recording_url: string | null } | null;
 }
 
-export async function getLeadForVoicemailTranscription(id: string, accountId?: string | null) {
+export async function getLeadForVoicemailTranscription(id: string, inputAccountId: string) {
+  const accountId = assertAccountId(inputAccountId, "getLeadForVoicemailTranscription");
+
   if (isPlaceholderSupabaseConfig()) {
     return null;
   }
@@ -46,7 +53,7 @@ export async function getLeadForVoicemailTranscription(id: string, accountId?: s
     .from("leads")
     .select("id, phone, recording_sid, voicemail_transcript, voicemail_summary, voicemail_transcription_status")
     .eq("id", id)
-    .match(accountId ? { account_id: accountId } : {})
+    .eq("account_id", accountId)
     .maybeSingle();
 
   throwIfSupabaseError(error);
@@ -62,13 +69,15 @@ export async function getLeadForVoicemailTranscription(id: string, accountId?: s
 }
 
 export async function updateLeadVoicemailTranscription(input: {
-  accountId?: string | null;
+  accountId: string;
   id: string;
   transcript?: string | null;
   summary?: string | null;
   status: VoicemailTranscriptionStatus;
   error?: string | null;
 }) {
+  const accountId = assertAccountId(input.accountId, "updateLeadVoicemailTranscription");
+
   if (shouldSkipDatabaseWrite("voicemail transcription update", input)) {
     return;
   }
@@ -97,13 +106,13 @@ export async function updateLeadVoicemailTranscription(input: {
     .from("leads")
     .update(updates)
     .eq("id", input.id)
-    .match(input.accountId ? { account_id: input.accountId } : {});
+    .eq("account_id", accountId);
 
   throwIfSupabaseError(error);
 }
 
 export async function updateLeadRecordingByCallSid(input: {
-  accountId?: string | null;
+  accountId: string;
   callSid: string;
   callerPhone?: string | null;
   recordingSid?: string | null;
@@ -111,6 +120,8 @@ export async function updateLeadRecordingByCallSid(input: {
   recordingDuration?: number | null;
   recordingStatus?: string | null;
 }) {
+  const accountId = assertAccountId(input.accountId, "updateLeadRecordingByCallSid");
+
   if (shouldSkipDatabaseWrite("recording update", input)) {
     return { updated: false, leadId: null };
   }
@@ -124,7 +135,7 @@ export async function updateLeadRecordingByCallSid(input: {
       recording_status: input.recordingStatus ?? null,
     })
     .eq("call_sid", input.callSid)
-    .match(input.accountId ? { account_id: input.accountId } : {})
+    .eq("account_id", accountId)
     .select("id")
     .maybeSingle();
 
@@ -140,7 +151,7 @@ export async function updateLeadRecordingByCallSid(input: {
     .select("id")
     .eq("phone", input.callerPhone)
     .eq("source", "missed_call")
-    .match(input.accountId ? { account_id: input.accountId } : {})
+    .eq("account_id", accountId)
     .is("recording_sid", null)
     .gte("created_at", thirtyMinutesAgo)
     .order("created_at", { ascending: false })
@@ -162,6 +173,7 @@ export async function updateLeadRecordingByCallSid(input: {
       recording_status: input.recordingStatus ?? null,
     })
     .eq("id", recentLead.id)
+    .eq("account_id", accountId)
     .select("id")
     .maybeSingle();
 

@@ -1,4 +1,5 @@
 import { isPlaceholderSupabaseConfig, shouldSkipDatabaseWrite, supabaseAdmin, throwIfSupabaseError } from "./client";
+import { assertAccountId } from "./tenant";
 import type { InboundMessage, Lead, LeadSource, LeadStatus, ReplyPriorityOverride } from "./types";
 
 const LEAD_SELECT_COLUMNS =
@@ -48,7 +49,7 @@ function normalizeLead(lead: Lead): Lead {
   };
 }
 
-async function attachInboundMessages(leads: Lead[], accountId?: string | null) {
+async function attachInboundMessages(leads: Lead[], accountId: string) {
   if (isPlaceholderSupabaseConfig() || leads.length === 0) {
     return leads;
   }
@@ -61,9 +62,7 @@ async function attachInboundMessages(leads: Lead[], accountId?: string | null) {
     .order("created_at", { ascending: false })
     .limit(200);
 
-  if (accountId) {
-    query = query.eq("account_id", accountId);
-  }
+  query = query.eq("account_id", accountId);
 
   const { data, error } = await query;
 
@@ -89,19 +88,21 @@ async function attachInboundMessages(leads: Lead[], accountId?: string | null) {
 }
 
 export async function createLead(input: {
-  accountId?: string | null;
+  accountId: string;
   name?: string | null;
   phone: string;
   message?: string | null;
   source: LeadSource;
   callSid?: string | null;
 }) {
+  const accountId = assertAccountId(input.accountId, "createLead");
+
   if (shouldSkipDatabaseWrite("lead insert", input)) {
     return;
   }
 
   const { error } = await supabaseAdmin.from("leads").insert({
-    account_id: input.accountId ?? null,
+    account_id: accountId,
     call_sid: input.callSid ?? null,
     name: input.name ?? null,
     phone: input.phone,
@@ -114,11 +115,13 @@ export async function createLead(input: {
 }
 
 export async function createMissedCallLeadIfNew(input: {
-  accountId?: string | null;
+  accountId: string;
   callSid: string;
   phone: string;
   message: string | null;
 }) {
+  const accountId = assertAccountId(input.accountId, "createMissedCallLeadIfNew");
+
   if (shouldSkipDatabaseWrite("missed call lead insert", input)) {
     return { inserted: true, leadId: null };
   }
@@ -126,7 +129,7 @@ export async function createMissedCallLeadIfNew(input: {
   const { data, error } = await supabaseAdmin
     .from("leads")
     .insert({
-      account_id: input.accountId ?? null,
+      account_id: accountId,
       call_sid: input.callSid,
       phone: input.phone,
       message: input.message,
@@ -151,11 +154,9 @@ export async function createMissedCallLeadIfNew(input: {
   };
 }
 
-export async function getLeads() {
-  return getLeadsForAccount(null);
-}
+export async function getLeadsForAccount(inputAccountId: string) {
+  const accountId = assertAccountId(inputAccountId, "getLeadsForAccount");
 
-export async function getLeadsForAccount(accountId: string | null) {
   if (isPlaceholderSupabaseConfig()) {
     return [] as Lead[];
   }
@@ -165,9 +166,7 @@ export async function getLeadsForAccount(accountId: string | null) {
     .select(LEAD_SELECT_COLUMNS)
     .order("created_at", { ascending: false });
 
-  if (accountId) {
-    query = query.eq("account_id", accountId);
-  }
+  query = query.eq("account_id", accountId);
 
   const { data, error } = await query;
 
@@ -179,9 +178,7 @@ export async function getLeadsForAccount(accountId: string | null) {
       .select(LEGACY_LEAD_SELECT_COLUMNS)
       .order("created_at", { ascending: false });
 
-    if (accountId) {
-      legacyQuery = legacyQuery.eq("account_id", accountId);
-    }
+    legacyQuery = legacyQuery.eq("account_id", accountId);
 
     const { data: legacyData, error: legacyError } = await legacyQuery;
 
@@ -204,7 +201,7 @@ export async function getLeadsForAccount(accountId: string | null) {
 }
 
 export async function updateLead(input: {
-  accountId?: string | null;
+  accountId: string;
   id: string;
   name?: string | null;
   status?: LeadStatus;
@@ -215,6 +212,8 @@ export async function updateLead(input: {
   voicemailSummary?: string | null;
   deletedAt?: string | null;
 }) {
+  const accountId = assertAccountId(input.accountId, "updateLead");
+
   if (shouldSkipDatabaseWrite("lead update", input)) {
     return;
   }
@@ -267,7 +266,7 @@ export async function updateLead(input: {
       .from("leads")
       .select("phone")
       .eq("id", input.id)
-      .match(input.accountId ? { account_id: input.accountId } : {})
+      .eq("account_id", accountId)
       .maybeSingle();
 
     throwIfSupabaseError(leadError);
@@ -277,7 +276,7 @@ export async function updateLead(input: {
         .from("leads")
         .update({ name: input.name })
         .eq("phone", lead.phone)
-        .match(input.accountId ? { account_id: input.accountId } : {});
+        .eq("account_id", accountId);
 
       throwIfSupabaseError(nameError);
     }
@@ -293,7 +292,7 @@ export async function updateLead(input: {
     .from("leads")
     .update(updates)
     .eq("id", input.id)
-    .match(input.accountId ? { account_id: input.accountId } : {});
+    .eq("account_id", accountId);
 
   if (isMissingBookedAtColumnError(error) && typeof updates.booked_at !== "undefined") {
     console.warn("leads.booked_at is missing. Run supabase.sql to persist booked outcome tracking.");
@@ -308,7 +307,7 @@ export async function updateLead(input: {
       .from("leads")
       .update(legacyUpdates)
       .eq("id", input.id)
-      .match(input.accountId ? { account_id: input.accountId } : {});
+      .eq("account_id", accountId);
 
     throwIfSupabaseError(legacyError);
     return;
@@ -317,7 +316,9 @@ export async function updateLead(input: {
   throwIfSupabaseError(error);
 }
 
-export async function deleteLead(id: string, accountId?: string | null) {
+export async function deleteLead(id: string, inputAccountId: string) {
+  const accountId = assertAccountId(inputAccountId, "deleteLead");
+
   if (shouldSkipDatabaseWrite("lead delete", { id, accountId })) {
     return;
   }
@@ -326,7 +327,7 @@ export async function deleteLead(id: string, accountId?: string | null) {
     .from("leads")
     .update({ deleted_at: new Date().toISOString() })
     .eq("id", id)
-    .match(accountId ? { account_id: accountId } : {});
+    .eq("account_id", accountId);
 
   throwIfSupabaseError(error);
 }

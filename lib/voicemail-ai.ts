@@ -191,7 +191,7 @@ function extractResponseText(data: OpenAIResponsesResponse) {
     ?.trim();
 }
 
-export async function transcribeLeadVoicemail(leadId: string, accountId?: string | null) {
+export async function transcribeLeadVoicemail(leadId: string, accountId: string) {
   const lead = await getLeadForVoicemailTranscription(leadId, accountId);
 
   if (!lead?.recording_sid) {

@@ -28,6 +28,8 @@ const files = {
   callsStore: await source("lib/supabase/calls.ts"),
   webhooksStore: await source("lib/supabase/webhooks.ts"),
   voicemailsStore: await source("lib/supabase/voicemails.ts"),
+  healthChecksStore: await source("lib/supabase/health-checks.ts"),
+  tenantStore: await source("lib/supabase/tenant.ts"),
 };
 
 test("authenticated lead, ops, recording, and transcription routes use session account scope", () => {
@@ -94,24 +96,42 @@ test("unresolved Twilio account handling alerts admin and avoids tenant writes",
 });
 
 test("lead queries and mutations filter by account_id when an account is supplied", () => {
+  assert.match(files.tenantStore, /export function assertAccountId/);
   assert.match(files.leadsStore, /query = query\.eq\("account_id", accountId\)/);
   assert.match(files.leadsStore, /legacyQuery = legacyQuery\.eq\("account_id", accountId\)/);
-  assert.match(files.leadsStore, /\.match\(input\.accountId \? \{ account_id: input\.accountId \} : \{\}\)/);
-  assert.match(files.leadsStore, /\.match\(accountId \? \{ account_id: accountId \} : \{\}\)/);
+  assert.match(files.leadsStore, /\.eq\("id", input\.id\)\s*\.eq\("account_id", accountId\)/);
+  assert.match(files.leadsStore, /\.eq\("id", id\)\s*\.eq\("account_id", accountId\)/);
+  assert.doesNotMatch(files.leadsStore, /\.match\([^)]*account_id[^)]*:\s*\{\}/);
+  assert.doesNotMatch(files.leadsStore, /export async function getLeads\(/);
 });
 
-test("recordings, messages, calls, and webhook debug reads are account scoped", () => {
-  assert.match(files.voicemailsStore, /\.eq\("recording_sid", recordingSid\)\s*\.match\(accountId \? \{ account_id: accountId \} : \{\}\)/);
-  assert.match(files.voicemailsStore, /\.eq\("id", id\)\s*\.match\(accountId \? \{ account_id: accountId \} : \{\}\)/);
-  assert.match(files.voicemailsStore, /\.eq\("call_sid", input\.callSid\)\s*\.match\(input\.accountId \? \{ account_id: input\.accountId \} : \{\}\)/);
+test("recordings, messages, calls, health checks, and webhook debug reads are account scoped", () => {
+  assert.match(files.voicemailsStore, /\.eq\("recording_sid", recordingSid\)\s*\.eq\("account_id", accountId\)/);
+  assert.match(files.voicemailsStore, /\.eq\("id", id\)\s*\.eq\("account_id", accountId\)/);
+  assert.match(files.voicemailsStore, /\.eq\("call_sid", input\.callSid\)\s*\.eq\("account_id", accountId\)/);
 
-  assert.match(files.messagesStore, /\.eq\("account_id", input\.accountId\)\s*\.eq\("twilio_message_sid", input\.twilioMessageSid\)/);
+  assert.match(files.messagesStore, /\.eq\("account_id", accountId\)\s*\.eq\("twilio_message_sid", input\.twilioMessageSid\)/);
   assert.match(files.messagesStore, /upsert\(\{ phone, account_id: accountId \}, \{ onConflict: "account_id,phone" \}\)/);
-  assert.match(files.messagesStore, /account_id: input\.accountId/);
+  assert.match(files.messagesStore, /account_id: accountId/);
 
   assert.match(files.callsStore, /onConflict: "account_id,call_sid"/);
-  assert.match(files.callsStore, /\.eq\("account_id", input\.accountId\)\s*\.eq\("call_sid", input\.callSid\)/);
+  assert.match(files.callsStore, /\.eq\("account_id", accountId\)\s*\.eq\("call_sid", input\.callSid\)/);
 
-  assert.match(files.webhooksStore, /query = query\.eq\("account_id", accountId\)/);
+  assert.match(files.webhooksStore, /\.eq\("account_id", accountId\)\s*\.limit\(limit\)/);
   assert.match(files.webhooksStore, /account_id: input\.accountId \?\? null/);
+  assert.doesNotMatch(files.webhooksStore, /export async function getRecentWebhookEvents\(/);
+
+  assert.match(files.healthChecksStore, /\.eq\("account_id", accountId\)\s*\.eq\("status", "pending"\)/);
+  assert.match(files.healthChecksStore, /\.eq\("id", input\.id\)\s*\.eq\("account_id", accountId\)/);
+
+  for (const store of [
+    files.leadsStore,
+    files.messagesStore,
+    files.callsStore,
+    files.webhooksStore,
+    files.voicemailsStore,
+    files.healthChecksStore,
+  ]) {
+    assert.doesNotMatch(store, /\.match\([^)]*\?\s*\{\s*account_id:/);
+  }
 });

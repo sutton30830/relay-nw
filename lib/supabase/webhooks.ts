@@ -1,5 +1,6 @@
 import { env } from "@/lib/env";
 import { isPlaceholderSupabaseConfig, supabaseAdmin } from "./client";
+import { assertAccountId } from "./tenant";
 import type { WebhookEvent, WebhookEventSource } from "./types";
 
 const RETENTION_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
@@ -89,11 +90,9 @@ async function pruneOldOperationalData() {
   }
 }
 
-export async function getRecentWebhookEvents(limit = 20) {
-  return getRecentWebhookEventsForAccount(null, limit);
-}
+export async function getRecentWebhookEventsForAccount(inputAccountId: string, limit = 20) {
+  const accountId = assertAccountId(inputAccountId, "getRecentWebhookEventsForAccount");
 
-export async function getRecentWebhookEventsForAccount(accountId: string | null, limit = 20) {
   if (isPlaceholderSupabaseConfig()) {
     return [] as WebhookEvent[];
   }
@@ -102,11 +101,8 @@ export async function getRecentWebhookEventsForAccount(accountId: string | null,
     .from("webhook_events")
     .select("id, account_id, created_at, source, correlation_id, payload, response_status, response_body, error")
     .order("created_at", { ascending: false })
+    .eq("account_id", accountId)
     .limit(limit);
-
-  if (accountId) {
-    query = query.eq("account_id", accountId);
-  }
 
   const { data, error } = await query;
 
@@ -116,11 +112,8 @@ export async function getRecentWebhookEventsForAccount(accountId: string | null,
         .from("webhook_events")
         .select("id, created_at, source, payload, response_status, response_body, error")
         .order("created_at", { ascending: false })
+        .eq("account_id", accountId)
         .limit(limit);
-
-      if (accountId) {
-        legacyQuery = legacyQuery.eq("account_id", accountId);
-      }
 
       const { data: legacyData, error: legacyError } = await legacyQuery;
 

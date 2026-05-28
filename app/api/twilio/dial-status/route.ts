@@ -1,7 +1,8 @@
 import {
+  assertTenantAccount,
   logWebhookEvent,
   resolveAccountByCallSid,
-  type AccountRuntimeConfig,
+  type TenantAccountRuntimeConfig,
   upsertCall,
 } from "@/lib/supabase";
 import { env } from "@/lib/env";
@@ -59,7 +60,7 @@ function webhookEventNote(input: {
 }
 
 async function processDialStatus(input: {
-  account: AccountRuntimeConfig;
+  account: TenantAccountRuntimeConfig;
   callSid: string;
   callerPhone: string;
   correlationId: string;
@@ -166,7 +167,7 @@ export async function POST(request: Request) {
     });
   }
 
-  const account = accountResolution.account;
+  const account = assertTenantAccount(accountResolution.account, "dial status webhook");
 
   try {
     await upsertCall({

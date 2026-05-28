@@ -1,5 +1,6 @@
 import { env } from "@/lib/env";
 import {
+  assertTenantAccount,
   logWebhookEvent,
   resolveAccountByMessageSid,
   type SmsStatus,
@@ -115,7 +116,7 @@ export async function POST(request: Request) {
     });
   }
 
-  const account = accountResolution.account;
+  const account = assertTenantAccount(accountResolution.account, "SMS status webhook");
 
   try {
     const result = status.messageSid && status.smsStatus

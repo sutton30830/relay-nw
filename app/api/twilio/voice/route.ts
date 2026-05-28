@@ -1,6 +1,8 @@
 import { env } from "@/lib/env";
 import {
+  assertTenantAccount,
   type AccountRuntimeConfig,
+  type TenantAccountRuntimeConfig,
   findPendingForwardingHealthCheck,
   logWebhookEvent,
   markForwardingHealthCheckFailed,
@@ -73,7 +75,7 @@ function validationLogNote(input: {
 }
 
 async function handleForwardingHealthCheck(input: {
-  account: AccountRuntimeConfig;
+  account: TenantAccountRuntimeConfig;
   payload: Record<string, string>;
   correlationId: string;
   requestSummary: ReturnType<typeof summarizeTwilioRequest>;
@@ -92,6 +94,7 @@ async function handleForwardingHealthCheck(input: {
 
   try {
     await markForwardingHealthCheckPassed({
+      accountId: input.account.accountId,
       id: healthCheck.id,
       inboundTwilioCallSid: input.payload.CallSid ?? null,
       rawEventSummary: {
@@ -103,9 +106,14 @@ async function handleForwardingHealthCheck(input: {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown health check webhook error";
-    await markForwardingHealthCheckFailed(healthCheck.id, "webhook_error", {
-      message,
-      callSid: input.payload.CallSid ?? null,
+    await markForwardingHealthCheckFailed({
+      accountId: input.account.accountId,
+      id: healthCheck.id,
+      failureReason: "webhook_error",
+      rawEventSummary: {
+        message,
+        callSid: input.payload.CallSid ?? null,
+      },
     });
   }
 
@@ -129,7 +137,7 @@ async function handleForwardingHealthCheck(input: {
 }
 
 async function handleForwardingMode(input: {
-  account: AccountRuntimeConfig;
+  account: TenantAccountRuntimeConfig;
   request: Request;
   payload: Record<string, string>;
   correlationId: string;
@@ -202,7 +210,7 @@ async function handleForwardingMode(input: {
 }
 
 async function handleDirectMode(input: {
-  account: AccountRuntimeConfig;
+  account: TenantAccountRuntimeConfig;
   request: Request;
   payload: Record<string, string>;
   correlationId: string;
@@ -307,7 +315,7 @@ export async function POST(request: Request) {
     });
   }
 
-  const account = accountResolution.account;
+  const account = assertTenantAccount(accountResolution.account, "voice webhook");
   const callerPhone = payload.From || account.twilioPhoneNumber;
 
   const healthCheckResponse =

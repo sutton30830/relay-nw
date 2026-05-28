@@ -2,11 +2,12 @@ import { after } from "next/server";
 import { env } from "@/lib/env";
 import { notifyAdminOperationalIssue } from "@/lib/email";
 import {
+  assertTenantAccount,
   logWebhookEvent,
   resolveAccountByCallSid,
   updateCallRecordingByCallSid,
   updateLeadRecordingByCallSid,
-  type AccountRuntimeConfig,
+  type TenantAccountRuntimeConfig,
 } from "@/lib/supabase";
 import { transcribeLeadVoicemail } from "@/lib/voicemail-ai";
 import {
@@ -80,7 +81,7 @@ function webhookEventNote(input: {
 }
 
 async function updateLeadRecording(
-  account: AccountRuntimeConfig,
+  account: TenantAccountRuntimeConfig,
   input: ReturnType<typeof parseRecordingPayload>,
   correlationId: string,
 ) {
@@ -182,7 +183,7 @@ export async function POST(request: Request) {
     });
   }
 
-  const account = accountResolution.account;
+  const account = assertTenantAccount(accountResolution.account, "recording webhook");
 
   try {
     const result = await updateLeadRecording(account, recording, correlationId);

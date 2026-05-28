@@ -5,6 +5,7 @@ import {
   createMissedCallLeadIfNew,
   hasRecentMissedCallSms,
   isOptedOut,
+  assertTenantAccount,
   type AccountRuntimeConfig,
   updateCallForMissedLead,
   updateLeadSmsStatus,
@@ -23,7 +24,7 @@ export async function handleMissedCall(input: {
   const callerPhone = normalizePhoneNumber(input.callerPhone);
   const callSid = input.callSid.trim();
   const correlationId = input.correlationId ?? callSid;
-  const account = input.account ?? envAccountConfig();
+  const account = assertTenantAccount(input.account ?? envAccountConfig(), "handleMissedCall");
 
   if (!callerPhone || !callSid) {
     throw new Error("Missing caller phone or CallSid on missed call webhook.");
@@ -87,8 +88,8 @@ export async function handleMissedCall(input: {
   const alreadyTextedRecently = await hasRecentMissedCallSms(
     callerPhone,
     cooldownSince,
-    leadResult.leadId,
     account.accountId,
+    leadResult.leadId,
   );
 
   if (alreadyTextedRecently) {
