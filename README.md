@@ -58,7 +58,7 @@ For the customer-by-customer onboarding checklist, see `docs/customer-setup.md`.
 
 - `/` setup/status home page
 - `/intake` public intake form
-- `/leads` password-protected lead inbox
+- `/leads` Supabase-authenticated lead inbox
 - `/api/intake` intake form submission
 - `/api/leads/[id]` lead status update
 - `/api/twilio/voice` Twilio incoming call webhook
@@ -67,11 +67,11 @@ For the customer-by-customer onboarding checklist, see `docs/customer-setup.md`.
 - `/api/twilio/recording` Twilio voicemail recording callback
 - `/api/twilio/sms` Twilio inbound SMS webhook
 - `/api/twilio/sms-status` Twilio outbound SMS delivery callback
-- `/api/health-check/start` password-protected forwarding listening-window trigger
-- `/api/health-check/status` password-protected forwarding health status
-- `/api/health-check/expire-pending` password-protected pending health check cleanup
-- `/api/sms-test/start` password-protected owner-only SMS test trigger
-- `/api/sms-test/status` password-protected Twilio SMS test status lookup
+- `/api/health-check/start` authenticated forwarding listening-window trigger
+- `/api/health-check/status` authenticated forwarding health status
+- `/api/health-check/expire-pending` authenticated pending health check cleanup
+- `/api/sms-test/start` authenticated owner-only SMS test trigger
+- `/api/sms-test/status` authenticated Twilio SMS test status lookup
 
 ## Environment Variables
 
@@ -194,7 +194,7 @@ You can test these locally without Twilio:
 - Home page
 - Intake form
 - Supabase lead saving from `/intake`
-- Leads page password gate
+- Supabase Auth login and protected leads redirect
 - Lead status changes
 
 ## Webhook Simulator

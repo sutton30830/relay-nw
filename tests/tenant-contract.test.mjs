@@ -88,6 +88,12 @@ test("Supabase Auth fails closed and refreshes sessions in middleware", () => {
   assert.match(middlewareTs, /createServerClient/);
   assert.match(middlewareTs, /supabase\.auth\.getUser\(\)/);
   assert.match(middlewareTs, /setAll\(cookiesToSet\)/);
+  assert.match(middlewareTs, /"\/leads\/:path\*"/);
+  assert.match(middlewareTs, /"\/api\/leads\/:path\*"/);
+  assert.match(middlewareTs, /"\/api\/sms-test\/:path\*"/);
+  assert.doesNotMatch(middlewareTs, /\/api\/twilio/);
+  assert.doesNotMatch(middlewareTs, /\/api\/intake/);
+  assert.doesNotMatch(middlewareTs, /\/\(\(\?!_next\/static/);
 });
 
 test("README documents Supabase Auth instead of legacy leads password auth", () => {
@@ -96,6 +102,7 @@ test("README documents Supabase Auth instead of legacy leads password auth", () 
   assert.doesNotMatch(readme, /LEADS_PASSWORD/);
   assert.doesNotMatch(readme, /LEADS_COOKIE_SECRET/);
   assert.doesNotMatch(readme, /There is no auth system/);
+  assert.doesNotMatch(readme, /password-protected|password gate|shared password/i);
 });
 
 test("setup SMS consent is optional", () => {
