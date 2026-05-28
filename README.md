@@ -82,8 +82,6 @@ Required:
 - `INTAKE_URL`: public URL for `/intake`
 - `SCHEDULING_URL`: existing scheduling link for the business
 - `SMS_ENABLED`: defaults to `false`; set to `true` only after A2P 10DLC is approved and you are ready for real outbound texts
-- `LEADS_PASSWORD`: shared password for `/leads`
-- `LEADS_COOKIE_SECRET`: long random secret used to sign the `/leads` session cookie; required in Vercel production and should be different from `LEADS_PASSWORD`
 - `APP_BASE_URL`: public app URL used for Twilio callbacks and signature validation
 - `TWILIO_ACCOUNT_SID`: Twilio account SID
 - `TWILIO_AUTH_TOKEN`: Twilio auth token, server-only
@@ -91,6 +89,7 @@ Required:
 - `OWNER_PHONE_NUMBER`: owner's real phone number
 - `SUPABASE_URL`: Supabase project URL
 - `NEXT_PUBLIC_SUPABASE_URL`: same Supabase project URL, kept for Next.js compatibility
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Supabase anon key used for owner magic-link sign-in
 - `SUPABASE_SERVICE_ROLE_KEY`: Supabase service role key, server-only
 
 Optional:
@@ -128,7 +127,7 @@ Supported template variables:
 Default forwarding voice message:
 
 ```text
-Thanks for calling. Sorry we missed you. We will text you shortly. Please leave a quick message after the tone.
+Thanks for calling. Sorry we missed you. We will text you shortly. Please leave a quick recorded message after the tone.
 ```
 
 In `CALL_MODE=forwarding`, Relay plays the greeting and then records a short voicemail. Twilio posts the recording to `/api/twilio/recording`, and the lead inbox shows the voicemail on the matching missed-call lead.
@@ -296,11 +295,10 @@ The simplest deployment path is Vercel:
 
 ## Security Notes
 
-- `/leads` uses one shared password.
-- The `/leads` cookie is signed and HttpOnly; it does not store the raw password.
-- The `/leads` login route has a small failed-attempt throttle. Use a strong password; the throttle is only a safety net.
+- `/leads` and `/ops` require Supabase Auth magic-link sign-in.
+- Human access is scoped through `account_users`, then resolved to one tenant account.
+- Supabase Auth session cookies are refreshed in middleware so active owners are less likely to be bounced back to `/login`.
 - The public setup form has a small per-IP throttle to reduce spam submissions.
-- There is no auth system.
 - Twilio webhooks require a valid `X-Twilio-Signature` unless `ALLOW_UNSIGNED_TWILIO_WEBHOOKS=true` is explicitly set for local testing.
 - Webhook event logs store sanitized payload summaries. Full phone numbers, SMS bodies, and recording URLs are not stored in `webhook_events`.
 - Old webhook events and inbound message bodies are pruned according to the retention environment variables.

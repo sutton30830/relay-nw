@@ -1,5 +1,5 @@
 import { env } from "@/lib/env";
-import { notifyAdminOperationalIssue, notifyOwnerInboundReply } from "@/lib/email";
+import { notifyAdminOperationalIssue, notifyOwnerInboundReply, notifyOwnerOptOut } from "@/lib/email";
 import { normalizePhoneNumber } from "@/lib/phone";
 import {
   assertTenantAccount,
@@ -121,6 +121,10 @@ async function handleInboundSms(
 
   if (input.isOptOut) {
     await recordOptOut(input.from, account.accountId);
+    await notifyOwnerOptOut({
+      account,
+      callerPhone: input.from,
+    });
     return "recorded_opt_out" as const;
   }
 

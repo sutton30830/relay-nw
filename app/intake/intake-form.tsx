@@ -152,7 +152,7 @@ export function IntakeForm() {
       </label>
 
       <label className="consent-row">
-        <input type="checkbox" name="smsConsent" required />
+        <input type="checkbox" name="smsConsent" />
         <span>
           I consent to receive a one-time text message from Relay NW regarding my inquiry. Message
           frequency varies. Message & data rates may apply. Reply STOP to opt out. Reply HELP for

@@ -105,6 +105,6 @@ export const env = {
   twilioPhoneNumber: getRequiredEnv("TWILIO_PHONE_NUMBER"),
   ownerPhoneNumber: getRequiredEnv("OWNER_PHONE_NUMBER"),
   supabaseUrl: getOptionalEnv("SUPABASE_URL") ?? getRequiredEnv("NEXT_PUBLIC_SUPABASE_URL"),
-  supabaseAnonKey: getOptionalEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY") ?? "missing-anon-key",
+  supabaseAnonKey: getRequiredEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
   supabaseServiceRoleKey: getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY"),
 };

@@ -5,12 +5,16 @@ import test from "node:test";
 const sql = await readFile(new URL("../supabase.sql", import.meta.url), "utf8");
 const envTs = await readFile(new URL("../lib/env.ts", import.meta.url), "utf8");
 const twilioTs = await readFile(new URL("../lib/twilio.ts", import.meta.url), "utf8");
+const twimlTs = await readFile(new URL("../lib/twiml.ts", import.meta.url), "utf8");
 const authTs = await readFile(new URL("../lib/auth.ts", import.meta.url), "utf8");
 const emailTs = await readFile(new URL("../lib/email.ts", import.meta.url), "utf8");
 const missedCallTs = await readFile(new URL("../lib/missed-call.ts", import.meta.url), "utf8");
 const intakeRouteTs = await readFile(new URL("../app/api/intake/route.ts", import.meta.url), "utf8");
+const inboundSmsRouteTs = await readFile(new URL("../app/api/twilio/sms/route.ts", import.meta.url), "utf8");
+const intakeFormTsx = await readFile(new URL("../app/intake/intake-form.tsx", import.meta.url), "utf8");
 const leadsPageTsx = await readFile(new URL("../app/leads/page.tsx", import.meta.url), "utf8");
 const opsPageTsx = await readFile(new URL("../app/ops/page.tsx", import.meta.url), "utf8");
+const middlewareTs = await readFile(new URL("../middleware.ts", import.meta.url), "utf8");
 const envExample = await readFile(new URL("../.env.example", import.meta.url), "utf8");
 const packageJson = await readFile(new URL("../package.json", import.meta.url), "utf8");
 const verifyAccountScript = await readFile(new URL("../scripts/verify-account.mjs", import.meta.url), "utf8");
@@ -76,6 +80,39 @@ test("human-facing pages require authenticated account context", () => {
   assert.match(opsPageTsx, /requireAccountUser\(\)/);
   assert.doesNotMatch(leadsPageTsx, /getDefaultAccountConfig/);
   assert.doesNotMatch(opsPageTsx, /getDefaultAccountConfig/);
+});
+
+test("Supabase Auth fails closed and refreshes sessions in middleware", () => {
+  assert.match(envTs, /supabaseAnonKey: getRequiredEnv\("NEXT_PUBLIC_SUPABASE_ANON_KEY"\)/);
+  assert.doesNotMatch(envTs, /missing-anon-key/);
+  assert.match(middlewareTs, /createServerClient/);
+  assert.match(middlewareTs, /supabase\.auth\.getUser\(\)/);
+  assert.match(middlewareTs, /setAll\(cookiesToSet\)/);
+});
+
+test("README documents Supabase Auth instead of legacy leads password auth", () => {
+  assert.match(readme, /Supabase Auth magic-link sign-in/);
+  assert.match(readme, /NEXT_PUBLIC_SUPABASE_ANON_KEY/);
+  assert.doesNotMatch(readme, /LEADS_PASSWORD/);
+  assert.doesNotMatch(readme, /LEADS_COOKIE_SECRET/);
+  assert.doesNotMatch(readme, /There is no auth system/);
+});
+
+test("setup SMS consent is optional", () => {
+  assert.match(intakeFormTsx, /name="smsConsent"/);
+  assert.doesNotMatch(intakeFormTsx, /name="smsConsent" required/);
+});
+
+test("voicemail greeting discloses recording", () => {
+  assert.match(twimlTs, /recorded message/);
+  assert.match(envExample, /recorded message/);
+  assert.match(readme, /recorded message/);
+});
+
+test("STOP opt-outs notify the owner", () => {
+  assert.match(emailTs, /export async function notifyOwnerOptOut/);
+  assert.match(inboundSmsRouteTs, /notifyOwnerOptOut\(\{/);
+  assert.match(inboundSmsRouteTs, /recordOptOut\(input\.from, account\.accountId\)/);
 });
 
 test("business-owned tables carry account_id", () => {

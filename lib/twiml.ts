@@ -36,7 +36,7 @@ export function emptyTwiml() {
 }
 
 const defaultForwardingMessage =
-  "Thanks for calling. Sorry we missed you. We will text you shortly. Please leave a quick message after the tone.";
+  "Thanks for calling. Sorry we missed you. We will text you shortly. Please leave a quick recorded message after the tone.";
 
 export function forwardedMissedCallTwiml(input: {
   message?: string;

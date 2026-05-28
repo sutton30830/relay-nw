@@ -250,6 +250,33 @@ export async function notifyOwnerInboundReply(input: {
   });
 }
 
+export async function notifyOwnerOptOut(input: {
+  account: AccountRuntimeConfig;
+  callerPhone: string;
+}) {
+  const recipient = await ownerEmail(input.account);
+  const last4 = phoneLast4(input.callerPhone) ?? "unknown";
+  const lines = [
+    `A caller opted out of texts from ${input.account.businessName}.`,
+    `Caller ending in ${last4}.`,
+    "Relay NW will suppress future automatic missed-call texts to this number for this account.",
+  ];
+
+  return sendEmail({
+    to: recipient,
+    subject: `Caller opted out of texts for ${input.account.businessName}`,
+    html: emailHtml({
+      title: "Caller opted out",
+      preview: `Caller ending in ${last4} opted out of texts.`,
+      lines,
+      actionLabel: "Open leads",
+      actionUrl: `${env.appBaseUrl}/leads`,
+    }),
+    text: `${lines.join("\n")}\n\nOpen leads: ${env.appBaseUrl}/leads`,
+    tag: "owner_opt_out",
+  });
+}
+
 export async function notifyAdminNewSetupRequest(input: {
   account: AccountRuntimeConfig;
   leadName: string;
