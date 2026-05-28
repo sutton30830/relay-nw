@@ -2248,6 +2248,39 @@ code {
   color: var(--brand-ink);
 }
 
+.setup-request {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin: 12px 0 0;
+}
+
+.setup-request--compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.setup-request__field {
+  min-width: 0;
+}
+
+.setup-request__field dt {
+  margin: 0 0 3px;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.setup-request__field dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .priority-badge {
   border-color: color-mix(in oklab, var(--brand) 18%, var(--line));
   background: color-mix(in oklab, var(--brand-soft) 62%, var(--panel));
@@ -3214,6 +3247,16 @@ code {
   .lead-card__request p {
     font-size: 15px;
     line-height: 1.42;
+  }
+
+  .setup-request,
+  .setup-request--compact {
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+
+  .setup-request__field dd {
+    font-size: 14.5px;
   }
 
   .lead-card__actions {

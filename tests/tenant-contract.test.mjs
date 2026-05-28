@@ -13,6 +13,11 @@ const intakeRouteTs = await readFile(new URL("../app/api/intake/route.ts", impor
 const inboundSmsRouteTs = await readFile(new URL("../app/api/twilio/sms/route.ts", import.meta.url), "utf8");
 const intakeFormTsx = await readFile(new URL("../app/intake/intake-form.tsx", import.meta.url), "utf8");
 const leadsPageTsx = await readFile(new URL("../app/leads/page.tsx", import.meta.url), "utf8");
+const leadUtilsTs = await readFile(new URL("../app/leads/_utils.ts", import.meta.url), "utf8");
+const leadCardTsx = await readFile(new URL("../app/leads/_components/lead-card.tsx", import.meta.url), "utf8");
+const leadDrawerTsx = await readFile(new URL("../app/leads/_components/lead-drawer.tsx", import.meta.url), "utf8");
+const setupRequestDetailsTsx = await readFile(new URL("../app/leads/_components/setup-request-details.tsx", import.meta.url), "utf8");
+const globalsCss = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 const opsPageTsx = await readFile(new URL("../app/ops/page.tsx", import.meta.url), "utf8");
 const middlewareTs = await readFile(new URL("../middleware.ts", import.meta.url), "utf8");
 const envExample = await readFile(new URL("../.env.example", import.meta.url), "utf8");
@@ -108,6 +113,18 @@ test("README documents Supabase Auth instead of legacy leads password auth", () 
 test("setup SMS consent is optional", () => {
   assert.match(intakeFormTsx, /name="smsConsent"/);
   assert.doesNotMatch(intakeFormTsx, /name="smsConsent" required/);
+});
+
+test("setup request leads render as structured fields in the inbox", () => {
+  assert.match(intakeRouteTs, /\.join\("\\n"\)/);
+  assert.match(leadUtilsTs, /parseSetupRequestMessage/);
+  assert.match(leadUtilsTs, /Relay NW setup request/);
+  assert.match(setupRequestDetailsTsx, /<dl className=/);
+  assert.match(setupRequestDetailsTsx, /<dt>{field\.label}<\/dt>/);
+  assert.match(setupRequestDetailsTsx, /<dd>{field\.value}<\/dd>/);
+  assert.match(leadCardTsx, /<SetupRequestDetails fields={setupRequestFields} compact \/>/);
+  assert.match(leadDrawerTsx, /<SetupRequestDetails fields={setupRequestFields} \/>/);
+  assert.match(globalsCss, /\.setup-request/);
 });
 
 test("voicemail greeting discloses recording", () => {

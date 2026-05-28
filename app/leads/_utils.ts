@@ -166,6 +166,35 @@ export function sourceLabel(source: Lead["source"]) {
   return source === "missed_call" ? "missed call" : "intake form";
 }
 
+export type SetupRequestField = {
+  label: string;
+  value: string;
+};
+
+const SETUP_REQUEST_PREFIX = "Relay NW setup request";
+
+export function parseSetupRequestMessage(message: string | null | undefined): SetupRequestField[] {
+  if (!message?.startsWith(SETUP_REQUEST_PREFIX)) {
+    return [];
+  }
+
+  return message
+    .split("\n")
+    .slice(1)
+    .map((line) => {
+      const separatorIndex = line.indexOf(":");
+      if (separatorIndex === -1) return null;
+
+      const label = line.slice(0, separatorIndex).trim();
+      const value = line.slice(separatorIndex + 1).trim();
+
+      if (!label || !value) return null;
+
+      return { label, value };
+    })
+    .filter((field): field is SetupRequestField => Boolean(field));
+}
+
 export function needsAttention(lead: Lead) {
   return lead.status === "new" && (lead.sms_status === "failed" || lead.sms_status === "undelivered");
 }

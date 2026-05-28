@@ -4,9 +4,10 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "@/components/icon";
 import type { Lead, LeadStatus, ReplyPriorityOverride } from "@/lib/supabase";
 import { LEGACY_FORWARDING_MESSAGE, QUICK_REPLIES } from "../_constants";
-import { followUpStatusText, formatDuration, formatPhone, formatRelativeTime, getLeadPriority, initials, isBookedLead } from "../_utils";
+import { followUpStatusText, formatDuration, formatPhone, formatRelativeTime, getLeadPriority, initials, isBookedLead, parseSetupRequestMessage } from "../_utils";
 import { BookedBadge, SmsBadge, StatusPill, VoicemailBadge } from "./badges";
 import { BookedToggle, BookedValueInput, PriorityControl, StatusControl } from "./controls";
+import { SetupRequestDetails } from "./setup-request-details";
 import { VoicemailAudio } from "./voicemail-audio";
 
 export function LeadDrawer({
@@ -42,11 +43,14 @@ export function LeadDrawer({
   const booked = isBookedLead(lead);
   const priority = getLeadPriority(lead);
   const hasUsefulMessage = Boolean(lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE);
+  const setupRequestFields = lead.source === "intake_form" ? parseSetupRequestMessage(lead.message) : [];
   const summaryGenerating = !lead.voicemail_summary && lead.voicemail_transcription_status === "processing";
   const requestLabel = lead.voicemail_summary
     ? "What they need"
     : hasUsefulMessage
-      ? "Request"
+      ? lead.source === "intake_form"
+        ? "Setup request"
+        : "Request"
       : lead.recording_sid
         ? "Voicemail"
         : "Next step";
@@ -194,7 +198,11 @@ export function LeadDrawer({
               <div className="lead-card__summary-progress" aria-hidden="true" />
             </div>
           ) : (
-            <p>{requestText}</p>
+            setupRequestFields.length > 0 ? (
+              <SetupRequestDetails fields={setupRequestFields} />
+            ) : (
+              <p>{requestText}</p>
+            )
           )}
         </section>
 
