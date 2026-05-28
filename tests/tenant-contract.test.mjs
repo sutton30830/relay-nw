@@ -14,6 +14,8 @@ const opsPageTsx = await readFile(new URL("../app/ops/page.tsx", import.meta.url
 const envExample = await readFile(new URL("../.env.example", import.meta.url), "utf8");
 const packageJson = await readFile(new URL("../package.json", import.meta.url), "utf8");
 const verifyAccountScript = await readFile(new URL("../scripts/verify-account.mjs", import.meta.url), "utf8");
+const backfillAccountIdsScript = await readFile(new URL("../scripts/backfill-account-ids.mjs", import.meta.url), "utf8");
+const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
 
 test("tenant core tables are present", () => {
   for (const table of [
@@ -86,6 +88,34 @@ test("business-owned tables carry account_id", () => {
   ]) {
     assert.match(sql, new RegExp(`alter table ${table.replace(".", "\\.")} add column if not exists account_id`));
   }
+});
+
+test("business-owned account_id columns are enforced after backfill", () => {
+  for (const table of [
+    "public.leads",
+    "public.opt_outs",
+    "public.inbound_messages",
+    "public.forwarding_health_checks",
+  ]) {
+    assert.match(sql, new RegExp(`alter table ${table.replace(".", "\\.")} alter column account_id set not null`));
+  }
+
+  assert.doesNotMatch(sql, /alter table public\.webhook_events alter column account_id set not null/);
+  assert.match(sql, /webhook_events\.account_id intentionally remains nullable/);
+});
+
+test("account_id backfill has dry-run apply script and runbook", () => {
+  assert.match(packageJson, /"backfill:account-ids": "node scripts\/backfill-account-ids\.mjs"/);
+  assert.match(backfillAccountIdsScript, /const BACKFILL_TABLES = \[/);
+  assert.match(backfillAccountIdsScript, /"leads"/);
+  assert.match(backfillAccountIdsScript, /"opt_outs"/);
+  assert.match(backfillAccountIdsScript, /"inbound_messages"/);
+  assert.match(backfillAccountIdsScript, /"forwarding_health_checks"/);
+  assert.match(backfillAccountIdsScript, /--apply/);
+  assert.match(backfillAccountIdsScript, /webhook_events/);
+  assert.match(readme, /deploy the code that always writes `account_id`/);
+  assert.match(readme, /npm run backfill:account-ids -- --slug=relay-nw --apply/);
+  assert.match(readme, /webhook_events\.account_id` intentionally remains nullable/);
 });
 
 test("idempotency indexes are account scoped", () => {

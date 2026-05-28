@@ -77,7 +77,7 @@ alter table public.account_users enable row level security;
 
 create table if not exists public.leads (
   id uuid primary key default gen_random_uuid(),
-  account_id uuid references public.accounts(id),
+  account_id uuid not null references public.accounts(id),
   call_sid text,
   name text,
   phone text not null,
@@ -152,6 +152,7 @@ alter table public.leads
     voicemail_transcription_status is null
     or voicemail_transcription_status in ('pending', 'processing', 'completed', 'failed')
   );
+alter table public.leads alter column account_id set not null;
 
 create index if not exists leads_created_at_idx on public.leads (created_at desc);
 create index if not exists leads_account_created_at_idx on public.leads (account_id, created_at desc);
@@ -184,6 +185,8 @@ create table if not exists public.webhook_events (
   error text
 );
 
+-- webhook_events.account_id intentionally remains nullable.
+-- Unresolved Twilio webhooks are logged with sanitized payloads and no tenant writes.
 alter table public.webhook_events add column if not exists account_id uuid references public.accounts(id);
 alter table public.webhook_events add column if not exists correlation_id text;
 alter table public.webhook_events drop constraint if exists webhook_events_source_check;
@@ -201,7 +204,7 @@ alter table public.webhook_events enable row level security;
 
 create table if not exists public.opt_outs (
   id uuid primary key default gen_random_uuid(),
-  account_id uuid references public.accounts(id),
+  account_id uuid not null references public.accounts(id),
   phone text not null,
   created_at timestamptz not null default now(),
   unique (account_id, phone)
@@ -213,6 +216,7 @@ update public.opt_outs set id = gen_random_uuid() where id is null;
 alter table public.opt_outs alter column id set not null;
 alter table public.opt_outs add constraint opt_outs_pkey primary key (id);
 alter table public.opt_outs add column if not exists account_id uuid references public.accounts(id);
+alter table public.opt_outs alter column account_id set not null;
 alter table public.opt_outs alter column phone set not null;
 create unique index if not exists opt_outs_account_phone_unique_idx
   on public.opt_outs (account_id, phone)
@@ -222,7 +226,7 @@ alter table public.opt_outs enable row level security;
 
 create table if not exists public.inbound_messages (
   id uuid primary key default gen_random_uuid(),
-  account_id uuid references public.accounts(id),
+  account_id uuid not null references public.accounts(id),
   message_sid text not null unique,
   from_phone text not null,
   to_phone text,
@@ -231,6 +235,7 @@ create table if not exists public.inbound_messages (
 );
 
 alter table public.inbound_messages add column if not exists account_id uuid references public.accounts(id);
+alter table public.inbound_messages alter column account_id set not null;
 create unique index if not exists inbound_messages_account_message_sid_unique_idx
   on public.inbound_messages (account_id, message_sid)
   where account_id is not null;
@@ -291,7 +296,7 @@ alter table public.messages enable row level security;
 
 create table if not exists public.forwarding_health_checks (
   id uuid primary key default gen_random_uuid(),
-  account_id uuid references public.accounts(id),
+  account_id uuid not null references public.accounts(id),
   phone_number_tested text not null,
   status text not null check (status in ('pending', 'passed', 'failed', 'timeout', 'error')),
   started_at timestamptz not null default now(),
@@ -314,6 +319,7 @@ create table if not exists public.forwarding_health_checks (
 );
 
 alter table public.forwarding_health_checks add column if not exists account_id uuid references public.accounts(id);
+alter table public.forwarding_health_checks alter column account_id set not null;
 create index if not exists forwarding_health_checks_created_at_idx
   on public.forwarding_health_checks (created_at desc);
 create index if not exists forwarding_health_checks_account_created_at_idx

@@ -154,6 +154,22 @@ The schema includes:
 
 The forwarding health check table is created by the latest `supabase.sql`. Apply that SQL in Supabase before using the Start listening button. To test forwarding, click Start listening, then call the owner number from a separate personal phone and let it go unanswered. Pending health checks also expire opportunistically when the leads inbox or start/status API is loaded. If you want scheduled cleanup later, wire Vercel Cron to `POST /api/health-check/expire-pending` with the same leads-session protection or a dedicated cron secret.
 
+### Tenant Account ID Backfill
+
+Before applying the latest `supabase.sql` constraints to an existing database, deploy the code that always writes `account_id`, then run the dry-run backfill:
+
+```bash
+npm run backfill:account-ids -- --slug=relay-nw
+```
+
+If the dry run reports NULL rows in `leads`, `opt_outs`, `inbound_messages`, or `forwarding_health_checks`, backfill them to the house account:
+
+```bash
+npm run backfill:account-ids -- --slug=relay-nw --apply
+```
+
+Run the dry run again and confirm those tables show zero blocking NULL rows, then apply `supabase.sql`. `webhook_events.account_id` intentionally remains nullable because unresolved Twilio webhooks are logged there with sanitized payloads and no tenant writes.
+
 ## Local Development
 
 Install dependencies:
