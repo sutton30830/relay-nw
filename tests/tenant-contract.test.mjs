@@ -12,6 +12,8 @@ const intakeRouteTs = await readFile(new URL("../app/api/intake/route.ts", impor
 const leadsPageTsx = await readFile(new URL("../app/leads/page.tsx", import.meta.url), "utf8");
 const opsPageTsx = await readFile(new URL("../app/ops/page.tsx", import.meta.url), "utf8");
 const envExample = await readFile(new URL("../.env.example", import.meta.url), "utf8");
+const packageJson = await readFile(new URL("../package.json", import.meta.url), "utf8");
+const verifyAccountScript = await readFile(new URL("../scripts/verify-account.mjs", import.meta.url), "utf8");
 
 test("tenant core tables are present", () => {
   for (const table of [
@@ -30,6 +32,16 @@ test("account users can bind Supabase Auth users to accounts", () => {
   assert.match(sql, /alter table public\.account_users add column if not exists user_id uuid/);
   assert.match(sql, /account_users_user_id_unique_idx/);
   assert.match(sql, /account_users_email_idx/);
+});
+
+test("account verifier checks pilot provisioning prerequisites", () => {
+  assert.match(packageJson, /"verify:account": "node scripts\/verify-account\.mjs"/);
+  assert.match(verifyAccountScript, /account_settings/);
+  assert.match(verifyAccountScript, /account_phone_numbers/);
+  assert.match(verifyAccountScript, /account_users/);
+  assert.match(verifyAccountScript, /owner_email is set/);
+  assert.match(verifyAccountScript, /SMS is disabled unless A2P is ready/);
+  assert.match(verifyAccountScript, /Twilio number is not a placeholder/);
 });
 
 test("email notifications are documented and lazily initialized", () => {
