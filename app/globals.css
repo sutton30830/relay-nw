@@ -2248,6 +2248,66 @@ code {
   color: var(--brand-ink);
 }
 
+.lead-card--loading {
+  pointer-events: none;
+}
+
+.loading-stack {
+  display: grid;
+  gap: 8px;
+  min-width: min(420px, 58vw);
+}
+
+.skeleton-line,
+.skeleton-pill,
+.skeleton-pulse {
+  display: block;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--line) 72%, var(--panel)),
+    color-mix(in oklab, var(--panel) 84%, white),
+    color-mix(in oklab, var(--line) 72%, var(--panel))
+  );
+  background-size: 220% 100%;
+  animation: skeleton-shimmer 1.1s ease-in-out infinite;
+}
+
+.skeleton-line--title {
+  width: min(320px, 54vw);
+  height: 22px;
+}
+
+.skeleton-line--meta {
+  width: 190px;
+  height: 14px;
+}
+
+.skeleton-line--body {
+  width: min(560px, 78vw);
+  height: 20px;
+  margin-top: 12px;
+}
+
+.skeleton-pill {
+  width: 78px;
+  height: 32px;
+}
+
+.skeleton-pill--wide {
+  width: 136px;
+}
+
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: -100% 0;
+  }
+}
+
 .setup-request {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

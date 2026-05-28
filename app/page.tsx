@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Icon } from "@/components/icon";
+import { InboxLink } from "@/app/inbox-link";
 import { publicBusinessName } from "@/lib/display-name";
 import { env } from "@/lib/env";
 
@@ -41,9 +42,9 @@ export default function HomePage() {
           <Link className="btn btn-primary btn-header" href="/intake">
             <Icon name="settings" size={13} /> Get started
           </Link>
-          <Link className="btn btn-secondary btn-header" href="/leads">
+          <InboxLink className="btn btn-secondary btn-header">
             <Icon name="inbox" size={13} /> Inbox
-          </Link>
+          </InboxLink>
         </div>
       </header>
 
