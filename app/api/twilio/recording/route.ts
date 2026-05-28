@@ -16,6 +16,7 @@ import {
   summarizeTwilioRequest,
   validateTwilioWebhook,
 } from "@/lib/twilio";
+import { handleUnresolvedTwilioAccount } from "@/lib/twilio/unresolved-account";
 import { emptyTwiml, twimlResponse } from "@/lib/twiml";
 import { normalizePhoneNumber } from "@/lib/phone";
 
@@ -142,13 +143,15 @@ export async function POST(request: Request) {
   const requestSummary = summarizeTwilioRequest(request, payload);
   const validation = validateTwilioWebhook(request, payload);
   const recording = parseRecordingPayload(payload);
-  const account = await resolveAccountByCallSid(recording.callSid);
+  const accountResolution = await resolveAccountByCallSid(recording.callSid);
+  const resolvedAccount = accountResolution.status === "resolved" ? accountResolution.account : null;
   const xml = emptyTwiml();
 
   console.info("Twilio recording webhook received", {
     correlationId,
-    accountId: account.accountId,
-    accountSlug: account.accountSlug,
+    accountId: resolvedAccount?.accountId ?? null,
+    accountSlug: resolvedAccount?.accountSlug ?? null,
+    accountResolutionStatus: accountResolution.status,
     ...requestSummary,
     recordingSid: recording.recordingSid,
     recordingDuration: recording.recordingDuration,
@@ -158,7 +161,7 @@ export async function POST(request: Request) {
   if (validation.shouldReject) {
     return rejectInvalidTwilioSignature({
       source: RECORDING_WEBHOOK_SOURCE,
-      accountId: account.accountId,
+      accountId: resolvedAccount?.accountId ?? null,
       label: "recording",
       payload,
       correlationId,
@@ -167,6 +170,19 @@ export async function POST(request: Request) {
       hasSignature: validation.hasSignature,
     });
   }
+
+  if (accountResolution.status === "unresolved") {
+    return handleUnresolvedTwilioAccount({
+      resolution: accountResolution,
+      source: RECORDING_WEBHOOK_SOURCE,
+      label: "recording",
+      payload,
+      correlationId,
+      responseBody: xml,
+    });
+  }
+
+  const account = accountResolution.account;
 
   try {
     const result = await updateLeadRecording(account, recording, correlationId);

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { createLead } from "@/lib/supabase";
+import { notifyAdminNewSetupRequest, notifyAdminOperationalIssue } from "@/lib/email";
+import { createLead, getDefaultAccountConfig } from "@/lib/supabase";
 
 const MAX_FIELD_LENGTH = 200;
 const MAX_NOTES_LENGTH = 2000;
@@ -178,11 +179,32 @@ export async function POST(request: Request) {
   }
 
   try {
+    const account = await getDefaultAccountConfig();
+
+    if (!account.accountId) {
+      const message = "Default Relay NW account is not provisioned. Cannot save setup request.";
+      console.error(message);
+      await notifyAdminOperationalIssue({
+        account,
+        issue: "Intake setup request missing default account",
+        detail: setupLead.message,
+      });
+      redirect("/intake?error=1");
+    }
+
     await createLead({
+      accountId: account.accountId,
       name: setupLead.leadName,
       phone: setupLead.ownerPhone,
       message: setupLead.message,
       source: "intake_form",
+    });
+
+    await notifyAdminNewSetupRequest({
+      account,
+      leadName: setupLead.leadName,
+      ownerPhone: setupLead.ownerPhone,
+      message: setupLead.message,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown setup request error";

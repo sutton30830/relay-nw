@@ -16,6 +16,7 @@ import {
   validateTwilioWebhook,
 } from "@/lib/twilio";
 import { handleMissedCall } from "@/lib/missed-call";
+import { handleUnresolvedTwilioAccount } from "@/lib/twilio/unresolved-account";
 import { dialForwardTwiml, forwardedMissedCallTwiml, twimlResponse } from "@/lib/twiml";
 
 const VOICE_WEBHOOK_SOURCE = "twilio_voice";
@@ -253,20 +254,21 @@ export async function POST(request: Request) {
   const correlationId = payload.CallSid || payload.MessageSid || payload.RecordingSid || crypto.randomUUID();
   const requestSummary = summarizeTwilioRequest(request, payload);
   const validation = validateTwilioWebhook(request, payload);
-  const account = await resolveAccountByTwilioNumber(payload.To);
-  const callerPhone = payload.From || account.twilioPhoneNumber;
+  const accountResolution = await resolveAccountByTwilioNumber(payload.To);
+  const resolvedAccount = accountResolution.status === "resolved" ? accountResolution.account : null;
 
   console.info("Twilio voice webhook received", {
     correlationId,
-    accountId: account.accountId,
-    accountSlug: account.accountSlug,
+    accountId: resolvedAccount?.accountId ?? null,
+    accountSlug: resolvedAccount?.accountSlug ?? null,
+    accountResolutionStatus: accountResolution.status,
     ...requestSummary,
   });
 
   if (validation.shouldReject) {
     return rejectInvalidTwilioSignature({
       source: VOICE_WEBHOOK_SOURCE,
-      accountId: account.accountId,
+      accountId: resolvedAccount?.accountId ?? null,
       label: "voice",
       payload,
       correlationId,
@@ -280,7 +282,7 @@ export async function POST(request: Request) {
   if (validation.wasAllowedByOverride) {
     await logUnsignedTwilioWebhook({
       source: VOICE_WEBHOOK_SOURCE,
-      accountId: account.accountId,
+      accountId: resolvedAccount?.accountId ?? null,
       label: "voice",
       payload,
       correlationId,
@@ -290,6 +292,23 @@ export async function POST(request: Request) {
       responseBody: "Allowed unsigned Twilio voice webhook by env override.",
     });
   }
+
+  if (accountResolution.status === "unresolved") {
+    return handleUnresolvedTwilioAccount({
+      resolution: accountResolution,
+      source: VOICE_WEBHOOK_SOURCE,
+      label: "voice",
+      payload,
+      correlationId,
+      responseBody: `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Joanna-Neural">We are unable to route this call right now. Please try again later.</Say>
+</Response>`,
+    });
+  }
+
+  const account = accountResolution.account;
+  const callerPhone = payload.From || account.twilioPhoneNumber;
 
   const healthCheckResponse =
     account.callMode === "forwarding"

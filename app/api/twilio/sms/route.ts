@@ -18,6 +18,7 @@ import {
   twilioClient,
   validateTwilioWebhook,
 } from "@/lib/twilio";
+import { handleUnresolvedTwilioAccount } from "@/lib/twilio/unresolved-account";
 import { emptyTwiml, twimlResponse } from "@/lib/twiml";
 
 const INBOUND_SMS_WEBHOOK_SOURCE = "twilio_inbound_sms";
@@ -160,13 +161,15 @@ export async function POST(request: Request) {
   const requestSummary = summarizeTwilioRequest(request, payload);
   const validation = validateTwilioWebhook(request, payload);
   const message = parseInboundSmsPayload(payload);
-  const account = await resolveAccountByTwilioNumber(message.to || payload.To);
+  const accountResolution = await resolveAccountByTwilioNumber(message.to || payload.To);
+  const resolvedAccount = accountResolution.status === "resolved" ? accountResolution.account : null;
   const xml = emptyTwiml();
 
   console.info("Twilio inbound SMS webhook received", {
     correlationId,
-    accountId: account.accountId,
-    accountSlug: account.accountSlug,
+    accountId: resolvedAccount?.accountId ?? null,
+    accountSlug: resolvedAccount?.accountSlug ?? null,
+    accountResolutionStatus: accountResolution.status,
     ...requestSummary,
     hasBody: Boolean(message.body),
     isOptOut: message.isOptOut,
@@ -175,7 +178,7 @@ export async function POST(request: Request) {
   if (validation.shouldReject) {
     return rejectInvalidTwilioSignature({
       source: INBOUND_SMS_WEBHOOK_SOURCE,
-      accountId: account.accountId,
+      accountId: resolvedAccount?.accountId ?? null,
       label: "inbound SMS",
       payload,
       correlationId,
@@ -188,7 +191,7 @@ export async function POST(request: Request) {
   if (validation.wasAllowedByOverride) {
     await logUnsignedTwilioWebhook({
       source: INBOUND_SMS_WEBHOOK_SOURCE,
-      accountId: account.accountId,
+      accountId: resolvedAccount?.accountId ?? null,
       label: "inbound SMS",
       payload,
       correlationId,
@@ -198,6 +201,19 @@ export async function POST(request: Request) {
       responseBody: "Allowed unsigned Twilio inbound SMS webhook by env override.",
     });
   }
+
+  if (accountResolution.status === "unresolved") {
+    return handleUnresolvedTwilioAccount({
+      resolution: accountResolution,
+      source: INBOUND_SMS_WEBHOOK_SOURCE,
+      label: "inbound SMS",
+      payload,
+      correlationId,
+      responseBody: xml,
+    });
+  }
+
+  const account = accountResolution.account;
 
   try {
     const action = await handleInboundSms(account, message, correlationId);

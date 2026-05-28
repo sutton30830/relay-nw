@@ -39,7 +39,12 @@ export default async function OpsPage({
             <h1 className="t-display">Webhook debug</h1>
             <p className="leads-subtitle">{account.businessName}</p>
           </div>
-          <Link className="btn btn-secondary" href="/leads">Back to leads</Link>
+          <div className="lead-actions">
+            <form action="/api/email-test/start" method="post">
+              <button className="btn btn-secondary" type="submit">Test owner email</button>
+            </form>
+            <Link className="btn btn-secondary" href="/leads">Back to leads</Link>
+          </div>
         </div>
 
         <form className="lead-controls" action="/ops">

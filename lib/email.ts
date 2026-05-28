@@ -117,6 +117,39 @@ async function ownerEmail(account: AccountRuntimeConfig) {
   return account.ownerEmail ?? await getOwnerNotificationEmail(account.accountId);
 }
 
+export async function notifyOwnerTestEmail(input: {
+  account: AccountRuntimeConfig;
+  requestedBy?: string | null;
+}) {
+  const recipient = await ownerEmail(input.account);
+  const lines = [
+    `This is a Relay NW owner notification test for ${input.account.businessName}.`,
+    input.requestedBy ? `Requested by ${input.requestedBy}.` : "Requested from the ops page.",
+    "If you received this, owner email alerts are configured correctly.",
+  ];
+
+  console.info("Owner email test requested", {
+    accountId: input.account.accountId,
+    accountSlug: input.account.accountSlug,
+    hasResendApiKey: Boolean(env.resendApiKey),
+    hasRecipient: Boolean(recipient),
+  });
+
+  return sendEmail({
+    to: recipient,
+    subject: `Relay NW email test for ${input.account.businessName}`,
+    html: emailHtml({
+      title: "Owner email test",
+      preview: "Relay NW owner email notifications are working.",
+      lines,
+      actionLabel: "Open ops",
+      actionUrl: `${env.appBaseUrl}/ops`,
+    }),
+    text: `${lines.join("\n")}\n\nOpen ops: ${env.appBaseUrl}/ops`,
+    tag: "owner_email_test",
+  });
+}
+
 export async function notifyOwnerNewMissedCallLead(input: {
   account: AccountRuntimeConfig;
   leadId: string;
@@ -133,6 +166,16 @@ export async function notifyOwnerNewMissedCallLead(input: {
     `Caller ending in ${last4}.`,
     smsLine,
   ];
+
+  console.info("Owner missed-call email requested", {
+    accountId: input.account.accountId,
+    accountSlug: input.account.accountSlug,
+    leadId: input.leadId,
+    callerLast4: last4,
+    smsStatus: input.smsStatus,
+    hasResendApiKey: Boolean(env.resendApiKey),
+    hasRecipient: Boolean(recipient),
+  });
 
   return sendEmail({
     to: recipient,
@@ -204,6 +247,34 @@ export async function notifyOwnerInboundReply(input: {
     }),
     text: `${lines.join("\n")}\n\nOpen leads: ${env.appBaseUrl}/leads`,
     tag: "owner_inbound_reply",
+  });
+}
+
+export async function notifyAdminNewSetupRequest(input: {
+  account: AccountRuntimeConfig;
+  leadName: string;
+  ownerPhone: string;
+  message: string;
+}) {
+  const last4 = phoneLast4(input.ownerPhone) ?? "unknown";
+  const lines = [
+    `New Relay NW setup request for ${input.leadName}.`,
+    `Caller ending in ${last4}.`,
+    input.message,
+  ];
+
+  return sendEmail({
+    to: env.adminAlertEmail,
+    subject: `New Relay NW setup request: ${input.leadName}`,
+    html: emailHtml({
+      title: "New setup request",
+      preview: `Setup request from ${input.leadName}`,
+      lines,
+      actionLabel: "Open lead inbox",
+      actionUrl: `${env.appBaseUrl}/leads`,
+    }),
+    text: `${lines.join("\n\n")}\n\nOpen leads: ${env.appBaseUrl}/leads`,
+    tag: "admin_new_setup_request",
   });
 }
 

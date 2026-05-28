@@ -12,6 +12,7 @@ import {
   summarizeTwilioRequest,
   validateTwilioWebhook,
 } from "@/lib/twilio";
+import { handleUnresolvedTwilioAccount } from "@/lib/twilio/unresolved-account";
 import { emptyTwiml, twimlResponse } from "@/lib/twiml";
 
 const SMS_STATUS_WEBHOOK_SOURCE = "twilio_sms_status";
@@ -76,13 +77,15 @@ export async function POST(request: Request) {
   const requestSummary = summarizeTwilioRequest(request, payload);
   const validation = validateTwilioWebhook(request, payload);
   const status = parseSmsStatusPayload(payload);
-  const account = await resolveAccountByMessageSid(status.messageSid);
+  const accountResolution = await resolveAccountByMessageSid(status.messageSid);
+  const resolvedAccount = accountResolution.status === "resolved" ? accountResolution.account : null;
   const xml = emptyTwiml();
 
   console.info("Twilio SMS status webhook received", {
     correlationId,
-    accountId: account.accountId,
-    accountSlug: account.accountSlug,
+    accountId: resolvedAccount?.accountId ?? null,
+    accountSlug: resolvedAccount?.accountSlug ?? null,
+    accountResolutionStatus: accountResolution.status,
     ...requestSummary,
     messageSid: status.messageSid,
     messageStatus: status.rawStatus,
@@ -91,7 +94,7 @@ export async function POST(request: Request) {
   if (validation.shouldReject) {
     return rejectInvalidTwilioSignature({
       source: SMS_STATUS_WEBHOOK_SOURCE,
-      accountId: account.accountId,
+      accountId: resolvedAccount?.accountId ?? null,
       label: "SMS status",
       payload,
       correlationId,
@@ -100,6 +103,19 @@ export async function POST(request: Request) {
       hasSignature: validation.hasSignature,
     });
   }
+
+  if (accountResolution.status === "unresolved") {
+    return handleUnresolvedTwilioAccount({
+      resolution: accountResolution,
+      source: SMS_STATUS_WEBHOOK_SOURCE,
+      label: "SMS status",
+      payload,
+      correlationId,
+      responseBody: xml,
+    });
+  }
+
+  const account = accountResolution.account;
 
   try {
     const result = status.messageSid && status.smsStatus

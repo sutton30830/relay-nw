@@ -8,6 +8,7 @@ const twilioTs = await readFile(new URL("../lib/twilio.ts", import.meta.url), "u
 const authTs = await readFile(new URL("../lib/auth.ts", import.meta.url), "utf8");
 const emailTs = await readFile(new URL("../lib/email.ts", import.meta.url), "utf8");
 const missedCallTs = await readFile(new URL("../lib/missed-call.ts", import.meta.url), "utf8");
+const intakeRouteTs = await readFile(new URL("../app/api/intake/route.ts", import.meta.url), "utf8");
 const leadsPageTsx = await readFile(new URL("../app/leads/page.tsx", import.meta.url), "utf8");
 const opsPageTsx = await readFile(new URL("../app/ops/page.tsx", import.meta.url), "utf8");
 const envExample = await readFile(new URL("../.env.example", import.meta.url), "utf8");
@@ -45,6 +46,13 @@ test("missed-call owner notification only follows inserted leads", () => {
   const notifyIndex = missedCallTs.indexOf("notifyOwnerNewMissedCallLead({");
   assert.ok(duplicateReturnIndex > -1);
   assert.ok(notifyIndex > duplicateReturnIndex);
+});
+
+test("public intake setup requests attach to the house account and alert admin", () => {
+  assert.match(intakeRouteTs, /getDefaultAccountConfig\(\)/);
+  assert.match(intakeRouteTs, /if \(!account\.accountId\)/);
+  assert.match(intakeRouteTs, /accountId: account\.accountId/);
+  assert.match(intakeRouteTs, /notifyAdminNewSetupRequest\(\{/);
 });
 
 test("human-facing pages require authenticated account context", () => {

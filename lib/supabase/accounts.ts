@@ -23,6 +23,10 @@ export type AccountRuntimeConfig = {
   ownerPhoneNumber: string;
 };
 
+export type AccountResolution =
+  | { status: "resolved"; account: AccountRuntimeConfig }
+  | { status: "unresolved"; reason: string; lookupValue: string | null };
+
 type AccountSettingsRow = {
   account_id: string;
   business_name: string;
@@ -169,7 +173,9 @@ export async function resolveAccountByTwilioNumber(phoneNumber: string | null | 
   const normalizedPhone = normalizePhoneNumber(phoneNumber ?? "");
 
   if (!normalizedPhone || isPlaceholderSupabaseConfig()) {
-    return envAccountConfig();
+    return process.env.NODE_ENV === "production"
+      ? { status: "unresolved", reason: "missing_or_placeholder_twilio_number", lookupValue: normalizedPhone || null } satisfies AccountResolution
+      : { status: "resolved", account: envAccountConfig() } satisfies AccountResolution;
   }
 
   const { data, error } = await supabaseAdmin
@@ -181,20 +187,28 @@ export async function resolveAccountByTwilioNumber(phoneNumber: string | null | 
   if (error) {
     if (error.message.includes("account_phone_numbers")) {
       console.warn("Account phone number table is missing. Falling back to env account config.");
-      return envAccountConfig();
+      return process.env.NODE_ENV === "production"
+        ? { status: "unresolved", reason: "account_phone_numbers_table_missing", lookupValue: normalizedPhone } satisfies AccountResolution
+        : { status: "resolved", account: envAccountConfig() } satisfies AccountResolution;
     }
 
     throw error;
   }
 
-  return (await getAccountConfigByAccountId(data?.account_id)) ?? envAccountConfig();
+  const account = await getAccountConfigByAccountId(data?.account_id);
+
+  return account
+    ? { status: "resolved", account } satisfies AccountResolution
+    : { status: "unresolved", reason: "twilio_number_not_registered", lookupValue: normalizedPhone } satisfies AccountResolution;
 }
 
 export async function resolveAccountByCallSid(callSid: string | null | undefined) {
   const normalizedCallSid = callSid?.trim();
 
   if (!normalizedCallSid || isPlaceholderSupabaseConfig()) {
-    return envAccountConfig();
+    return process.env.NODE_ENV === "production"
+      ? { status: "unresolved", reason: "missing_or_placeholder_call_sid", lookupValue: normalizedCallSid ?? null } satisfies AccountResolution
+      : { status: "resolved", account: envAccountConfig() } satisfies AccountResolution;
   }
 
   const { data, error } = await supabaseAdmin
@@ -205,20 +219,28 @@ export async function resolveAccountByCallSid(callSid: string | null | undefined
 
   if (error) {
     if (error.message.includes("calls")) {
-      return envAccountConfig();
+      return process.env.NODE_ENV === "production"
+        ? { status: "unresolved", reason: "calls_table_missing", lookupValue: normalizedCallSid } satisfies AccountResolution
+        : { status: "resolved", account: envAccountConfig() } satisfies AccountResolution;
     }
 
     throw error;
   }
 
-  return (await getAccountConfigByAccountId(data?.account_id)) ?? envAccountConfig();
+  const account = await getAccountConfigByAccountId(data?.account_id);
+
+  return account
+    ? { status: "resolved", account } satisfies AccountResolution
+    : { status: "unresolved", reason: "call_sid_not_registered", lookupValue: normalizedCallSid } satisfies AccountResolution;
 }
 
 export async function resolveAccountByMessageSid(messageSid: string | null | undefined) {
   const normalizedMessageSid = messageSid?.trim();
 
   if (!normalizedMessageSid || isPlaceholderSupabaseConfig()) {
-    return envAccountConfig();
+    return process.env.NODE_ENV === "production"
+      ? { status: "unresolved", reason: "missing_or_placeholder_message_sid", lookupValue: normalizedMessageSid ?? null } satisfies AccountResolution
+      : { status: "resolved", account: envAccountConfig() } satisfies AccountResolution;
   }
 
   const { data, error } = await supabaseAdmin
@@ -229,13 +251,19 @@ export async function resolveAccountByMessageSid(messageSid: string | null | und
 
   if (error) {
     if (error.message.includes("messages")) {
-      return envAccountConfig();
+      return process.env.NODE_ENV === "production"
+        ? { status: "unresolved", reason: "messages_table_missing", lookupValue: normalizedMessageSid } satisfies AccountResolution
+        : { status: "resolved", account: envAccountConfig() } satisfies AccountResolution;
     }
 
     throw error;
   }
 
-  return (await getAccountConfigByAccountId(data?.account_id)) ?? envAccountConfig();
+  const account = await getAccountConfigByAccountId(data?.account_id);
+
+  return account
+    ? { status: "resolved", account } satisfies AccountResolution
+    : { status: "unresolved", reason: "message_sid_not_registered", lookupValue: normalizedMessageSid } satisfies AccountResolution;
 }
 
 export async function provisionAccount(input: {

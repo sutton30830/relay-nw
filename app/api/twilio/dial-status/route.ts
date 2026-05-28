@@ -14,6 +14,7 @@ import {
   validateTwilioWebhook,
 } from "@/lib/twilio";
 import { handleMissedCall } from "@/lib/missed-call";
+import { handleUnresolvedTwilioAccount } from "@/lib/twilio/unresolved-account";
 import { emptyTwiml, twimlResponse } from "@/lib/twiml";
 
 const DIAL_STATUS_WEBHOOK_SOURCE = "twilio_dial_status";
@@ -114,20 +115,22 @@ export async function POST(request: Request) {
   const dialCallStatus = payload.DialCallStatus ?? "";
   const callerPhone = (payload.From ?? "").trim();
   const callSid = (payload.CallSid ?? "").trim();
-  const account = await resolveAccountByCallSid(callSid);
+  const accountResolution = await resolveAccountByCallSid(callSid);
+  const resolvedAccount = accountResolution.status === "resolved" ? accountResolution.account : null;
   const xml = emptyTwiml();
 
   console.info("Twilio dial status webhook received", {
     correlationId,
-    accountId: account.accountId,
-    accountSlug: account.accountSlug,
+    accountId: resolvedAccount?.accountId ?? null,
+    accountSlug: resolvedAccount?.accountSlug ?? null,
+    accountResolutionStatus: accountResolution.status,
     ...requestSummary,
   });
 
   if (validation.shouldReject) {
     return rejectInvalidTwilioSignature({
       source: DIAL_STATUS_WEBHOOK_SOURCE,
-      accountId: account.accountId,
+      accountId: resolvedAccount?.accountId ?? null,
       label: "dial status",
       payload,
       correlationId,
@@ -141,7 +144,7 @@ export async function POST(request: Request) {
   if (validation.wasAllowedByOverride) {
     await logUnsignedTwilioWebhook({
       source: DIAL_STATUS_WEBHOOK_SOURCE,
-      accountId: account.accountId,
+      accountId: resolvedAccount?.accountId ?? null,
       label: "dial status",
       payload,
       correlationId,
@@ -151,6 +154,19 @@ export async function POST(request: Request) {
       responseBody: "Allowed unsigned Twilio dial status webhook by env override.",
     });
   }
+
+  if (accountResolution.status === "unresolved") {
+    return handleUnresolvedTwilioAccount({
+      resolution: accountResolution,
+      source: DIAL_STATUS_WEBHOOK_SOURCE,
+      label: "dial status",
+      payload,
+      correlationId,
+      responseBody: xml,
+    });
+  }
+
+  const account = accountResolution.account;
 
   try {
     await upsertCall({
