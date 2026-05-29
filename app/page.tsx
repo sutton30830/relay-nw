@@ -55,8 +55,8 @@ export default function HomePage() {
             Miss a call? That&apos;s a <em>lost job.</em>
           </h2>
           <p className="home-hero__sub">
-            Turn missed calls into booked jobs automatically. Relay NW texts callers right away so
-            they don&apos;t hire someone else.
+            Relay texts missed callers right away, records and summarizes voicemails, emails you
+            the details, and keeps every lead in a simple callback inbox.
           </p>
           <div className="home-hero__actions">
             <Link className="btn btn-primary" href="/intake">
@@ -64,7 +64,7 @@ export default function HomePage() {
             </Link>
           </div>
           <p className="home-hero__note">
-            $99/month. No contracts. 30-day refund if it doesn&apos;t help.
+            $99/month. Try it for 30 days free.
           </p>
         </div>
 
