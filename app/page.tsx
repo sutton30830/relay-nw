@@ -55,8 +55,7 @@ export default function HomePage() {
             Miss a call? That&apos;s a <em>lost job.</em>
           </h2>
           <p className="home-hero__sub">
-            Relay texts missed callers right away, records and summarizes voicemails, emails you
-            the details, and keeps every lead in a simple callback inbox.
+            Instant text-back, voicemail summaries, and a simple inbox for every missed call.
           </p>
           <div className="home-hero__actions">
             <Link className="btn btn-primary" href="/intake">
