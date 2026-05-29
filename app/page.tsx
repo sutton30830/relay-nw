@@ -120,10 +120,8 @@ export default function HomePage() {
 
         <div className="home-optional">
           <strong>Start turning missed calls into jobs today</strong>
-          <span>$99/month. No contracts. Cancel anytime.</span>
-          <span>Try it for 30 days. If it doesn&apos;t help, we&apos;ll refund you.</span>
-          <span>Missed call → instant text → customer replies → you call back → job booked.</span>
-          <p className="home-optional__punch">Every missed call is a job someone else takes.</p>
+          <span>$99/month. Try it for 30 days free.</span>
+          <p className="home-optional__punch">If Relay doesn&apos;t help you recover missed calls, you don&apos;t pay.</p>
           <Link className="btn btn-primary home-optional__cta" href="/intake">
             Start setup
           </Link>
