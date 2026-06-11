@@ -8,7 +8,7 @@ import ts from "typescript";
 // 1. Deterministic cooldown winner for concurrent missed calls (no mutual skip, no double text)
 // 2. resolveAccountSafely downgrades resolution errors to "unresolved" (webhooks stay visible)
 // 3. Email wildcard escaping in account_users lookup (tenant isolation)
-// 4. SMS test status endpoint scoped to the tenant's own phone numbers
+// 4. SMS test endpoint bookkeeping and tenant scoping
 
 async function loadTsModule(path, mocks) {
   const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
@@ -296,4 +296,62 @@ test("sms-test status refuses another tenant's MessageSid (404, no metadata leak
   assert.equal(response.status, 404);
   const body = await response.json();
   assert.equal(body.errorCode, undefined, "no Twilio metadata may leak across tenants");
+});
+
+test("sms-test start registers outbound MessageSid so status callbacks resolve to the account", async () => {
+  const insertedMessages = [];
+  const account = {
+    accountId: "acct-1",
+    smsEnabled: true,
+    twilioPhoneNumber: "+15551234567",
+    ownerPhoneNumber: "+15557654321",
+  };
+
+  const { POST } = await loadTsModule("app/api/sms-test/start/route.ts", {
+    "@/lib/env": { env: { appBaseUrl: "https://example.com" } },
+    "@/lib/supabase": {
+      assertTenantAccount: (value) => value,
+      createMessageIfNew: async (input) => {
+        insertedMessages.push(input);
+        return { inserted: true };
+      },
+    },
+    "@/lib/twilio": {
+      missedCallSmsBodyForAccount: () => "Thanks for calling.",
+      phoneLast4: (value) => String(value).slice(-4),
+      twilioClient: {
+        messages: {
+          create: async (input) => {
+            assert.equal(input.statusCallback, "https://example.com/api/twilio/sms-status");
+            assert.match(input.body, /^\[Relay NW test\]/);
+            return { sid: "SM_test_status_registered", status: "queued" };
+          },
+        },
+      },
+    },
+    "../_auth": {
+      authorizeSmsTestRequest: async () => ({
+        session: { account },
+        response: null,
+      }),
+    },
+  });
+
+  const response = await POST();
+
+  assert.equal(response.status, 200);
+  assert.equal(insertedMessages.length, 1);
+  assert.deepEqual(insertedMessages[0], {
+    accountId: "acct-1",
+    twilioMessageSid: "SM_test_status_registered",
+    direction: "outbound",
+    fromPhone: "+15551234567",
+    toPhone: "+15557654321",
+    body: "[Relay NW test] Thanks for calling.",
+    status: "queued",
+  });
+
+  const body = await response.json();
+  assert.equal(body.messageSid, "SM_test_status_registered");
+  assert.equal(body.trackingWarning, null);
 });
