@@ -8,6 +8,7 @@ import {
   updateLeadSmsStatus,
   updateLeadSmsStatusByMessageSid,
   updateMessageStatusBySid,
+  resolveAccountSafely,
 } from "@/lib/supabase";
 import {
   formDataToRecord,
@@ -85,7 +86,7 @@ export async function POST(request: Request) {
   const requestSummary = summarizeTwilioRequest(request, payload);
   const validation = validateTwilioWebhook(request, payload);
   const status = parseSmsStatusPayload(payload);
-  const accountResolution = await resolveAccountByMessageSid(status.messageSid);
+  const accountResolution = await resolveAccountSafely(() => resolveAccountByMessageSid(status.messageSid), "SMS status");
   const resolvedAccount = accountResolution.status === "resolved" ? accountResolution.account : null;
   const xml = emptyTwiml();
 

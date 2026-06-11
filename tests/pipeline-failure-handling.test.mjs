@@ -230,6 +230,7 @@ function makeSmsStatusRouteMocks(state) {
     "@/lib/supabase": {
       assertTenantAccount: (account) => account,
       resolveAccountByMessageSid: async () => ({ status: "resolved", account: ACCOUNT }),
+      resolveAccountSafely: async (resolve) => resolve(),
       updateLeadSmsStatusByMessageSid: async (input) => {
         state.leadUpdatesBySid.push(input);
         return { updated: state.leadHasMessageSid };

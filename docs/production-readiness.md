@@ -28,6 +28,14 @@ Update after error-handling hardening pass (June 2026):
 - New failure-injection simulator scenarios: `sms-status-failed`, `sms-status-orphan`, `recording-orphan`.
 - New test suite: `tests/pipeline-failure-handling.test.mjs` (14 failure-injection tests covering the missed-call → SMS → lead pipeline).
 
+Update after deep backend audit (June 2026):
+- Concurrent missed calls from the same caller now resolve deterministically: exactly one lead sends the text (earlier lead wins, id tie-break). Previously both could mark `skipped_recent` and the caller would never be texted.
+- Account resolution failures in Twilio webhook routes no longer 500 with no TwiML and no log; they downgrade to the unresolved-account path (200 TwiML + webhook event + admin alert).
+- The `account_users` email lookup escapes ilike wildcards (tenant-isolation fix).
+- `GET /api/sms-test/status` only returns messages involving the tenant's own phone numbers.
+- New test suite: `tests/audit-fixes.test.mjs`.
+- Deferred (documented, not changed): drop the global (non-account-scoped) `leads_call_sid_unique_idx` / `leads_twilio_message_sid_unique_idx` in a future migration; make webhook-event retention pruning fire-and-forget; per-instance intake rate limiting; remove legacy `leads-login`/`leads-logout` stubs.
+
 Recommended launch posture:
 - Personally onboard each business.
 - Run one real end-to-end test per business.

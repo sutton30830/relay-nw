@@ -66,10 +66,15 @@ async function findAccountUser(userId: string, email: string | null) {
     return null;
   }
 
+  // ilike treats % and _ as wildcards, and _ is legal in email addresses. Escape both so
+  // a login email like j_doe@x.com can only match itself, never another tenant's
+  // jadoe@x.com row. The lookup stays case-insensitive.
+  const escapedEmail = email.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
+
   const byEmail = await supabaseAdmin
     .from("account_users")
     .select("id, account_id, user_id, email, role")
-    .ilike("email", email)
+    .ilike("email", escapedEmail)
     .maybeSingle();
 
   if (byEmail.error) {

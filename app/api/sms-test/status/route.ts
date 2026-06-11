@@ -1,3 +1,4 @@
+import { normalizePhoneNumber } from "@/lib/phone";
 import { twilioClient } from "@/lib/twilio";
 import { authorizeSmsTestRequest } from "../_auth";
 
@@ -16,6 +17,24 @@ export async function GET(request: Request) {
 
   try {
     const message = await twilioClient.messages(messageSid).fetch();
+
+    // The Twilio account is shared across tenants. Only return messages that involve
+    // this tenant's own numbers so one account can't probe another's message metadata.
+    const tenantNumbers = new Set(
+      [auth.session.account.twilioPhoneNumber, auth.session.account.ownerPhoneNumber]
+        .map((value) => normalizePhoneNumber(value))
+        .filter(Boolean),
+    );
+    const messageNumbers = [message.from, message.to]
+      .map((value) => normalizePhoneNumber(value ?? ""))
+      .filter(Boolean);
+
+    if (!messageNumbers.some((value) => tenantNumbers.has(value))) {
+      return Response.json(
+        { error: "Message not found for this account." },
+        { status: 404, headers: { "Cache-Control": "no-store" } },
+      );
+    }
 
     return Response.json(
       {

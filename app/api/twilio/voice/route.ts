@@ -9,6 +9,7 @@ import {
   markForwardingHealthCheckPassed,
   resolveAccountByTwilioNumber,
   upsertCall,
+  resolveAccountSafely,
 } from "@/lib/supabase";
 import {
   formDataToRecord,
@@ -283,7 +284,7 @@ export async function POST(request: Request) {
   const correlationId = payload.CallSid || payload.MessageSid || payload.RecordingSid || crypto.randomUUID();
   const requestSummary = summarizeTwilioRequest(request, payload);
   const validation = validateTwilioWebhook(request, payload);
-  const accountResolution = await resolveAccountByTwilioNumber(payload.To);
+  const accountResolution = await resolveAccountSafely(() => resolveAccountByTwilioNumber(payload.To), "voice");
   const resolvedAccount = accountResolution.status === "resolved" ? accountResolution.account : null;
 
   console.info("Twilio voice webhook received", {

@@ -8,6 +8,7 @@ import {
   updateCallRecordingByCallSid,
   updateLeadRecordingByCallSid,
   type TenantAccountRuntimeConfig,
+  resolveAccountSafely,
 } from "@/lib/supabase";
 import { transcribeLeadVoicemail } from "@/lib/voicemail-ai";
 import {
@@ -144,7 +145,7 @@ export async function POST(request: Request) {
   const requestSummary = summarizeTwilioRequest(request, payload);
   const validation = validateTwilioWebhook(request, payload);
   const recording = parseRecordingPayload(payload);
-  const accountResolution = await resolveAccountByCallSid(recording.callSid);
+  const accountResolution = await resolveAccountSafely(() => resolveAccountByCallSid(recording.callSid), "recording");
   const resolvedAccount = accountResolution.status === "resolved" ? accountResolution.account : null;
   const xml = emptyTwiml();
 

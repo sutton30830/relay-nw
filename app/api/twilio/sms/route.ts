@@ -9,6 +9,7 @@ import {
   recordOptOut,
   resolveAccountByTwilioNumber,
   type TenantAccountRuntimeConfig,
+  resolveAccountSafely,
 } from "@/lib/supabase";
 import {
   formDataToRecord,
@@ -166,7 +167,7 @@ export async function POST(request: Request) {
   const requestSummary = summarizeTwilioRequest(request, payload);
   const validation = validateTwilioWebhook(request, payload);
   const message = parseInboundSmsPayload(payload);
-  const accountResolution = await resolveAccountByTwilioNumber(message.to || payload.To);
+  const accountResolution = await resolveAccountSafely(() => resolveAccountByTwilioNumber(message.to || payload.To), "inbound SMS");
   const resolvedAccount = accountResolution.status === "resolved" ? accountResolution.account : null;
   const xml = emptyTwiml();
 

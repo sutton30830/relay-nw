@@ -27,6 +27,33 @@ export type AccountResolution =
   | { status: "resolved"; account: AccountRuntimeConfig }
   | { status: "unresolved"; reason: string; lookupValue: string | null };
 
+// Webhook routes resolve the tenant before their try/catch blocks. If resolution itself
+// throws (e.g. transient Supabase outage), the route would 500 with no TwiML, no webhook
+// event, and — on voice — the caller hearing Twilio's error message. Downgrading to
+// "unresolved" keeps the webhook visible: the unresolved handler returns 200 TwiML, logs
+// a webhook event, and alerts the admin.
+export async function resolveAccountSafely(
+  resolve: () => Promise<AccountResolution>,
+  label: string,
+): Promise<AccountResolution> {
+  try {
+    return await resolve();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown account resolution error";
+
+    console.error("Twilio webhook account resolution threw; treating as unresolved", {
+      label,
+      error: message,
+    });
+
+    return {
+      status: "unresolved",
+      reason: `account_resolution_error: ${message}`,
+      lookupValue: null,
+    };
+  }
+}
+
 type AccountSettingsRow = {
   account_id: string;
   business_name: string;

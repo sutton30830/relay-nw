@@ -96,6 +96,7 @@ export async function hasRecentMissedCallSms(
   since: Date,
   inputAccountId: string,
   excludeLeadId?: string,
+  ownLeadCreatedAt?: string | null,
 ) {
   const accountId = assertAccountId(inputAccountId, "hasRecentMissedCallSms");
 
@@ -105,7 +106,7 @@ export async function hasRecentMissedCallSms(
 
   let query = supabaseAdmin
     .from("leads")
-    .select("id")
+    .select("id, created_at")
     .eq("phone", phone)
     .eq("source", "missed_call")
     .eq("account_id", accountId)
@@ -116,11 +117,30 @@ export async function hasRecentMissedCallSms(
     query = query.neq("id", excludeLeadId);
   }
 
-  const { data, error } = await query.limit(1);
+  const { data, error } = await query.limit(25);
 
   throwIfSupabaseError(error);
 
-  return Boolean(data?.length);
+  const competitors = (data ?? []) as Array<{ id: string; created_at: string }>;
+
+  if (competitors.length === 0) {
+    return false;
+  }
+
+  // Deterministic winner selection for concurrent missed calls from the same caller.
+  // Both leads insert with sms_status "pending" before either runs this check, so
+  // without a tie-break each would see the other and both would skip — the caller
+  // would never be texted. A competing lead only blocks this one if it was created
+  // strictly earlier (id as tie-break), so exactly one lead always sends.
+  if (excludeLeadId && ownLeadCreatedAt) {
+    return competitors.some(
+      (competitor) =>
+        competitor.created_at < ownLeadCreatedAt ||
+        (competitor.created_at === ownLeadCreatedAt && competitor.id < excludeLeadId),
+    );
+  }
+
+  return true;
 }
 
 export async function isOptedOut(phone: string, inputAccountId: string) {

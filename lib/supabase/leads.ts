@@ -123,7 +123,7 @@ export async function createMissedCallLeadIfNew(input: {
   const accountId = assertAccountId(input.accountId, "createMissedCallLeadIfNew");
 
   if (shouldSkipDatabaseWrite("missed call lead insert", input)) {
-    return { inserted: true, leadId: null };
+    return { inserted: true, leadId: null, createdAt: null };
   }
 
   const { data, error } = await supabaseAdmin
@@ -137,12 +137,12 @@ export async function createMissedCallLeadIfNew(input: {
       source: "missed_call",
       status: "new",
     })
-    .select("id")
+    .select("id, created_at")
     .maybeSingle();
 
   if (error) {
     if (error.code === "23505") {
-      return { inserted: false, leadId: null };
+      return { inserted: false, leadId: null, createdAt: null };
     }
 
     throw error;
@@ -151,6 +151,7 @@ export async function createMissedCallLeadIfNew(input: {
   return {
     inserted: Boolean(data?.id),
     leadId: data?.id ?? null,
+    createdAt: (data?.created_at as string | undefined) ?? null,
   };
 }
 

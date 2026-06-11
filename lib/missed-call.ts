@@ -105,6 +105,7 @@ export async function handleMissedCall(input: {
       cooldownSince,
       account.accountId,
       leadResult.leadId,
+      leadResult.createdAt ?? null,
     );
     optedOut = !alreadyTextedRecently && (await isOptedOut(callerPhone, account.accountId));
   } catch (error) {

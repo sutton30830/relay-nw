@@ -4,6 +4,7 @@ import {
   resolveAccountByCallSid,
   type TenantAccountRuntimeConfig,
   upsertCall,
+  resolveAccountSafely,
 } from "@/lib/supabase";
 import { env } from "@/lib/env";
 import {
@@ -116,7 +117,7 @@ export async function POST(request: Request) {
   const dialCallStatus = payload.DialCallStatus ?? "";
   const callerPhone = (payload.From ?? "").trim();
   const callSid = (payload.CallSid ?? "").trim();
-  const accountResolution = await resolveAccountByCallSid(callSid);
+  const accountResolution = await resolveAccountSafely(() => resolveAccountByCallSid(callSid), "dial status");
   const resolvedAccount = accountResolution.status === "resolved" ? accountResolution.account : null;
   const xml = emptyTwiml();
 
