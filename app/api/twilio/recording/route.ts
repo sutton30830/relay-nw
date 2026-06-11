@@ -22,6 +22,13 @@ import { handleUnresolvedTwilioAccount } from "@/lib/twilio/unresolved-account";
 import { emptyTwiml, twimlResponse } from "@/lib/twiml";
 import { normalizePhoneNumber } from "@/lib/phone";
 
+// Automatic voicemail transcription runs in after() within this function's lifetime.
+// Without an explicit maxDuration, Vercel's default function timeout can kill the
+// download + transcription + summary chain mid-flight, leaving summaries to only ever
+// complete via manual retry (the stale-processing takeover).
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
 const RECORDING_WEBHOOK_SOURCE = "twilio_recording";
 
 function parseDuration(value: string | null) {

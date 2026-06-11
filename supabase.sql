@@ -158,18 +158,19 @@ create index if not exists leads_created_at_idx on public.leads (created_at desc
 create index if not exists leads_account_created_at_idx on public.leads (account_id, created_at desc);
 create index if not exists leads_phone_created_at_idx on public.leads (phone, created_at desc);
 create index if not exists leads_account_phone_created_at_idx on public.leads (account_id, phone, created_at desc);
-create unique index if not exists leads_call_sid_unique_idx
-  on public.leads (call_sid)
-  where call_sid is not null;
 create unique index if not exists leads_account_call_sid_unique_idx
   on public.leads (account_id, call_sid)
   where account_id is not null and call_sid is not null;
-create unique index if not exists leads_twilio_message_sid_unique_idx
-  on public.leads (twilio_message_sid)
-  where twilio_message_sid is not null;
 create unique index if not exists leads_account_twilio_message_sid_unique_idx
   on public.leads (account_id, twilio_message_sid)
   where account_id is not null and twilio_message_sid is not null;
+-- The global (non-account-scoped) unique indexes are dropped: idempotency is enforced
+-- per account. Twilio sids are globally unique within one Twilio account anyway, and the
+-- global versions would cause cross-tenant insert failures if a second Twilio account is
+-- ever added.
+drop index if exists leads_call_sid_unique_idx;
+drop index if exists leads_twilio_message_sid_unique_idx;
+create index if not exists leads_call_sid_idx on public.leads (call_sid) where call_sid is not null;
 create index if not exists leads_deleted_at_idx on public.leads (deleted_at);
 
 alter table public.leads enable row level security;

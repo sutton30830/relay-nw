@@ -108,3 +108,26 @@ export const env = {
   supabaseAnonKey: getRequiredEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
   supabaseServiceRoleKey: getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY"),
 };
+
+// Admin email alerts are the failure-visibility backstop when Supabase itself is
+// unreachable (the webhook event log can't record a Supabase outage). Don't fail the
+// boot, but make a misconfigured backstop loud in production logs.
+if (process.env.NODE_ENV === "production") {
+  if (!env.resendApiKey) {
+    console.warn(
+      "RESEND_API_KEY is not set in production. Admin/owner email alerts are disabled — pipeline failures will only be visible in the webhook event log and server logs.",
+    );
+  }
+
+  if (!env.adminAlertEmail) {
+    console.warn(
+      "ADMIN_ALERT_EMAIL is not set in production. Operational failure alerts (SMS send failures, reconciliation issues, transcription failures) have no recipient.",
+    );
+  }
+
+  if (!process.env.SENTRY_DSN) {
+    console.warn(
+      "SENTRY_DSN is not set in production. Unhandled errors are only visible in Vercel logs.",
+    );
+  }
+}

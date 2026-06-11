@@ -34,7 +34,14 @@ Update after deep backend audit (June 2026):
 - The `account_users` email lookup escapes ilike wildcards (tenant-isolation fix).
 - `GET /api/sms-test/status` only returns messages involving the tenant's own phone numbers.
 - New test suite: `tests/audit-fixes.test.mjs`.
-- Deferred (documented, not changed): drop the global (non-account-scoped) `leads_call_sid_unique_idx` / `leads_twilio_message_sid_unique_idx` in a future migration; make webhook-event retention pruning fire-and-forget; per-instance intake rate limiting; remove legacy `leads-login`/`leads-logout` stubs.
+- Deferred (documented, not changed): per-instance intake rate limiting; lead inbox pagination; per-account Twilio credentials (single Twilio account is assumed in recording playback and voicemail download).
+
+Update after pre-customer confidence pass (June 2026):
+- The recording webhook route now sets `maxDuration = 60` so automatic voicemail transcription is not killed by Vercel's default function timeout.
+- Production boot now warns loudly if `RESEND_API_KEY`, `ADMIN_ALERT_EMAIL`, or `SENTRY_DSN` are missing (email alerts are the failure-visibility backstop when Supabase is unreachable).
+- Webhook-event retention pruning is fire-and-forget — it no longer adds latency or failure risk to the webhook hot path.
+- `supabase.sql` drops the redundant global unique indexes on `leads.call_sid` / `leads.twilio_message_sid` (idempotency is per-account; the account-scoped unique indexes remain) and adds a non-unique `leads_call_sid_idx`. Re-run `supabase.sql` to apply.
+- Removed the dead `app/api/leads-login` stub (`leads-logout` remains as a live alias for `/api/auth/logout`).
 
 Recommended launch posture:
 - Personally onboard each business.

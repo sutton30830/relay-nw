@@ -146,7 +146,11 @@ export async function logWebhookEvent(input: {
     return;
   }
 
-  await pruneOldOperationalData();
+  // Fire-and-forget: retention pruning must never add latency or failure risk to the
+  // webhook hot path. Individual delete errors are already caught inside.
+  void pruneOldOperationalData().catch((error) => {
+    console.error("Retention pruning failed", error);
+  });
 
   const event = {
     account_id: input.accountId ?? null,
