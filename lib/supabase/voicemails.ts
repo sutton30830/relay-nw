@@ -51,7 +51,7 @@ export async function getLeadForVoicemailTranscription(id: string, inputAccountI
 
   const { data, error } = await supabaseAdmin
     .from("leads")
-    .select("id, phone, recording_sid, voicemail_transcript, voicemail_summary, voicemail_transcription_status")
+    .select("id, phone, recording_sid, voicemail_transcript, voicemail_summary, voicemail_transcription_status, voicemail_transcribed_at")
     .eq("id", id)
     .eq("account_id", accountId)
     .maybeSingle();
@@ -65,6 +65,7 @@ export async function getLeadForVoicemailTranscription(id: string, inputAccountI
     voicemail_transcript: string | null;
     voicemail_summary: string | null;
     voicemail_transcription_status: VoicemailTranscriptionStatus;
+    voicemail_transcribed_at: string | null;
   } | null;
 }
 
@@ -91,7 +92,12 @@ export async function updateLeadVoicemailTranscription(input: {
   } = {
     voicemail_transcription_status: input.status,
     voicemail_transcription_error: input.error ?? null,
-    voicemail_transcribed_at: input.status === "completed" ? new Date().toISOString() : null,
+    // "completed" records the finish time; "processing" records the start time so a
+    // crashed run can be detected as stale and retried instead of locking the lead forever.
+    voicemail_transcribed_at:
+      input.status === "completed" || input.status === "processing"
+        ? new Date().toISOString()
+        : null,
   };
 
   if (typeof input.transcript !== "undefined") {

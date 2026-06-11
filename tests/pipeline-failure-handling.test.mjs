@@ -1,0 +1,448 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+import vm from "node:vm";
+import ts from "typescript";
+
+// Failure-injection coverage for the missed-call -> SMS -> lead pipeline.
+// Every step must either succeed visibly or fail visibly: a failure anywhere must end
+// with the lead in an accurate state and/or a webhook event log entry — never a silent
+// stale "pending" that only shows up by digging through Supabase or Twilio logs.
+
+async function loadTsModule(path, mocks) {
+  const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: {
+      esModuleInterop: true,
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2020,
+    },
+  }).outputText;
+
+  const module = { exports: {} };
+  const require = (specifier) => {
+    if (specifier in mocks) return mocks[specifier];
+    throw new Error(`Missing test mock for ${specifier} while loading ${path}`);
+  };
+
+  const script = new vm.Script(`(function(require, module, exports) { ${compiled}\n})`, { filename: path });
+  script.runInThisContext()(require, module, module.exports);
+  return module.exports;
+}
+
+const ACCOUNT = {
+  accountId: "acct-1",
+  accountSlug: "demo",
+  businessName: "Demo HVAC",
+  smsEnabled: true,
+  missedCallSmsCooldownHours: 6,
+  twilioPhoneNumber: "+15551234567",
+  ownerPhoneNumber: "+15557654321",
+  ownerEmail: "owner@example.com",
+};
+
+function makeMissedCallMocks(overrides = {}) {
+  const calls = {
+    leadSmsStatusUpdates: [],
+    messagesCreated: [],
+    adminIssues: [],
+    ownerNotifications: [],
+    twilioSends: [],
+  };
+
+  const supabase = {
+    createMissedCallLeadIfNew: async () => ({ inserted: true, leadId: "lead-1" }),
+    updateCallForMissedLead: async () => {},
+    hasRecentMissedCallSms: async () => false,
+    isOptedOut: async () => false,
+    assertTenantAccount: (account) => account,
+    updateLeadSmsStatus: async (input) => {
+      calls.leadSmsStatusUpdates.push(input);
+    },
+    createMessageIfNew: async (input) => {
+      calls.messagesCreated.push(input);
+      return { inserted: true };
+    },
+    ...overrides.supabase,
+  };
+
+  const twilioClient = {
+    messages: {
+      create: async (input) => {
+        calls.twilioSends.push(input);
+        return { sid: "SM_test_123" };
+      },
+      ...overrides.twilioMessages,
+    },
+  };
+
+  const mocks = {
+    "@/lib/env": { env: { appBaseUrl: "http://localhost:3000" } },
+    "@/lib/phone": { normalizePhoneNumber: (value) => value },
+    "@/lib/supabase": supabase,
+    "@/lib/supabase/accounts": { envAccountConfig: () => ACCOUNT },
+    "@/lib/twilio": {
+      missedCallSmsBodyForAccount: () => "We missed your call.",
+      phoneLast4: (value) => String(value ?? "").slice(-4),
+      twilioClient,
+    },
+    "@/lib/email": {
+      notifyAdminOperationalIssue: async (input) => {
+        calls.adminIssues.push(input);
+      },
+      notifyOwnerNewMissedCallLead: async (input) => {
+        calls.ownerNotifications.push(input);
+      },
+    },
+  };
+
+  return { mocks, calls, supabase };
+}
+
+async function runMissedCall(mocks) {
+  const { handleMissedCall } = await loadTsModule("lib/missed-call.ts", mocks);
+  return handleMissedCall({
+    account: ACCOUNT,
+    callerPhone: "+12065550123",
+    callSid: "CA_test_1",
+    message: null,
+  });
+}
+
+test("happy path: SMS sent, lead marked sent with MessageSid", async () => {
+  const { mocks, calls } = makeMissedCallMocks();
+  const result = await runMissedCall(mocks);
+
+  assert.equal(result.smsStatus, "sent");
+  assert.equal(result.twilioMessageSid, "SM_test_123");
+  const sentUpdate = calls.leadSmsStatusUpdates.find((u) => u.smsStatus === "sent");
+  assert.ok(sentUpdate, "lead should be marked sent");
+  assert.equal(sentUpdate.twilioMessageSid, "SM_test_123");
+  assert.equal(calls.messagesCreated.length, 1, "outbound message row recorded for reconciliation");
+});
+
+test("Twilio accepted but lead update failed: returns sent_update_failed, never marks lead failed, alerts admin", async () => {
+  const { mocks, calls } = makeMissedCallMocks({
+    supabase: {
+      updateLeadSmsStatus: async (input) => {
+        calls.leadSmsStatusUpdates.push(input);
+        if (input.smsStatus === "sent") {
+          throw new Error("supabase write failed");
+        }
+      },
+    },
+  });
+  // Re-wire calls into overrides (makeMissedCallMocks merged overrides before calls existed).
+  const result = await runMissedCall(mocks);
+
+  assert.equal(result.smsStatus, "sent_update_failed");
+  assert.equal(result.twilioMessageSid, "SM_test_123");
+  assert.ok(
+    !calls.leadSmsStatusUpdates.some((u) => u.smsStatus === "failed"),
+    "lead must not be marked failed when Twilio accepted the SMS",
+  );
+  assert.equal(calls.adminIssues.length, 1);
+  assert.match(calls.adminIssues[0].detail, /reconcil/i, "admin alert should explain reconciliation");
+  assert.equal(calls.messagesCreated.length, 1, "message row exists so the status callback can reconcile the lead");
+});
+
+test("Twilio accepted but message row insert failed: lead still marked sent, admin alerted, no false 'failed'", async () => {
+  const { mocks, calls } = makeMissedCallMocks({
+    supabase: {
+      createMessageIfNew: async () => {
+        throw new Error("messages table write failed");
+      },
+    },
+  });
+  const result = await runMissedCall(mocks);
+
+  assert.equal(result.smsStatus, "sent", "a bookkeeping failure must not change the customer-facing outcome");
+  const sentUpdate = calls.leadSmsStatusUpdates.find((u) => u.smsStatus === "sent");
+  assert.ok(sentUpdate, "lead should still converge to sent");
+  assert.ok(
+    !calls.leadSmsStatusUpdates.some((u) => u.smsStatus === "failed"),
+    "lead must not be wrongly marked failed (which would re-open the cooldown and risk a double text)",
+  );
+  assert.equal(calls.adminIssues.length, 1);
+});
+
+test("cooldown/opt-out check failure fails closed: no SMS sent, lead marked failed with reason, admin alerted", async () => {
+  const { mocks, calls } = makeMissedCallMocks({
+    supabase: {
+      hasRecentMissedCallSms: async () => {
+        throw new Error("supabase read failed");
+      },
+    },
+  });
+  const result = await runMissedCall(mocks);
+
+  assert.equal(result.smsStatus, "failed");
+  assert.equal(calls.twilioSends.length, 0, "must not text when opt-out/cooldown cannot be verified");
+  const failedUpdate = calls.leadSmsStatusUpdates.find((u) => u.smsStatus === "failed");
+  assert.ok(failedUpdate, "lead should be marked failed, not left pending");
+  assert.match(failedUpdate.smsError, /cooldown\/opt-out/i);
+  assert.equal(calls.adminIssues.length, 1);
+});
+
+test("Twilio send failure: lead marked failed with error, admin and owner notified", async () => {
+  const { mocks, calls } = makeMissedCallMocks({
+    twilioMessages: {
+      create: async () => {
+        throw new Error("twilio 30007");
+      },
+    },
+  });
+  const result = await runMissedCall(mocks);
+
+  assert.equal(result.smsStatus, "failed");
+  const failedUpdate = calls.leadSmsStatusUpdates.find((u) => u.smsStatus === "failed");
+  assert.ok(failedUpdate);
+  assert.match(failedUpdate.smsError, /30007/);
+  assert.equal(calls.adminIssues.length, 1);
+  assert.ok(calls.ownerNotifications.some((n) => n.smsStatus === "failed"));
+});
+
+test("recent SMS within cooldown: skipped_recent, no double text", async () => {
+  const { mocks, calls } = makeMissedCallMocks({
+    supabase: { hasRecentMissedCallSms: async () => true },
+  });
+  const result = await runMissedCall(mocks);
+
+  assert.equal(result.smsStatus, "skipped_recent");
+  assert.equal(calls.twilioSends.length, 0);
+});
+
+test("opted-out caller: skipped_opt_out, no SMS", async () => {
+  const { mocks, calls } = makeMissedCallMocks({
+    supabase: { isOptedOut: async () => true },
+  });
+  const result = await runMissedCall(mocks);
+
+  assert.equal(result.smsStatus, "skipped_opt_out");
+  assert.equal(calls.twilioSends.length, 0);
+});
+
+// --- SMS status callback reconciliation (production-readiness item #8) ---
+
+function makeSmsStatusRouteMocks(state) {
+  return {
+    "@/lib/env": { env: { allowUnsignedTwilioWebhooks: true } },
+    "@/lib/supabase": {
+      assertTenantAccount: (account) => account,
+      resolveAccountByMessageSid: async () => ({ status: "resolved", account: ACCOUNT }),
+      updateLeadSmsStatusByMessageSid: async (input) => {
+        state.leadUpdatesBySid.push(input);
+        return { updated: state.leadHasMessageSid };
+      },
+      updateLeadSmsStatus: async (input) => {
+        state.leadUpdatesById.push(input);
+      },
+      getOutboundMessageLeadIdBySid: async () => state.messageRowLeadId,
+      updateMessageStatusBySid: async (input) => {
+        state.messageStatusUpdates.push(input);
+        return { updated: true };
+      },
+      logWebhookEvent: async (input) => {
+        state.webhookEvents.push(input);
+      },
+    },
+    "@/lib/twilio": {
+      formDataToRecord: (formData) => Object.fromEntries(formData.entries()),
+      rejectInvalidTwilioSignature: () => new Response("invalid", { status: 403 }),
+      summarizeTwilioRequest: () => ({}),
+      validateTwilioWebhook: () => ({
+        shouldReject: false,
+        wasAllowedByOverride: false,
+        matchedUrl: "https://example.com/api/twilio/sms-status",
+        candidateUrls: [],
+        hasSignature: true,
+      }),
+    },
+    "@/lib/twilio/unresolved-account": {
+      handleUnresolvedTwilioAccount: () => new Response("", { status: 200 }),
+    },
+    "@/lib/twiml": {
+      emptyTwiml: () => "<Response/>",
+      twimlResponse: (xml) => new Response(xml, { status: 200 }),
+    },
+  };
+}
+
+async function postSmsStatus(mocks, payload) {
+  const { POST } = await loadTsModule("app/api/twilio/sms-status/route.ts", mocks);
+  const body = new URLSearchParams(payload);
+  const request = new Request("https://example.com/api/twilio/sms-status", {
+    method: "POST",
+    body,
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+  });
+  return POST(request);
+}
+
+function smsStatusState({ leadHasMessageSid, messageRowLeadId }) {
+  return {
+    leadHasMessageSid,
+    messageRowLeadId,
+    leadUpdatesBySid: [],
+    leadUpdatesById: [],
+    messageStatusUpdates: [],
+    webhookEvents: [],
+  };
+}
+
+test("status callback with matching lead: lead updated, webhook event logged", async () => {
+  const state = smsStatusState({ leadHasMessageSid: true, messageRowLeadId: null });
+  const response = await postSmsStatus(makeSmsStatusRouteMocks(state), {
+    MessageSid: "SM_test_123",
+    MessageStatus: "delivered",
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(state.leadUpdatesBySid.length, 1);
+  assert.equal(state.leadUpdatesBySid[0].smsStatus, "delivered");
+  assert.equal(state.leadUpdatesById.length, 0, "no reconciliation needed");
+  assert.equal(state.webhookEvents.length, 1);
+});
+
+test("stale lead reconciliation: callback for a MessageSid no lead carries converges the lead via the messages table", async () => {
+  const state = smsStatusState({ leadHasMessageSid: false, messageRowLeadId: "lead-stale-1" });
+  const response = await postSmsStatus(makeSmsStatusRouteMocks(state), {
+    MessageSid: "SM_test_123",
+    MessageStatus: "delivered",
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(state.leadUpdatesById.length, 1, "lead should be reconciled by id");
+  assert.equal(state.leadUpdatesById[0].id, "lead-stale-1");
+  assert.equal(state.leadUpdatesById[0].smsStatus, "delivered");
+  assert.equal(
+    state.leadUpdatesById[0].twilioMessageSid,
+    "SM_test_123",
+    "reconciliation must backfill the missing MessageSid so future callbacks match directly",
+  );
+  assert.equal(state.webhookEvents.length, 1);
+  assert.match(state.webhookEvents[0].error ?? "", /reconciled lead lead-stale-1/i, "reconciliation must be visible in the webhook event log");
+});
+
+test("failed delivery status reconciles too: stale lead converges to failed with the Twilio error", async () => {
+  const state = smsStatusState({ leadHasMessageSid: false, messageRowLeadId: "lead-stale-2" });
+  await postSmsStatus(makeSmsStatusRouteMocks(state), {
+    MessageSid: "SM_test_456",
+    MessageStatus: "failed",
+    ErrorCode: "30003",
+  });
+
+  assert.equal(state.leadUpdatesById.length, 1);
+  assert.equal(state.leadUpdatesById[0].smsStatus, "failed");
+  assert.match(state.leadUpdatesById[0].smsError ?? "", /30003/);
+});
+
+test("orphan callback (no lead, no message row): webhook event records the miss", async () => {
+  const state = smsStatusState({ leadHasMessageSid: false, messageRowLeadId: null });
+  await postSmsStatus(makeSmsStatusRouteMocks(state), {
+    MessageSid: "SM_orphan_1",
+    MessageStatus: "delivered",
+  });
+
+  assert.equal(state.leadUpdatesById.length, 0);
+  assert.equal(state.webhookEvents.length, 1);
+  assert.match(state.webhookEvents[0].error ?? "", /No lead matched/i);
+});
+
+// --- Voicemail transcription failure visibility ---
+
+function makeVoicemailMocks(state) {
+  return {
+    "@/lib/env": {
+      env: {
+        twilioAccountSid: "AC_test",
+        twilioAuthToken: "token",
+        openaiApiKey: null,
+        openaiTranscriptionModel: "whisper-1",
+        openaiSummaryModel: "gpt-test",
+      },
+    },
+    "@/lib/supabase": {
+      getAccountConfigByAccountId: async () => ACCOUNT,
+      getLeadForVoicemailTranscription: async () => state.lead,
+      updateLeadVoicemailTranscription: async (input) => {
+        state.transcriptionUpdates.push(input);
+      },
+    },
+    "@/lib/email": {
+      notifyAdminOperationalIssue: async (input) => {
+        state.adminIssues.push(input);
+      },
+      notifyOwnerVoicemailReady: async () => {},
+    },
+  };
+}
+
+function voicemailState(lead) {
+  return { lead, transcriptionUpdates: [], adminIssues: [] };
+}
+
+test("transcription failure marks lead failed (UI shows 'Summary unavailable') and alerts admin", async () => {
+  // openaiApiKey is null so the run fails after the lead is marked processing.
+  const state = voicemailState({
+    id: "lead-vm-1",
+    phone: "+12065550123",
+    recording_sid: "RE_1",
+    voicemail_transcript: null,
+    voicemail_summary: null,
+    voicemail_transcription_status: null,
+    voicemail_transcribed_at: null,
+  });
+  const { transcribeLeadVoicemail } = await loadTsModule("lib/voicemail-ai.ts", makeVoicemailMocks(state));
+
+  await assert.rejects(() => transcribeLeadVoicemail("lead-vm-1", "acct-1"));
+
+  const failedUpdate = state.transcriptionUpdates.find((u) => u.status === "failed");
+  assert.ok(failedUpdate, "lead must converge to failed, never stuck on processing");
+  assert.ok(failedUpdate.error, "failure reason must be stored on the lead");
+  assert.equal(state.adminIssues.length, 1);
+});
+
+test("fresh 'processing' lead is locked: concurrent run is rejected", async () => {
+  const state = voicemailState({
+    id: "lead-vm-2",
+    phone: "+12065550123",
+    recording_sid: "RE_2",
+    voicemail_transcript: null,
+    voicemail_summary: null,
+    voicemail_transcription_status: "processing",
+    voicemail_transcribed_at: new Date().toISOString(),
+  });
+  const { transcribeLeadVoicemail } = await loadTsModule("lib/voicemail-ai.ts", makeVoicemailMocks(state));
+
+  await assert.rejects(() => transcribeLeadVoicemail("lead-vm-2", "acct-1"), /already generating/);
+});
+
+test("stale 'processing' lead (crashed run) is taken over instead of being locked forever", async () => {
+  const state = voicemailState({
+    id: "lead-vm-3",
+    phone: "+12065550123",
+    recording_sid: "RE_3",
+    voicemail_transcript: null,
+    voicemail_summary: null,
+    voicemail_transcription_status: "processing",
+    voicemail_transcribed_at: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+  });
+  const { transcribeLeadVoicemail } = await loadTsModule("lib/voicemail-ai.ts", makeVoicemailMocks(state));
+
+  // Takeover proceeds past the lock; this run then fails (no transcription backend in
+  // tests), which must converge the lead to "failed" rather than re-locking it.
+  await assert.rejects(
+    () => transcribeLeadVoicemail("lead-vm-3", "acct-1"),
+    (error) => !/already generating/.test(String(error?.message ?? error)),
+  );
+
+  assert.ok(
+    state.transcriptionUpdates.some((u) => u.status === "processing"),
+    "stale lock should be taken over (re-marked processing)",
+  );
+  assert.ok(
+    state.transcriptionUpdates.some((u) => u.status === "failed"),
+    "and the failed takeover must converge to failed",
+  );
+});

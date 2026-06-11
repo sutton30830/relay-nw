@@ -148,17 +148,17 @@ async function handleForwardingMode(input: {
   const callSid = input.payload.CallSid ?? "";
   const xml = missedCallTwiml(input.request, input.account);
 
-  await upsertCall({
-    accountId: input.account.accountId,
-    callSid,
-    parentCallSid: input.payload.ParentCallSid ?? null,
-    fromPhone: input.callerPhone,
-    toPhone: input.payload.To ?? null,
-    status: "missed",
-    rawSummary: input.requestSummary,
-  });
-
   try {
+    await upsertCall({
+      accountId: input.account.accountId,
+      callSid,
+      parentCallSid: input.payload.ParentCallSid ?? null,
+      fromPhone: input.callerPhone,
+      toPhone: input.payload.To ?? null,
+      status: "missed",
+      rawSummary: input.requestSummary,
+    });
+
     const result = await handleMissedCall({
       account: input.account,
       callSid,
@@ -220,29 +220,50 @@ async function handleDirectMode(input: {
   const callSid = input.payload.CallSid ?? "";
   const xml = directCallTwiml(input.request, input.callerPhone, input.account);
 
-  await upsertCall({
-    accountId: input.account.accountId,
-    callSid,
-    parentCallSid: input.payload.ParentCallSid ?? null,
-    fromPhone: input.callerPhone,
-    toPhone: input.payload.To ?? null,
-    status: "ringing",
-    rawSummary: summarizeTwilioRequest(input.request, input.payload),
-  });
+  try {
+    await upsertCall({
+      accountId: input.account.accountId,
+      callSid,
+      parentCallSid: input.payload.ParentCallSid ?? null,
+      fromPhone: input.callerPhone,
+      toPhone: input.payload.To ?? null,
+      status: "ringing",
+      rawSummary: summarizeTwilioRequest(input.request, input.payload),
+    });
 
-  await logWebhookEvent({
-    accountId: input.account.accountId,
-    source: VOICE_WEBHOOK_SOURCE,
-    correlationId: input.correlationId,
-    payload: input.payload,
-    responseStatus: 200,
-    responseBody: xml,
-    error: validationLogNote({
-      matchedUrl: input.validation.matchedUrl,
-      candidateUrls: input.validation.candidateUrls,
-    }),
-  });
+    await logWebhookEvent({
+      accountId: input.account.accountId,
+      source: VOICE_WEBHOOK_SOURCE,
+      correlationId: input.correlationId,
+      payload: input.payload,
+      responseStatus: 200,
+      responseBody: xml,
+      error: validationLogNote({
+        matchedUrl: input.validation.matchedUrl,
+        candidateUrls: input.validation.candidateUrls,
+      }),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown direct-mode voice error";
 
+    console.error("Failed to record direct-mode voice call", {
+      correlationId: input.correlationId,
+      callSid,
+      error: message,
+    });
+
+    await logWebhookEvent({
+      accountId: input.account.accountId,
+      source: VOICE_WEBHOOK_SOURCE,
+      correlationId: input.correlationId,
+      payload: input.payload,
+      responseStatus: 200,
+      responseBody: xml,
+      error: `Call row upsert failed: ${message}`,
+    });
+  }
+
+  // Always return TwiML so the caller still gets connected even if bookkeeping failed.
   return twimlResponse(xml);
 }
 

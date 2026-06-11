@@ -201,6 +201,19 @@ export async function POST(request: Request) {
             recordingSid: recording.recordingSid,
             error: message,
           });
+
+          // Surface the failure in the webhook event log so it is visible from the inbox,
+          // not only in server logs. The lead itself is marked failed inside
+          // transcribeLeadVoicemail, so the UI shows "Summary unavailable".
+          await logWebhookEvent({
+            accountId: account.accountId,
+            source: RECORDING_WEBHOOK_SOURCE,
+            correlationId,
+            payload,
+            responseStatus: 200,
+            responseBody: xml,
+            error: `Automatic voicemail transcription failed for lead ${result.leadId}: ${message}`,
+          });
         }
       });
     }

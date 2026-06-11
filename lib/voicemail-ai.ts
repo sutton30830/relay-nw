@@ -19,6 +19,8 @@ type OpenAIResponsesResponse = {
   }>;
 };
 
+const STALE_PROCESSING_MS = 10 * 60 * 1000;
+
 const TRANSCRIPTION_CONTEXT =
   "This voicemail is for a local home service business. Common words include sink, faucet, toilet, drain, leak, leaking, water heater, HVAC, furnace, electrical, breaker, outlet, estimate, quote, appointment, callback, and service call.";
 
@@ -199,7 +201,22 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
   }
 
   if (lead.voicemail_transcription_status === "processing") {
-    throw new Error("Voicemail summary is already generating.");
+    // A run that started recently is genuinely in flight. But if the process crashed
+    // between marking "processing" and finishing (e.g. serverless timeout), the lead
+    // would otherwise be locked in "Generating summary…" forever. Treat old
+    // "processing" rows as stale and take over.
+    const startedAt = lead.voicemail_transcribed_at ? Date.parse(lead.voicemail_transcribed_at) : NaN;
+    const isStale = !Number.isFinite(startedAt) || Date.now() - startedAt > STALE_PROCESSING_MS;
+
+    if (!isStale) {
+      throw new Error("Voicemail summary is already generating.");
+    }
+
+    console.warn("Taking over stale voicemail transcription", {
+      leadId,
+      accountId,
+      staleSince: lead.voicemail_transcribed_at,
+    });
   }
 
   if (lead.voicemail_summary && lead.voicemail_transcript) {
@@ -250,12 +267,23 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
   } catch (error) {
     const message = error instanceof Error ? error.message : "Voicemail transcription failed.";
 
-    await updateLeadVoicemailTranscription({
-      accountId,
-      id: leadId,
-      status: "failed",
-      error: message,
-    });
+    // Marking the lead "failed" is what makes the UI show "Summary unavailable. Listen
+    // to the voicemail." If this update itself fails, don't mask the original error;
+    // the stale-processing takeover above will recover the lead on the next attempt.
+    try {
+      await updateLeadVoicemailTranscription({
+        accountId,
+        id: leadId,
+        status: "failed",
+        error: message,
+      });
+    } catch (updateError) {
+      console.error("Could not mark voicemail transcription as failed; lead may show as processing until stale takeover", {
+        leadId,
+        accountId,
+        error: updateError instanceof Error ? updateError.message : updateError,
+      });
+    }
 
     const account = await getAccountConfigByAccountId(accountId);
     await notifyAdminOperationalIssue({

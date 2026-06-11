@@ -19,6 +19,15 @@ Update after hardening pass:
 - A local webhook simulator now exists at `npm run simulate -- <scenario>`.
 - The SMS send path now distinguishes "Twilio accepted the SMS but the lead update failed" from a true SMS send failure.
 
+Update after error-handling hardening pass (June 2026):
+- Stale leads from "Twilio accepted but lead update failed" now self-heal: the SMS status callback reconciles the lead via the messages table and logs the reconciliation in the webhook event log.
+- Cooldown/opt-out check failures now fail closed: no SMS is sent, the lead is marked `failed` with the reason, and an admin alert is sent (never an ambiguous `pending`).
+- A messages-table write failure after Twilio accepted no longer wrongly marks the lead `failed` (which would have re-opened the cooldown and risked a double text).
+- Voicemail transcription runs that crash mid-flight no longer lock the lead in "processing" forever; stale runs (>10 min) are taken over, and failures converge to "Summary unavailable" in the inbox plus a webhook event log entry.
+- Call-row bookkeeping failures no longer block the customer-facing SMS or 500 the Twilio webhook.
+- New failure-injection simulator scenarios: `sms-status-failed`, `sms-status-orphan`, `recording-orphan`.
+- New test suite: `tests/pipeline-failure-handling.test.mjs` (14 failure-injection tests covering the missed-call → SMS → lead pipeline).
+
 Recommended launch posture:
 - Personally onboard each business.
 - Run one real end-to-end test per business.
@@ -54,7 +63,7 @@ Recommended launch posture:
 
 ## Remaining Risks
 
-- If Twilio accepts an SMS but the DB update fails, the recent webhook event now makes that visible, but the lead row may still stay `pending`.
+- If Twilio accepts an SMS but the DB update fails, the lead now self-heals: the next Twilio status callback reconciles the lead through the messages table (backfilling the MessageSid) and records the reconciliation in the webhook event log. The only unrecoverable case is both the lead update and the message-row insert failing in the same request, which triggers an admin alert with the MessageSid.
 - Forwarding mode depends on carrier caller-ID behavior.
 - Deep debugging can still require Twilio logs, especially for carrier/A2P delivery problems.
 
@@ -209,7 +218,7 @@ Difficulty: Medium
 
 Required before beta: No, but valuable
 
-Status: Partially done. The status is now visible in webhook logs, but the lead row can still remain stale if Supabase update fails.
+Status: Done. The SMS status callback now reconciles stale leads via the messages table (matching the MessageSid to the lead, backfilling `twilio_message_sid`, and converging `sms_status` to Twilio's true delivery status). Reconciliations are recorded in the webhook event log. Covered by `tests/pipeline-failure-handling.test.mjs` and the `sms-status-orphan` simulator scenario.
 
 ### 9. Align initial schema check constraint
 

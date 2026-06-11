@@ -41,12 +41,22 @@ export async function handleMissedCall(input: {
     return { inserted: false, smsStatus: "duplicate" as const };
   }
 
-  await updateCallForMissedLead({
-    accountId: account.accountId,
-    callSid,
-    leadId: leadResult.leadId,
-    status: "missed",
-  });
+  try {
+    await updateCallForMissedLead({
+      accountId: account.accountId,
+      callSid,
+      leadId: leadResult.leadId,
+      status: "missed",
+    });
+  } catch (error) {
+    // Call-row bookkeeping must not block the customer-facing SMS.
+    console.error("Could not link call row to missed-call lead", {
+      correlationId,
+      callSid,
+      leadId: leadResult.leadId,
+      error: error instanceof Error ? error.message : error,
+    });
+  }
 
   if (!account.smsEnabled) {
     try {
@@ -82,15 +92,57 @@ export async function handleMissedCall(input: {
     return { inserted: true, smsStatus: "skipped_disabled" as const };
   }
 
-  const cooldownSince = new Date(
-    Date.now() - account.missedCallSmsCooldownHours * 60 * 60 * 1000,
-  );
-  const alreadyTextedRecently = await hasRecentMissedCallSms(
-    callerPhone,
-    cooldownSince,
-    account.accountId,
-    leadResult.leadId,
-  );
+  // Fail closed: if the cooldown or opt-out check cannot be completed, do not send
+  // (compliance-safe) and mark the lead "failed" so it is never left ambiguously "pending".
+  let alreadyTextedRecently: boolean;
+  let optedOut: boolean;
+  try {
+    const cooldownSince = new Date(
+      Date.now() - account.missedCallSmsCooldownHours * 60 * 60 * 1000,
+    );
+    alreadyTextedRecently = await hasRecentMissedCallSms(
+      callerPhone,
+      cooldownSince,
+      account.accountId,
+      leadResult.leadId,
+    );
+    optedOut = !alreadyTextedRecently && (await isOptedOut(callerPhone, account.accountId));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown pre-send check error";
+    const detail = `Could not verify SMS cooldown/opt-out, SMS not sent: ${message}`;
+
+    console.error("Missed-call SMS pre-send checks failed; failing closed", {
+      correlationId,
+      callSid,
+      callerLast4: phoneLast4(callerPhone),
+      leadId: leadResult.leadId,
+      error: message,
+    });
+
+    try {
+      await updateLeadSmsStatus({
+        accountId: account.accountId,
+        id: leadResult.leadId,
+        smsStatus: "failed",
+        smsError: detail,
+      });
+    } catch (updateError) {
+      console.error("Could not mark lead failed after pre-send check failure", {
+        correlationId,
+        leadId: leadResult.leadId,
+        error: updateError instanceof Error ? updateError.message : updateError,
+      });
+    }
+
+    await notifyAdminOperationalIssue({
+      account,
+      issue: "Missed-call SMS pre-send checks failed (SMS not sent)",
+      detail,
+      correlationId,
+    });
+
+    return { inserted: true, smsStatus: "failed" as const, smsError: detail };
+  }
 
   if (alreadyTextedRecently) {
     await updateLeadSmsStatus({
@@ -101,7 +153,7 @@ export async function handleMissedCall(input: {
     return { inserted: true, smsStatus: "skipped_recent" as const };
   }
 
-  if (await isOptedOut(callerPhone, account.accountId)) {
+  if (optedOut) {
     await updateLeadSmsStatus({
       accountId: account.accountId,
       id: leadResult.leadId,
@@ -124,16 +176,39 @@ export async function handleMissedCall(input: {
       statusCallback: `${env.appBaseUrl}/api/twilio/sms-status`,
     });
 
-    await createMessageIfNew({
-      accountId: account.accountId,
-      leadId: leadResult.leadId,
-      twilioMessageSid: message.sid,
-      direction: "outbound",
-      fromPhone: account.twilioPhoneNumber,
-      toPhone: callerPhone,
-      body: missedCallSmsBodyForAccount(account),
-      status: "sent",
-    });
+    // Twilio has already accepted the SMS past this point. A failure recording it in the
+    // messages table must NOT bubble into the outer catch, which would wrongly mark the
+    // lead "failed" (and re-open the cooldown, risking a double text on a repeat call).
+    let messageRowRecorded = true;
+    try {
+      await createMessageIfNew({
+        accountId: account.accountId,
+        leadId: leadResult.leadId,
+        twilioMessageSid: message.sid,
+        direction: "outbound",
+        fromPhone: account.twilioPhoneNumber,
+        toPhone: callerPhone,
+        body: missedCallSmsBodyForAccount(account),
+        status: "sent",
+      });
+    } catch (error) {
+      messageRowRecorded = false;
+      const detail = error instanceof Error ? error.message : "Unknown message insert error";
+
+      console.error("Twilio accepted SMS, but Relay could not record the message row", {
+        correlationId,
+        leadId: leadResult.leadId,
+        twilioMessageSid: message.sid,
+        error: detail,
+      });
+
+      await notifyAdminOperationalIssue({
+        account,
+        issue: "Twilio accepted SMS but message row insert failed",
+        detail: `${detail} (MessageSid ${message.sid})`,
+        correlationId,
+      });
+    }
 
     try {
       await updateLeadSmsStatus({
@@ -155,7 +230,9 @@ export async function handleMissedCall(input: {
       await notifyAdminOperationalIssue({
         account,
         issue: "Twilio accepted SMS but lead update failed",
-        detail: updateErrorMessage,
+        detail: messageRowRecorded
+          ? `${updateErrorMessage} — the lead will self-heal when the next Twilio status callback arrives (reconciled via the messages table).`
+          : `${updateErrorMessage} — the message row also failed to record, so automatic reconciliation is not possible; check MessageSid ${message.sid} in Twilio.`,
         correlationId,
       });
 

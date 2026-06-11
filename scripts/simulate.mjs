@@ -55,6 +55,44 @@ const scenarios = {
       From: "+15551234567",
     },
   },
+  // Failure injection: carrier rejected the SMS. The lead should converge to
+  // sms_status "failed" with the error visible, and a webhook event should be logged.
+  "sms-status-failed": {
+    path: "/api/twilio/sms-status",
+    payload: {
+      MessageSid: process.env.SIMULATE_MESSAGE_SID || `SM_sim_outbound_${now}`,
+      MessageStatus: "failed",
+      ErrorCode: "30003",
+      To: "+12065550123",
+      From: "+15551234567",
+    },
+  },
+  // Failure injection: a status callback for a MessageSid no lead carries (this is what
+  // happens after "Twilio accepted but the lead update failed"). With a matching row in
+  // the messages table the lead should be reconciled; without one, the webhook event
+  // should say "No lead matched this MessageSid."
+  "sms-status-orphan": {
+    path: "/api/twilio/sms-status",
+    payload: {
+      MessageSid: `SM_sim_orphan_${now}`,
+      MessageStatus: "delivered",
+      To: "+12065550123",
+      From: "+15551234567",
+    },
+  },
+  // Failure injection: a recording callback whose CallSid matches no lead. The webhook
+  // event should note the unmatched CallSid and the admin should be notified.
+  "recording-orphan": {
+    path: "/api/twilio/recording",
+    payload: {
+      CallSid: `CA_sim_orphan_${now}`,
+      From: "+12065559999",
+      RecordingSid: `RE_sim_orphan_${now}`,
+      RecordingUrl: "https://api.twilio.com/2010-04-01/Accounts/ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/Recordings/RE_sim_orphan",
+      RecordingDuration: "9",
+      RecordingStatus: "completed",
+    },
+  },
 };
 
 function usage() {

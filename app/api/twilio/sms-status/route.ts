@@ -1,9 +1,11 @@
 import { env } from "@/lib/env";
 import {
   assertTenantAccount,
+  getOutboundMessageLeadIdBySid,
   logWebhookEvent,
   resolveAccountByMessageSid,
   type SmsStatus,
+  updateLeadSmsStatus,
   updateLeadSmsStatusByMessageSid,
   updateMessageStatusBySid,
 } from "@/lib/supabase";
@@ -47,6 +49,7 @@ function webhookEventNote(input: {
   messageSid: string;
   rawStatus: string;
   leadUpdated: boolean;
+  reconciledLeadId?: string | null;
 }) {
   const notes = [];
 
@@ -64,7 +67,11 @@ function webhookEventNote(input: {
     notes.push(`MessageStatus: ${input.rawStatus}`);
   }
 
-  if (!input.leadUpdated) {
+  if (input.reconciledLeadId) {
+    notes.push(
+      `Lead was stale (missing MessageSid after a partial failure); reconciled lead ${input.reconciledLeadId} to Twilio status via messages table.`,
+    );
+  } else if (!input.leadUpdated) {
     notes.push("No lead matched this MessageSid.");
   }
 
@@ -128,6 +135,35 @@ export async function POST(request: Request) {
       })
       : { updated: false };
 
+    // Reconciliation: if no lead carries this MessageSid (e.g. Twilio accepted the SMS
+    // but the lead update failed, leaving the lead stuck on "pending"), recover the lead
+    // through the messages table and converge it to Twilio's true delivery status.
+    let reconciledLeadId: string | null = null;
+    if (!result.updated && status.messageSid && status.smsStatus) {
+      const leadId = await getOutboundMessageLeadIdBySid({
+        accountId: account.accountId,
+        twilioMessageSid: status.messageSid,
+      });
+
+      if (leadId) {
+        await updateLeadSmsStatus({
+          accountId: account.accountId,
+          id: leadId,
+          smsStatus: status.smsStatus,
+          smsError: status.error,
+          twilioMessageSid: status.messageSid,
+        });
+        reconciledLeadId = leadId;
+
+        console.warn("Reconciled stale lead SMS status from Twilio status callback", {
+          correlationId,
+          leadId,
+          messageSid: status.messageSid,
+          smsStatus: status.smsStatus,
+        });
+      }
+    }
+
     if (status.messageSid && status.smsStatus) {
       await updateMessageStatusBySid({
         accountId: account.accountId,
@@ -148,7 +184,8 @@ export async function POST(request: Request) {
         matchedUrl: validation.matchedUrl,
         messageSid: status.messageSid,
         rawStatus: status.rawStatus,
-        leadUpdated: result.updated,
+        leadUpdated: result.updated || Boolean(reconciledLeadId),
+        reconciledLeadId,
       }),
     });
   } catch (error) {

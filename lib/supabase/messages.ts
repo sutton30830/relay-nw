@@ -2,6 +2,29 @@ import { isPlaceholderSupabaseConfig, shouldSkipDatabaseWrite, supabaseAdmin, th
 import { assertAccountId } from "./tenant";
 import type { SmsStatus } from "./types";
 
+export async function getOutboundMessageLeadIdBySid(input: {
+  accountId: string;
+  twilioMessageSid: string;
+}) {
+  const accountId = assertAccountId(input.accountId, "getOutboundMessageLeadIdBySid");
+
+  if (isPlaceholderSupabaseConfig()) {
+    return null;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("messages")
+    .select("lead_id")
+    .eq("account_id", accountId)
+    .eq("twilio_message_sid", input.twilioMessageSid)
+    .eq("direction", "outbound")
+    .maybeSingle();
+
+  throwIfSupabaseError(error);
+
+  return (data?.lead_id as string | null) ?? null;
+}
+
 export async function updateLeadSmsStatus(input: {
   accountId: string;
   id: string;
