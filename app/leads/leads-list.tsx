@@ -5,7 +5,6 @@ import { Icon } from "@/components/icon";
 import type { Lead } from "@/lib/supabase";
 import type { ForwardingHealthSummary } from "@/lib/forwarding-health";
 import { FILTERS } from "./_constants";
-import { formatCurrency } from "./_utils";
 import { ForwardingHealthCard } from "./_components/forwarding-health-card";
 import { LeadCard } from "./_components/lead-card";
 import { LeadDrawer } from "./_components/lead-drawer";
@@ -51,22 +50,21 @@ export function LeadsList({
             />
             <span className="kbd">⌘K</span>
           </div>
-          <button className="btn btn-ghost btn-sm app-head__refresh" type="button" onClick={inbox.refreshInbox} aria-label="Refresh">
-            <Icon name="refresh" size={14} />
-          </button>
           <Link className="btn btn-secondary btn-sm" href="/reports">
             Reports
           </Link>
           <Link className="btn btn-secondary btn-sm" href="/settings">
             Settings
           </Link>
-          <button
-            className={`btn btn-secondary btn-sm app-head__sample ${inbox.sampleMode ? "btn-sample-on" : ""}`}
-            type="button"
-            onClick={inbox.toggleSampleMode}
-          >
-            Sample data
-          </button>
+          {inbox.sampleMode || inbox.activeItems.length === 0 ? (
+            <button
+              className={`btn btn-secondary btn-sm app-head__sample ${inbox.sampleMode ? "btn-sample-on" : ""}`}
+              type="button"
+              onClick={inbox.toggleSampleMode}
+            >
+              Sample data
+            </button>
+          ) : null}
           <form className="app-head__logout" action="/api/leads-logout" method="POST">
             <button className="btn btn-secondary btn-sm">Log out</button>
           </form>
@@ -84,21 +82,30 @@ export function LeadsList({
             )}
           </h2>
         </div>
-        <aside className="revenue-summary" aria-label="Booked value tracked">
-          <span className="revenue-summary__label">Booked value tracked</span>
-          <strong className="revenue-summary__amount t-display">
-            {inbox.counts.bookedWithValue > 0 ? formatCurrency(inbox.counts.bookedValueCents) : "Add values"}
-          </strong>
-          <span className="revenue-summary__note">
-            {inbox.counts.bookedWithValue > 0
-              ? `${inbox.counts.bookedWithValue} ${inbox.counts.bookedWithValue === 1 ? "booked job" : "booked jobs"} counted`
-              : "Enter job value when a lead books."}
-          </span>
-        </aside>
       </section>
 
-      <ForwardingHealthCard initialSummary={forwardingHealth} />
-      <SmsHealthCard />
+      <details
+        className="panel"
+        style={{ marginBottom: 16, padding: "10px 14px" }}
+        open={forwardingHealth.displayStatus === "failed"}
+      >
+        <summary style={{ cursor: "pointer", fontSize: 13.5 }}>
+          <Icon
+            name={forwardingHealth.displayStatus === "failed" ? "alertTriangle" : "check"}
+            size={13}
+          />{" "}
+          Line health{" "}
+          <span style={{ color: "var(--ink-4)" }}>
+            — {forwardingHealth.displayStatus === "failed"
+              ? "forwarding problem detected"
+              : forwardingHealth.statusLabel}
+          </span>
+        </summary>
+        <div style={{ marginTop: 12 }}>
+          <ForwardingHealthCard initialSummary={forwardingHealth} />
+          <SmsHealthCard />
+        </div>
+      </details>
 
       <nav className="filters clean-scroll" aria-label="Filter leads">
         {FILTERS.map((item) => {
@@ -117,9 +124,6 @@ export function LeadsList({
             </button>
           );
         })}
-        <span className="sort-pill">
-          <Icon name="clock" size={12} /> Newest first
-        </span>
       </nav>
 
       <div className="leads-list">

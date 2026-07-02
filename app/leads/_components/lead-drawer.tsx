@@ -430,13 +430,10 @@ export function LeadDrawer({
         </div>
 
         {previousLeads.length > 0 ? (
-          <div style={{ marginTop: 18 }}>
-            <div className="drawer__section-head">
-              <p className="t-eyebrow">Earlier calls from this number</p>
-              <span style={{ fontSize: 12, color: "var(--ink-4)" }}>
-                {previousLeads.length} {previousLeads.length === 1 ? "call" : "calls"}
-              </span>
-            </div>
+          <details style={{ marginTop: 18 }}>
+            <summary className="t-eyebrow" style={{ cursor: "pointer", marginBottom: 10 }}>
+              Earlier calls from this number ({previousLeads.length})
+            </summary>
             <div style={{ display: "grid", gap: 10 }}>
               {previousLeads.map((previous) => (
                 <div
@@ -467,7 +464,7 @@ export function LeadDrawer({
                 </div>
               ))}
             </div>
-          </div>
+          </details>
         ) : null}
 
         <div className="drawer__notes">
