@@ -10,6 +10,7 @@ import { LeadCard } from "./_components/lead-card";
 import { LeadDrawer } from "./_components/lead-drawer";
 import { SmsHealthCard } from "./_components/sms-health-card";
 import { useLeadsInbox } from "./_hooks/use-leads-inbox";
+import { useRouter } from "next/navigation";
 
 export function LeadsList({
   leads,
@@ -20,6 +21,7 @@ export function LeadsList({
   businessName: string;
   forwardingHealth: ForwardingHealthSummary;
 }) {
+  const router = useRouter();
   const inbox = useLeadsInbox(leads);
 
   return (
@@ -133,7 +135,7 @@ export function LeadsList({
             lead={lead}
             now={inbox.now}
             callCount={inbox.phoneCallCounts.get(lead.phone) ?? 1}
-            onOpen={inbox.setOpenId}
+            onOpen={(id) => (id.startsWith("sample-") ? inbox.setOpenId(id) : router.push(`/leads/${id}`))}
             onStatus={inbox.updateStatus}
             onBooked={inbox.updateBooked}
             onJobValue={inbox.updateJobValue}

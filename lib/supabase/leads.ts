@@ -426,3 +426,75 @@ export async function deleteLead(id: string, inputAccountId: string) {
 
   throwIfSupabaseError(error);
 }
+
+export type LeadConversation = {
+  lead: Lead;
+  previousLeads: Lead[];
+  inbound: InboundMessage[];
+  outbound: OutboundMessage[];
+};
+
+// Full history for the conversation page: the lead, every earlier lead from the
+// same number (each one is a call event), and ALL SMS in both directions keyed
+// by phone — unlike the inbox attach helpers, nothing is capped per lead.
+export async function getLeadConversation(inputAccountId: string, id: string): Promise<LeadConversation | null> {
+  const accountId = assertAccountId(inputAccountId, "getLeadConversation");
+
+  if (isPlaceholderSupabaseConfig()) {
+    return null;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("leads")
+    .select(LEAD_SELECT_COLUMNS)
+    .eq("account_id", accountId)
+    .eq("id", id)
+    .maybeSingle();
+
+  throwIfSupabaseError(error);
+
+  if (!data) {
+    return null;
+  }
+
+  const lead = normalizeLead(data as unknown as Lead);
+
+  const [siblings, inboundResult, outboundResult] = await Promise.all([
+    supabaseAdmin
+      .from("leads")
+      .select(LEAD_SELECT_COLUMNS)
+      .eq("account_id", accountId)
+      .eq("phone", lead.phone)
+      .neq("id", lead.id)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(50),
+    supabaseAdmin
+      .from("inbound_messages")
+      .select("id, message_sid, from_phone, to_phone, body, created_at")
+      .eq("account_id", accountId)
+      .eq("from_phone", lead.phone)
+      .order("created_at", { ascending: true })
+      .limit(500),
+    supabaseAdmin
+      .from("messages")
+      .select("id, lead_id, twilio_message_sid, from_phone, to_phone, body, status, created_at")
+      .eq("account_id", accountId)
+      .eq("direction", "outbound")
+      .eq("to_phone", lead.phone)
+      .order("created_at", { ascending: true })
+      .limit(500),
+  ]);
+
+  // Message history is non-fatal: the page still renders the lead and calls.
+  if (siblings.error) console.warn("Could not load earlier calls for conversation.", { error: siblings.error });
+  if (inboundResult.error) console.warn("Could not load inbound SMS for conversation.", { error: inboundResult.error });
+  if (outboundResult.error) console.warn("Could not load outbound SMS for conversation.", { error: outboundResult.error });
+
+  return {
+    lead,
+    previousLeads: ((siblings.data ?? []) as unknown as Lead[]).map(normalizeLead),
+    inbound: (inboundResult.data ?? []) as InboundMessage[],
+    outbound: (outboundResult.data ?? []) as OutboundMessage[],
+  };
+}

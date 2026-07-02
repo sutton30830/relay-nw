@@ -82,7 +82,8 @@ test("public intake setup requests go to setup_requests, never a tenant leads in
 
 test("booked leads have their own inbox tab", () => {
   const constantsTs = leadUtilsTs; // countLeads lives in _utils
-  assert.match(constantsTs, /booked: visibleLeads\.filter\(\(lead\) => lead\.status === "booked"\)\.length/);
+  assert.match(constantsTs, /booked: visibleLeads\.filter\(isBookedLead\)\.length/);
+  assert.match(constantsTs, /filter === "booked" \? isBookedLead\(lead\)/);
 });
 
 test("human-facing pages require authenticated account context", () => {

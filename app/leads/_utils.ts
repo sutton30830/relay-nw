@@ -456,7 +456,7 @@ export function countLeads(leads: Lead[]): LeadCounts {
     new: visibleLeads.filter((lead) => lead.status === "new").length,
     actionable: visibleLeads.filter((lead) => lead.status === "new" || lead.status === "contacted").length,
     contacted: visibleLeads.filter((lead) => lead.status === "contacted").length,
-    booked: visibleLeads.filter((lead) => lead.status === "booked").length,
+    booked: visibleLeads.filter(isBookedLead).length,
     dead: visibleLeads.filter((lead) => lead.status === "dead").length,
     trash: leads.filter((lead) => lead.deleted_at).length,
     smsIssues: visibleLeads.filter(needsAttention).length,
@@ -528,7 +528,9 @@ export function filterLeads(leads: Lead[], filter: Filter, query: string) {
       return false;
     }
 
-    const matchesFilter = filter === "all" || lead.status === filter;
+    // "booked" is not a live status (booked_at carries it), so match explicitly.
+    const matchesFilter =
+      filter === "all" || (filter === "booked" ? isBookedLead(lead) : lead.status === filter);
     return matchesFilter && leadMatchesSearch(lead, query);
   });
 }

@@ -3550,3 +3550,135 @@ code {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* --- Conversation page (/leads/[id]) --- */
+.conversation {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px 16px 48px;
+  display: grid;
+  gap: 18px;
+}
+.conversation__topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.conversation__hero {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+.conversation__title {
+  font-size: 30px;
+  margin: 0;
+}
+.conversation__phone {
+  margin: 4px 0 0;
+  color: var(--ink-2);
+  font-size: 15px;
+}
+.conversation__badges {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.conversation__controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md, 12px);
+  padding: 14px;
+}
+.conversation__control {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+.conversation__outcome {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.conversation__summary {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md, 12px);
+  padding: 14px;
+}
+.conversation__summary p:last-child {
+  margin: 8px 0 0;
+}
+.conversation__thread {
+  display: grid;
+  gap: 10px;
+}
+.conversation__sms-note {
+  color: var(--ink-4);
+  font-size: 13px;
+  margin: 0;
+}
+.conversation__call {
+  background: var(--panel);
+  border: 1px dashed var(--line);
+  border-radius: var(--r-sm);
+  padding: 12px 14px;
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.conversation__call-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-3);
+  font-size: 13px;
+  margin: 0;
+}
+.conversation__call-summary {
+  margin: 0;
+}
+.conversation__bubble {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  max-width: 85%;
+}
+.conversation__bubble--in {
+  background: var(--panel);
+  justify-self: start;
+}
+.conversation__bubble--out {
+  background: var(--panel-2, var(--panel));
+  justify-self: end;
+}
+.conversation__bubble-body {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.conversation__bubble-meta {
+  color: var(--ink-4);
+  font-size: 12px;
+  margin: 6px 0 0;
+}
+.conversation__composer {
+  display: grid;
+  gap: 8px;
+  position: sticky;
+  bottom: 0;
+  background: var(--bg, transparent);
+  padding-top: 8px;
+}
+.conversation__reply-error {
+  color: var(--danger, #b42318);
+  font-size: 13px;
+  margin: 0;
+}
+.conversation__notes {
+  display: grid;
+  gap: 8px;
+}
