@@ -54,6 +54,9 @@ export function LeadsList({
           <button className="btn btn-ghost btn-sm app-head__refresh" type="button" onClick={inbox.refreshInbox} aria-label="Refresh">
             <Icon name="refresh" size={14} />
           </button>
+          <Link className="btn btn-secondary btn-sm" href="/reports">
+            Reports
+          </Link>
           <button
             className={`btn btn-secondary btn-sm app-head__sample ${inbox.sampleMode ? "btn-sample-on" : ""}`}
             type="button"

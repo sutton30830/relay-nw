@@ -4,6 +4,7 @@ export * from "./calls";
 export * from "./health-checks";
 export * from "./leads";
 export * from "./messages";
+export * from "./reports";
 export * from "./tenant";
 export * from "./types";
 export * from "./voicemails";

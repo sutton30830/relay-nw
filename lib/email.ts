@@ -332,3 +332,56 @@ export async function notifyAdminOperationalIssue(input: {
     tag: "admin_operational_issue",
   });
 }
+
+function formatDollars(cents: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(cents / 100);
+}
+
+export async function notifyOwnerWeeklyDigest(input: {
+  account: AccountRuntimeConfig;
+  stats: {
+    missedCalls: number;
+    textedBack: number;
+    urgent: number;
+    replies: number;
+    booked: number;
+    recoveredCents: number;
+  };
+  periodLabel: string;
+}) {
+  const recipient = await ownerEmail(input.account);
+  const { stats } = input;
+
+  const headline = stats.recoveredCents > 0
+    ? `Relay recovered ${formatDollars(stats.recoveredCents)} for ${input.account.businessName} ${input.periodLabel}.`
+    : `Relay caught ${stats.missedCalls} missed ${stats.missedCalls === 1 ? "call" : "calls"} for ${input.account.businessName} ${input.periodLabel}.`;
+
+  const lines = [
+    headline,
+    `Missed calls caught: ${stats.missedCalls}`,
+    `Callers texted back automatically: ${stats.textedBack}`,
+    `Urgent voicemails flagged: ${stats.urgent}`,
+    `Customer replies: ${stats.replies}`,
+    stats.booked > 0
+      ? `Jobs booked: ${stats.booked} (${formatDollars(stats.recoveredCents)})`
+      : "Jobs booked: 0 — mark leads as booked with a value so this report can show recovered revenue.",
+  ];
+
+  return sendEmail({
+    to: recipient,
+    subject: `Your week with Relay NW: ${stats.missedCalls} missed ${stats.missedCalls === 1 ? "call" : "calls"} caught${stats.recoveredCents > 0 ? `, ${formatDollars(stats.recoveredCents)} recovered` : ""}`,
+    html: emailHtml({
+      title: "Your weekly recovery report",
+      preview: headline,
+      lines,
+      actionLabel: "See the full report",
+      actionUrl: `${env.appBaseUrl}/reports`,
+    }),
+    text: `${lines.join("\n")}\n\nFull report: ${env.appBaseUrl}/reports`,
+    tag: "owner_weekly_digest",
+  });
+}

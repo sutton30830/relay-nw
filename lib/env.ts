@@ -95,6 +95,7 @@ export const env = {
     "whisper-1",
   openaiSummaryModel: getOptionalEnv("OPENAI_SUMMARY_MODEL") ?? "gpt-4o-mini",
   resendApiKey: getOptionalEnv("RESEND_API_KEY"),
+  cronSecret: getOptionalEnv("CRON_SECRET"),
   alertFromEmail: getOptionalEnv("ALERT_FROM_EMAIL") ?? "Relay NW <alerts@relay-nw.com>",
   adminAlertEmail: getOptionalEnv("ADMIN_ALERT_EMAIL"),
   defaultAccountSlug: getOptionalEnv("RELAY_DEFAULT_ACCOUNT_SLUG") ?? "relay-nw",
