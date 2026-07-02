@@ -57,6 +57,9 @@ export function LeadsList({
           <Link className="btn btn-secondary btn-sm" href="/reports">
             Reports
           </Link>
+          <Link className="btn btn-secondary btn-sm" href="/settings">
+            Settings
+          </Link>
           <button
             className={`btn btn-secondary btn-sm app-head__sample ${inbox.sampleMode ? "btn-sample-on" : ""}`}
             type="button"

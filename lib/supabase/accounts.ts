@@ -395,3 +395,45 @@ export async function getOwnerNotificationEmail(accountId: string | null | undef
     ? accountUser.email.trim().toLowerCase()
     : null;
 }
+
+export type AccountSettingsUpdate = Partial<{
+  business_name: string;
+  owner_email: string | null;
+  owner_phone_number: string;
+  scheduling_url: string | null;
+  sms_enabled: boolean;
+  sms_template: string | null;
+  missed_call_voice_message: string | null;
+  dial_timeout_seconds: number;
+  voicemail_max_seconds: number;
+  missed_call_sms_cooldown_hours: number;
+}>;
+
+export async function updateAccountSettings(accountId: string, update: AccountSettingsUpdate) {
+  if (!accountId) {
+    throw new Error("Missing account_id for settings update.");
+  }
+
+  const { error } = await supabaseAdmin
+    .from("account_settings")
+    .update({ ...update, updated_at: new Date().toISOString() })
+    .eq("account_id", accountId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function getA2pRegistrationStatus(accountId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("account_settings")
+    .select("a2p_registration_status")
+    .eq("account_id", accountId)
+    .maybeSingle();
+
+  if (error) {
+    return null;
+  }
+
+  return (data?.a2p_registration_status as string | undefined) ?? null;
+}
