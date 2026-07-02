@@ -51,6 +51,18 @@ export type InboundMessage = {
   created_at: string;
 };
 
+export type OutboundMessage = {
+  id: string;
+  account_id?: string | null;
+  lead_id: string | null;
+  twilio_message_sid: string | null;
+  from_phone: string | null;
+  to_phone: string | null;
+  body: string | null;
+  status: string | null;
+  created_at: string;
+};
+
 export type ForwardingHealthCheck = {
   id: string;
   account_id?: string | null;
@@ -93,6 +105,7 @@ export type Lead = {
   voicemail_transcription_error: string | null;
   voicemail_transcribed_at: string | null;
   inbound_messages: InboundMessage[];
+  outbound_messages: OutboundMessage[];
   deleted_at: string | null;
   created_at: string;
 };

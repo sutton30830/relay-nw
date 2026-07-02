@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "@/components/icon";
 import type { Lead, LeadStatus, ReplyPriorityOverride } from "@/lib/supabase";
+import type { SendReplyResult } from "../_api";
 import { LEGACY_FORWARDING_MESSAGE, QUICK_REPLIES } from "../_constants";
 import { followUpStatusText, formatDuration, formatPhone, formatRelativeTime, getLeadPriority, initials, isBookedLead, parseSetupRequestMessage } from "../_utils";
 import { BookedBadge, SmsBadge, StatusPill, VoicemailBadge } from "./badges";
@@ -21,6 +22,7 @@ export function LeadDrawer({
   onJobValue,
   onPriority,
   onTranscribe,
+  onReply,
   isTranscribing,
 }: {
   lead: Lead;
@@ -33,6 +35,7 @@ export function LeadDrawer({
   onJobValue: (id: string, jobValueCents: number | null) => void;
   onPriority: (id: string, priority: ReplyPriorityOverride) => void;
   onTranscribe: (id: string) => void;
+  onReply: (id: string, body: string) => Promise<SendReplyResult>;
   isTranscribing: boolean;
 }) {
   const drawerRef = useRef<HTMLElement | null>(null);
@@ -40,7 +43,26 @@ export function LeadDrawer({
   const [name, setName] = useState(lead.name ?? "");
   const [notes, setNotes] = useState(lead.notes ?? "");
   const [summary, setSummary] = useState(lead.voicemail_summary ?? "");
+  const [replyText, setReplyText] = useState("");
+  const [replySending, setReplySending] = useState(false);
+  const [replyError, setReplyError] = useState<string | null>(null);
   const booked = isBookedLead(lead);
+  const thread = [
+    ...lead.inbound_messages.map((message) => ({
+      id: `in-${message.id}`,
+      direction: "inbound" as const,
+      body: message.body,
+      created_at: message.created_at,
+    })),
+    ...(lead.outbound_messages ?? []).map((message) => ({
+      id: `out-${message.id}`,
+      direction: "outbound" as const,
+      body: message.body ?? "",
+      created_at: message.created_at,
+    })),
+  ]
+    .filter((message) => message.body)
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   const priority = getLeadPriority(lead);
   const hasUsefulMessage = Boolean(lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE);
   const setupRequestFields = lead.source === "intake_form" ? parseSetupRequestMessage(lead.message) : [];
@@ -107,12 +129,36 @@ export function LeadDrawer({
   }, [lead.id, lead.voicemail_summary]);
 
   useEffect(() => {
+    setReplyText("");
+    setReplyError(null);
+    setReplySending(false);
+  }, [lead.id]);
+
+  useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
+
+  async function submitReply() {
+    const body = replyText.trim();
+    if (!body || replySending) return;
+
+    setReplySending(true);
+    setReplyError(null);
+
+    const result = await onReply(lead.id, body);
+
+    setReplySending(false);
+
+    if (result.ok) {
+      setReplyText("");
+    } else {
+      setReplyError(result.error);
+    }
+  }
 
   function saveName() {
     const nextName = name.trim();
@@ -283,9 +329,9 @@ export function LeadDrawer({
         ) : null}
 
         <div className="drawer__section-head">
-          <p className="t-eyebrow">Follow-up</p>
+          <p className="t-eyebrow">Conversation</p>
           <span style={{ fontSize: 12, color: "var(--ink-4)" }}>
-            Use your phone for replies
+            Texts send from your Relay number
           </span>
         </div>
 
@@ -294,24 +340,24 @@ export function LeadDrawer({
             <Icon name={lead.sms_status === "failed" || lead.sms_status === "undelivered" ? "alertTriangle" : "message"} size={15} />
             <span>{followUpStatusText(lead)}</span>
           </div>
-          {lead.inbound_messages.length > 0 ? (
+          {thread.length > 0 ? (
             <div className="follow-up-replies">
-              <p className="t-eyebrow" style={{ margin: "0 0 8px" }}>
-                Customer replies
-              </p>
               <div style={{ display: "grid", gap: 8 }}>
-                {lead.inbound_messages.map((message) => (
+                {thread.map((message) => (
                   <div
                     key={message.id}
                     style={{
-                      background: "var(--panel)",
+                      background: message.direction === "outbound" ? "var(--panel-2, var(--panel))" : "var(--panel)",
                       border: "1px solid var(--line)",
                       borderRadius: "var(--r-sm)",
                       padding: "10px 12px",
+                      marginLeft: message.direction === "outbound" ? 24 : 0,
+                      marginRight: message.direction === "outbound" ? 0 : 24,
                     }}
                   >
                     <p style={{ margin: 0 }}>{message.body}</p>
                     <p style={{ color: "var(--ink-4)", fontSize: 12, margin: "6px 0 0" }}>
+                      {message.direction === "outbound" ? "You · " : ""}
                       {formatRelativeTime(message.created_at, Date.now())}
                     </p>
                   </div>
@@ -319,30 +365,65 @@ export function LeadDrawer({
               </div>
             </div>
           ) : null}
-          <div className="follow-up-actions">
-            <a className="btn btn-primary follow-up-actions__primary" href={`tel:${lead.phone}`}>
-              <Icon name="phone" size={14} /> Call back
-            </a>
-            <a className="btn btn-secondary" href={`sms:${lead.phone}`}>
-              <Icon name="message" size={14} /> Text
-            </a>
+          <div style={{ display: "grid", gap: 8 }}>
+            <textarea
+              className="field"
+              rows={2}
+              maxLength={640}
+              placeholder={`Text ${lead.name?.split(" ")[0] ?? formatPhone(lead.phone)} back...`}
+              value={replyText}
+              disabled={replySending}
+              onChange={(event) => {
+                setReplyText(event.target.value);
+                if (replyError) setReplyError(null);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                  event.preventDefault();
+                  void submitReply();
+                }
+              }}
+            />
+            {replyError ? (
+              <p style={{ color: "var(--danger, #b42318)", fontSize: 13, margin: 0 }} role="alert">
+                {replyError}
+              </p>
+            ) : null}
+            <div className="follow-up-actions">
+              <button
+                className="btn btn-primary follow-up-actions__primary"
+                type="button"
+                disabled={replySending || !replyText.trim()}
+                onClick={() => void submitReply()}
+              >
+                <Icon name="message" size={14} /> {replySending ? "Sending..." : "Send text"}
+              </button>
+              <a className="btn btn-secondary" href={`tel:${lead.phone}`}>
+                <Icon name="phone" size={14} /> Call back
+              </a>
+            </div>
           </div>
           <details className="follow-up-shortcuts">
             <summary>Text shortcuts</summary>
             <div className="follow-up-quick">
               {QUICK_REPLIES.map((template) => (
-                <a
+                <button
                   key={template}
                   className="quick-reply"
-                  href={`sms:${lead.phone}?&body=${encodeURIComponent(template)}`}
+                  type="button"
+                  onClick={() => {
+                    setReplyText(template);
+                    setReplyError(null);
+                  }}
                 >
                   {template}
-                </a>
+                </button>
               ))}
             </div>
           </details>
           <p className="follow-up-hint">
-            Texting opens your phone's messages app.
+            Replies go out from your Relay business number, so the customer sees one conversation.{" "}
+            <a href={`sms:${lead.phone}`}>Use your phone instead</a>
           </p>
         </div>
 

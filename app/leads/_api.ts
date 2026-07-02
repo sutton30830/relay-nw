@@ -1,6 +1,38 @@
 import type { LeadPatch, TranscribeResponse, TranscribeResult } from "./_types";
 import type { ForwardingHealthSummary } from "@/lib/forwarding-health";
+import type { OutboundMessage } from "@/lib/supabase";
 import { humanVoicemailError } from "./_utils";
+
+export type SendReplyResult =
+  | { ok: true; message: OutboundMessage }
+  | { ok: false; error: string };
+
+export async function sendLeadReply(id: string, body: string): Promise<SendReplyResult> {
+  try {
+    const response = await fetch(`/api/leads/${id}/reply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body }),
+    });
+
+    const data = await response.json().catch(() => null) as
+      | { ok: true; message: OutboundMessage }
+      | { error?: string }
+      | null;
+
+    if (!response.ok || !data || !("ok" in data)) {
+      return {
+        ok: false,
+        error: (data && "error" in data && data.error) || "Could not send the reply. Try again.",
+      };
+    }
+
+    return { ok: true, message: data.message };
+  } catch (error) {
+    console.error("Failed to send reply from inbox", { leadId: id, error });
+    return { ok: false, error: "Could not reach Relay. Check your connection and try again." };
+  }
+}
 
 export type ForwardingHealthResponse = ForwardingHealthSummary & {
   healthCheckId?: string;

@@ -167,6 +167,7 @@ export function LeadsList({
           onJobValue={inbox.updateJobValue}
           onPriority={inbox.updatePriority}
           onTranscribe={inbox.transcribeVoicemail}
+          onReply={inbox.sendReply}
           isTranscribing={inbox.transcribingIds.has(inbox.openLead.id)}
         />
       ) : null}

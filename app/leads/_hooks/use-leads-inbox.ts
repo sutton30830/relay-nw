@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Lead, LeadStatus, ReplyPriorityOverride } from "@/lib/supabase";
+import type { Lead, LeadStatus, OutboundMessage, ReplyPriorityOverride } from "@/lib/supabase";
 import { AUTO_VOICEMAIL_SUMMARY_LIMIT, INBOX_REFRESH_MS, RELATIVE_TIME_TICK_MS } from "../_constants";
 import type { Filter } from "../_types";
-import { deleteLead as deleteLeadRequest, patchLead, requestVoicemailSummary } from "../_api";
+import { deleteLead as deleteLeadRequest, patchLead, requestVoicemailSummary, sendLeadReply, type SendReplyResult } from "../_api";
 import { countLeads, createSampleLeads, filterLeads, shouldAutoSummarizeVoicemail, sortLeadsForWork } from "../_utils";
 
 export function useLeadsInbox(leads: Lead[]) {
@@ -330,10 +330,52 @@ export function useLeadsInbox(leads: Lead[]) {
     });
   }
 
+  function appendOutboundReply(id: string, message: OutboundMessage) {
+    const setter = sampleMode ? setSampleItems : setItems;
+    setter((current) =>
+      current.map((lead) =>
+        lead.id === id
+          ? {
+              ...lead,
+              status: lead.status === "new" ? ("contacted" as LeadStatus) : lead.status,
+              outbound_messages: [message, ...lead.outbound_messages],
+            }
+          : lead,
+      ),
+    );
+  }
+
+  async function sendReply(id: string, body: string): Promise<SendReplyResult> {
+    if (sampleMode) {
+      const message: OutboundMessage = {
+        id: `sample-reply-${Date.now()}`,
+        lead_id: id,
+        twilio_message_sid: null,
+        from_phone: null,
+        to_phone: null,
+        body,
+        status: "sent",
+        created_at: new Date().toISOString(),
+      };
+      appendOutboundReply(id, message);
+      return { ok: true, message };
+    }
+
+    const result = await sendLeadReply(id, body);
+
+    if (result.ok) {
+      appendOutboundReply(id, result.message);
+      router.refresh();
+    }
+
+    return result;
+  }
+
   return {
     activeItems,
     counts,
     deleteLead,
+    sendReply,
     expandedLeadIds,
     filter,
     filteredItems,

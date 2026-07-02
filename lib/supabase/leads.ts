@@ -1,6 +1,6 @@
 import { isPlaceholderSupabaseConfig, shouldSkipDatabaseWrite, supabaseAdmin, throwIfSupabaseError } from "./client";
 import { assertAccountId } from "./tenant";
-import type { InboundMessage, Lead, LeadSource, LeadStatus, ReplyPriorityOverride } from "./types";
+import type { InboundMessage, Lead, LeadSource, LeadStatus, OutboundMessage, ReplyPriorityOverride } from "./types";
 
 const LEAD_SELECT_COLUMNS =
   "id, account_id, call_sid, name, phone, message, notes, booked_at, job_value_cents, reply_priority_override, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, voicemail_transcript, voicemail_summary, voicemail_transcription_status, voicemail_transcription_error, voicemail_transcribed_at, deleted_at, created_at";
@@ -33,6 +33,7 @@ function normalizeLead(lead: Lead): Lead {
     voicemail_transcription_error: lead.voicemail_transcription_error ?? null,
     voicemail_transcribed_at: lead.voicemail_transcribed_at ?? null,
     inbound_messages: lead.inbound_messages ?? [],
+    outbound_messages: lead.outbound_messages ?? [],
     deleted_at: lead.deleted_at ?? null,
     reply_priority_override: lead.reply_priority_override ?? null,
   };
@@ -85,6 +86,63 @@ async function attachInboundMessages(leads: Lead[], accountId: string) {
     ...lead,
     inbound_messages: messagesByPhone.get(lead.phone) ?? [],
   }));
+}
+
+async function attachOutboundMessages(leads: Lead[], accountId: string) {
+  if (isPlaceholderSupabaseConfig() || leads.length === 0) {
+    return leads;
+  }
+
+  const leadIds = leads.map((lead) => lead.id);
+  const { data, error } = await supabaseAdmin
+    .from("messages")
+    .select("id, lead_id, twilio_message_sid, from_phone, to_phone, body, status, created_at")
+    .eq("account_id", accountId)
+    .eq("direction", "outbound")
+    .in("lead_id", leadIds)
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  if (error) {
+    // Non-fatal: the inbox still renders without the outbound thread.
+    console.warn("Could not load outbound messages for leads.", { error });
+    return leads;
+  }
+
+  const messagesByLeadId = new Map<string, OutboundMessage[]>();
+
+  for (const message of (data ?? []) as OutboundMessage[]) {
+    if (!message.lead_id) continue;
+    const messages = messagesByLeadId.get(message.lead_id) ?? [];
+    if (messages.length < 10) {
+      messages.push(message);
+      messagesByLeadId.set(message.lead_id, messages);
+    }
+  }
+
+  return leads.map((lead) => ({
+    ...lead,
+    outbound_messages: messagesByLeadId.get(lead.id) ?? [],
+  }));
+}
+
+export async function getLeadByIdForAccount(inputAccountId: string, id: string) {
+  const accountId = assertAccountId(inputAccountId, "getLeadByIdForAccount");
+
+  if (isPlaceholderSupabaseConfig()) {
+    return null;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("leads")
+    .select("id, phone, status, deleted_at")
+    .eq("account_id", accountId)
+    .eq("id", id)
+    .maybeSingle();
+
+  throwIfSupabaseError(error);
+
+  return (data ?? null) as Pick<Lead, "id" | "phone" | "status" | "deleted_at"> | null;
 }
 
 export async function createLead(input: {
@@ -193,12 +251,13 @@ export async function getLeadsForAccount(inputAccountId: string) {
       } as Lead),
     );
 
-    return attachInboundMessages(legacyLeads, accountId);
+    return attachOutboundMessages(await attachInboundMessages(legacyLeads, accountId), accountId);
   }
 
   throwIfSupabaseError(error);
 
-  return attachInboundMessages(((data ?? []) as Lead[]).map(normalizeLead), accountId);
+  const leads = await attachInboundMessages(((data ?? []) as Lead[]).map(normalizeLead), accountId);
+  return attachOutboundMessages(leads, accountId);
 }
 
 export async function updateLead(input: {
