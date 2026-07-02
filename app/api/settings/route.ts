@@ -38,6 +38,7 @@ export async function POST(request: Request) {
   const schedulingUrl = readString(formData, "scheduling_url", 500);
   const smsTemplate = readString(formData, "sms_template", 600);
   const voiceMessage = readString(formData, "missed_call_voice_message", 600);
+  const greetingAudioUrl = readString(formData, "missed_call_greeting_audio_url", 500);
   const dialTimeout = readNumber(formData, "dial_timeout_seconds", LIMITS.dialTimeoutSeconds);
   const voicemailMax = readNumber(formData, "voicemail_max_seconds", LIMITS.voicemailMaxSeconds);
   const cooldownHours = readNumber(formData, "missed_call_sms_cooldown_hours", LIMITS.cooldownHours);
@@ -54,6 +55,10 @@ export async function POST(request: Request) {
     redirect("/settings?error=invalid");
   }
 
+  if (greetingAudioUrl && !/^https:\/\//.test(greetingAudioUrl)) {
+    redirect("/settings?error=invalid");
+  }
+
   const update: AccountSettingsUpdate = {
     business_name: businessName,
     owner_phone_number: ownerPhone,
@@ -61,6 +66,7 @@ export async function POST(request: Request) {
     scheduling_url: schedulingUrl || null,
     sms_template: smsTemplate || null,
     missed_call_voice_message: voiceMessage || null,
+    missed_call_greeting_audio_url: greetingAudioUrl || null,
     dial_timeout_seconds: dialTimeout,
     voicemail_max_seconds: voicemailMax,
     missed_call_sms_cooldown_hours: cooldownHours,

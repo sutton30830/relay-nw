@@ -404,6 +404,7 @@ export type AccountSettingsUpdate = Partial<{
   sms_enabled: boolean;
   sms_template: string | null;
   missed_call_voice_message: string | null;
+  missed_call_greeting_audio_url: string | null;
   dial_timeout_seconds: number;
   voicemail_max_seconds: number;
   missed_call_sms_cooldown_hours: number;

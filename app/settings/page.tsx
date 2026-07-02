@@ -127,7 +127,18 @@ export default async function SettingsPage({
             </Field>
 
             <p className="t-eyebrow" style={{ margin: "22px 0 14px" }}>Voice</p>
-            <Field label="Voicemail greeting" hint="Spoken to callers before the beep. Leave blank for the default.">
+            <Field
+              label="Greeting recording URL"
+              hint="Optional audio file (https://... .mp3/.wav). When set, this recording plays to callers and the text greeting below is ignored."
+            >
+              <input className="field" name="missed_call_greeting_audio_url" defaultValue={account.missedCallGreetingAudioUrl ?? ""} placeholder="https://www.relay-nw.com/audio/greeting.mp3" />
+            </Field>
+            <Field
+              label="Voicemail greeting (text-to-speech)"
+              hint={account.missedCallGreetingAudioUrl
+                ? "Currently unused — your greeting recording above takes precedence."
+                : "Spoken to callers before the beep. Leave blank for the default."}
+            >
               <textarea className="field" name="missed_call_voice_message" rows={2} maxLength={600} defaultValue={account.missedCallVoiceMessage ?? ""} placeholder="Thanks for calling. Sorry we missed you..." />
             </Field>
             <Field label="Ring time before voicemail (seconds)" hint="How long your phone rings before Relay answers. 5-60.">
