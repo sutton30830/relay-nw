@@ -24,6 +24,37 @@ type TwilioRequestSummary = {
 
 export const twilioClient = twilio(env.twilioAccountSid, env.twilioAuthToken);
 
+// Texts the owner from the account's Relay number. Never throws — notification
+// failures must not disturb the pipeline that called this. Gated on smsEnabled:
+// owner texts ride the same A2P-gated number as customer texting.
+export async function sendOwnerSms(input: {
+  account: Pick<AccountRuntimeConfig, "smsEnabled" | "ownerPhoneNumber" | "twilioPhoneNumber">;
+  body: string;
+  context: string;
+}) {
+  const { account } = input;
+
+  if (!account.smsEnabled || !account.ownerPhoneNumber || !account.twilioPhoneNumber) {
+    return false;
+  }
+
+  try {
+    await twilioClient.messages.create({
+      to: account.ownerPhoneNumber,
+      from: account.twilioPhoneNumber,
+      body: input.body,
+    });
+    return true;
+  } catch (error) {
+    console.error("Owner SMS failed", {
+      context: input.context,
+      ownerLast4: phoneLast4(account.ownerPhoneNumber),
+      error: error instanceof Error ? error.message : error,
+    });
+    return false;
+  }
+}
+
 function replaceTemplateValues(template: string, values: Record<string, string>) {
   let output = template;
 

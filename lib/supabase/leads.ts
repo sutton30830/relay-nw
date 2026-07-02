@@ -3,7 +3,7 @@ import { assertAccountId } from "./tenant";
 import type { InboundMessage, Lead, LeadSource, LeadStatus, OutboundMessage, ReplyPriorityOverride } from "./types";
 
 const LEAD_SELECT_COLUMNS =
-  "id, account_id, call_sid, name, phone, message, notes, booked_at, job_value_cents, reply_priority_override, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, voicemail_transcript, voicemail_summary, voicemail_transcription_status, voicemail_transcription_error, voicemail_transcribed_at, deleted_at, created_at";
+  "id, account_id, call_sid, name, phone, message, notes, booked_at, job_value_cents, reply_priority_override, priority, priority_reason, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, voicemail_transcript, voicemail_summary, voicemail_transcription_status, voicemail_transcription_error, voicemail_transcribed_at, deleted_at, created_at";
 const LEGACY_LEAD_SELECT_COLUMNS =
   "id, account_id, call_sid, name, phone, message, notes, job_value_cents, reply_priority_override, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, created_at";
 
@@ -20,7 +20,8 @@ function isMissingOptionalLeadColumnError(error: { message: string } | null) {
       error?.message.includes("voicemail_transcription_error") ||
       error?.message.includes("voicemail_transcribed_at") ||
       error?.message.includes("deleted_at") ||
-      error?.message.includes("reply_priority_override"),
+      error?.message.includes("reply_priority_override") ||
+      error?.message.includes("priority"),
   );
 }
 
@@ -36,6 +37,8 @@ function normalizeLead(lead: Lead): Lead {
     outbound_messages: lead.outbound_messages ?? [],
     deleted_at: lead.deleted_at ?? null,
     reply_priority_override: lead.reply_priority_override ?? null,
+    priority: lead.priority ?? null,
+    priority_reason: lead.priority_reason ?? null,
   };
 
   if (normalizedLead.status !== "booked") {
@@ -124,6 +127,38 @@ async function attachOutboundMessages(leads: Lead[], accountId: string) {
     ...lead,
     outbound_messages: messagesByLeadId.get(lead.id) ?? [],
   }));
+}
+
+// Server-side classification result. Warn-only when the columns are missing so a
+// deploy ahead of the SQL migration degrades gracefully instead of failing webhooks.
+export async function updateLeadPriority(input: {
+  accountId: string;
+  id: string;
+  priority: "fast" | "today" | "normal";
+  priorityReason: string | null;
+}) {
+  const accountId = assertAccountId(input.accountId, "updateLeadPriority");
+
+  if (shouldSkipDatabaseWrite("lead priority update", input)) {
+    return;
+  }
+
+  const { error } = await supabaseAdmin
+    .from("leads")
+    .update({ priority: input.priority, priority_reason: input.priorityReason })
+    .eq("account_id", accountId)
+    .eq("id", input.id);
+
+  if (error) {
+    if (error.message.includes("priority")) {
+      console.warn("leads.priority columns are missing. Run supabase.sql to enable persisted urgency.", {
+        leadId: input.id,
+      });
+      return;
+    }
+
+    throw error;
+  }
 }
 
 export async function getLeadByIdForAccount(inputAccountId: string, id: string) {

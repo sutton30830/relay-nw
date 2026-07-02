@@ -89,6 +89,8 @@ export type Lead = {
   booked_at: string | null;
   job_value_cents: number | null;
   reply_priority_override: ReplyPriorityOverride;
+  priority: "fast" | "today" | "normal" | null;
+  priority_reason: string | null;
   source: LeadSource;
   status: LeadStatus;
   sms_status: SmsStatus;

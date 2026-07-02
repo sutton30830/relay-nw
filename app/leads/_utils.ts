@@ -22,6 +22,8 @@ export function createSampleLeads(): Lead[] {
       twilio_message_sid: "sample-message-1",
       sms_updated_at: new Date(now - 13 * 60_000).toISOString(),
       reply_priority_override: null,
+      priority: null,
+      priority_reason: null,
       recording_sid: "sample-recording-1",
       recording_url: null,
       recording_duration: 18,
@@ -72,6 +74,8 @@ export function createSampleLeads(): Lead[] {
       twilio_message_sid: null,
       sms_updated_at: null,
       reply_priority_override: null,
+      priority: null,
+      priority_reason: null,
       recording_sid: null,
       recording_url: null,
       recording_duration: null,
@@ -102,6 +106,8 @@ export function createSampleLeads(): Lead[] {
       twilio_message_sid: "sample-message-2",
       sms_updated_at: new Date(now - 3 * 60 * 60_000).toISOString(),
       reply_priority_override: null,
+      priority: null,
+      priority_reason: null,
       recording_sid: null,
       recording_url: null,
       recording_duration: null,
@@ -259,6 +265,17 @@ export function getLeadPriority(lead: Lead): ReplyPriority {
 
   if (lead.reply_priority_override === "normal") {
     return { level: "normal", label: "Normal", reason: null };
+  }
+
+  // Server-side classification (persisted at voicemail transcription). The client
+  // regex below stays as a fallback for leads that predate it, and can still
+  // upgrade a server "normal" when newer text (e.g. an inbound reply) is urgent.
+  if (lead.priority === "fast") {
+    return { level: "fast", label: "Fast reply", reason: lead.priority_reason };
+  }
+
+  if (lead.priority === "today") {
+    return { level: "today", label: "Today", reason: lead.priority_reason };
   }
 
   const text = leadPriorityText(lead);

@@ -86,6 +86,8 @@ create table if not exists public.leads (
   booked_at timestamptz,
   job_value_cents integer check (job_value_cents is null or job_value_cents >= 0),
   reply_priority_override text check (reply_priority_override is null or reply_priority_override in ('fast', 'today', 'normal')),
+  priority text check (priority is null or priority in ('fast', 'today', 'normal')),
+  priority_reason text,
   source text not null check (source in ('missed_call', 'intake_form')),
   status text not null default 'new' check (status in ('new', 'contacted', 'booked', 'dead')),
   sms_status text check (sms_status in ('pending', 'queued', 'sending', 'sent', 'delivered', 'failed', 'undelivered', 'skipped_disabled', 'skipped_opt_out', 'skipped_recent')),
@@ -111,6 +113,8 @@ alter table public.leads add column if not exists notes text;
 alter table public.leads add column if not exists booked_at timestamptz;
 alter table public.leads add column if not exists job_value_cents integer;
 alter table public.leads add column if not exists reply_priority_override text;
+alter table public.leads add column if not exists priority text;
+alter table public.leads add column if not exists priority_reason text;
 alter table public.leads add column if not exists sms_status text;
 alter table public.leads add column if not exists sms_error text;
 alter table public.leads add column if not exists twilio_message_sid text;

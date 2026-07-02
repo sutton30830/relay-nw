@@ -14,7 +14,7 @@ import { envAccountConfig } from "@/lib/supabase/accounts";
 import { missedCallSmsBodyForAccount, phoneLast4, twilioClient } from "@/lib/twilio";
 import { notifyAdminOperationalIssue, notifyOwnerNewMissedCallLead } from "@/lib/email";
 
-type OwnerSmsStatus = "sent" | "failed" | "skipped_opt_out";
+type OwnerSmsStatus = "sent" | "failed" | "skipped_opt_out" | "repeat_call";
 
 function ownerSmsBody(input: {
   businessName: string;
@@ -29,6 +29,10 @@ function ownerSmsBody(input: {
 
   if (input.smsStatus === "skipped_opt_out") {
     return `Relay NW: missed call for ${input.businessName} from ${input.callerPhone}. They opted out of texting, so call them back. Inbox: ${inboxUrl}`;
+  }
+
+  if (input.smsStatus === "repeat_call") {
+    return `Relay NW: ${input.callerPhone} called ${input.businessName} again and was missed. They were already texted, so no new auto-text went out. Consider calling back. Inbox: ${inboxUrl}`;
   }
 
   return `Relay NW: missed call for ${input.businessName} from ${input.callerPhone}. The auto-text FAILED. Call them back now. Inbox: ${inboxUrl}`;
@@ -215,6 +219,14 @@ export async function handleMissedCall(input: {
       accountId: account.accountId,
       id: leadResult.leadId,
       smsStatus: "skipped_recent",
+    });
+    // A repeat missed call inside the cooldown window used to be invisible to the
+    // owner. It is often the opposite of ignorable: the caller is trying again.
+    await notifyOwnerNewLeadBySms({
+      account,
+      callerPhone,
+      smsStatus: "repeat_call",
+      correlationId,
     });
     return { inserted: true, smsStatus: "skipped_recent" as const };
   }

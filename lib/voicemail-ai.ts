@@ -1,9 +1,12 @@
 import { env } from "@/lib/env";
+import { classifyPriority } from "@/lib/priority";
 import {
   getAccountConfigByAccountId,
   getLeadForVoicemailTranscription,
+  updateLeadPriority,
   updateLeadVoicemailTranscription,
 } from "@/lib/supabase";
+import { sendOwnerSms } from "@/lib/twilio";
 import { notifyAdminOperationalIssue, notifyOwnerVoicemailReady } from "@/lib/email";
 
 type OpenAITranscriptionResponse = {
@@ -249,8 +252,36 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
       error: null,
     });
 
+    // Classify urgency from what the caller actually said, persist it, and escalate
+    // fast-priority voicemails to the owner by SMS immediately. Never fatal: the
+    // transcription result stands even if classification or notification fails.
+    const classification = classifyPriority(`${transcript} ${summary}`);
+
+    try {
+      await updateLeadPriority({
+        accountId,
+        id: leadId,
+        priority: classification.level,
+        priorityReason: classification.reason,
+      });
+    } catch (error) {
+      console.error("Could not persist lead priority", {
+        leadId,
+        accountId,
+        error: error instanceof Error ? error.message : error,
+      });
+    }
+
     const account = await getAccountConfigByAccountId(accountId);
     if (account) {
+      if (classification.level === "fast") {
+        await sendOwnerSms({
+          account,
+          context: "urgent voicemail alert",
+          body: `Relay NW URGENT: voicemail from ${lead.phone} — ${classification.reason}. "${summary.slice(0, 160)}" Call back now or reply from your inbox: ${env.appBaseUrl}/leads`,
+        });
+      }
+
       await notifyOwnerVoicemailReady({
         account,
         leadId,

@@ -31,28 +31,6 @@ export const QUICK_REPLIES = [
 
 export const LEGACY_FORWARDING_MESSAGE = "Forwarded missed call from existing business number.";
 
-export const FAST_REPLY_PATTERNS = [
-  { pattern: /\bemergency\b/i, reason: "mentioned emergency" },
-  { pattern: /\basap\b/i, reason: "asked for ASAP help" },
-  { pattern: /\bright away\b/i, reason: "asked for help right away" },
-  { pattern: /\bimmediately\b/i, reason: "asked for immediate help" },
-  { pattern: /\bnow\b/i, reason: "asked for help now" },
-  { pattern: /\bflood(?:ing)?\b/i, reason: "mentioned flooding" },
-  { pattern: /\bburst\b/i, reason: "mentioned something burst" },
-  { pattern: /\bno heat\b/i, reason: "mentioned no heat" },
-  { pattern: /\bno power\b/i, reason: "mentioned no power" },
-  { pattern: /\blocked out\b/i, reason: "mentioned being locked out" },
-  { pattern: /\bnot working\b/i, reason: "said something is not working" },
-  { pattern: /\bwater everywhere\b/i, reason: "mentioned water everywhere" },
-];
-
-export const TODAY_REPLY_PATTERNS = [
-  { pattern: /\btoday\b/i, reason: "asked about today" },
-  { pattern: /\btonight\b/i, reason: "asked about tonight" },
-  { pattern: /\bthis morning\b/i, reason: "mentioned this morning" },
-  { pattern: /\bthis afternoon\b/i, reason: "mentioned this afternoon" },
-  { pattern: /\bthis evening\b/i, reason: "mentioned this evening" },
-  { pattern: /\btomorrow\b/i, reason: "asked about tomorrow" },
-  { pattern: /\bsoon\b/i, reason: "asked for help soon" },
-  { pattern: /\bafter hours\b/i, reason: "mentioned after hours" },
-];
+// Single source of truth lives server-side in lib/priority.ts; re-exported here for
+// the client-side fallback used by leads that predate persisted classification.
+export { FAST_REPLY_PATTERNS, TODAY_REPLY_PATTERNS } from "@/lib/priority";

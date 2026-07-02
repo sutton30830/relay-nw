@@ -202,14 +202,19 @@ test("Twilio send failure: lead marked failed with error, admin and owner notifi
   assert.ok(calls.ownerNotifications.some((n) => n.smsStatus === "failed"));
 });
 
-test("recent SMS within cooldown: skipped_recent, no double text", async () => {
+test("recent SMS within cooldown: skipped_recent, no double text to the caller", async () => {
   const { mocks, calls } = makeMissedCallMocks({
     supabase: { hasRecentMissedCallSms: async () => true },
   });
   const result = await runMissedCall(mocks);
 
   assert.equal(result.smsStatus, "skipped_recent");
-  assert.equal(calls.twilioSends.length, 0);
+  const callerSends = calls.twilioSends.filter((send) => send.to !== ACCOUNT.ownerPhoneNumber);
+  assert.equal(callerSends.length, 0, "must never double-text a caller inside the cooldown");
+  // The owner is told the caller tried again — a repeat call is a hot lead, not noise.
+  const ownerSends = calls.twilioSends.filter((send) => send.to === ACCOUNT.ownerPhoneNumber);
+  assert.equal(ownerSends.length, 1);
+  assert.match(ownerSends[0].body, /called .*again/i);
 });
 
 test("opted-out caller: skipped_opt_out, no SMS to the caller", async () => {
@@ -386,6 +391,19 @@ test("orphan callback (no lead, no message row): webhook event records the miss"
 
 // --- Voicemail transcription failure visibility ---
 
+test("classifyPriority: emergencies are fast, time-sensitive is today, quotes are normal", async () => {
+  const { classifyPriority } = await loadTsModule("lib/priority.ts", {});
+
+  assert.deepEqual(classifyPriority("my basement is flooding"), {
+    level: "fast",
+    reason: "mentioned flooding",
+  });
+  assert.equal(classifyPriority("could you come by tomorrow morning?").level, "today");
+  assert.equal(classifyPriority("just wanted a quote on a new water heater").level, "normal");
+  assert.equal(classifyPriority("").level, "normal");
+  assert.equal(classifyPriority(null).level, "normal");
+});
+
 function makeVoicemailMocks(state) {
   return {
     "@/lib/env": {
@@ -397,11 +415,26 @@ function makeVoicemailMocks(state) {
         openaiSummaryModel: "gpt-test",
       },
     },
+    "@/lib/priority": {
+      classifyPriority: (text) =>
+        /\bflood(?:ing)?\b/i.test(text ?? "")
+          ? { level: "fast", reason: "mentioned flooding" }
+          : { level: "normal", reason: null },
+    },
     "@/lib/supabase": {
       getAccountConfigByAccountId: async () => ACCOUNT,
       getLeadForVoicemailTranscription: async () => state.lead,
       updateLeadVoicemailTranscription: async (input) => {
         state.transcriptionUpdates.push(input);
+      },
+      updateLeadPriority: async (input) => {
+        state.priorityUpdates.push(input);
+      },
+    },
+    "@/lib/twilio": {
+      sendOwnerSms: async (input) => {
+        state.ownerSmsSends.push(input);
+        return true;
       },
     },
     "@/lib/email": {
@@ -414,7 +447,7 @@ function makeVoicemailMocks(state) {
 }
 
 function voicemailState(lead) {
-  return { lead, transcriptionUpdates: [], adminIssues: [] };
+  return { lead, transcriptionUpdates: [], adminIssues: [], priorityUpdates: [], ownerSmsSends: [] };
 }
 
 test("transcription failure marks lead failed (UI shows 'Summary unavailable') and alerts admin", async () => {
