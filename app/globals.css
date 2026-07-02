@@ -3770,3 +3770,77 @@ code {
 .convo__earlier-notes span {
   color: var(--ink-4);
 }
+
+/* Compact voicemail-in-thread (replaces the old jumbo cards) */
+.convo__event {
+  gap: 6px;
+  justify-items: start;
+}
+.convo__event .convo__event-line {
+  justify-self: center;
+}
+.convo__event-line--sent {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--ink-4);
+  font-size: 12px;
+}
+.convo__vm {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+.convo__vm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.convo__play {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.convo__vm-label {
+  font-size: 12px;
+  color: var(--ink-4);
+}
+.convo__vm-error {
+  font-size: 12px;
+  color: var(--ink-4);
+}
+.convo__vm-transcript summary {
+  font-size: 12px;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.convo__vm-transcript p {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.convo__vm-summarize {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 12px;
+  color: var(--brand);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.convo__vm-summarize:disabled {
+  color: var(--ink-4);
+  text-decoration: none;
+  cursor: default;
+}

@@ -9,11 +9,60 @@ import { patchLead, requestVoicemailSummary, sendLeadReply } from "../_api";
 import { QUICK_REPLIES } from "../_constants";
 import { formatDuration, formatPhone, getLeadPriority, initials, isBookedLead } from "../_utils";
 import { BookedToggle, BookedValueInput, PriorityControl, StatusControl } from "../_components/controls";
-import { VoicemailAudio } from "../_components/voicemail-audio";
 
 type ThreadItem =
   | { kind: "call"; lead: Lead; created_at: string }
+  | { kind: "autotext"; id: string; created_at: string }
   | { kind: "sms"; id: string; direction: "inbound" | "outbound"; body: string; created_at: string };
+
+const AUTO_TEXT_SENT_STATUSES = new Set(["queued", "sending", "sent", "delivered"]);
+
+function VoicemailPlayer({ recordingSid }: { recordingSid: string }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [state, setState] = useState<"idle" | "loading" | "playing" | "paused" | "error">("idle");
+
+  async function toggle() {
+    if (state === "playing") {
+      audioRef.current?.pause();
+      setState("paused");
+      return;
+    }
+
+    if (audioRef.current) {
+      void audioRef.current.play();
+      setState("playing");
+      return;
+    }
+
+    setState("loading");
+
+    try {
+      const response = await fetch(`/api/recordings/${recordingSid}`, {
+        cache: "no-store",
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Recording unavailable");
+      const blob = await response.blob();
+      const audio = new Audio(URL.createObjectURL(blob));
+      audio.onended = () => setState("paused");
+      audioRef.current = audio;
+      void audio.play();
+      setState("playing");
+    } catch {
+      setState("error");
+    }
+  }
+
+  if (state === "error") {
+    return <span className="convo__vm-error">Recording unavailable</span>;
+  }
+
+  return (
+    <button className="convo__play" type="button" onClick={() => void toggle()} aria-label="Play voicemail">
+      {state === "loading" ? "…" : state === "playing" ? "❚❚" : "▶"}
+    </button>
+  );
+}
 
 function formatTime(iso: string) {
   return new Date(iso).toLocaleString([], {
@@ -54,7 +103,23 @@ export function ConversationView({
 
   const thread = useMemo<ThreadItem[]>(() => {
     const optimisticIds = new Set(sentMessages.map((message) => message.twilio_message_sid));
+    const outboundSids = new Set(outbound.map((message) => message.twilio_message_sid));
+    // Auto-texts sent before Relay kept full message rows have no body on
+    // record. Show a compact "text sent" marker so calls aren't orphaned.
+    const syntheticAutoTexts: ThreadItem[] = [lead, ...previousLeads]
+      .filter(
+        (callLead) =>
+          callLead.twilio_message_sid &&
+          !outboundSids.has(callLead.twilio_message_sid) &&
+          AUTO_TEXT_SENT_STATUSES.has(callLead.sms_status ?? ""),
+      )
+      .map((callLead) => ({
+        kind: "autotext" as const,
+        id: `auto-${callLead.id}`,
+        created_at: new Date(new Date(callLead.created_at).getTime() + 1000).toISOString(),
+      }));
     const items: ThreadItem[] = [
+      ...syntheticAutoTexts,
       ...[lead, ...previousLeads].map((callLead) => ({
         kind: "call" as const,
         lead: callLead,
@@ -235,16 +300,18 @@ export function ConversationView({
                 <Icon name="phone" size={12} /> Missed call · {formatTime(item.created_at)}
               </p>
               {item.lead.recording_sid ? (
-                <div className="convo__voicemail">
-                  <p className="convo__voicemail-label">
-                    Voicemail ({formatDuration(item.lead.recording_duration)})
-                  </p>
+                <div className="convo__msg convo__msg--in convo__vm">
+                  <div className="convo__vm-row">
+                    <VoicemailPlayer recordingSid={item.lead.recording_sid} />
+                    <span className="convo__vm-label">
+                      Voicemail{item.lead.recording_duration ? ` · ${formatDuration(item.lead.recording_duration)}` : ""}
+                    </span>
+                  </div>
                   {item.lead.voicemail_summary ? (
-                    <p className="convo__voicemail-summary">{item.lead.voicemail_summary}</p>
+                    <p className="convo__msg-body">{item.lead.voicemail_summary}</p>
                   ) : null}
-                  <VoicemailAudio className="voicemail-card__audio" recordingSid={item.lead.recording_sid} />
                   {item.lead.voicemail_transcript ? (
-                    <details className="voicemail-ai__transcript">
+                    <details className="convo__vm-transcript">
                       <summary>Transcript</summary>
                       <p>{item.lead.voicemail_transcript}</p>
                     </details>
@@ -253,18 +320,21 @@ export function ConversationView({
                   !item.lead.voicemail_summary &&
                   item.lead.voicemail_transcription_status !== "processing" ? (
                     <button
-                      className="btn btn-secondary btn-sm"
+                      className="convo__vm-summarize"
                       type="button"
                       disabled={transcribingId === item.lead.id}
                       onClick={() => void summarize(item.lead.id)}
                     >
-                      <Icon name="sparkle" size={13} />
                       {transcribingId === item.lead.id ? "Summarizing..." : "Summarize"}
                     </button>
                   ) : null}
                 </div>
               ) : null}
             </div>
+          ) : item.kind === "autotext" ? (
+            <p key={item.id} className="convo__event-line convo__event-line--sent" suppressHydrationWarning>
+              <Icon name="message" size={12} /> Missed-call text sent automatically
+            </p>
           ) : (
             <div
               key={item.id}
