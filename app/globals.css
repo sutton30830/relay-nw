@@ -3552,133 +3552,209 @@ code {
 }
 
 /* --- Conversation page (/leads/[id]) --- */
-.conversation {
+.convo-page {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+.convo {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
   max-width: 720px;
   margin: 0 auto;
-  padding: 16px 16px 48px;
-  display: grid;
-  gap: 18px;
-}
-.conversation__topbar {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+}
+.convo__bar {
+  display: flex;
   align-items: center;
-}
-.conversation__hero {
-  display: flex;
-  gap: 14px;
-  align-items: center;
-}
-.conversation__title {
-  font-size: 30px;
-  margin: 0;
-}
-.conversation__phone {
-  margin: 4px 0 0;
-  color: var(--ink-2);
-  font-size: 15px;
-}
-.conversation__badges {
-  margin-top: 10px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.conversation__controls {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 14px;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
   background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md, 12px);
-  padding: 14px;
 }
-.conversation__control {
+.convo__back {
+  font-size: 20px;
+  line-height: 1;
+  color: var(--ink-2);
+  text-decoration: none;
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+}
+.convo__back:hover {
+  background: var(--panel-2);
+}
+.convo__who {
+  flex: 1;
+  min-width: 0;
+}
+.convo__name {
+  margin: 0;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.convo__number {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.convo__details-toggle--on {
+  background: var(--brand-soft);
+}
+.convo__banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 14px;
+  font-size: 13px;
+  background: var(--accent-soft);
+  color: var(--ink-1, inherit);
+  border-bottom: 1px solid var(--line);
+}
+.convo__banner--fast {
+  background: #fdecea;
+  color: #b42318;
+}
+.convo__details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+.convo__detail {
   display: grid;
   gap: 6px;
   align-content: start;
 }
-.conversation__outcome {
+.convo__detail--wide {
+  grid-column: 1 / -1;
+}
+.convo__outcome {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
 }
-.conversation__summary {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md, 12px);
-  padding: 14px;
-}
-.conversation__summary p:last-child {
-  margin: 8px 0 0;
-}
-.conversation__thread {
-  display: grid;
+.convo__thread {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 14px;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
 }
-.conversation__sms-note {
-  color: var(--ink-4);
-  font-size: 13px;
-  margin: 0;
+.convo__event {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  margin: 6px 0;
 }
-.conversation__call {
+.convo__event-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--ink-4);
+  font-size: 12px;
+}
+.convo__voicemail {
+  justify-self: start;
+  max-width: 85%;
   background: var(--panel);
-  border: 1px dashed var(--line);
-  border-radius: var(--r-sm);
-  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  border-bottom-left-radius: 4px;
+  padding: 10px 14px;
   display: grid;
   gap: 8px;
   justify-items: start;
 }
-.conversation__call-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--ink-3);
-  font-size: 13px;
+.convo__voicemail-label {
   margin: 0;
-}
-.conversation__call-summary {
-  margin: 0;
-}
-.conversation__bubble {
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  padding: 10px 12px;
-  max-width: 85%;
-}
-.conversation__bubble--in {
-  background: var(--panel);
-  justify-self: start;
-}
-.conversation__bubble--out {
-  background: var(--panel-2, var(--panel));
-  justify-self: end;
-}
-.conversation__bubble-body {
-  margin: 0;
-  white-space: pre-wrap;
-}
-.conversation__bubble-meta {
   color: var(--ink-4);
   font-size: 12px;
-  margin: 6px 0 0;
 }
-.conversation__composer {
-  display: grid;
-  gap: 8px;
-  position: sticky;
-  bottom: 0;
-  background: var(--bg, transparent);
-  padding-top: 8px;
-}
-.conversation__reply-error {
-  color: var(--danger, #b42318);
-  font-size: 13px;
+.convo__voicemail-summary {
   margin: 0;
+  font-weight: 500;
 }
-.conversation__notes {
+.convo__msg {
+  max-width: 78%;
+  padding: 9px 13px;
+  border-radius: 16px;
+}
+.convo__msg--in {
+  align-self: flex-start;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-bottom-left-radius: 4px;
+}
+.convo__msg--out {
+  align-self: flex-end;
+  background: var(--brand-soft);
+  border-bottom-right-radius: 4px;
+}
+.convo__msg-body {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.convo__msg-meta {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--ink-4);
+}
+.convo__composer {
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
   display: grid;
   gap: 8px;
+}
+.convo__error {
+  margin: 0;
+  color: #b42318;
+  font-size: 13px;
+}
+.convo__chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.convo__chips .quick-reply {
+  flex-shrink: 0;
+}
+.convo__input-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+.convo__input {
+  flex: 1;
+  resize: none;
+  border-radius: 20px;
+}
+.convo__send {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: var(--brand);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.convo__send:disabled {
+  opacity: 0.4;
+  cursor: default;
 }

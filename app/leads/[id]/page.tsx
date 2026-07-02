@@ -20,7 +20,7 @@ export default async function LeadConversationPage({
   }
 
   return (
-    <main className="leads-view">
+    <main className="convo-page">
       <ConversationView
         lead={conversation.lead}
         previousLeads={conversation.previousLeads}

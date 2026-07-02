@@ -1,28 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
 import type { InboundMessage, Lead, LeadStatus, OutboundMessage, ReplyPriorityOverride } from "@/lib/supabase";
 import { patchLead, requestVoicemailSummary, sendLeadReply } from "../_api";
 import { QUICK_REPLIES } from "../_constants";
-import {
-  followUpStatusText,
-  formatDuration,
-  formatPhone,
-  formatRelativeTime,
-  getLeadPriority,
-  initials,
-  isBookedLead,
-} from "../_utils";
-import { BookedBadge, PriorityBadge, SmsBadge, StatusPill } from "../_components/badges";
+import { formatDuration, formatPhone, getLeadPriority, initials, isBookedLead } from "../_utils";
 import { BookedToggle, BookedValueInput, PriorityControl, StatusControl } from "../_components/controls";
 import { VoicemailAudio } from "../_components/voicemail-audio";
 
 type ThreadItem =
   | { kind: "call"; lead: Lead; created_at: string }
   | { kind: "sms"; id: string; direction: "inbound" | "outbound"; body: string; created_at: string };
+
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 export function ConversationView({
   lead,
@@ -45,10 +45,12 @@ export function ConversationView({
   const [replyError, setReplyError] = useState<string | null>(null);
   const [sentMessages, setSentMessages] = useState<OutboundMessage[]>([]);
   const [transcribingId, setTranscribingId] = useState<string | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const threadEndRef = useRef<HTMLDivElement | null>(null);
 
   const priority = getLeadPriority(lead);
-  const now = Date.now();
+  const smsTrouble = lead.sms_status === "failed" || lead.sms_status === "undelivered";
 
   const thread = useMemo<ThreadItem[]>(() => {
     const optimisticIds = new Set(sentMessages.map((message) => message.twilio_message_sid));
@@ -80,6 +82,11 @@ export function ConversationView({
 
     return items.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   }, [lead, previousLeads, inbound, outbound, sentMessages]);
+
+  // Start (and stay) at the newest message, like any messaging app.
+  useEffect(() => {
+    threadEndRef.current?.scrollIntoView({ block: "end" });
+  }, [thread.length]);
 
   async function patchAndRefresh(body: Parameters<typeof patchLead>[1]) {
     const ok = await patchLead(lead.id, body);
@@ -115,37 +122,47 @@ export function ConversationView({
   }
 
   return (
-    <div className="conversation">
-      <header className="conversation__topbar">
-        <Link className="btn btn-ghost btn-sm" href="/leads">
-          &larr; Inbox
+    <div className="convo">
+      <header className="convo__bar">
+        <Link className="convo__back" href="/leads" aria-label="Back to inbox">
+          &larr;
         </Link>
-        <div className="conversation__topbar-actions">
-          <a className="btn btn-secondary btn-sm" href={`tel:${lead.phone}`}>
-            <Icon name="phone" size={14} /> Call
-          </a>
+        <div className="lead-card__avatar">{initials(lead) ?? <Icon name="user" size={16} />}</div>
+        <div className="convo__who">
+          <p className="convo__name">{lead.name || formatPhone(lead.phone)}</p>
+          {lead.name ? <p className="convo__number">{formatPhone(lead.phone)}</p> : null}
         </div>
+        <a className="btn btn-secondary btn-sm" href={`tel:${lead.phone}`}>
+          <Icon name="phone" size={14} /> Call
+        </a>
+        {!readOnly ? (
+          <button
+            className={`btn btn-ghost btn-sm ${detailsOpen ? "convo__details-toggle--on" : ""}`}
+            type="button"
+            onClick={() => setDetailsOpen((open) => !open)}
+            aria-expanded={detailsOpen}
+          >
+            Details
+          </button>
+        ) : null}
       </header>
 
-      <section className="conversation__hero">
-        <div className="lead-card__avatar lead-card__avatar--lg">
-          {initials(lead) ?? <Icon name="user" size={22} />}
-        </div>
-        <div className="conversation__hero-body">
-          <h1 className="t-display conversation__title">{lead.name || "Unknown caller"}</h1>
-          <p className="t-mono conversation__phone">{formatPhone(lead.phone)}</p>
-          <div className="conversation__badges">
-            <StatusPill status={lead.status} />
-            <BookedBadge lead={lead} />
-            <SmsBadge lead={lead} />
-            {priority.level !== "normal" ? <PriorityBadge priority={priority} /> : null}
-          </div>
-        </div>
-      </section>
+      {priority.level !== "normal" ? (
+        <p className={`convo__banner ${priority.level === "fast" ? "convo__banner--fast" : ""}`}>
+          <Icon name={priority.level === "fast" ? "alertTriangle" : "clock"} size={13} />
+          {priority.label}
+          {lead.priority_reason ? ` — ${lead.priority_reason}` : ""}
+        </p>
+      ) : null}
+      {smsTrouble ? (
+        <p className="convo__banner convo__banner--fast">
+          <Icon name="alertTriangle" size={13} /> Text failed to deliver. Call them instead.
+        </p>
+      ) : null}
 
-      {!readOnly ? (
-        <section className="conversation__controls">
-          <label className="conversation__control">
+      {detailsOpen && !readOnly ? (
+        <section className="convo__details">
+          <label className="convo__detail">
             <span className="t-eyebrow">Caller name</span>
             <input
               className="field"
@@ -159,11 +176,11 @@ export function ConversationView({
               }}
             />
           </label>
-          <div className="conversation__control">
+          <div className="convo__detail">
             <span className="t-eyebrow">Status</span>
             <StatusControl status={lead.status} onChange={(status: LeadStatus) => void patchAndRefresh({ status })} />
           </div>
-          <div className="conversation__control">
+          <div className="convo__detail">
             <span className="t-eyebrow">Reply timing</span>
             <PriorityControl
               label={null}
@@ -173,9 +190,9 @@ export function ConversationView({
               }
             />
           </div>
-          <div className="conversation__control">
-            <span className="t-eyebrow">Outcome</span>
-            <div className="conversation__outcome">
+          <div className="convo__detail">
+            <span className="t-eyebrow">Booked job</span>
+            <div className="convo__outcome">
               <BookedToggle booked={isBookedLead(lead)} onChange={(booked) => void patchAndRefresh({ booked })} />
               <BookedValueInput
                 valueCents={lead.job_value_cents}
@@ -183,108 +200,83 @@ export function ConversationView({
               />
             </div>
           </div>
+          <label className="convo__detail convo__detail--wide">
+            <span className="t-eyebrow">Private notes</span>
+            <textarea
+              className="field"
+              rows={2}
+              placeholder="Only you see these."
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              onBlur={() => {
+                if ((lead.notes ?? "") !== notes) void patchAndRefresh({ notes });
+              }}
+            />
+          </label>
         </section>
       ) : null}
 
-      {lead.voicemail_summary ? (
-        <section className="conversation__summary">
-          <p className="t-eyebrow">
-            <Icon name="sparkle" size={13} /> What they need
-          </p>
-          <p>{lead.voicemail_summary}</p>
-        </section>
-      ) : null}
-
-      <section className="conversation__thread" aria-label="Conversation history">
-        <p className="conversation__sms-note">{followUpStatusText(lead)}</p>
+      <div className="convo__thread">
         {thread.map((item) =>
           item.kind === "call" ? (
-            <div key={`call-${item.lead.id}`} className="conversation__call">
-              <p className="conversation__call-head">
-                <Icon name="phone" size={13} /> Missed call · {formatRelativeTime(item.created_at, now)}
-                {item.lead.recording_sid
-                  ? ` · voicemail (${formatDuration(item.lead.recording_duration)})`
-                  : " · no voicemail"}
+            <div key={`call-${item.lead.id}`} className="convo__event">
+              <p className="convo__event-line" suppressHydrationWarning>
+                <Icon name="phone" size={12} /> Missed call · {formatTime(item.created_at)}
               </p>
-              {item.lead.voicemail_summary ? <p className="conversation__call-summary">{item.lead.voicemail_summary}</p> : null}
               {item.lead.recording_sid ? (
-                <VoicemailAudio className="voicemail-card__audio" recordingSid={item.lead.recording_sid} />
-              ) : null}
-              {item.lead.voicemail_transcript ? (
-                <details className="voicemail-ai__transcript">
-                  <summary>Transcript</summary>
-                  <p>{item.lead.voicemail_transcript}</p>
-                </details>
-              ) : null}
-              {!readOnly &&
-              item.lead.recording_sid &&
-              !item.lead.voicemail_summary &&
-              item.lead.voicemail_transcription_status !== "processing" ? (
-                <button
-                  className="btn btn-secondary btn-sm"
-                  type="button"
-                  disabled={transcribingId === item.lead.id}
-                  onClick={() => void summarize(item.lead.id)}
-                >
-                  <Icon name="sparkle" size={13} />
-                  {transcribingId === item.lead.id ? "Summarizing..." : "Summarize voicemail"}
-                </button>
+                <div className="convo__voicemail">
+                  <p className="convo__voicemail-label">
+                    Voicemail ({formatDuration(item.lead.recording_duration)})
+                  </p>
+                  {item.lead.voicemail_summary ? (
+                    <p className="convo__voicemail-summary">{item.lead.voicemail_summary}</p>
+                  ) : null}
+                  <VoicemailAudio className="voicemail-card__audio" recordingSid={item.lead.recording_sid} />
+                  {item.lead.voicemail_transcript ? (
+                    <details className="voicemail-ai__transcript">
+                      <summary>Transcript</summary>
+                      <p>{item.lead.voicemail_transcript}</p>
+                    </details>
+                  ) : null}
+                  {!readOnly &&
+                  !item.lead.voicemail_summary &&
+                  item.lead.voicemail_transcription_status !== "processing" ? (
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      type="button"
+                      disabled={transcribingId === item.lead.id}
+                      onClick={() => void summarize(item.lead.id)}
+                    >
+                      <Icon name="sparkle" size={13} />
+                      {transcribingId === item.lead.id ? "Summarizing..." : "Summarize"}
+                    </button>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           ) : (
             <div
               key={item.id}
-              className={`conversation__bubble ${
-                item.direction === "outbound" ? "conversation__bubble--out" : "conversation__bubble--in"
-              }`}
+              className={`convo__msg ${item.direction === "outbound" ? "convo__msg--out" : "convo__msg--in"}`}
             >
-              <p className="conversation__bubble-body">{item.body}</p>
-              <p className="conversation__bubble-meta">
-                {item.direction === "outbound" ? "You · " : ""}
-                {formatRelativeTime(item.created_at, now)}
+              <p className="convo__msg-body">{item.body}</p>
+              <p className="convo__msg-meta" suppressHydrationWarning>
+                {formatTime(item.created_at)}
               </p>
             </div>
           ),
         )}
-      </section>
+        <div ref={threadEndRef} />
+      </div>
 
       {!readOnly ? (
-        <section className="conversation__composer">
-          <textarea
-            ref={composerRef}
-            className="field"
-            rows={2}
-            maxLength={640}
-            placeholder={`Text ${lead.name?.split(" ")[0] ?? formatPhone(lead.phone)} back...`}
-            value={replyText}
-            disabled={replySending}
-            onChange={(event) => {
-              setReplyText(event.target.value);
-              if (replyError) setReplyError(null);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                event.preventDefault();
-                void submitReply();
-              }
-            }}
-          />
+        <footer className="convo__composer">
           {replyError ? (
-            <p className="conversation__reply-error" role="alert">
+            <p className="convo__error" role="alert">
               {replyError}
             </p>
           ) : null}
-          <div className="follow-up-actions">
-            <button
-              className="btn btn-primary follow-up-actions__primary"
-              type="button"
-              disabled={replySending || !replyText.trim()}
-              onClick={() => void submitReply()}
-            >
-              <Icon name="message" size={14} /> {replySending ? "Sending..." : "Send text"}
-            </button>
-          </div>
-          <div className="follow-up-quick">
+          <div className="convo__chips clean-scroll">
             {QUICK_REPLIES.map((template) => (
               <button
                 key={template}
@@ -300,26 +292,37 @@ export function ConversationView({
               </button>
             ))}
           </div>
-          <p className="follow-up-hint">
-            Texts send from your Relay business number, so the customer sees one conversation.
-          </p>
-        </section>
-      ) : null}
-
-      {!readOnly ? (
-        <section className="conversation__notes">
-          <p className="t-eyebrow">Private notes</p>
-          <textarea
-            className="field"
-            rows={3}
-            placeholder="Private notes - only you see these."
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            onBlur={() => {
-              if ((lead.notes ?? "") !== notes) void patchAndRefresh({ notes });
-            }}
-          />
-        </section>
+          <div className="convo__input-row">
+            <textarea
+              ref={composerRef}
+              className="field convo__input"
+              rows={1}
+              maxLength={640}
+              placeholder="Text from your business number..."
+              value={replyText}
+              disabled={replySending}
+              onChange={(event) => {
+                setReplyText(event.target.value);
+                if (replyError) setReplyError(null);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void submitReply();
+                }
+              }}
+            />
+            <button
+              className="convo__send"
+              type="button"
+              aria-label="Send text"
+              disabled={replySending || !replyText.trim()}
+              onClick={() => void submitReply()}
+            >
+              <Icon name="arrowRight" size={18} />
+            </button>
+          </div>
+        </footer>
       ) : null}
     </div>
   );
