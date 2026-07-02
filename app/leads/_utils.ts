@@ -456,6 +456,7 @@ export function countLeads(leads: Lead[]): LeadCounts {
     new: visibleLeads.filter((lead) => lead.status === "new").length,
     actionable: visibleLeads.filter((lead) => lead.status === "new" || lead.status === "contacted").length,
     contacted: visibleLeads.filter((lead) => lead.status === "contacted").length,
+    booked: visibleLeads.filter((lead) => lead.status === "booked").length,
     dead: visibleLeads.filter((lead) => lead.status === "dead").length,
     trash: leads.filter((lead) => lead.deleted_at).length,
     smsIssues: visibleLeads.filter(needsAttention).length,

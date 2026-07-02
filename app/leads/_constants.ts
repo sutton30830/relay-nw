@@ -18,6 +18,7 @@ export const FILTERS: Array<{ key: Filter; label: string }> = [
   { key: "all", label: "All" },
   { key: "new", label: "New" },
   { key: "contacted", label: "Contacted" },
+  { key: "booked", label: "Booked" },
   { key: "dead", label: "Closed" },
   { key: "trash", label: "Trash" },
 ];

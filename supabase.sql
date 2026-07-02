@@ -335,5 +335,22 @@ create index if not exists forwarding_health_checks_pending_started_at_idx
 
 alter table public.forwarding_health_checks enable row level security;
 
+-- Marketing setup requests from the public intake form. Deliberately separate
+-- from leads: leads are customer conversations owned by a tenant account;
+-- setup requests are prospects for Relay NW itself and belong to no account.
+create table if not exists public.setup_requests (
+  id uuid primary key default gen_random_uuid(),
+  name text,
+  phone text not null,
+  message text,
+  status text not null default 'new' check (status in ('new', 'contacted', 'onboarded', 'closed')),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists setup_requests_created_at_idx
+  on public.setup_requests (created_at desc);
+
+alter table public.setup_requests enable row level security;
+
 -- This MVP uses the Supabase service role key from server-only Next.js routes.
 -- No browser/client table access is needed, so no public RLS policies are added.

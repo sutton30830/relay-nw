@@ -71,11 +71,18 @@ test("missed-call owner notification only follows inserted leads", () => {
   assert.ok(notifyIndex > duplicateReturnIndex);
 });
 
-test("public intake setup requests attach to the house account and alert admin", () => {
-  assert.match(intakeRouteTs, /getDefaultAccountConfig\(\)/);
-  assert.match(intakeRouteTs, /if \(!account\.accountId\)/);
-  assert.match(intakeRouteTs, /accountId: account\.accountId/);
+test("public intake setup requests go to setup_requests, never a tenant leads inbox", () => {
+  assert.match(sql, /create table if not exists public\.setup_requests/);
+  assert.match(intakeRouteTs, /createSetupRequest\(\{/);
+  assert.doesNotMatch(intakeRouteTs, /createLead\(/);
+  // Admin alert stays best-effort after the request is saved.
   assert.match(intakeRouteTs, /notifyAdminNewSetupRequest\(\{/);
+  assert.match(intakeRouteTs, /admin notification failed/);
+});
+
+test("booked leads have their own inbox tab", () => {
+  const constantsTs = leadUtilsTs; // countLeads lives in _utils
+  assert.match(constantsTs, /booked: visibleLeads\.filter\(\(lead\) => lead\.status === "booked"\)\.length/);
 });
 
 test("human-facing pages require authenticated account context", () => {

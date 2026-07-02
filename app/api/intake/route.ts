@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { notifyAdminNewSetupRequest, notifyAdminOperationalIssue } from "@/lib/email";
-import { createLead, getDefaultAccountConfig } from "@/lib/supabase";
+import { notifyAdminNewSetupRequest } from "@/lib/email";
+import { createSetupRequest, getDefaultAccountConfig } from "@/lib/supabase";
 
 const MAX_FIELD_LENGTH = 200;
 const MAX_NOTES_LENGTH = 2000;
@@ -179,26 +179,24 @@ export async function POST(request: Request) {
   }
 
   try {
-    const account = await getDefaultAccountConfig();
-
-    if (!account.accountId) {
-      const message = "Default Relay NW account is not provisioned. Cannot save setup request.";
-      console.error(message);
-      await notifyAdminOperationalIssue({
-        account,
-        issue: "Intake setup request missing default account",
-        detail: setupLead.message,
-      });
-      redirect("/intake?error=1");
-    }
-
-    await createLead({
-      accountId: account.accountId,
+    // Setup requests are prospects for Relay NW itself. They go to their own
+    // table, never into any tenant account's leads inbox.
+    await createSetupRequest({
       name: setupLead.leadName,
       phone: setupLead.ownerPhone,
       message: setupLead.message,
-      source: "intake_form",
     });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown setup request error";
+
+    console.error("Failed to save Relay NW setup request", { error: message });
+    redirect("/intake?error=1");
+  }
+
+  // The email notification is best-effort: the request is already saved, so a
+  // notification failure must not surface an error to the prospect.
+  try {
+    const account = await getDefaultAccountConfig();
 
     await notifyAdminNewSetupRequest({
       account,
@@ -207,10 +205,8 @@ export async function POST(request: Request) {
       message: setupLead.message,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown setup request error";
-
-    console.error("Failed to save Relay NW setup request", { error: message });
-    redirect("/intake?error=1");
+    const message = error instanceof Error ? error.message : "Unknown notification error";
+    console.error("Setup request saved, but admin notification failed", { error: message });
   }
 
   redirect("/intake?saved=1");
