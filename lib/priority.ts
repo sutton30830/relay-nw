@@ -25,6 +25,7 @@ export const FAST_REPLY_PATTERNS = [
 ];
 
 export const TODAY_REPLY_PATTERNS = [
+  { pattern: /\bleak(?:ing|s|ed)?\b/i, reason: "mentioned a leak" },
   { pattern: /\btoday\b/i, reason: "asked about today" },
   { pattern: /\btonight\b/i, reason: "asked about tonight" },
   { pattern: /\bthis morning\b/i, reason: "mentioned this morning" },
