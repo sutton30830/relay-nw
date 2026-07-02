@@ -13,6 +13,7 @@ import { VoicemailAudio } from "./voicemail-audio";
 
 export function LeadDrawer({
   lead,
+  previousLeads = [],
   onClose,
   onStatus,
   onBooked,
@@ -26,6 +27,7 @@ export function LeadDrawer({
   isTranscribing,
 }: {
   lead: Lead;
+  previousLeads?: Lead[];
   onClose: () => void;
   onStatus: (id: string, status: LeadStatus) => void;
   onBooked: (id: string, booked: boolean) => void;
@@ -426,6 +428,47 @@ export function LeadDrawer({
             <a href={`sms:${lead.phone}`}>Use your phone instead</a>
           </p>
         </div>
+
+        {previousLeads.length > 0 ? (
+          <div style={{ marginTop: 18 }}>
+            <div className="drawer__section-head">
+              <p className="t-eyebrow">Earlier calls from this number</p>
+              <span style={{ fontSize: 12, color: "var(--ink-4)" }}>
+                {previousLeads.length} {previousLeads.length === 1 ? "call" : "calls"}
+              </span>
+            </div>
+            <div style={{ display: "grid", gap: 10 }}>
+              {previousLeads.map((previous) => (
+                <div
+                  key={previous.id}
+                  style={{
+                    background: "var(--panel)",
+                    border: "1px solid var(--line)",
+                    borderRadius: "var(--r-sm)",
+                    padding: "10px 12px",
+                  }}
+                >
+                  <p style={{ color: "var(--ink-4)", fontSize: 12, margin: "0 0 6px" }}>
+                    {formatRelativeTime(previous.created_at, Date.now())}
+                    {previous.recording_sid ? " · left a voicemail" : " · no voicemail"}
+                  </p>
+                  {previous.voicemail_summary ? (
+                    <p style={{ margin: "0 0 6px" }}>{previous.voicemail_summary}</p>
+                  ) : null}
+                  {previous.recording_sid ? (
+                    <VoicemailAudio recordingSid={previous.recording_sid} />
+                  ) : null}
+                  {previous.voicemail_transcript ? (
+                    <details className="voicemail-ai__transcript">
+                      <summary>Transcript</summary>
+                      <p>{previous.voicemail_transcript}</p>
+                    </details>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <div className="drawer__notes">
           <p className="t-eyebrow" style={{ marginBottom: 8 }}>Private notes</p>

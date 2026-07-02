@@ -165,6 +165,14 @@ export function LeadsList({
         <LeadDrawer
           key={inbox.openLead.id}
           lead={inbox.openLead}
+          previousLeads={inbox.activeItems
+            .filter(
+              (lead) =>
+                lead.phone === inbox.openLead!.phone &&
+                lead.id !== inbox.openLead!.id &&
+                !lead.deleted_at,
+            )
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())}
           onClose={() => inbox.setOpenId(null)}
           onStatus={inbox.updateStatus}
           onBooked={inbox.updateBooked}
