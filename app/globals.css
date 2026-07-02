@@ -3758,3 +3758,15 @@ code {
   opacity: 0.4;
   cursor: default;
 }
+.convo__earlier-notes {
+  display: grid;
+  gap: 4px;
+}
+.convo__earlier-notes p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.convo__earlier-notes span {
+  color: var(--ink-4);
+}

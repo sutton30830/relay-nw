@@ -212,6 +212,17 @@ export function ConversationView({
                 if ((lead.notes ?? "") !== notes) void patchAndRefresh({ notes });
               }}
             />
+            {previousLeads.some((earlier) => earlier.notes) ? (
+              <div className="convo__earlier-notes">
+                {previousLeads
+                  .filter((earlier) => earlier.notes)
+                  .map((earlier) => (
+                    <p key={earlier.id} suppressHydrationWarning>
+                      <span>{formatTime(earlier.created_at)}:</span> {earlier.notes}
+                    </p>
+                  ))}
+              </div>
+            ) : null}
           </label>
         </section>
       ) : null}

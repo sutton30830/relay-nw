@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { requireAccountUser } from "@/lib/auth";
 import { getLeadConversation } from "@/lib/supabase";
 import { ConversationView } from "./conversation-view";
@@ -17,6 +17,18 @@ export default async function LeadConversationPage({
 
   if (!conversation) {
     notFound();
+  }
+
+  // One thread per customer: if a newer lead exists for this number, that lead
+  // is the canonical conversation. Older ids land there too.
+  const newest = conversation.previousLeads.find(
+    (sibling) =>
+      !sibling.deleted_at &&
+      new Date(sibling.created_at).getTime() > new Date(conversation.lead.created_at).getTime(),
+  );
+
+  if (newest) {
+    redirect(`/leads/${newest.id}`);
   }
 
   return (

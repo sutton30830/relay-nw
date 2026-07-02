@@ -87,22 +87,27 @@ export function useLeadsInbox(leads: Lead[]) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const counts = useMemo(() => countLeads(activeItems), [activeItems]);
-  const filteredItems = useMemo(
-    () => filterLeads(activeItems, filter, query),
-    [activeItems, filter, query],
-  );
-  // Trash shows every lead individually so nothing can hide behind a newer card.
+  // One conversation per customer: condense across ALL leads first (newest
+  // live lead represents the thread), then filter tabs by that representative.
+  // Trash still shows every deleted lead individually.
   const condensed = useMemo(
+    () => condenseLeadsByPhone(activeItems.filter((lead) => !lead.deleted_at)),
+    [activeItems],
+  );
+  const counts = useMemo(
+    () => countLeads([...condensed.leads, ...activeItems.filter((lead) => lead.deleted_at)]),
+    [condensed, activeItems],
+  );
+  const filteredItems = useMemo(
     () =>
       filter === "trash"
-        ? { leads: filteredItems, callCounts: new Map<string, number>() }
-        : condenseLeadsByPhone(filteredItems),
-    [filteredItems, filter],
+        ? filterLeads(activeItems, filter, query)
+        : filterLeads(condensed.leads, filter, query),
+    [activeItems, condensed, filter, query],
   );
   const sortedItems = useMemo(
-    () => sortLeadsForWork(condensed.leads),
-    [condensed],
+    () => sortLeadsForWork(filteredItems),
+    [filteredItems],
   );
 
   const openLead = activeItems.find((lead) => lead.id === openId) ?? null;
