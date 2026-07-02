@@ -149,3 +149,25 @@ export async function requireAccountUserJson() {
 
   return { session, response: null };
 }
+
+/**
+ * Auth guard for JSON API routes that mutate account data or trigger real
+ * side effects (SMS sends, calls, AI transcription). Viewers are read-only:
+ * they pass requireAccountUserJson but are rejected here with a 403.
+ */
+export async function requireWriteAccessJson(viewerMessage = "Viewers have read-only access") {
+  const auth = await requireAccountUserJson();
+
+  if (auth.response) {
+    return auth;
+  }
+
+  if (auth.session.role === "viewer") {
+    return {
+      session: null,
+      response: Response.json({ error: viewerMessage }, { status: 403 }),
+    };
+  }
+
+  return auth;
+}

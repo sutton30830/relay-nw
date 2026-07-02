@@ -1,1 +1,4 @@
-export { requireAccountUserJson as authorizeSmsTestRequest } from "@/lib/auth";
+export {
+  requireAccountUserJson as authorizeSmsTestRequest,
+  requireWriteAccessJson as authorizeSmsTestStart,
+} from "@/lib/auth";

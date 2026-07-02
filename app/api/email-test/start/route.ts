@@ -1,10 +1,10 @@
-import { requireAccountUserJson } from "@/lib/auth";
+import { requireWriteAccessJson } from "@/lib/auth";
 import { notifyOwnerTestEmail } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 
 export async function POST() {
-  const auth = await requireAccountUserJson();
+  const auth = await requireWriteAccessJson();
   if (auth.response) return auth.response;
 
   const result = await notifyOwnerTestEmail({

@@ -1,4 +1,4 @@
-import { requireAccountUserJson } from "@/lib/auth";
+import { requireWriteAccessJson } from "@/lib/auth";
 import {
   createMessageIfNew,
   getLeadByIdForAccount,
@@ -44,14 +44,10 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const auth = await requireAccountUserJson();
+  const auth = await requireWriteAccessJson("Viewers cannot send replies");
   if (auth.response) return auth.response;
 
   const { session } = auth;
-
-  if (session.role === "viewer") {
-    return Response.json({ error: "Viewers cannot send replies" }, { status: 403 });
-  }
 
   const { id } = await params;
   const body = await readReplyBody(request);

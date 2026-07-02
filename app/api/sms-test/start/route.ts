@@ -1,7 +1,7 @@
 import { env } from "@/lib/env";
 import { assertTenantAccount, createMessageIfNew } from "@/lib/supabase";
 import { missedCallSmsBodyForAccount, phoneLast4, twilioClient } from "@/lib/twilio";
-import { authorizeSmsTestRequest } from "../_auth";
+import { authorizeSmsTestStart } from "../_auth";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +10,7 @@ function testSmsBody(account: Parameters<typeof missedCallSmsBodyForAccount>[0])
 }
 
 export async function POST() {
-  const auth = await authorizeSmsTestRequest();
+  const auth = await authorizeSmsTestStart();
   if (auth.response) return auth.response;
   const account = assertTenantAccount(auth.session.account, "SMS test start");
 

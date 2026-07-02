@@ -1,1 +1,4 @@
-export { requireAccountUserJson as authorizeHealthCheckRequest } from "@/lib/auth";
+export {
+  requireAccountUserJson as authorizeHealthCheckRequest,
+  requireWriteAccessJson as authorizeHealthCheckStart,
+} from "@/lib/auth";

@@ -330,7 +330,7 @@ test("sms-test start registers outbound MessageSid so status callbacks resolve t
       },
     },
     "../_auth": {
-      authorizeSmsTestRequest: async () => ({
+      authorizeSmsTestStart: async () => ({
         session: { account },
         response: null,
       }),

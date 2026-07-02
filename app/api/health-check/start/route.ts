@@ -6,12 +6,12 @@ import {
 } from "@/lib/supabase";
 import { FORWARDING_HEALTH_CHECK_COOLDOWN_MS, forwardingHealthRetryAt } from "@/lib/forwarding-health";
 import { phoneLast4 } from "@/lib/twilio";
-import { authorizeHealthCheckRequest } from "../_auth";
+import { authorizeHealthCheckStart } from "../_auth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST() {
-  const auth = await authorizeHealthCheckRequest();
+  const auth = await authorizeHealthCheckStart();
   if (auth.response) return auth.response;
 
   if (auth.session.account.callMode !== "forwarding") {

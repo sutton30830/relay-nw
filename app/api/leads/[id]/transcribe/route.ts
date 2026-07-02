@@ -1,4 +1,4 @@
-import { requireAccountUserJson } from "@/lib/auth";
+import { requireWriteAccessJson } from "@/lib/auth";
 import { transcribeLeadVoicemail } from "@/lib/voicemail-ai";
 
 export const runtime = "nodejs";
@@ -8,7 +8,7 @@ export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const auth = await requireAccountUserJson();
+  const auth = await requireWriteAccessJson();
   if (auth.response) return auth.response;
 
   const { id } = await params;

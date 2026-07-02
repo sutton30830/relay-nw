@@ -40,14 +40,14 @@ test("authenticated lead, ops, recording, and transcription routes use session a
   assert.match(files.opsPage, /const \{ account, accountId \} = await requireAccountUser\(\)/);
   assert.match(files.opsPage, /getRecentWebhookEventsForAccount\(accountId,\s*50\)/);
 
-  assert.match(files.leadApi, /const auth = await requireAccountUserJson\(\)/);
+  assert.match(files.leadApi, /const auth = await requireWriteAccessJson\(\)/);
   assert.match(compact(files.leadApi), /updateLead\(\{ accountId: auth\.session\.accountId, id, \.\.\.update \}\)/);
   assert.match(compact(files.leadApi), /deleteLead\(id, auth\.session\.accountId\)/);
 
   assert.match(files.recordingApi, /const auth = await requireAccountUserJson\(\)/);
   assert.match(files.recordingApi, /getLeadRecordingForPlayback\(recordingSid, auth\.session\.accountId\)/);
 
-  assert.match(files.transcribeApi, /const auth = await requireAccountUserJson\(\)/);
+  assert.match(files.transcribeApi, /const auth = await requireWriteAccessJson\(\)/);
   assert.match(files.transcribeApi, /transcribeLeadVoicemail\(id, auth\.session\.accountId\)/);
 });
 

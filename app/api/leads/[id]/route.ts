@@ -1,4 +1,4 @@
-import { requireAccountUserJson } from "@/lib/auth";
+import { requireWriteAccessJson } from "@/lib/auth";
 import {
   deleteLead,
   type LeadStatus,
@@ -138,7 +138,7 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const auth = await requireAccountUserJson();
+  const auth = await requireWriteAccessJson();
   if (auth.response) return auth.response;
 
   const { id } = await params;
@@ -163,7 +163,7 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const auth = await requireAccountUserJson();
+  const auth = await requireWriteAccessJson();
   if (auth.response) return auth.response;
 
   const { id } = await params;
