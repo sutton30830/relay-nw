@@ -445,7 +445,7 @@ export function sortLeadsForWork(leads: Lead[]) {
 }
 
 export function isBookedLead(lead: Lead) {
-  return Boolean(lead.booked_at || lead.status === "booked" || lead.job_value_cents);
+  return Boolean(lead.booked_at || lead.status === "booked");
 }
 
 export function countLeads(leads: Lead[]): LeadCounts {

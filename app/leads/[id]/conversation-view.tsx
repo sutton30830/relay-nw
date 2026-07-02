@@ -95,6 +95,7 @@ export function ConversationView({
   const [sentMessages, setSentMessages] = useState<OutboundMessage[]>([]);
   const [transcribingId, setTranscribingId] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [booked, setBooked] = useState(() => isBookedLead(lead));
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const threadEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -258,7 +259,15 @@ export function ConversationView({
           <div className="convo__detail">
             <span className="t-eyebrow">Booked job</span>
             <div className="convo__outcome">
-              <BookedToggle booked={isBookedLead(lead)} onChange={(booked) => void patchAndRefresh({ booked })} />
+              <BookedToggle
+                booked={booked}
+                onChange={(nextBooked) => {
+                  setBooked(nextBooked);
+                  void patchAndRefresh({ booked: nextBooked }).then((ok) => {
+                    if (!ok) setBooked(!nextBooked);
+                  });
+                }}
+              />
               <BookedValueInput
                 valueCents={lead.job_value_cents}
                 onSave={(jobValueCents) => void patchAndRefresh({ jobValueCents })}
