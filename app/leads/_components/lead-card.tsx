@@ -12,6 +12,7 @@ import { VoicemailAudio } from "./voicemail-audio";
 export function LeadCard({
   lead,
   now,
+  callCount = 1,
   onOpen,
   onStatus,
   onBooked,
@@ -23,6 +24,7 @@ export function LeadCard({
 }: {
   lead: Lead;
   now: number;
+  callCount?: number;
   onOpen: (id: string) => void;
   onStatus: (id: string, status: LeadStatus) => void;
   onBooked: (id: string, booked: boolean) => void;
@@ -90,6 +92,11 @@ export function LeadCard({
           {trashed ? <span className="chip chip-muted">Trash</span> : <StatusPill status={lead.status} />}
           <BookedBadge lead={lead} />
           <PriorityBadge priority={priority} />
+          {callCount > 1 ? (
+            <span className="chip" title={`This number reached out ${callCount} times`}>
+              <Icon name="phone" size={12} /> Called {callCount}×
+            </span>
+          ) : null}
           {lead.source === "intake_form" ? <SourceBadge source={lead.source} /> : null}
           <SmsBadge lead={lead} />
           <VoicemailBadge lead={lead} />

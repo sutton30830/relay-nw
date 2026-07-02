@@ -128,6 +128,7 @@ export function LeadsList({
             key={lead.id}
             lead={lead}
             now={inbox.now}
+            callCount={inbox.phoneCallCounts.get(lead.phone) ?? 1}
             onOpen={inbox.setOpenId}
             onStatus={inbox.updateStatus}
             onBooked={inbox.updateBooked}

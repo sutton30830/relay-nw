@@ -256,43 +256,43 @@ export function leadPriorityText(lead: Lead) {
 
 export function getLeadPriority(lead: Lead): ReplyPriority {
   if (lead.reply_priority_override === "fast") {
-    return { level: "fast", label: "Fast reply", reason: "priority was set manually" };
+    return { level: "fast", label: "Urgent", reason: "priority was set manually" };
   }
 
   if (lead.reply_priority_override === "today") {
-    return { level: "today", label: "Today", reason: "priority was set manually" };
+    return { level: "today", label: "Time-sensitive", reason: "priority was set manually" };
   }
 
   if (lead.reply_priority_override === "normal") {
-    return { level: "normal", label: "Normal", reason: null };
+    return { level: "normal", label: "No rush", reason: null };
   }
 
   // Server-side classification (persisted at voicemail transcription). The client
   // regex below stays as a fallback for leads that predate it, and can still
   // upgrade a server "normal" when newer text (e.g. an inbound reply) is urgent.
   if (lead.priority === "fast") {
-    return { level: "fast", label: "Fast reply", reason: lead.priority_reason };
+    return { level: "fast", label: "Urgent", reason: lead.priority_reason };
   }
 
   if (lead.priority === "today") {
-    return { level: "today", label: "Today", reason: lead.priority_reason };
+    return { level: "today", label: "Time-sensitive", reason: lead.priority_reason };
   }
 
   const text = leadPriorityText(lead);
 
   for (const item of FAST_REPLY_PATTERNS) {
     if (item.pattern.test(text)) {
-      return { level: "fast", label: "Fast reply", reason: item.reason };
+      return { level: "fast", label: "Urgent", reason: item.reason };
     }
   }
 
   for (const item of TODAY_REPLY_PATTERNS) {
     if (item.pattern.test(text)) {
-      return { level: "today", label: "Today", reason: item.reason };
+      return { level: "today", label: "Time-sensitive", reason: item.reason };
     }
   }
 
-  return { level: "normal", label: "Normal", reason: null };
+  return { level: "normal", label: "No rush", reason: null };
 }
 
 
@@ -413,6 +413,26 @@ export function prioritySortScore(lead: Lead) {
   if (priority === "fast") return 0;
   if (priority === "today") return 1;
   return 2;
+}
+
+// One card per caller: repeat calls from the same number collapse into the most
+// recent lead, with a count so the owner sees "Called 3×" instead of three cards.
+// The conversation thread is joined by phone, so nothing is hidden in the drawer.
+export function condenseLeadsByPhone(leads: Lead[]) {
+  const callCounts = new Map<string, number>();
+  const newestByPhone = new Map<string, Lead>();
+
+  for (const lead of leads) {
+    callCounts.set(lead.phone, (callCounts.get(lead.phone) ?? 0) + 1);
+    const current = newestByPhone.get(lead.phone);
+    if (!current || new Date(lead.created_at).getTime() > new Date(current.created_at).getTime()) {
+      newestByPhone.set(lead.phone, lead);
+    }
+  }
+
+  const condensed = leads.filter((lead) => newestByPhone.get(lead.phone)?.id === lead.id);
+
+  return { leads: condensed, callCounts };
 }
 
 export function sortLeadsForWork(leads: Lead[]) {

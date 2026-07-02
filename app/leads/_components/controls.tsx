@@ -16,9 +16,9 @@ export function PriorityControl({
 }) {
   const options: Array<{ label: string; value: ReplyPriorityOverride }> = [
     { label: "Auto detect", value: null },
-    { label: "Fast reply", value: "fast" },
-    { label: "Today", value: "today" },
-    { label: "Normal", value: "normal" },
+    { label: "Urgent", value: "fast" },
+    { label: "Time-sensitive", value: "today" },
+    { label: "No rush", value: "normal" },
   ];
 
   return (

@@ -6,7 +6,7 @@ import type { Lead, LeadStatus, OutboundMessage, ReplyPriorityOverride } from "@
 import { AUTO_VOICEMAIL_SUMMARY_LIMIT, INBOX_REFRESH_MS, RELATIVE_TIME_TICK_MS } from "../_constants";
 import type { Filter } from "../_types";
 import { deleteLead as deleteLeadRequest, patchLead, requestVoicemailSummary, sendLeadReply, type SendReplyResult } from "../_api";
-import { countLeads, createSampleLeads, filterLeads, shouldAutoSummarizeVoicemail, sortLeadsForWork } from "../_utils";
+import { condenseLeadsByPhone, countLeads, createSampleLeads, filterLeads, shouldAutoSummarizeVoicemail, sortLeadsForWork } from "../_utils";
 
 export function useLeadsInbox(leads: Lead[]) {
   const router = useRouter();
@@ -92,9 +92,17 @@ export function useLeadsInbox(leads: Lead[]) {
     () => filterLeads(activeItems, filter, query),
     [activeItems, filter, query],
   );
+  // Trash shows every lead individually so nothing can hide behind a newer card.
+  const condensed = useMemo(
+    () =>
+      filter === "trash"
+        ? { leads: filteredItems, callCounts: new Map<string, number>() }
+        : condenseLeadsByPhone(filteredItems),
+    [filteredItems, filter],
+  );
   const sortedItems = useMemo(
-    () => sortLeadsForWork(filteredItems),
-    [filteredItems],
+    () => sortLeadsForWork(condensed.leads),
+    [condensed],
   );
 
   const openLead = activeItems.find((lead) => lead.id === openId) ?? null;
@@ -376,6 +384,7 @@ export function useLeadsInbox(leads: Lead[]) {
     counts,
     deleteLead,
     sendReply,
+    phoneCallCounts: condensed.callCounts,
     expandedLeadIds,
     filter,
     filteredItems,
