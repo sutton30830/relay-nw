@@ -54,6 +54,7 @@ function webhookEventNote(input: {
     | "forwarded_to_owner"
     | "sms_disabled"
     | "ignored_empty_message"
+    | "ignored_owner_message"
     | "duplicate_ignored";
 }) {
   const notes = [];
@@ -82,6 +83,10 @@ function webhookEventNote(input: {
 
   if (input.action === "ignored_empty_message") {
     notes.push("Ignored because From or Body was missing.");
+  }
+
+  if (input.action === "ignored_owner_message") {
+    notes.push("Ignored because the sender is the account owner's phone.");
   }
 
   if (input.action === "duplicate_ignored") {
@@ -118,6 +123,13 @@ async function handleInboundSms(
       body: input.body,
       status: "received",
     });
+  }
+
+  // The owner now receives Relay texts (new-lead alerts, forwarded replies) from this
+  // number. If the owner texts the Relay number back, do not echo-forward their own
+  // message to them and do not email them about their own reply.
+  if (input.from && input.from === account.ownerPhoneNumber) {
+    return "ignored_owner_message" as const;
   }
 
   if (input.isOptOut) {

@@ -14,6 +14,71 @@ import { envAccountConfig } from "@/lib/supabase/accounts";
 import { missedCallSmsBodyForAccount, phoneLast4, twilioClient } from "@/lib/twilio";
 import { notifyAdminOperationalIssue, notifyOwnerNewMissedCallLead } from "@/lib/email";
 
+type OwnerSmsStatus = "sent" | "failed" | "skipped_opt_out";
+
+function ownerSmsBody(input: {
+  businessName: string;
+  callerPhone: string;
+  smsStatus: OwnerSmsStatus;
+}) {
+  const inboxUrl = `${env.appBaseUrl}/leads`;
+
+  if (input.smsStatus === "sent") {
+    return `Relay NW: missed call for ${input.businessName} from ${input.callerPhone}. We texted them back. Reply from your inbox: ${inboxUrl}`;
+  }
+
+  if (input.smsStatus === "skipped_opt_out") {
+    return `Relay NW: missed call for ${input.businessName} from ${input.callerPhone}. They opted out of texting, so call them back. Inbox: ${inboxUrl}`;
+  }
+
+  return `Relay NW: missed call for ${input.businessName} from ${input.callerPhone}. The auto-text FAILED. Call them back now. Inbox: ${inboxUrl}`;
+}
+
+// Texts the owner about a new missed-call lead. Email can sit unread for hours; owners
+// live in their messages app. Never throws: a notification failure must not disturb the
+// customer-facing flow, and the owner still gets the email fallback.
+async function notifyOwnerNewLeadBySms(input: {
+  account: Pick<
+    AccountRuntimeConfig,
+    "smsEnabled" | "ownerPhoneNumber" | "twilioPhoneNumber" | "businessName"
+  >;
+  callerPhone: string;
+  smsStatus: OwnerSmsStatus;
+  correlationId: string;
+}) {
+  const { account } = input;
+
+  // Owner SMS rides the same A2P-gated number as customer texting. If customer texting
+  // is disabled (campaign not approved yet), do not send owner texts from it either.
+  if (!account.smsEnabled || !account.ownerPhoneNumber || !account.twilioPhoneNumber) {
+    return;
+  }
+
+  // Don't text the owner about their own call (e.g. the owner testing their line).
+  if (normalizePhoneNumber(input.callerPhone) === account.ownerPhoneNumber) {
+    return;
+  }
+
+  try {
+    await twilioClient.messages.create({
+      to: account.ownerPhoneNumber,
+      from: account.twilioPhoneNumber,
+      body: ownerSmsBody({
+        businessName: account.businessName,
+        callerPhone: input.callerPhone,
+        smsStatus: input.smsStatus,
+      }),
+    });
+  } catch (error) {
+    console.error("Owner SMS notification failed (email fallback still sent)", {
+      correlationId: input.correlationId,
+      ownerLast4: phoneLast4(account.ownerPhoneNumber),
+      smsStatus: input.smsStatus,
+      error: error instanceof Error ? error.message : error,
+    });
+  }
+}
+
 export async function handleMissedCall(input: {
   account?: AccountRuntimeConfig;
   callerPhone: string;
@@ -166,6 +231,12 @@ export async function handleMissedCall(input: {
       callerPhone,
       smsStatus: "skipped_opt_out",
     });
+    await notifyOwnerNewLeadBySms({
+      account,
+      callerPhone,
+      smsStatus: "skipped_opt_out",
+      correlationId,
+    });
     return { inserted: true, smsStatus: "skipped_opt_out" as const };
   }
 
@@ -237,6 +308,13 @@ export async function handleMissedCall(input: {
         correlationId,
       });
 
+      await notifyOwnerNewLeadBySms({
+        account,
+        callerPhone,
+        smsStatus: "sent",
+        correlationId,
+      });
+
       return {
         inserted: true,
         smsStatus: "sent_update_failed" as const,
@@ -249,6 +327,12 @@ export async function handleMissedCall(input: {
       leadId: leadResult.leadId,
       callerPhone,
       smsStatus: "sent",
+    });
+    await notifyOwnerNewLeadBySms({
+      account,
+      callerPhone,
+      smsStatus: "sent",
+      correlationId,
     });
 
     return { inserted: true, smsStatus: "sent" as const, twilioMessageSid: message.sid };
@@ -280,6 +364,12 @@ export async function handleMissedCall(input: {
       leadId: leadResult.leadId,
       callerPhone,
       smsStatus: "failed",
+    });
+    await notifyOwnerNewLeadBySms({
+      account,
+      callerPhone,
+      smsStatus: "failed",
+      correlationId,
     });
     return { inserted: true, smsStatus: "failed" as const, smsError: message };
   }

@@ -212,14 +212,48 @@ test("recent SMS within cooldown: skipped_recent, no double text", async () => {
   assert.equal(calls.twilioSends.length, 0);
 });
 
-test("opted-out caller: skipped_opt_out, no SMS", async () => {
+test("opted-out caller: skipped_opt_out, no SMS to the caller", async () => {
   const { mocks, calls } = makeMissedCallMocks({
     supabase: { isOptedOut: async () => true },
   });
   const result = await runMissedCall(mocks);
 
   assert.equal(result.smsStatus, "skipped_opt_out");
-  assert.equal(calls.twilioSends.length, 0);
+  const callerSends = calls.twilioSends.filter((send) => send.to !== ACCOUNT.ownerPhoneNumber);
+  assert.equal(callerSends.length, 0, "must never text an opted-out caller");
+  // The owner still gets an SMS heads-up so they can call the lead back.
+  const ownerSends = calls.twilioSends.filter((send) => send.to === ACCOUNT.ownerPhoneNumber);
+  assert.equal(ownerSends.length, 1);
+  assert.match(ownerSends[0].body, /opted out/i);
+});
+
+test("missed call handled: owner gets an SMS heads-up from the Relay number", async () => {
+  const { mocks, calls } = makeMissedCallMocks();
+  const result = await runMissedCall(mocks);
+
+  assert.equal(result.smsStatus, "sent");
+  const ownerSends = calls.twilioSends.filter((send) => send.to === ACCOUNT.ownerPhoneNumber);
+  assert.equal(ownerSends.length, 1);
+  assert.equal(ownerSends[0].from, ACCOUNT.twilioPhoneNumber);
+  assert.match(ownerSends[0].body, /missed call/i);
+});
+
+test("owner SMS failure never breaks the customer-facing flow", async () => {
+  const { mocks, calls } = makeMissedCallMocks({
+    twilioMessages: {
+      create: async (input) => {
+        calls.twilioSends.push(input);
+        if (input.to === ACCOUNT.ownerPhoneNumber) {
+          throw new Error("owner unreachable");
+        }
+        return { sid: "SM_test_123" };
+      },
+    },
+  });
+  const result = await runMissedCall(mocks);
+
+  assert.equal(result.smsStatus, "sent", "customer SMS result must be unaffected");
+  assert.ok(calls.ownerNotifications.some((n) => n.smsStatus === "sent"), "email fallback still fires");
 });
 
 // --- SMS status callback reconciliation (production-readiness item #8) ---
