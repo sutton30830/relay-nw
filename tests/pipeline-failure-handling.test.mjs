@@ -398,6 +398,10 @@ test("classifyPriority: emergencies are fast, time-sensitive is today, quotes ar
     level: "fast",
     reason: "mentioned flooding",
   });
+  assert.deepEqual(classifyPriority("I have a really urgent request that needs attention"), {
+    level: "fast",
+    reason: "said it's urgent",
+  });
   assert.equal(classifyPriority("could you come by tomorrow morning?").level, "today");
   assert.equal(classifyPriority("just wanted a quote on a new water heater").level, "normal");
   assert.equal(classifyPriority("").level, "normal");

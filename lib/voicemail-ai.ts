@@ -1,5 +1,5 @@
 import { env } from "@/lib/env";
-import { classifyPriority } from "@/lib/priority";
+import { classifyPriority, type PriorityClassification } from "@/lib/priority";
 import {
   getAccountConfigByAccountId,
   getLeadForVoicemailTranscription,
@@ -175,6 +175,65 @@ async function clarifyTranscript(transcript: string) {
   return clarified || transcript;
 }
 
+// Keyword regex first (fast, free, predictable), then an LLM pass only when the regex
+// finds nothing — it catches phrasings no keyword list can ("my tenant is furious",
+// "the ceiling is dripping onto the breaker box"). The LLM can only upgrade a
+// "normal", never veto a regex hit, and any failure falls back to the regex result.
+async function classifyVoicemailPriority(text: string): Promise<PriorityClassification> {
+  const regexResult = classifyPriority(text);
+
+  if (regexResult.level !== "normal" || !env.openaiApiKey || !text.trim()) {
+    return regexResult;
+  }
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.openaiApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: env.openaiSummaryModel,
+        max_output_tokens: 40,
+        input: [
+          {
+            role: "system",
+            content:
+              "Classify the urgency of a voicemail left for a local home services business. Reply with exactly one line in the format `level - reason`. level is one of: fast, today, normal. fast = active damage, safety risk, or the caller explicitly says it is urgent or an emergency. today = the caller wants service today or tomorrow, or the problem is clearly time-sensitive. normal = everything else, including quotes and routine requests. The reason must be 3-8 words describing only what the caller actually said. Do not invent urgency.",
+          },
+          {
+            role: "user",
+            content: text.slice(0, 4000),
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(await openAIError("OpenAI urgency classification", response));
+    }
+
+    const data = await response.json() as OpenAIResponsesResponse;
+    const raw = extractResponseText(data) ?? "";
+    const match = raw.match(/^\s*(fast|today|normal)\s*[-–—:]?\s*(.*)$/i);
+
+    if (!match) {
+      return regexResult;
+    }
+
+    const level = match[1].toLowerCase() as PriorityClassification["level"];
+    const reason = match[2]?.trim().slice(0, 120) || null;
+
+    return { level, reason: level === "normal" ? null : reason };
+  } catch (error) {
+    console.warn("LLM urgency classification failed; using keyword result", {
+      error: error instanceof Error ? error.message : error,
+    });
+    return regexResult;
+  }
+}
+
 async function openAIError(label: string, response: Response) {
   const body = await response.text();
   const detail = body ? ` ${body.slice(0, 500)}` : "";
@@ -255,7 +314,7 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
     // Classify urgency from what the caller actually said, persist it, and escalate
     // fast-priority voicemails to the owner by SMS immediately. Never fatal: the
     // transcription result stands even if classification or notification fails.
-    const classification = classifyPriority(`${transcript} ${summary}`);
+    const classification = await classifyVoicemailPriority(`${transcript} ${summary}`);
 
     try {
       await updateLeadPriority({

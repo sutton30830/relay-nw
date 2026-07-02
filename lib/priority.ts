@@ -11,7 +11,11 @@ export type PriorityClassification = {
 
 export const FAST_REPLY_PATTERNS = [
   { pattern: /\bemergency\b/i, reason: "mentioned emergency" },
+  { pattern: /\burgent(?:ly)?\b/i, reason: "said it's urgent" },
   { pattern: /\basap\b/i, reason: "asked for ASAP help" },
+  { pattern: /\bas soon as possible\b/i, reason: "asked for help as soon as possible" },
+  { pattern: /\bright now\b/i, reason: "asked for help right now" },
+  { pattern: /\bcan(?:no|')t wait\b/i, reason: "said it can't wait" },
   { pattern: /\bright away\b/i, reason: "asked for help right away" },
   { pattern: /\bimmediately\b/i, reason: "asked for immediate help" },
   { pattern: /\bnow\b/i, reason: "asked for help now" },
