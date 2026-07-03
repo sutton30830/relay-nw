@@ -531,9 +531,7 @@ export function filterLeads(leads: Lead[], filter: Filter, query: string) {
       return false;
     }
 
-    // "booked" is not a live status (booked_at carries it), so match explicitly.
-    const matchesFilter =
-      filter === "all" || (filter === "booked" ? isBookedLead(lead) : lead.status === filter);
+    const matchesFilter = filter === "all" || lead.status === filter;
     return matchesFilter && leadMatchesSearch(lead, query);
   });
 }

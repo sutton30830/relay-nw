@@ -294,7 +294,7 @@ export function ConversationView({
             />
           </div>
           <div className="convo__detail">
-            <span className="t-eyebrow">Booked job</span>
+            <span className="t-eyebrow">Outcome</span>
             <div className="convo__outcome">
               <BookedToggle
                 booked={booked}
@@ -310,9 +310,18 @@ export function ConversationView({
                 valueCents={jobValueCents}
                 onSave={(nextJobValueCents) => {
                   const previousJobValueCents = jobValueCents;
+                  const previousBooked = booked;
+                  const shouldMarkBooked = Boolean(nextJobValueCents && nextJobValueCents > 0 && !booked);
                   setJobValueCents(nextJobValueCents);
-                  void patchAndRefresh({ jobValueCents: nextJobValueCents }).then((ok) => {
-                    if (!ok) setJobValueCents(previousJobValueCents);
+                  if (shouldMarkBooked) setBooked(true);
+                  void patchAndRefresh({
+                    ...(shouldMarkBooked ? { booked: true } : {}),
+                    jobValueCents: nextJobValueCents,
+                  }).then((ok) => {
+                    if (!ok) {
+                      setJobValueCents(previousJobValueCents);
+                      setBooked(previousBooked);
+                    }
                   });
                 }}
               />

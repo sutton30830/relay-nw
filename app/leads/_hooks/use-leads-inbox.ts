@@ -271,15 +271,25 @@ export function useLeadsInbox(leads: Lead[]) {
   }
 
   async function updateJobValue(id: string, jobValueCents: number | null) {
+    const currentLead = activeItems.find((lead) => lead.id === id);
+    const shouldMarkBooked = Boolean(jobValueCents && jobValueCents > 0 && !currentLead?.booked_at);
+    const updates: Partial<Lead> = {
+      job_value_cents: jobValueCents,
+      ...(shouldMarkBooked ? { booked_at: new Date().toISOString() } : {}),
+    };
+
     if (sampleMode) {
-      updateLocalLead(id, { job_value_cents: jobValueCents });
+      updateLocalLead(id, updates);
       return;
     }
 
     const previousItems = items;
-    updateLocalLead(id, { job_value_cents: jobValueCents });
+    updateLocalLead(id, updates);
 
-    const saved = await patchLead(id, { jobValueCents });
+    const saved = await patchLead(id, {
+      ...(shouldMarkBooked ? { booked: true } : {}),
+      jobValueCents,
+    });
     if (!saved) setItems(previousItems);
   }
 

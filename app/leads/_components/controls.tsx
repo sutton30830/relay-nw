@@ -83,7 +83,7 @@ export function BookedToggle({
         checked={booked}
         onChange={(event) => onChange(event.target.checked)}
       />
-      <span>Booked job</span>
+      <span>Job booked</span>
     </label>
   );
 }

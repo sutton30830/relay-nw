@@ -61,10 +61,10 @@ export function FollowUpQueue({
                   <Icon name="phone" size={14} /> Call
                 </a>
                 <button className="btn btn-secondary btn-sm" type="button" onClick={() => onStatus(lead.id, "contacted")}>
-                  Mark contacted
+                  Move to in progress
                 </button>
                 <button className="btn btn-secondary btn-sm" type="button" onClick={() => onBooked(lead.id, true)}>
-                  Mark booked
+                  Mark as booked
                 </button>
                 <button className="btn btn-ghost btn-sm" type="button" onClick={() => onOpen(lead.id)}>
                   Open <Icon name="arrowRight" size={14} />

@@ -1,9 +1,10 @@
 import type { LeadStatus, ReplyPriorityOverride } from "@/lib/supabase";
 
-export type Filter = "all" | LeadStatus | "trash";
+export type Filter = "all" | "new" | "contacted" | "dead" | "trash";
 
 export type LeadCounts = Record<Filter, number> & {
   actionable: number;
+  booked: number;
   smsIssues: number;
   bookedValueCents: number;
   bookedWithValue: number;

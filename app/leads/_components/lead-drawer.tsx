@@ -274,7 +274,7 @@ export function LeadDrawer({
           <div>
             <p className="t-eyebrow">Outcome</p>
             <p className="drawer__value-copy">
-              Mark booked and add the job value so Relay can track booked work.
+              If this turned into a job, mark it booked and add the value Relay recovered.
             </p>
           </div>
           <BookedToggle booked={booked} onChange={(nextBooked) => onBooked(lead.id, nextBooked)} />

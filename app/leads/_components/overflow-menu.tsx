@@ -162,7 +162,7 @@ export function OverflowMenu({
               role="menuitem"
               onClick={() => runAction(onMarkContacted)}
             >
-              Mark contacted
+              Move to in progress
             </button>
           ) : null}
           {showMarkBooked ? (
@@ -175,7 +175,7 @@ export function OverflowMenu({
               role="menuitem"
               onClick={() => runAction(onMarkBooked)}
             >
-              Mark booked
+              Mark as booked
             </button>
           ) : null}
           {showDelete ? (

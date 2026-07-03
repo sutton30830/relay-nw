@@ -14,6 +14,7 @@ const inboundSmsRouteTs = await readFile(new URL("../app/api/twilio/sms/route.ts
 const intakeFormTsx = await readFile(new URL("../app/intake/intake-form.tsx", import.meta.url), "utf8");
 const leadsPageTsx = await readFile(new URL("../app/leads/page.tsx", import.meta.url), "utf8");
 const leadUtilsTs = await readFile(new URL("../app/leads/_utils.ts", import.meta.url), "utf8");
+const leadConstantsTs = await readFile(new URL("../app/leads/_constants.ts", import.meta.url), "utf8");
 const leadCardTsx = await readFile(new URL("../app/leads/_components/lead-card.tsx", import.meta.url), "utf8");
 const leadDrawerTsx = await readFile(new URL("../app/leads/_components/lead-drawer.tsx", import.meta.url), "utf8");
 const setupRequestDetailsTsx = await readFile(new URL("../app/leads/_components/setup-request-details.tsx", import.meta.url), "utf8");
@@ -80,10 +81,11 @@ test("public intake setup requests go to setup_requests, never a tenant leads in
   assert.match(intakeRouteTs, /admin notification failed/);
 });
 
-test("booked leads have their own inbox tab", () => {
+test("booked is an outcome, not a competing inbox status", () => {
   const constantsTs = leadUtilsTs; // countLeads lives in _utils
   assert.match(constantsTs, /booked: visibleLeads\.filter\(isBookedLead\)\.length/);
-  assert.match(constantsTs, /filter === "booked" \? isBookedLead\(lead\)/);
+  assert.doesNotMatch(constantsTs, /filter === "booked"/);
+  assert.doesNotMatch(leadConstantsTs, /key: "booked"/);
 });
 
 test("human-facing pages require authenticated account context", () => {
