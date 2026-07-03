@@ -81,11 +81,12 @@ test("public intake setup requests go to setup_requests, never a tenant leads in
   assert.match(intakeRouteTs, /admin notification failed/);
 });
 
-test("booked is an outcome, not a competing inbox status", () => {
+test("booked is an outcome, not an inbox category or workflow status button", () => {
   const constantsTs = leadUtilsTs; // countLeads lives in _utils
   assert.match(constantsTs, /booked: visibleLeads\.filter\(isBookedLead\)\.length/);
   assert.doesNotMatch(constantsTs, /filter === "booked"/);
   assert.doesNotMatch(leadConstantsTs, /key: "booked"/);
+  assert.doesNotMatch(leadConstantsTs, /STATUS_OPTIONS: LeadStatus\[\] = \["new", "contacted", "booked", "dead"\]/);
 });
 
 test("human-facing pages require authenticated account context", () => {

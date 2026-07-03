@@ -3,8 +3,8 @@ import type { Filter } from "./_types";
 
 export const STATUS_OPTIONS: LeadStatus[] = ["new", "contacted", "dead"];
 export const STATUS_LABELS: Record<LeadStatus, string> = {
-  new: "Needs reply",
-  contacted: "In progress",
+  new: "New",
+  contacted: "Contacted",
   booked: "Booked",
   dead: "Closed",
 };
@@ -16,8 +16,8 @@ export const RELATIVE_TIME_TICK_MS = 15_000;
 
 export const FILTERS: Array<{ key: Filter; label: string }> = [
   { key: "all", label: "All" },
-  { key: "new", label: "Needs reply" },
-  { key: "contacted", label: "In progress" },
+  { key: "new", label: "New" },
+  { key: "contacted", label: "Contacted" },
   { key: "dead", label: "Closed" },
   { key: "trash", label: "Trash" },
 ];

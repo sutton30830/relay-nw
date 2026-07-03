@@ -105,3 +105,23 @@ test("lead inbox sorting has a deterministic tie-break for identical timestamps"
     ["b", "a"],
   );
 });
+
+test("booked leads remain in their workflow status filters", async () => {
+  const { countLeads, filterLeads } = await loadLeadUtils();
+  const openLead = lead({ id: "open-lead", status: "new" });
+  const bookedLead = lead({
+    id: "booked-lead",
+    status: "contacted",
+    booked_at: "2026-07-03T12:30:00.000Z",
+  });
+  const closedLead = lead({ id: "closed-lead", status: "dead" });
+
+  const leads = [openLead, bookedLead, closedLead];
+
+  assert.deepEqual(filterLeads(leads, "new", "").map((item) => item.id), ["open-lead"]);
+  assert.deepEqual(filterLeads(leads, "contacted", "").map((item) => item.id), ["booked-lead"]);
+  assert.equal(countLeads(leads).new, 1);
+  assert.equal(countLeads(leads).contacted, 1);
+  assert.equal(countLeads(leads).booked, 1);
+  assert.equal(countLeads(leads).dead, 1);
+});

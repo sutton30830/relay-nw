@@ -162,7 +162,7 @@ export function OverflowMenu({
               role="menuitem"
               onClick={() => runAction(onMarkContacted)}
             >
-              Move to in progress
+              Mark contacted
             </button>
           ) : null}
           {showMarkBooked ? (

@@ -61,7 +61,7 @@ export function FollowUpQueue({
                   <Icon name="phone" size={14} /> Call
                 </a>
                 <button className="btn btn-secondary btn-sm" type="button" onClick={() => onStatus(lead.id, "contacted")}>
-                  Move to in progress
+                  Mark contacted
                 </button>
                 <button className="btn btn-secondary btn-sm" type="button" onClick={() => onBooked(lead.id, true)}>
                   Mark as booked
