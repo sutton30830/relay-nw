@@ -440,7 +440,10 @@ export function sortLeadsForWork(leads: Lead[]) {
     const priorityDiff = prioritySortScore(a) - prioritySortScore(b);
     if (priorityDiff !== 0) return priorityDiff;
 
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    const timeDiff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    if (timeDiff !== 0) return timeDiff;
+
+    return b.id.localeCompare(a.id);
   });
 }
 

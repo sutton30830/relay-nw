@@ -101,7 +101,7 @@ export function LeadCard({
   return (
     <article
       className={`lead-card ${attention ? "lead-card--attention" : ""} ${
-        priority.level === "fast" && lead.status === "new" ? "lead-card--fast" : ""
+        priority.level === "fast" && !trashed ? "lead-card--fast" : ""
       } ${trashed ? "lead-card--trashed" : ""}`}
       onClick={() => onOpen(lead.id)}
     >
@@ -155,7 +155,7 @@ export function LeadCard({
         className={`lead-card__request ${lead.voicemail_summary ? "lead-card__request--summary" : ""} ${
           summaryGenerating || summaryPreparing ? "lead-card__request--pending" : ""
         } ${
-          priority.level === "fast" && lead.status === "new" ? "lead-card__request--fast" : ""
+          priority.level === "fast" && !trashed ? "lead-card__request--fast" : ""
         }`}
         aria-label={requestLabel}
       >
