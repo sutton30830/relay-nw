@@ -1759,26 +1759,28 @@ code {
 .filters {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scroll-snap-type: x proximity;
-  margin-bottom: 8px;
-  padding: 4px 2px 12px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 12px;
+  padding: 0 2px;
 }
 
 .filter-pill {
   display: inline-flex;
-  min-height: 40px;
+  min-height: 38px;
   align-items: center;
   flex: 0 0 auto;
-  gap: 7px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--panel);
-  color: var(--ink-2);
-  padding: 6px 13px;
-  font-size: 13.5px;
+  gap: 6px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-3);
+  padding: 7px 10px 9px;
+  font-size: 13px;
   font-weight: 700;
   scroll-snap-align: start;
   white-space: nowrap;
@@ -1791,20 +1793,20 @@ code {
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: var(--panel-2);
+  background: color-mix(in oklab, var(--panel-2) 78%, transparent);
   color: var(--ink-3);
   padding: 0 6px;
   font-size: 11.5px;
 }
 
 .filter-pill--on {
-  border-color: var(--ink);
-  background: var(--ink);
-  color: var(--paper);
+  border-bottom-color: var(--ink);
+  background: transparent;
+  color: var(--ink);
 }
 
 .filter-pill--on .filter-pill__count {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--ink);
   color: var(--paper);
 }
 
@@ -2121,11 +2123,34 @@ code {
   font-size: 13px;
 }
 
+.lead-card__meta span:not(:first-child)::before,
+.lead-card__facts span:not(:first-child)::before {
+  color: var(--ink-4);
+  content: "·";
+  margin-right: 6px;
+}
+
 .lead-card__badges {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 6px;
+}
+
+.lead-card__facts {
+  display: flex;
+  max-width: min(760px, 100%);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  color: var(--ink-3);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.lead-card__fact--warn {
+  color: var(--danger);
 }
 
 .lead-card__msg {
@@ -2147,6 +2172,35 @@ code {
   background: color-mix(in oklab, var(--brand-soft) 38%, var(--panel));
   margin-top: 14px;
   padding: 12px 14px;
+}
+
+.lead-card__cue-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.lead-card__cue {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: 13.5px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.lead-card__cue--fast {
+  color: var(--danger);
+}
+
+.lead-card__cue--today {
+  color: var(--accent);
+}
+
+.lead-card__cue--good {
+  color: var(--brand);
 }
 
 .lead-card__next-action--danger {
@@ -2204,25 +2258,21 @@ code {
 }
 
 .lead-card__request {
-  border: 1px solid color-mix(in oklab, var(--line) 82%, transparent);
-  border-radius: 10px;
-  background: color-mix(in oklab, var(--paper) 82%, var(--panel));
+  border-top: 1px solid color-mix(in oklab, var(--line) 76%, transparent);
   margin: 14px 0 0;
-  padding: 13px 14px;
+  padding: 14px 0 0;
 }
 
 .lead-card__request--summary {
   border-color: color-mix(in oklab, var(--brand) 16%, var(--line));
-  background: color-mix(in oklab, var(--brand-soft) 42%, var(--panel));
 }
 
 .lead-card__request--pending {
-  background: color-mix(in oklab, var(--brand-soft) 34%, var(--panel));
+  color: var(--brand-ink);
 }
 
 .lead-card__request--fast {
   border-color: color-mix(in oklab, var(--danger) 58%, var(--line));
-  background: color-mix(in oklab, var(--danger-soft) 72%, var(--panel));
 }
 
 .lead-card__request--fast .lead-card__request-label {
@@ -2241,10 +2291,10 @@ code {
 }
 
 .lead-card__request p {
-  margin: 7px 0 0;
+  margin: 8px 0 0;
   color: var(--ink);
   font-size: 16px;
-  font-weight: 650;
+  font-weight: 700;
   line-height: 1.45;
 }
 
@@ -2460,9 +2510,9 @@ code {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  border: 1px solid var(--line);
+  border: 1px solid color-mix(in oklab, var(--line) 82%, transparent);
   border-radius: 999px;
-  background: var(--panel-2);
+  background: transparent;
   margin-top: 12px;
   padding: 7px 8px 7px 12px;
 }
@@ -3390,8 +3440,8 @@ code {
   }
 
   .filter-pill {
-    min-height: 42px;
-    padding: 7px 12px;
+    min-height: 38px;
+    padding: 7px 10px 9px;
     font-size: 13px;
   }
 

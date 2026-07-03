@@ -2,12 +2,29 @@
 
 import { Icon } from "@/components/icon";
 import type { Lead, LeadStatus } from "@/lib/supabase";
-import { LEGACY_FORWARDING_MESSAGE } from "../_constants";
-import { formatPhone, formatRelativeTime, getLeadNextAction, getLeadPriority, initials, isBookedLead, needsAttention, parseSetupRequestMessage, setupRequestSummary, shouldShowVoicemailSummaryProgress } from "../_utils";
-import { BookedBadge, PriorityBadge, SmsBadge, SourceBadge, StatusPill, VoicemailBadge } from "./badges";
+import { LEGACY_FORWARDING_MESSAGE, STATUS_LABELS } from "../_constants";
+import { formatCurrency, formatPhone, formatRelativeTime, getLeadPriority, initials, isBookedLead, needsAttention, parseSetupRequestMessage, setupRequestSummary, shouldShowVoicemailSummaryProgress, sourceLabel } from "../_utils";
 import { BookedValueInput } from "./controls";
 import { OverflowMenu } from "./overflow-menu";
 import { VoicemailAudio } from "./voicemail-audio";
+
+function smsMetaText(lead: Lead, now: number) {
+  if (!lead.sms_status || lead.source !== "missed_call") return null;
+
+  const updated = lead.sms_updated_at ? ` · ${formatRelativeTime(lead.sms_updated_at, now)}` : "";
+
+  if (lead.sms_status === "failed" || lead.sms_status === "undelivered") return `SMS failed${updated}`;
+  if (lead.sms_status === "delivered") return `SMS delivered${updated}`;
+  if (lead.sms_status === "sent") return `SMS sent${updated}`;
+  if (lead.sms_status === "queued" || lead.sms_status === "sending" || lead.sms_status === "pending") {
+    return `SMS ${lead.sms_status}${updated}`;
+  }
+  if (lead.sms_status === "skipped_opt_out") return `SMS skipped: opted out${updated}`;
+  if (lead.sms_status === "skipped_recent") return `SMS skipped: recent text${updated}`;
+  if (lead.sms_status === "skipped_disabled") return `SMS off${updated}`;
+
+  return `SMS ${lead.sms_status}${updated}`;
+}
 
 export function LeadCard({
   lead,
@@ -38,7 +55,6 @@ export function LeadCard({
   const booked = isBookedLead(lead);
   const trashed = Boolean(lead.deleted_at);
   const priority = getLeadPriority(lead);
-  const nextAction = getLeadNextAction(lead, now);
   const hasDetails = Boolean(lead.voicemail_transcript || lead.notes || lead.recording_sid);
   const detailsVisible = hasDetails && expanded;
   const hasUsefulMessage = Boolean(lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE);
@@ -67,6 +83,20 @@ export function LeadCard({
           ? "Voicemail saved. Summary unavailable. Open the lead to listen."
           : "Voicemail saved. Open the lead to listen or summarize."
         : "No voicemail left. Call back while the request is still fresh.";
+  const headerMeta = [
+    formatPhone(lead.phone),
+    formatRelativeTime(lead.created_at, now),
+    trashed ? "Trash" : STATUS_LABELS[lead.status],
+    callCount > 1 ? `${callCount} calls` : null,
+  ].filter(Boolean);
+  const quietMeta = [
+    booked ? (lead.job_value_cents ? `${formatCurrency(lead.job_value_cents)} booked` : "Booked value missing") : null,
+    lead.source === "intake_form" ? sourceLabel(lead.source) : null,
+    smsMetaText(lead, now),
+    lead.recording_sid ? "Voicemail" : null,
+  ].filter(Boolean);
+  const showPriorityCue = !trashed && priority.level !== "normal";
+  const showBookedValueNudge = booked && !lead.job_value_cents;
 
   return (
     <article
@@ -81,38 +111,44 @@ export function LeadCard({
           <div style={{ minWidth: 0 }}>
             <h3 className="lead-card__name">{lead.name || "Unknown caller"}</h3>
             <div className="lead-card__meta">
-              <span className="t-mono" style={{ fontSize: 13 }}>{formatPhone(lead.phone)}</span>
-              <span>·</span>
-              <span>{formatRelativeTime(lead.created_at, now)}</span>
+              {headerMeta.map((item, index) => (
+                <span key={`${item}-${index}`} className={index === 0 ? "t-mono" : undefined}>
+                  {item}
+                </span>
+              ))}
             </div>
           </div>
         </div>
 
-        <div className="lead-card__badges">
-          {trashed ? <span className="chip chip-muted">Trash</span> : <StatusPill status={lead.status} />}
-          <BookedBadge lead={lead} />
-          <PriorityBadge priority={priority} />
-          {callCount > 1 ? (
-            <span className="chip" title={`This number reached out ${callCount} times`}>
-              <Icon name="phone" size={12} /> Called {callCount}×
-            </span>
-          ) : null}
-          {lead.source === "intake_form" ? <SourceBadge source={lead.source} /> : null}
-          <SmsBadge lead={lead} />
-          <VoicemailBadge lead={lead} />
-        </div>
+        {quietMeta.length > 0 ? (
+          <div className="lead-card__facts">
+            {quietMeta.map((item, index) => (
+              <span
+                key={`${item}-${index}`}
+                className={String(item).startsWith("SMS failed") || String(item).startsWith("SMS off") ? "lead-card__fact--warn" : ""}
+              >
+                {item}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
 
-      {nextAction ? (
-        <section className={`lead-card__next-action lead-card__next-action--${nextAction.tone}`}>
-          <div className="lead-card__next-action-icon">
-            <Icon name={nextAction.icon} size={15} />
-          </div>
-          <div>
-            <p className="lead-card__next-action-label">{nextAction.label}</p>
-            <p className="lead-card__next-action-detail">{nextAction.detail}</p>
-          </div>
-        </section>
+      {showPriorityCue || showBookedValueNudge ? (
+        <div className="lead-card__cue-row">
+          {showPriorityCue ? (
+            <span className={`lead-card__cue lead-card__cue--${priority.level}`}>
+              <Icon name={priority.level === "fast" ? "alertTriangle" : "clock"} size={13} />
+              {priority.label}
+            </span>
+          ) : null}
+          {showBookedValueNudge ? (
+            <span className="lead-card__cue lead-card__cue--good">
+              <Icon name="star" size={13} />
+              Booked value missing
+            </span>
+          ) : null}
+        </div>
       ) : null}
 
       <section
