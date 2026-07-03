@@ -256,43 +256,43 @@ export function leadPriorityText(lead: Lead) {
 
 export function getLeadPriority(lead: Lead): ReplyPriority {
   if (lead.reply_priority_override === "fast") {
-    return { level: "fast", label: "Urgent", reason: "priority was set manually" };
+    return { level: "fast", label: "Call ASAP", reason: "callback timing was set manually" };
   }
 
   if (lead.reply_priority_override === "today") {
-    return { level: "today", label: "Time-sensitive", reason: "priority was set manually" };
+    return { level: "today", label: "Call today", reason: "callback timing was set manually" };
   }
 
   if (lead.reply_priority_override === "normal") {
-    return { level: "normal", label: "No rush", reason: null };
+    return { level: "normal", label: "Standard", reason: null };
   }
 
   // Server-side classification (persisted at voicemail transcription). The client
   // regex below stays as a fallback for leads that predate it, and can still
   // upgrade a server "normal" when newer text (e.g. an inbound reply) is urgent.
   if (lead.priority === "fast") {
-    return { level: "fast", label: "Urgent", reason: lead.priority_reason };
+    return { level: "fast", label: "Call ASAP", reason: lead.priority_reason };
   }
 
   if (lead.priority === "today") {
-    return { level: "today", label: "Time-sensitive", reason: lead.priority_reason };
+    return { level: "today", label: "Call today", reason: lead.priority_reason };
   }
 
   const text = leadPriorityText(lead);
 
   for (const item of FAST_REPLY_PATTERNS) {
     if (item.pattern.test(text)) {
-      return { level: "fast", label: "Urgent", reason: item.reason };
+      return { level: "fast", label: "Call ASAP", reason: item.reason };
     }
   }
 
   for (const item of TODAY_REPLY_PATTERNS) {
     if (item.pattern.test(text)) {
-      return { level: "today", label: "Time-sensitive", reason: item.reason };
+      return { level: "today", label: "Call today", reason: item.reason };
     }
   }
 
-  return { level: "normal", label: "No rush", reason: null };
+  return { level: "normal", label: "Standard", reason: null };
 }
 
 

@@ -256,10 +256,10 @@ export function LeadDrawer({
 
         <div className="drawer__priority-row">
           <div>
-            <p className="t-eyebrow">Reply timing</p>
+            <p className="t-eyebrow">Callback timing</p>
             {priority.level !== "normal" ? (
               <p className="drawer__priority-note">
-                {priority.level === "fast" ? "Prioritize this callback." : "Follow up today."}
+                {priority.level === "fast" ? "Call this lead as soon as possible." : "Call this lead today."}
               </p>
             ) : null}
           </div>

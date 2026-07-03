@@ -364,7 +364,7 @@ export async function notifyOwnerWeeklyDigest(input: {
     headline,
     `Missed calls caught: ${stats.missedCalls}`,
     `Callers texted back automatically: ${stats.textedBack}`,
-    `Urgent voicemails flagged: ${stats.urgent}`,
+    `ASAP callbacks flagged: ${stats.urgent}`,
     `Customer replies: ${stats.replies}`,
     stats.booked > 0
       ? `Jobs booked: ${stats.booked} (${formatDollars(stats.recoveredCents)})`

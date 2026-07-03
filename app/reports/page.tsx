@@ -42,7 +42,7 @@ function PeriodSection({ title, stats }: { title: string; stats: RecoveryStats }
       >
         <StatTile label="Missed calls caught" value={String(stats.missedCalls)} />
         <StatTile label="Texted back" value={String(stats.textedBack)} />
-        <StatTile label="Urgent flagged" value={String(stats.urgent)} />
+        <StatTile label="ASAP callbacks" value={String(stats.urgent)} />
         <StatTile label="Customer replies" value={String(stats.replies)} />
         <StatTile
           label="Jobs booked"

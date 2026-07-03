@@ -92,10 +92,14 @@ export function ConversationView({
   const [replyText, setReplyText] = useState("");
   const [replySending, setReplySending] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [sentMessages, setSentMessages] = useState<OutboundMessage[]>([]);
   const [transcribingId, setTranscribingId] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [status, setStatus] = useState<LeadStatus>(lead.status);
+  const [priorityOverride, setPriorityOverride] = useState<ReplyPriorityOverride>(lead.reply_priority_override);
   const [booked, setBooked] = useState(() => isBookedLead(lead));
+  const [jobValueCents, setJobValueCents] = useState<number | null>(lead.job_value_cents);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const threadEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -154,9 +158,24 @@ export function ConversationView({
     threadEndRef.current?.scrollIntoView({ block: "end" });
   }, [thread.length]);
 
+  useEffect(() => {
+    setName(lead.name ?? "");
+    setNotes(lead.notes ?? "");
+    setStatus(lead.status);
+    setPriorityOverride(lead.reply_priority_override);
+    setBooked(isBookedLead(lead));
+    setJobValueCents(lead.job_value_cents);
+    setSaveError(null);
+  }, [lead.id, lead.name, lead.notes, lead.status, lead.reply_priority_override, lead.booked_at, lead.job_value_cents]);
+
   async function patchAndRefresh(body: Parameters<typeof patchLead>[1]) {
+    setSaveError(null);
     const ok = await patchLead(lead.id, body);
-    if (ok) router.refresh();
+    if (ok) {
+      router.refresh();
+    } else {
+      setSaveError("Could not save that change. Try again.");
+    }
     return ok;
   }
 
@@ -228,6 +247,11 @@ export function ConversationView({
 
       {detailsOpen && !readOnly ? (
         <section className="convo__details">
+          {saveError ? (
+            <p className="convo__error convo__detail--wide" role="alert">
+              {saveError}
+            </p>
+          ) : null}
           <label className="convo__detail">
             <span className="t-eyebrow">Caller name</span>
             <input
@@ -244,16 +268,29 @@ export function ConversationView({
           </label>
           <div className="convo__detail">
             <span className="t-eyebrow">Status</span>
-            <StatusControl status={lead.status} onChange={(status: LeadStatus) => void patchAndRefresh({ status })} />
+            <StatusControl
+              status={status}
+              onChange={(nextStatus: LeadStatus) => {
+                const previousStatus = status;
+                setStatus(nextStatus);
+                void patchAndRefresh({ status: nextStatus }).then((ok) => {
+                  if (!ok) setStatus(previousStatus);
+                });
+              }}
+            />
           </div>
           <div className="convo__detail">
-            <span className="t-eyebrow">Reply timing</span>
+            <span className="t-eyebrow">Callback timing</span>
             <PriorityControl
               label={null}
-              value={lead.reply_priority_override}
-              onChange={(replyPriorityOverride: ReplyPriorityOverride) =>
-                void patchAndRefresh({ replyPriorityOverride })
-              }
+              value={priorityOverride}
+              onChange={(replyPriorityOverride: ReplyPriorityOverride) => {
+                const previousPriority = priorityOverride;
+                setPriorityOverride(replyPriorityOverride);
+                void patchAndRefresh({ replyPriorityOverride }).then((ok) => {
+                  if (!ok) setPriorityOverride(previousPriority);
+                });
+              }}
             />
           </div>
           <div className="convo__detail">
@@ -262,15 +299,22 @@ export function ConversationView({
               <BookedToggle
                 booked={booked}
                 onChange={(nextBooked) => {
+                  const previousBooked = booked;
                   setBooked(nextBooked);
                   void patchAndRefresh({ booked: nextBooked }).then((ok) => {
-                    if (!ok) setBooked(!nextBooked);
+                    if (!ok) setBooked(previousBooked);
                   });
                 }}
               />
               <BookedValueInput
-                valueCents={lead.job_value_cents}
-                onSave={(jobValueCents) => void patchAndRefresh({ jobValueCents })}
+                valueCents={jobValueCents}
+                onSave={(nextJobValueCents) => {
+                  const previousJobValueCents = jobValueCents;
+                  setJobValueCents(nextJobValueCents);
+                  void patchAndRefresh({ jobValueCents: nextJobValueCents }).then((ok) => {
+                    if (!ok) setJobValueCents(previousJobValueCents);
+                  });
+                }}
               />
             </div>
           </div>
