@@ -264,7 +264,7 @@ export function getLeadPriority(lead: Lead): ReplyPriority {
   }
 
   if (lead.reply_priority_override === "normal") {
-    return { level: "normal", label: "Standard", reason: null };
+    return { level: "normal", label: "Routine", reason: null };
   }
 
   // Server-side classification (persisted at voicemail transcription). The client
@@ -292,7 +292,7 @@ export function getLeadPriority(lead: Lead): ReplyPriority {
     }
   }
 
-  return { level: "normal", label: "Standard", reason: null };
+  return { level: "normal", label: "Routine", reason: null };
 }
 
 
@@ -407,7 +407,7 @@ export function getFollowUpReason(lead: Lead) {
 }
 
 export function prioritySortScore(lead: Lead) {
-  if (lead.status !== "new") return 3;
+  if (lead.status === "dead") return 3;
 
   const priority = getLeadPriority(lead).level;
   if (priority === "fast") return 0;
@@ -433,6 +433,19 @@ export function condenseLeadsByPhone(leads: Lead[]) {
   const condensed = leads.filter((lead) => newestByPhone.get(lead.phone)?.id === lead.id);
 
   return { leads: condensed, callCounts };
+}
+
+// "N calls" must be the truth about how many times this number called — it
+// counts every lead row for the phone, including soft-deleted ones, so the
+// number never shifts when a card is trashed or restored.
+export function countCallsByPhone(leads: Lead[]) {
+  const counts = new Map<string, number>();
+
+  for (const lead of leads) {
+    counts.set(lead.phone, (counts.get(lead.phone) ?? 0) + 1);
+  }
+
+  return counts;
 }
 
 export function sortLeadsForWork(leads: Lead[]) {
@@ -529,6 +542,10 @@ export function filterLeads(leads: Lead[], filter: Filter, query: string) {
 
     if (lead.deleted_at) {
       return false;
+    }
+
+    if (filter === "booked") {
+      return isBookedLead(lead) && leadMatchesSearch(lead, query);
     }
 
     const matchesFilter = filter === "all" || lead.status === filter;

@@ -2,7 +2,7 @@
 
 import { Icon } from "@/components/icon";
 import type { Lead, LeadStatus } from "@/lib/supabase";
-import { LEGACY_FORWARDING_MESSAGE, STATUS_LABELS } from "../_constants";
+import { LEGACY_FORWARDING_MESSAGE, STATUS_LABELS, STATUS_OPTIONS } from "../_constants";
 import { formatCurrency, formatPhone, formatRelativeTime, getLeadPriority, initials, isBookedLead, needsAttention, parseSetupRequestMessage, setupRequestSummary, shouldShowVoicemailSummaryProgress, sourceLabel } from "../_utils";
 import { BookedValueInput } from "./controls";
 import { OverflowMenu } from "./overflow-menu";
@@ -47,7 +47,7 @@ export function LeadCard({
   onBooked: (id: string, booked: boolean) => void;
   onJobValue: (id: string, jobValueCents: number | null) => void;
   onDelete: (id: string) => void;
-  onRestore: (id: string) => void;
+  onRestore: (id: string, status: LeadStatus) => void;
   expanded: boolean;
   onToggleDetails: (id: string) => void;
 }) {
@@ -81,7 +81,9 @@ export function LeadCard({
       : lead.recording_sid
         ? lead.voicemail_transcription_status === "failed"
           ? "Voicemail saved. Summary unavailable. Open the lead to listen."
-          : "Voicemail saved. Open the lead to listen or summarize."
+          : lead.voicemail_transcript
+            ? "No summary — the voicemail didn't say what they need. Open the lead to listen."
+            : "Voicemail saved. Open the lead to listen or summarize."
         : "No voicemail left. Call back while the request is still fresh.";
   const headerMeta = [
     formatPhone(lead.phone),
@@ -140,6 +142,7 @@ export function LeadCard({
             <span className={`lead-card__cue lead-card__cue--${priority.level}`}>
               <Icon name={priority.level === "fast" ? "alertTriangle" : "clock"} size={13} />
               {priority.label}
+              {priority.reason ? <span className="lead-card__cue-reason">· {priority.reason}</span> : null}
             </span>
           ) : null}
           {showBookedValueNudge ? (
@@ -214,15 +217,20 @@ export function LeadCard({
       <div className="lead-card__actions" onClick={(event) => event.stopPropagation()}>
         <div className="lead-card__primary-actions">
           {trashed ? (
-            <button className="btn btn-primary btn-sm" type="button" onClick={() => onRestore(lead.id)}>
-              Restore
-            </button>
+            // Restore always lets the owner say where the lead goes, so it never
+            // silently reappears in an unexpected tab.
+            <OverflowMenu
+              trigger={<>Restore&hellip;</>}
+              triggerClassName="btn btn-primary btn-sm"
+              items={STATUS_OPTIONS.map((status) => ({
+                label: `Restore as ${STATUS_LABELS[status]}`,
+                onSelect: () => onRestore(lead.id, status),
+              }))}
+            />
           ) : (
-            <>
-              <a className="btn btn-primary btn-sm" href={`tel:${lead.phone}`}>
-                <Icon name="phone" size={13} /> Call back
-              </a>
-            </>
+            <a className="btn btn-primary btn-sm" href={`tel:${lead.phone}`}>
+              <Icon name="phone" size={13} /> Call back
+            </a>
           )}
         </div>
         {!trashed || hasDetails ? (
@@ -238,17 +246,15 @@ export function LeadCard({
               </button>
             ) : null}
             {!trashed ? (
+              // No blocking confirm: delete is soft and the inbox offers Undo.
               <OverflowMenu
-                showMarkContacted={lead.status === "new"}
-                showMarkBooked={!booked}
-                showDelete
-                onMarkContacted={() => onStatus(lead.id, "contacted")}
-                onMarkBooked={() => onBooked(lead.id, true)}
-                onDelete={() => {
-                  if (window.confirm("Move this lead to Trash?")) {
-                    onDelete(lead.id);
-                  }
-                }}
+                items={[
+                  ...(lead.status === "new"
+                    ? [{ label: "Mark contacted", onSelect: () => onStatus(lead.id, "contacted") }]
+                    : []),
+                  ...(!booked ? [{ label: "Mark as booked", onSelect: () => onBooked(lead.id, true) }] : []),
+                  { label: "Move to Trash", danger: true, onSelect: () => onDelete(lead.id) },
+                ]}
               />
             ) : null}
           </div>

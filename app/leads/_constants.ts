@@ -10,14 +10,18 @@ export const STATUS_LABELS: Record<LeadStatus, string> = {
 };
 
 export const AUTO_VOICEMAIL_SUMMARY_LIMIT = 3;
+export const UNDO_DELETE_MS = 7_000;
 export const AUTO_VOICEMAIL_SUMMARY_LOOKBACK_MS = 10 * 60 * 1000;
 export const INBOX_REFRESH_MS = 8_000;
 export const RELATIVE_TIME_TICK_MS = 15_000;
 
+// "Booked" is not a status — it's an outcome flag (booked_at) that can apply to
+// any status — but owners still need one place to see every booked job.
 export const FILTERS: Array<{ key: Filter; label: string }> = [
   { key: "all", label: "All" },
   { key: "new", label: "New" },
   { key: "contacted", label: "Contacted" },
+  { key: "booked", label: "Booked" },
   { key: "dead", label: "Closed" },
   { key: "trash", label: "Trash" },
 ];

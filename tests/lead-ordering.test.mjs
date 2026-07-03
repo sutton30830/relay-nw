@@ -65,6 +65,7 @@ test("lead inbox sorting puts urgent work ahead of newer normal leads", async ()
 
   const olderUrgent = lead({
     id: "older-urgent",
+    status: "contacted",
     message: "Need help ASAP",
     created_at: "2026-07-03T10:00:00.000Z",
   });
@@ -77,6 +78,19 @@ test("lead inbox sorting puts urgent work ahead of newer normal leads", async ()
   assert.deepEqual(
     sortLeadsForWork([olderUrgent, newerNormal]).map((item) => item.id),
     ["older-urgent", "newer-normal"],
+  );
+});
+
+test("closed leads do not outrank active callback work", async () => {
+  const { sortLeadsForWork } = await loadLeadUtils();
+
+  assert.deepEqual(
+    sortLeadsForWork([
+      lead({ id: "closed-today", status: "dead", message: "Can you come today?", created_at: "2026-07-03T12:00:00.000Z" }),
+      lead({ id: "active-normal", status: "new", message: "Looking for a quote", created_at: "2026-07-03T11:00:00.000Z" }),
+      lead({ id: "active-urgent", status: "contacted", message: "Need help ASAP", created_at: "2026-07-03T10:00:00.000Z" }),
+    ]).map((item) => item.id),
+    ["active-urgent", "active-normal", "closed-today"],
   );
 });
 

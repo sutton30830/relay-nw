@@ -81,11 +81,15 @@ test("public intake setup requests go to setup_requests, never a tenant leads in
   assert.match(intakeRouteTs, /admin notification failed/);
 });
 
-test("booked is an outcome, not an inbox category or workflow status button", () => {
+test("booked is an outcome flag, never a workflow status button", () => {
   const constantsTs = leadUtilsTs; // countLeads lives in _utils
   assert.match(constantsTs, /booked: visibleLeads\.filter\(isBookedLead\)\.length/);
-  assert.doesNotMatch(constantsTs, /filter === "booked"/);
-  assert.doesNotMatch(leadConstantsTs, /key: "booked"/);
+  // The Booked inbox view is an outcome view: it must filter on isBookedLead
+  // (the booked_at flag), never on lead.status, so it works for any status.
+  assert.match(constantsTs, /filter === "booked"[\s\S]{0,120}isBookedLead\(lead\)/);
+  assert.match(leadConstantsTs, /key: "booked"/);
+  // Status buttons stay New/Contacted/Closed — booked is set via the outcome
+  // toggle or booked-value input, not by changing workflow status.
   assert.doesNotMatch(leadConstantsTs, /STATUS_OPTIONS: LeadStatus\[\] = \["new", "contacted", "booked", "dead"\]/);
 });
 

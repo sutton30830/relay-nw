@@ -1,30 +1,31 @@
 "use client";
 
-import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/icon";
 
-type OverflowMenuProps = {
-  showMarkContacted: boolean;
-  showMarkBooked: boolean;
-  showDelete: boolean;
-  onMarkContacted: () => void;
-  onMarkBooked: () => void;
-  onDelete: () => void;
+export type OverflowMenuItem = {
+  label: string;
+  danger?: boolean;
+  onSelect: () => void;
 };
 
+// Generic action menu. Items are passed pre-filtered, so focus order and refs
+// always match what's actually rendered (no fixed index slots).
 export function OverflowMenu({
-  showMarkContacted,
-  showMarkBooked,
-  showDelete,
-  onMarkContacted,
-  onMarkBooked,
-  onDelete,
-}: OverflowMenuProps) {
+  items,
+  trigger,
+  triggerClassName = "btn btn-ghost btn-sm",
+  triggerAriaLabel = "More actions",
+}: {
+  items: OverflowMenuItem[];
+  trigger?: ReactNode;
+  triggerClassName?: string;
+  triggerAriaLabel?: string;
+}) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const hasActions = showMarkContacted || showMarkBooked || showDelete;
 
   function closeMenu({ restoreFocus = true } = {}) {
     setOpen(false);
@@ -58,20 +59,18 @@ export function OverflowMenu({
     };
   }, [open]);
 
-  if (!hasActions) {
+  if (items.length === 0) {
     return null;
   }
 
   function focusItem(index: number) {
-    const visibleItems = itemRefs.current.filter(Boolean);
-    visibleItems[index]?.focus();
+    itemRefs.current[index]?.focus();
   }
 
   function focusByOffset(offset: number) {
-    const visibleItems = itemRefs.current.filter(Boolean);
-    const activeIndex = visibleItems.findIndex((item) => item === document.activeElement);
+    const activeIndex = itemRefs.current.findIndex((item) => item === document.activeElement);
     const currentIndex = activeIndex >= 0 ? activeIndex : 0;
-    const nextIndex = (currentIndex + offset + visibleItems.length) % visibleItems.length;
+    const nextIndex = (currentIndex + offset + items.length) % items.length;
     focusItem(nextIndex);
   }
 
@@ -102,12 +101,14 @@ export function OverflowMenu({
 
     if (event.key === "End") {
       event.preventDefault();
-      focusItem(itemRefs.current.filter(Boolean).length - 1);
+      focusItem(items.length - 1);
     }
   }
 
   function runAction(action: () => void) {
     action();
+    // Restore focus to the trigger; if the action removed the card (trash,
+    // restore), the browser simply drops focus with it.
     closeMenu();
   }
 
@@ -115,11 +116,11 @@ export function OverflowMenu({
     <div className="lead-card__overflow" style={{ position: "relative" }}>
       <button
         ref={triggerRef}
-        className="btn btn-ghost btn-sm"
+        className={triggerClassName}
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="More actions"
+        aria-label={trigger ? undefined : triggerAriaLabel}
         onClick={() => setOpen((current) => !current)}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
@@ -129,7 +130,7 @@ export function OverflowMenu({
           }
         }}
       >
-        <Icon name="more" size={13} />
+        {trigger ?? <Icon name="more" size={13} />}
       </button>
       {open ? (
         <div
@@ -152,48 +153,24 @@ export function OverflowMenu({
             zIndex: 20,
           }}
         >
-          {showMarkContacted ? (
-            <button
-              ref={(node) => {
-                itemRefs.current[0] = node;
-              }}
-              className="btn btn-ghost btn-sm"
-              type="button"
-              role="menuitem"
-              onClick={() => runAction(onMarkContacted)}
-            >
-              Mark contacted
-            </button>
-          ) : null}
-          {showMarkBooked ? (
-            <button
-              ref={(node) => {
-                itemRefs.current[1] = node;
-              }}
-              className="btn btn-ghost btn-sm"
-              type="button"
-              role="menuitem"
-              onClick={() => runAction(onMarkBooked)}
-            >
-              Mark as booked
-            </button>
-          ) : null}
-          {showDelete ? (
-            <>
-              <div role="separator" style={{ borderTop: "1px solid var(--line)", margin: "2px 0" }} />
+          {items.map((item, index) => (
+            <div key={item.label} style={{ display: "grid", gap: 4 }}>
+              {item.danger && index > 0 && !items[index - 1]?.danger ? (
+                <div role="separator" style={{ borderTop: "1px solid var(--line)", margin: "2px 0" }} />
+              ) : null}
               <button
                 ref={(node) => {
-                  itemRefs.current[2] = node;
+                  itemRefs.current[index] = node;
                 }}
-                className="btn btn-danger-ghost btn-sm lead-card__menu-item--danger"
+                className={`btn btn-sm ${item.danger ? "btn-danger-ghost lead-card__menu-item--danger" : "btn-ghost"}`}
                 type="button"
                 role="menuitem"
-                onClick={() => runAction(onDelete)}
+                onClick={() => runAction(item.onSelect)}
               >
-                Delete
+                {item.label}
               </button>
-            </>
-          ) : null}
+            </div>
+          ))}
         </div>
       ) : null}
     </div>

@@ -113,7 +113,7 @@ async function summarizeTranscript(transcript: string) {
         {
           role: "system",
           content:
-            "Summarize a voicemail for a local service business owner. Use one short sentence. State only what the caller explicitly said. Do not infer urgency. Do not say urgent, emergency, ASAP, today, or immediate unless the caller clearly said that. If the caller only says they want help, a quote, a callback, or to check something out, describe it as a normal request. Include callback timing only if the caller mentioned one. Do not invent details.",
+            "Summarize a voicemail for a local service business owner. Use one short sentence that names the specific problem, appliance, location, or request the caller mentioned (e.g. \"Water heater leaking in the garage; wants someone this week.\"). State only what the caller explicitly said. Do not infer urgency. Do not say urgent, emergency, ASAP, today, or immediate unless the caller clearly said that. Include callback timing only if the caller mentioned one. Do not invent details. Never pad with filler like \"has a request\" or \"needs attention\". If the caller gave no specifics about what they need, reply with exactly NO_DETAILS.",
         },
         {
           role: "user",
@@ -135,6 +135,42 @@ async function summarizeTranscript(transcript: string) {
   }
 
   return summary;
+}
+
+// Words that carry no information about what the caller actually needs. A
+// summary made only of these ("The caller has an urgent request that needs
+// immediate attention.") tells the owner nothing — worse, near-identical
+// filler on every card destroys trust in the summaries that ARE specific.
+const GENERIC_SUMMARY_WORDS = new Set([
+  "a", "an", "and", "as", "asap", "attention", "back", "call", "callback", "caller",
+  "for", "get", "has", "have", "help", "immediate", "immediately", "in", "is", "it",
+  "left", "like", "message", "need", "needs", "of", "on", "please", "possible",
+  "request", "requests", "respond", "response", "someone", "soon", "that", "the",
+  "their", "them", "they", "to", "urgent", "voicemail", "wants", "was", "with", "would",
+]);
+
+export function isGenericVoicemailSummary(summary: string) {
+  const words = summary
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (words.length === 0) return true;
+
+  return words.every((word) => GENERIC_SUMMARY_WORDS.has(word));
+}
+
+// A vague summary is worse than none: the UI shows an honest "listen to the
+// voicemail" fallback when this returns null.
+function normalizeSummary(summary: string): string | null {
+  const trimmed = summary.trim();
+
+  if (!trimmed || /^no_details\.?$/i.test(trimmed) || isGenericVoicemailSummary(trimmed)) {
+    return null;
+  }
+
+  return trimmed;
 }
 
 async function clarifyTranscript(transcript: string) {
@@ -300,7 +336,9 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
     const audio = await fetchRecordingAudio(lead.recording_sid);
     const rawTranscript = await transcribeAudio(audio);
     const transcript = await clarifyTranscript(rawTranscript);
-    const summary = await summarizeTranscript(transcript);
+    // null when the model had nothing specific to say — stored as null so the
+    // UI can show "listen to the voicemail" instead of vague boilerplate.
+    const summary = normalizeSummary(await summarizeTranscript(transcript));
 
     await updateLeadVoicemailTranscription({
       accountId,
@@ -314,7 +352,7 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
     // Classify urgency from what the caller actually said, persist it, and escalate
     // fast-priority voicemails to the owner by SMS immediately. Never fatal: the
     // transcription result stands even if classification or notification fails.
-    const classification = await classifyVoicemailPriority(`${transcript} ${summary}`);
+    const classification = await classifyVoicemailPriority([transcript, summary].filter(Boolean).join(" "));
 
     try {
       await updateLeadPriority({
@@ -333,11 +371,13 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
 
     const account = await getAccountConfigByAccountId(accountId);
     if (account) {
+      const ownerSummary = summary ?? transcript.slice(0, 160);
+
       if (classification.level === "fast") {
         await sendOwnerSms({
           account,
           context: "urgent voicemail alert",
-          body: `Relay NW URGENT: voicemail from ${lead.phone} — ${classification.reason}. "${summary.slice(0, 160)}" Call back now or reply from your inbox: ${env.appBaseUrl}/leads`,
+          body: `Relay NW URGENT: voicemail from ${lead.phone} — ${classification.reason}. "${ownerSummary.slice(0, 160)}" Call back now or reply from your inbox: ${env.appBaseUrl}/leads`,
         });
       }
 
@@ -345,7 +385,7 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
         account,
         leadId,
         callerPhone: lead.phone,
-        summary,
+        summary: ownerSummary,
       });
     }
 

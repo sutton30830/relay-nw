@@ -1,6 +1,6 @@
 import type { LeadStatus, ReplyPriorityOverride } from "@/lib/supabase";
 
-export type Filter = "all" | "new" | "contacted" | "dead" | "trash";
+export type Filter = "all" | "new" | "contacted" | "booked" | "dead" | "trash";
 
 export type LeadCounts = Record<Filter, number> & {
   actionable: number;
@@ -23,7 +23,9 @@ export type LeadPatch = {
 
 export type TranscribeResponse = {
   transcript: string;
-  summary: string;
+  // null when the voicemail had no usable content to summarize — the UI shows
+  // an honest "listen to the voicemail" fallback instead of vague boilerplate.
+  summary: string | null;
   status: "completed";
 };
 

@@ -85,7 +85,9 @@ export function LeadDrawer({
       : lead.recording_sid
         ? lead.voicemail_transcription_status === "failed"
           ? "Voicemail saved. Summary unavailable. Listen to the recording below."
-          : "Voicemail saved. Listen below or generate a quick summary."
+          : lead.voicemail_transcript
+            ? "No summary — the voicemail didn't say what they need. Listen below."
+            : "Voicemail saved. Listen below or generate a quick summary."
         : "No voicemail left. Call back while the request is still fresh.";
 
   function resetDrawerScroll() {
@@ -98,24 +100,14 @@ export function LeadDrawer({
     drawerHeadRef.current?.focus({ preventScroll: false });
   }
 
+  // Reset once before paint, plus a single post-paint frame for content that
+  // lays out late (audio players). The old rAF/timeout pile-up fought the
+  // user's own scrolling for ~100ms after opening.
   useLayoutEffect(() => {
     resetDrawerScroll();
-  }, [lead.id]);
-
-  useEffect(() => {
-    resetDrawerScroll();
-
-    const firstFrame = window.requestAnimationFrame(resetDrawerScroll);
-    const secondFrame = window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(resetDrawerScroll);
-    });
-    const finalReset = window.setTimeout(resetDrawerScroll, 80);
-
-    return () => {
-      window.cancelAnimationFrame(firstFrame);
-      window.cancelAnimationFrame(secondFrame);
-      window.clearTimeout(finalReset);
-    };
+    const frame = window.requestAnimationFrame(resetDrawerScroll);
+    return () => window.cancelAnimationFrame(frame);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead.id]);
 
   useEffect(() => {
@@ -260,6 +252,7 @@ export function LeadDrawer({
             {priority.level !== "normal" ? (
               <p className="drawer__priority-note">
                 {priority.level === "fast" ? "Call this lead as soon as possible." : "Call this lead today."}
+                {priority.reason ? ` Reason: ${priority.reason}.` : ""}
               </p>
             ) : null}
           </div>
@@ -311,7 +304,9 @@ export function LeadDrawer({
                     "Unable to summarize this voicemail. Try again or listen to the recording."}
                 </p>
               ) : null}
-              {!lead.voicemail_summary && lead.voicemail_transcription_status !== "processing" ? (
+              {!lead.voicemail_summary &&
+              !lead.voicemail_transcript &&
+              lead.voicemail_transcription_status !== "processing" ? (
                 <button
                   className="btn btn-secondary btn-sm"
                   type="button"

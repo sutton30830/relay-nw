@@ -15,10 +15,10 @@ export function PriorityControl({
   label?: string | null;
 }) {
   const options: Array<{ label: string; value: ReplyPriorityOverride }> = [
-    { label: "Relay decides", value: null },
+    { label: "Auto", value: null },
     { label: "Call ASAP", value: "fast" },
     { label: "Call today", value: "today" },
-    { label: "Standard", value: "normal" },
+    { label: "Routine", value: "normal" },
   ];
 
   return (

@@ -352,8 +352,30 @@ export async function updateLead(input: {
     updates.voicemail_summary = input.voicemailSummary;
   }
 
+  // Trash/restore applies to the whole caller, not a single row. The inbox
+  // shows one card per phone; leaving sibling rows behind would fragment the
+  // caller across Trash and the live inbox.
   if (typeof input.deletedAt !== "undefined") {
-    updates.deleted_at = input.deletedAt;
+    const { data: lead, error: leadError } = await supabaseAdmin
+      .from("leads")
+      .select("phone")
+      .eq("id", input.id)
+      .eq("account_id", accountId)
+      .maybeSingle();
+
+    throwIfSupabaseError(leadError);
+
+    if (lead?.phone) {
+      const { error: deletedError } = await supabaseAdmin
+        .from("leads")
+        .update({ deleted_at: input.deletedAt })
+        .eq("phone", lead.phone)
+        .eq("account_id", accountId);
+
+      throwIfSupabaseError(deletedError);
+    } else {
+      updates.deleted_at = input.deletedAt;
+    }
   }
 
   if (typeof input.name !== "undefined") {
@@ -411,6 +433,9 @@ export async function updateLead(input: {
   throwIfSupabaseError(error);
 }
 
+// Soft-deletes the caller's entire thread. The inbox condenses rows by phone
+// into one card, so trashing only the newest row would immediately surface the
+// next-newest row as a live card — delete would look like it didn't work.
 export async function deleteLead(id: string, inputAccountId: string) {
   const accountId = assertAccountId(inputAccountId, "deleteLead");
 
@@ -418,11 +443,23 @@ export async function deleteLead(id: string, inputAccountId: string) {
     return;
   }
 
-  const { error } = await supabaseAdmin
+  const { data: lead, error: leadError } = await supabaseAdmin
+    .from("leads")
+    .select("phone")
+    .eq("id", id)
+    .eq("account_id", accountId)
+    .maybeSingle();
+
+  throwIfSupabaseError(leadError);
+
+  let query = supabaseAdmin
     .from("leads")
     .update({ deleted_at: new Date().toISOString() })
-    .eq("id", id)
     .eq("account_id", accountId);
+
+  query = lead?.phone ? query.eq("phone", lead.phone) : query.eq("id", id);
+
+  const { error } = await query;
 
   throwIfSupabaseError(error);
 }
@@ -466,7 +503,8 @@ export async function getLeadConversation(inputAccountId: string, id: string): P
       .eq("account_id", accountId)
       .eq("phone", lead.phone)
       .neq("id", lead.id)
-      .is("deleted_at", null)
+      // Deleted rows stay in the thread: they're calls that really happened,
+      // and the card's "N calls" count includes them.
       .order("created_at", { ascending: false })
       .limit(50),
     supabaseAdmin

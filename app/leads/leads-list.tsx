@@ -167,6 +167,20 @@ export function LeadsList({
         ) : null}
       </div>
 
+      {inbox.undoableDelete ? (
+        <div className="undo-toast" role="status">
+          <span className="undo-toast__text">{inbox.undoableDelete.label} moved to Trash.</span>
+          <button className="undo-toast__action" type="button" onClick={() => void inbox.undoDelete()}>
+            Undo
+          </button>
+          <button className="undo-toast__dismiss" type="button" aria-label="Dismiss" onClick={inbox.dismissUndo}>
+            <Icon name="x" size={13} />
+          </button>
+        </div>
+      ) : null}
+
+      {/* Real leads open the full conversation page (/leads/[id]); the drawer is
+          the detail view for sample data only, which has no server-side page. */}
       {inbox.openLead ? (
         <LeadDrawer
           key={inbox.openLead.id}

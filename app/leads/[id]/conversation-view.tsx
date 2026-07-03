@@ -236,7 +236,7 @@ export function ConversationView({
         <p className={`convo__banner ${priority.level === "fast" ? "convo__banner--fast" : ""}`}>
           <Icon name={priority.level === "fast" ? "alertTriangle" : "clock"} size={13} />
           {priority.label}
-          {lead.priority_reason ? ` — ${lead.priority_reason}` : ""}
+          {priority.reason ? ` · ${priority.reason}` : ""}
         </p>
       ) : null}
       {smsTrouble ? (
@@ -378,8 +378,12 @@ export function ConversationView({
                       <p>{item.lead.voicemail_transcript}</p>
                     </details>
                   ) : null}
+                  {item.lead.voicemail_transcript && !item.lead.voicemail_summary ? (
+                    <p className="convo__msg-meta">No clear summary — listen or read the transcript.</p>
+                  ) : null}
                   {!readOnly &&
                   !item.lead.voicemail_summary &&
+                  !item.lead.voicemail_transcript &&
                   item.lead.voicemail_transcription_status !== "processing" ? (
                     <button
                       className="convo__vm-summarize"
