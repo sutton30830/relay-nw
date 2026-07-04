@@ -34,7 +34,7 @@ const files = {
 
 test("authenticated lead, ops, recording, and transcription routes use session account scope", () => {
   assert.match(files.leadsPage, /const \{ account, accountId \} = await requireAccountUser\(\)/);
-  assert.match(files.leadsPage, /getLeadsForAccount\(accountId\)/);
+  assert.match(files.leadsPage, /getLeadInboxPageForAccount\(accountId/);
   assert.match(files.leadsPage, /getForwardingHealthSummary\(accountId\)/);
 
   assert.match(files.opsPage, /const \{ account, accountId \} = await requireAccountUser\(\)/);
@@ -98,6 +98,8 @@ test("unresolved Twilio account handling alerts admin and avoids tenant writes",
 test("lead queries and mutations filter by account_id when an account is supplied", () => {
   assert.match(files.tenantStore, /export function assertAccountId/);
   assert.match(files.leadsStore, /query = query\.eq\("account_id", accountId\)/);
+  assert.match(files.leadsStore, /\.range\(offset, offset \+ limit - 1\)/);
+  assert.match(files.leadsStore, /DEFAULT_LEADS_PAGE_LIMIT = 100/);
   assert.match(files.leadsStore, /legacyQuery = legacyQuery\.eq\("account_id", accountId\)/);
   assert.match(files.leadsStore, /\.eq\("id", input\.id\)\s*\.eq\("account_id", accountId\)/);
   assert.match(files.leadsStore, /\.eq\("id", id\)\s*\.eq\("account_id", accountId\)/);

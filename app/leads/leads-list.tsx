@@ -16,13 +16,27 @@ export function LeadsList({
   leads,
   businessName,
   forwardingHealth,
+  pagination,
 }: {
   leads: Lead[];
   businessName: string;
   forwardingHealth: ForwardingHealthSummary;
+  pagination: {
+    page: number;
+    limit: number;
+    offset: number;
+    total: number | null;
+  };
 }) {
   const router = useRouter();
   const inbox = useLeadsInbox(leads);
+  const loadedStart = leads.length > 0 ? pagination.offset + 1 : 0;
+  const loadedEnd = pagination.offset + leads.length;
+  const knownTotal = pagination.total ?? null;
+  const hasPreviousPage = pagination.page > 1;
+  const hasNextPage = knownTotal === null
+    ? leads.length === pagination.limit
+    : loadedEnd < knownTotal;
   const lineHealthTone =
     forwardingHealth.displayStatus === "failed"
       ? "issue"
@@ -136,6 +150,28 @@ export function LeadsList({
           );
         })}
       </nav>
+
+      <div className="inbox-page-meta">
+        <span>
+          {knownTotal === null
+            ? `Showing ${leads.length} most recent loaded leads`
+            : leads.length > 0
+              ? `Showing ${loadedStart}-${loadedEnd} of ${knownTotal} leads`
+              : "No leads loaded"}
+        </span>
+        <div className="inbox-page-meta__actions">
+          {hasPreviousPage ? (
+            <Link className="btn btn-secondary btn-sm" href={pagination.page === 2 ? "/leads" : `/leads?page=${pagination.page - 1}`}>
+              Previous
+            </Link>
+          ) : null}
+          {hasNextPage ? (
+            <Link className="btn btn-secondary btn-sm" href={`/leads?page=${pagination.page + 1}`}>
+              Next
+            </Link>
+          ) : null}
+        </div>
+      </div>
 
       <div className="leads-list">
         {inbox.sortedItems.map((lead) => (

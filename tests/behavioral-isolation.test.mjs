@@ -102,12 +102,16 @@ function createSupabaseFake(seed) {
       this.limitCount = null;
       this.payload = null;
       this.columns = "*";
+      this.countMode = null;
+      this.rangeStart = null;
+      this.rangeEnd = null;
       this.singleMode = null;
       this.conflictColumns = [];
     }
 
-    select(columns = "*") {
+    select(columns = "*", options = {}) {
       this.columns = columns;
+      this.countMode = options.count ?? null;
       return this;
     }
 
@@ -167,6 +171,12 @@ function createSupabaseFake(seed) {
 
     limit(count) {
       this.limitCount = count;
+      return this;
+    }
+
+    range(start, end) {
+      this.rangeStart = start;
+      this.rangeEnd = end;
       return this;
     }
 
@@ -231,6 +241,12 @@ function createSupabaseFake(seed) {
         });
       }
 
+      const count = this.countMode === "exact" ? resultRows.length : null;
+
+      if (this.rangeStart !== null && this.rangeEnd !== null) {
+        resultRows = resultRows.slice(this.rangeStart, this.rangeEnd + 1);
+      }
+
       if (this.limitCount !== null) {
         resultRows = resultRows.slice(0, this.limitCount);
       }
@@ -240,7 +256,7 @@ function createSupabaseFake(seed) {
         data = data[0] ?? null;
       }
 
-      return { data, error: null };
+      return { data, error: null, count };
     }
   }
 
@@ -436,6 +452,36 @@ test("account B cannot read account A leads", async () => {
   const accountBLeads = await leads.getLeadsForAccount("acct-b");
 
   assert.deepEqual(accountBLeads.map((lead) => lead.id), ["lead-b"]);
+});
+
+test("paginated lead inbox stays account scoped and bounded", async () => {
+  const seed = seedData();
+  seed.leads = [
+    ...seed.leads,
+    ...Array.from({ length: 4 }, (_, index) => ({
+      ...seed.leads[1],
+      id: `lead-b-extra-${index}`,
+      call_sid: `CA_B_EXTRA_${index}`,
+      created_at: `2026-01-0${index + 3}T00:00:00.000Z`,
+    })),
+    ...Array.from({ length: 4 }, (_, index) => ({
+      ...seed.leads[0],
+      id: `lead-a-extra-${index}`,
+      call_sid: `CA_A_EXTRA_${index}`,
+      created_at: `2026-01-0${index + 3}T12:00:00.000Z`,
+    })),
+  ];
+  const fake = createSupabaseFake(seed);
+  const { leads } = await loadStores(fake);
+
+  const page = await leads.getLeadInboxPageForAccount("acct-b", { limit: 2, offset: 2 });
+
+  assert.equal(page.total, 5);
+  assert.equal(page.limit, 2);
+  assert.equal(page.offset, 2);
+  assert.equal(page.leads.length, 2);
+  assert.ok(page.leads.every((lead) => lead.account_id === "acct-b"));
+  assert.deepEqual(page.leads.map((lead) => lead.id), ["lead-b-extra-1", "lead-b-extra-0"]);
 });
 
 test("account B cannot update or delete account A lead by id", async () => {

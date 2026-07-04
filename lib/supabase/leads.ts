@@ -129,6 +129,27 @@ async function attachOutboundMessages(leads: Lead[], accountId: string) {
   }));
 }
 
+export type LeadsPageResult = {
+  leads: Lead[];
+  total: number | null;
+  limit: number;
+  offset: number;
+};
+
+export const DEFAULT_LEADS_PAGE_LIMIT = 100;
+const MAX_LEADS_PAGE_LIMIT = 250;
+
+function normalizePageOptions(options?: { limit?: number; offset?: number }) {
+  const rawLimit = Number(options?.limit ?? DEFAULT_LEADS_PAGE_LIMIT);
+  const rawOffset = Number(options?.offset ?? 0);
+  const limit = Number.isFinite(rawLimit)
+    ? Math.min(Math.max(Math.floor(rawLimit), 1), MAX_LEADS_PAGE_LIMIT)
+    : DEFAULT_LEADS_PAGE_LIMIT;
+  const offset = Number.isFinite(rawOffset) ? Math.max(Math.floor(rawOffset), 0) : 0;
+
+  return { limit, offset };
+}
+
 // Server-side classification result. Warn-only when the columns are missing so a
 // deploy ahead of the SQL migration degrades gracefully instead of failing webhooks.
 export async function updateLeadPriority(input: {
@@ -248,33 +269,39 @@ export async function createMissedCallLeadIfNew(input: {
   };
 }
 
-export async function getLeadsForAccount(inputAccountId: string) {
+export async function getLeadInboxPageForAccount(
+  inputAccountId: string,
+  options?: { limit?: number; offset?: number },
+): Promise<LeadsPageResult> {
   const accountId = assertAccountId(inputAccountId, "getLeadsForAccount");
+  const { limit, offset } = normalizePageOptions(options);
 
   if (isPlaceholderSupabaseConfig()) {
-    return [] as Lead[];
+    return { leads: [] as Lead[], total: 0, limit, offset };
   }
 
   let query = supabaseAdmin
     .from("leads")
-    .select(LEAD_SELECT_COLUMNS)
-    .order("created_at", { ascending: false });
+    .select(LEAD_SELECT_COLUMNS, { count: "exact" })
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
 
   query = query.eq("account_id", accountId);
 
-  const { data, error } = await query;
+  const { data, error, count } = await query;
 
   if (isMissingOptionalLeadColumnError(error)) {
     console.warn("Some optional leads columns are missing. Run supabase.sql to enable all inbox features.");
 
     let legacyQuery = supabaseAdmin
       .from("leads")
-      .select(LEGACY_LEAD_SELECT_COLUMNS)
-      .order("created_at", { ascending: false });
+      .select(LEGACY_LEAD_SELECT_COLUMNS, { count: "exact" })
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1);
 
     legacyQuery = legacyQuery.eq("account_id", accountId);
 
-    const { data: legacyData, error: legacyError } = await legacyQuery;
+    const { data: legacyData, error: legacyError, count: legacyCount } = await legacyQuery;
 
     throwIfSupabaseError(legacyError);
 
@@ -286,13 +313,23 @@ export async function getLeadsForAccount(inputAccountId: string) {
       } as Lead),
     );
 
-    return attachOutboundMessages(await attachInboundMessages(legacyLeads, accountId), accountId);
+    const leads = await attachOutboundMessages(await attachInboundMessages(legacyLeads, accountId), accountId);
+    return { leads, total: legacyCount ?? null, limit, offset };
   }
 
   throwIfSupabaseError(error);
 
   const leads = await attachInboundMessages(((data ?? []) as Lead[]).map(normalizeLead), accountId);
-  return attachOutboundMessages(leads, accountId);
+  return {
+    leads: await attachOutboundMessages(leads, accountId),
+    total: count ?? null,
+    limit,
+    offset,
+  };
+}
+
+export async function getLeadsForAccount(inputAccountId: string) {
+  return (await getLeadInboxPageForAccount(inputAccountId)).leads;
 }
 
 export async function updateLead(input: {
