@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/retry-transcriptions",
-      "schedule": "*/15 * * * *"
+      "schedule": "30 15 * * *"
     }
   ]
 }

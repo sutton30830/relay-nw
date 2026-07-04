@@ -84,7 +84,7 @@ Update after Spec 04 implementation (July 4, 2026):
 - Implemented atomic voicemail transcription claiming and retry safety net for `docs/impl-specs/04-transcription-durability.md`.
 - `claimVoicemailTranscription` now flips a lead into `processing` with a single account-scoped conditional `UPDATE`, so concurrent auto/manual attempts collapse to one OpenAI chain.
 - `transcribeLeadVoicemail` keeps the completed-summary shortcut free, then requires the atomic claim before downloading audio or calling OpenAI.
-- Added `/api/cron/retry-transcriptions`, scheduled every 15 minutes in `vercel.json`, to retry failed or stale-processing voicemail summaries from the last 48 hours.
+- Added `/api/cron/retry-transcriptions` to retry failed or stale-processing voicemail summaries from the last 48 hours. Current Vercel Hobby deployment runs this once daily; restore the 15-minute schedule (`*/15 * * * *`) after upgrading to Pro.
 - The retry cron uses `CRON_SECRET` auth, continues through per-lead failures, and treats active claim contention as skipped work.
 - New regression suite: `tests/transcription-claim.test.mjs`.
 - The Spec 04 pinned test in `tests/compliance-gaps.pinned.test.mjs` is now unskipped and passing.
