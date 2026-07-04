@@ -69,7 +69,6 @@ test(
 
 test(
   "intake rate limiting is backed by the database, not per-instance memory",
-  { skip: "PINNED BUG (spec 06): the intake rate limiter is a per-instance Map; on multi-instance serverless it resets constantly and enforces almost nothing. Unskip with docs/impl-specs/06-intake-rate-limit.md." },
   () => {
     assert.doesNotMatch(intakeRoute, /new Map<string/);
     assert.match(intakeRoute, /setup_requests|rate_limit/i);

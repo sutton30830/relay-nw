@@ -350,6 +350,12 @@ create table if not exists public.setup_requests (
 create index if not exists setup_requests_created_at_idx
   on public.setup_requests (created_at desc);
 
+alter table public.setup_requests add column if not exists submitter_hash text;
+
+create index if not exists setup_requests_submitter_created_at_idx
+  on public.setup_requests (submitter_hash, created_at desc)
+  where submitter_hash is not null;
+
 alter table public.setup_requests enable row level security;
 
 -- This MVP uses the Supabase service role key from server-only Next.js routes.

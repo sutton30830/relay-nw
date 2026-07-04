@@ -1,15 +1,19 @@
+import { createHash } from "node:crypto";
 import { redirect } from "next/navigation";
 import { notifyAdminNewSetupRequest } from "@/lib/email";
-import { createSetupRequest, getDefaultAccountConfig } from "@/lib/supabase";
+import {
+  countRecentSetupRequests,
+  countSetupRequestsSince,
+  createSetupRequest,
+  getDefaultAccountConfig,
+} from "@/lib/supabase";
 
 const MAX_FIELD_LENGTH = 200;
 const MAX_NOTES_LENGTH = 2000;
 const MAX_SUBMISSIONS_PER_WINDOW = 5;
+const MAX_GLOBAL_SUBMISSIONS_PER_WINDOW = 30;
 const SUBMISSION_WINDOW_MS = 60 * 60 * 1000;
 const BUSINESS_TYPES = new Set(["HVAC", "Plumbing", "Electrical", "Other"]);
-
-const intakeSubmissions = new Map<string, { count: number; resetAt: number }>();
-let lastSubmissionPruneAt = 0;
 
 type SetupSubmission = {
   businessName: string;
@@ -50,43 +54,10 @@ function requestIp(request: Request) {
   return request.headers.get("x-real-ip") ?? "unknown";
 }
 
-function currentSubmissionBucket(ip: string) {
-  const now = Date.now();
-  const existing = intakeSubmissions.get(ip);
-
-  if (!existing || existing.resetAt <= now) {
-    return { count: 0, resetAt: now + SUBMISSION_WINDOW_MS };
-  }
-
-  return existing;
-}
-
-function pruneExpiredSubmissionBuckets() {
-  const now = Date.now();
-
-  if (now - lastSubmissionPruneAt < SUBMISSION_WINDOW_MS) {
-    return;
-  }
-
-  lastSubmissionPruneAt = now;
-
-  for (const [ip, bucket] of intakeSubmissions.entries()) {
-    if (bucket.resetAt <= now) {
-      intakeSubmissions.delete(ip);
-    }
-  }
-}
-
-function isRateLimited(ip: string) {
-  return currentSubmissionBucket(ip).count >= MAX_SUBMISSIONS_PER_WINDOW;
-}
-
-function recordSubmissionAttempt(ip: string) {
-  const bucket = currentSubmissionBucket(ip);
-  intakeSubmissions.set(ip, {
-    count: bucket.count + 1,
-    resetAt: bucket.resetAt,
-  });
+function submitterHash(ip: string) {
+  return createHash("sha256")
+    .update(`${process.env.INTAKE_RATE_LIMIT_SALT ?? "relay-nw-intake"}:${ip}`)
+    .digest("hex");
 }
 
 function parseSetupForm(formData: FormData): SetupSubmission {
@@ -154,16 +125,27 @@ function validateSetupSubmission(submission: SetupSubmission) {
 }
 
 export async function POST(request: Request) {
-  pruneExpiredSubmissionBuckets();
-
   const ip = requestIp(request);
+  const hash = submitterHash(ip);
+  const hourAgo = new Date(Date.now() - SUBMISSION_WINDOW_MS).toISOString();
 
-  if (isRateLimited(ip)) {
-    console.warn("Relay NW setup request rate limited", { ip });
-    redirect("/intake?rate_limited=1");
+  // Fail OPEN on limiter errors: a Supabase blip must not turn away a real
+  // prospect; the per-IP cap is an abuse control, not a security boundary.
+  let overLimit = false;
+  try {
+    const [perIp, global] = await Promise.all([
+      countRecentSetupRequests({ submitterHash: hash, since: hourAgo }),
+      countSetupRequestsSince(hourAgo),
+    ]);
+    overLimit = perIp >= MAX_SUBMISSIONS_PER_WINDOW || global >= MAX_GLOBAL_SUBMISSIONS_PER_WINDOW;
+  } catch (error) {
+    console.error("Intake rate-limit check failed; allowing submission", { error });
   }
 
-  recordSubmissionAttempt(ip);
+  if (overLimit) {
+    console.warn("Relay NW setup request rate limited", { ipHash: hash.slice(0, 12) });
+    redirect("/intake?rate_limited=1");
+  }
 
   const formData = await request.formData();
   const submission = parseSetupForm(formData);
@@ -185,6 +167,7 @@ export async function POST(request: Request) {
       name: setupLead.leadName,
       phone: setupLead.ownerPhone,
       message: setupLead.message,
+      submitterHash: hash,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown setup request error";

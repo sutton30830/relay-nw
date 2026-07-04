@@ -98,6 +98,16 @@ Update after Spec 05 implementation (July 4, 2026):
 - New regression suite: `tests/alert-backstop.test.mjs`.
 - No schema changes; `supabase.sql` does not need to be re-run for this spec.
 
+Update after Spec 06 implementation (July 4, 2026):
+- Implemented durable public intake rate limiting for `docs/impl-specs/06-intake-rate-limit.md`.
+- `setup_requests` now stores a salted `submitter_hash` and has a partial `(submitter_hash, created_at desc)` index for rate-limit counts.
+- `app/api/intake/route.ts` no longer keeps per-instance `Map` state; it checks per-IP and global one-hour counts in Postgres before parsing/storing valid submissions.
+- Raw IPs are not written to the database; only a SHA-256 hash is passed into `createSetupRequest`.
+- Limiter lookup failures fail open and log, so a Supabase blip does not reject a real prospect.
+- New regression suite: `tests/intake-rate-limit.test.mjs`.
+- The Spec 06 pinned test in `tests/compliance-gaps.pinned.test.mjs` is now unskipped and passing.
+- Schema change: re-run `supabase.sql` before deploying the code so `setup_requests.submitter_hash` and `setup_requests_submitter_created_at_idx` exist. The statements are idempotent and can be re-run safely.
+
 Recommended launch posture:
 - Personally onboard each business.
 - Run one real end-to-end test per business.
