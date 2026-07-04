@@ -117,6 +117,67 @@ export async function updateLeadVoicemailTranscription(input: {
   throwIfSupabaseError(error);
 }
 
+// Atomically claims a lead for transcription. Returns true only for the single
+// caller that flipped the row into "processing"; every concurrent caller gets
+// false. A lead is claimable when it is not currently processing, or its
+// processing claim is stale (older than staleBefore).
+export async function claimVoicemailTranscription(input: {
+  accountId: string;
+  id: string;
+  staleBefore: string;
+}) {
+  const accountId = assertAccountId(input.accountId, "claimVoicemailTranscription");
+
+  if (shouldSkipDatabaseWrite("voicemail transcription claim", input)) {
+    return true;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("leads")
+    .update({
+      voicemail_transcription_status: "processing",
+      voicemail_transcription_error: null,
+      voicemail_transcribed_at: new Date().toISOString(),
+    })
+    .eq("id", input.id)
+    .eq("account_id", accountId)
+    .or(
+      `voicemail_transcription_status.is.null,` +
+        `voicemail_transcription_status.in.(pending,failed),` +
+        `and(voicemail_transcription_status.eq.processing,voicemail_transcribed_at.lt.${input.staleBefore})`,
+    )
+    .select("id")
+    .maybeSingle();
+
+  throwIfSupabaseError(error);
+
+  return Boolean(data?.id);
+}
+
+export async function listLeadsNeedingTranscriptionRetry(limit = 10) {
+  // Cross-tenant by design: this is an operator cron, and transcribeLeadVoicemail
+  // re-scopes every write by the account_id returned here.
+  const staleBefore = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const createdSince = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabaseAdmin
+    .from("leads")
+    .select("id, account_id, voicemail_transcription_status, voicemail_transcribed_at")
+    .not("recording_sid", "is", null)
+    .not("voicemail_transcription_error", "ilike", "Twilio recording download failed with 404%")
+    .is("deleted_at", null)
+    .or(
+      `voicemail_transcription_status.in.(pending,failed),` +
+        `and(voicemail_transcription_status.eq.processing,voicemail_transcribed_at.lt.${staleBefore})`,
+    )
+    .gte("created_at", createdSince)
+    .order("created_at", { ascending: true })
+    .limit(limit);
+
+  throwIfSupabaseError(error);
+
+  return (data ?? []) as Array<{ id: string; account_id: string }>;
+}
+
 export async function updateLeadRecordingByCallSid(input: {
   accountId: string;
   callSid: string;

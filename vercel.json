@@ -3,6 +3,10 @@
     {
       "path": "/api/digest/weekly",
       "schedule": "0 15 * * 1"
+    },
+    {
+      "path": "/api/cron/retry-transcriptions",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

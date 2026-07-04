@@ -426,6 +426,18 @@ function makeVoicemailMocks(state) {
           : { level: "normal", reason: null },
     },
     "@/lib/supabase": {
+      claimVoicemailTranscription: async (input) => {
+        const claimed = state.claimResult ?? true;
+        if (claimed) {
+          state.transcriptionUpdates.push({
+            accountId: input.accountId,
+            id: input.id,
+            status: "processing",
+            error: null,
+          });
+        }
+        return claimed;
+      },
       getAccountConfigByAccountId: async () => ACCOUNT,
       getLeadForVoicemailTranscription: async () => state.lead,
       updateLeadVoicemailTranscription: async (input) => {
@@ -485,6 +497,7 @@ test("fresh 'processing' lead is locked: concurrent run is rejected", async () =
     voicemail_transcription_status: "processing",
     voicemail_transcribed_at: new Date().toISOString(),
   });
+  state.claimResult = false;
   const { transcribeLeadVoicemail } = await loadTsModule("lib/voicemail-ai.ts", makeVoicemailMocks(state));
 
   await assert.rejects(() => transcribeLeadVoicemail("lead-vm-2", "acct-1"), /already generating/);

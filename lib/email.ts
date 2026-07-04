@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import { Resend } from "resend";
 import { env } from "@/lib/env";
 import { getOwnerNotificationEmail, type AccountRuntimeConfig } from "@/lib/supabase";
@@ -70,6 +71,52 @@ function emailHtml(input: {
 </html>`;
 }
 
+function errorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return "Unknown email error";
+  }
+}
+
+function captureEmailBackstopFailure(input: { subject: string; tag: string }, error: unknown) {
+  try {
+    Sentry.captureMessage("Email alert delivery failed", {
+      level: "error",
+      tags: { tag: input.tag },
+      extra: { subject: input.subject, error: errorMessage(error) },
+    });
+  } catch (sentryError) {
+    console.error("Sentry email backstop capture failed", {
+      tag: input.tag,
+      error: errorMessage(sentryError),
+    });
+  }
+}
+
+function captureSkippedAdminBackstop(input: { to: string | null | undefined; tag: string }) {
+  try {
+    Sentry.captureMessage("Admin alert skipped: email backstop not configured", {
+      level: "warning",
+      tags: { tag: input.tag },
+      extra: { hasResendApiKey: Boolean(env.resendApiKey), hasRecipient: Boolean(input.to) },
+    });
+  } catch (sentryError) {
+    console.error("Sentry skipped-admin-alert capture failed", {
+      tag: input.tag,
+      error: errorMessage(sentryError),
+    });
+  }
+}
+
 async function sendEmail(input: {
   to: string | null | undefined;
   subject: string;
@@ -85,6 +132,11 @@ async function sendEmail(input: {
       hasResendApiKey: Boolean(env.resendApiKey),
       hasRecipient: Boolean(input.to),
     });
+
+    if (input.tag === "admin_operational_issue") {
+      captureSkippedAdminBackstop(input);
+    }
+
     return { sent: false, skipped: true };
   }
 
@@ -99,16 +151,19 @@ async function sendEmail(input: {
 
     if (error) {
       console.error("Email notification failed", { tag: input.tag, error });
+      captureEmailBackstopFailure(input, error);
       return { sent: false, skipped: false, error };
     }
 
     console.info("Email notification sent", { tag: input.tag, id: data?.id });
     return { sent: true, skipped: false, id: data?.id };
   } catch (error) {
+    const message = errorMessage(error);
     console.error("Email notification threw", {
       tag: input.tag,
-      error: error instanceof Error ? error.message : "Unknown email error",
+      error: message,
     });
+    captureEmailBackstopFailure(input, message);
     return { sent: false, skipped: false, error };
   }
 }

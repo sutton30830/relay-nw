@@ -62,7 +62,6 @@ test(
 
 test(
   "voicemail transcription claims the lead atomically before processing",
-  { skip: "PINNED BUG (spec 04): the processing claim is read-then-write; concurrent auto + manual triggers can both transcribe (double OpenAI spend, duplicate urgent owner SMS). Unskip with docs/impl-specs/04-transcription-durability.md." },
   () => {
     assert.match(voicemailAi, /claimVoicemailTranscription/);
   },

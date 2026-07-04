@@ -80,6 +80,24 @@ Update after Spec 03 implementation (July 4, 2026):
 - The Spec 03 pinned test in `tests/compliance-gaps.pinned.test.mjs` is now unskipped and passing.
 - No schema changes; `supabase.sql` does not need to be re-run for this spec.
 
+Update after Spec 04 implementation (July 4, 2026):
+- Implemented atomic voicemail transcription claiming and retry safety net for `docs/impl-specs/04-transcription-durability.md`.
+- `claimVoicemailTranscription` now flips a lead into `processing` with a single account-scoped conditional `UPDATE`, so concurrent auto/manual attempts collapse to one OpenAI chain.
+- `transcribeLeadVoicemail` keeps the completed-summary shortcut free, then requires the atomic claim before downloading audio or calling OpenAI.
+- Added `/api/cron/retry-transcriptions`, scheduled every 15 minutes in `vercel.json`, to retry failed or stale-processing voicemail summaries from the last 48 hours.
+- The retry cron uses `CRON_SECRET` auth, continues through per-lead failures, and treats active claim contention as skipped work.
+- New regression suite: `tests/transcription-claim.test.mjs`.
+- The Spec 04 pinned test in `tests/compliance-gaps.pinned.test.mjs` is now unskipped and passing.
+- No schema changes; `supabase.sql` does not need to be re-run for this spec.
+
+Update after Spec 05 implementation (July 4, 2026):
+- Implemented Sentry backstop capture for email alert delivery failures in `lib/email.ts`.
+- Resend API errors and thrown Resend exceptions now emit `Email alert delivery failed` Sentry events tagged with the email notification tag.
+- Skipped `admin_operational_issue` emails now emit a Sentry warning when the email backstop is not configured; skipped owner notifications remain quiet to avoid alert noise during onboarding.
+- Sentry capture itself is wrapped and cannot throw back into webhook or notification paths.
+- New regression suite: `tests/alert-backstop.test.mjs`.
+- No schema changes; `supabase.sql` does not need to be re-run for this spec.
+
 Recommended launch posture:
 - Personally onboard each business.
 - Run one real end-to-end test per business.

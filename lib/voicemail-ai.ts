@@ -1,6 +1,7 @@
 import { env } from "@/lib/env";
 import { classifyPriority, type PriorityClassification } from "@/lib/priority";
 import {
+  claimVoicemailTranscription,
   getAccountConfigByAccountId,
   getLeadForVoicemailTranscription,
   updateLeadPriority,
@@ -298,25 +299,6 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
     throw new Error("Lead does not have a voicemail recording.");
   }
 
-  if (lead.voicemail_transcription_status === "processing") {
-    // A run that started recently is genuinely in flight. But if the process crashed
-    // between marking "processing" and finishing (e.g. serverless timeout), the lead
-    // would otherwise be locked in "Generating summary…" forever. Treat old
-    // "processing" rows as stale and take over.
-    const startedAt = lead.voicemail_transcribed_at ? Date.parse(lead.voicemail_transcribed_at) : NaN;
-    const isStale = !Number.isFinite(startedAt) || Date.now() - startedAt > STALE_PROCESSING_MS;
-
-    if (!isStale) {
-      throw new Error("Voicemail summary is already generating.");
-    }
-
-    console.warn("Taking over stale voicemail transcription", {
-      leadId,
-      accountId,
-      staleSince: lead.voicemail_transcribed_at,
-    });
-  }
-
   if (lead.voicemail_summary && lead.voicemail_transcript) {
     return {
       transcript: lead.voicemail_transcript,
@@ -325,12 +307,12 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
     };
   }
 
-  await updateLeadVoicemailTranscription({
-    accountId,
-    id: leadId,
-    status: "processing",
-    error: null,
-  });
+  const staleBefore = new Date(Date.now() - STALE_PROCESSING_MS).toISOString();
+  const claimed = await claimVoicemailTranscription({ accountId, id: leadId, staleBefore });
+
+  if (!claimed) {
+    throw new Error("Voicemail summary is already generating.");
+  }
 
   try {
     const audio = await fetchRecordingAudio(lead.recording_sid);
