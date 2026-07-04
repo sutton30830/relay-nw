@@ -7,7 +7,7 @@ import { Icon } from "@/components/icon";
 import type { InboundMessage, Lead, LeadStatus, OutboundMessage, ReplyPriorityOverride } from "@/lib/supabase";
 import { patchLead, requestVoicemailSummary, sendLeadReply } from "../_api";
 import { QUICK_REPLIES } from "../_constants";
-import { formatDuration, formatPhone, getLeadPriority, initials, isBookedLead } from "../_utils";
+import { formatDuration, formatPhone, getLeadPriority, initials, isBookedLead, sourceLabel } from "../_utils";
 import { BookedToggle, BookedValueInput, PriorityControl, StatusControl } from "../_components/controls";
 
 type ThreadItem =
@@ -71,6 +71,11 @@ function formatTime(iso: string) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function leadEventLabel(lead: Lead) {
+  const label = sourceLabel(lead.source);
+  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 export function ConversationView({
@@ -359,7 +364,8 @@ export function ConversationView({
           item.kind === "call" ? (
             <div key={`call-${item.lead.id}`} className="convo__event">
               <p className="convo__event-line" suppressHydrationWarning>
-                <Icon name="phone" size={12} /> Missed call · {formatTime(item.created_at)}
+                <Icon name={item.lead.source === "missed_call" ? "phone" : "message"} size={12} />{" "}
+                {leadEventLabel(item.lead)} · {formatTime(item.created_at)}
               </p>
               {item.lead.recording_sid ? (
                 <div className="convo__msg convo__msg--in convo__vm">

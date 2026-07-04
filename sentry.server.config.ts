@@ -1,17 +1,22 @@
-async function initSentry() {
-  const dsn = process.env.SENTRY_DSN;
+// This file configures the initialization of Sentry on the server.
+// The config you add here will be used whenever the server handles a request.
+// https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
-  if (!dsn) {
-    return;
-  }
+import * as Sentry from "@sentry/nextjs";
 
-  const Sentry = await import("@sentry/nextjs");
-  Sentry.init({
-    dsn,
-    tracesSampleRate: 0,
-  });
-}
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
 
-void initSentry();
+  // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
+  tracesSampleRate: 1,
 
-export {};
+  // Enable logs to be sent to Sentry
+  enableLogs: true,
+
+  dataCollection: {
+    // To disable sending user data and HTTP bodies, uncomment the lines below. For more info visit:
+    // https://docs.sentry.io/platforms/javascript/guides/nextjs/configuration/options/#dataCollection
+    // userInfo: false,
+    // httpBodies: [],
+  },
+});
