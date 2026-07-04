@@ -1508,6 +1508,93 @@ code {
   padding: 0 3px;
 }
 
+.page-head__actions {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+}
+
+.line-health {
+  position: relative;
+  z-index: 12;
+}
+
+.line-health__summary {
+  display: inline-flex;
+  min-height: 42px;
+  cursor: pointer;
+  list-style: none;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--panel) 82%, white);
+  color: var(--ink-2);
+  padding: 0 12px;
+  font-size: 13.5px;
+  font-weight: 850;
+  box-shadow: var(--shadow-sm);
+}
+
+.line-health__summary::-webkit-details-marker {
+  display: none;
+}
+
+.line-health__summary::marker {
+  content: "";
+}
+
+.line-health__summary strong {
+  border-radius: 999px;
+  background: var(--paper-2);
+  color: var(--ink-3);
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.line-health--issue .line-health__summary {
+  border-color: color-mix(in oklab, var(--danger) 42%, var(--line));
+  color: var(--danger);
+}
+
+.line-health--issue .line-health__summary strong {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.line-health--pending .line-health__summary strong {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.line-health--healthy .line-health__summary strong {
+  background: var(--good-soft);
+  color: var(--good);
+}
+
+.line-health__panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(760px, calc(100vw - 32px));
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  padding: 12px;
+  box-shadow: var(--shadow);
+}
+
+.line-health__panel .forwarding-health,
+.line-health__panel .sms-health {
+  margin-bottom: 10px;
+}
+
+.line-health__panel .forwarding-health:last-child,
+.line-health__panel .sms-health:last-child {
+  margin-bottom: 0;
+}
+
 .pulse-strip {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-bottom: 24px;
@@ -3253,10 +3340,37 @@ code {
     padding: 24px 0 18px;
   }
 
+  .page-head__actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
   .page-head__title {
     margin-top: 4px;
     font-size: 31px;
     line-height: 1.08;
+  }
+
+  .line-health {
+    width: 100%;
+  }
+
+  .line-health__summary {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .line-health__summary span {
+    margin-right: auto;
+  }
+
+  .line-health__panel {
+    position: static;
+    width: 100%;
+    margin-top: 8px;
+    border-radius: 12px;
+    padding: 10px;
+    box-shadow: none;
   }
 
   .revenue-summary {

@@ -23,6 +23,22 @@ export function LeadsList({
 }) {
   const router = useRouter();
   const inbox = useLeadsInbox(leads);
+  const lineHealthTone =
+    forwardingHealth.displayStatus === "failed"
+      ? "issue"
+      : forwardingHealth.displayStatus === "pending"
+        ? "pending"
+        : forwardingHealth.displayStatus === "passed"
+          ? "healthy"
+          : "unknown";
+  const lineHealthLabel =
+    forwardingHealth.displayStatus === "failed"
+      ? "Issue"
+      : forwardingHealth.displayStatus === "pending"
+        ? "Listening"
+        : forwardingHealth.displayStatus === "passed"
+          ? "Healthy"
+          : forwardingHealth.statusLabel;
 
   return (
     <>
@@ -84,30 +100,23 @@ export function LeadsList({
             )}
           </h2>
         </div>
-      </section>
-
-      <details
-        className="panel"
-        style={{ marginBottom: 16, padding: "10px 14px" }}
-        open={forwardingHealth.displayStatus === "failed"}
-      >
-        <summary style={{ cursor: "pointer", fontSize: 13.5 }}>
-          <Icon
-            name={forwardingHealth.displayStatus === "failed" ? "alertTriangle" : "check"}
-            size={13}
-          />{" "}
-          Line health{" "}
-          <span style={{ color: "var(--ink-4)" }}>
-            — {forwardingHealth.displayStatus === "failed"
-              ? "forwarding problem detected"
-              : forwardingHealth.statusLabel}
-          </span>
-        </summary>
-        <div style={{ marginTop: 12 }}>
-          <ForwardingHealthCard initialSummary={forwardingHealth} />
-          <SmsHealthCard />
+        <div className="page-head__actions">
+          <details className={`line-health line-health--${lineHealthTone}`}>
+            <summary className="line-health__summary">
+              <Icon
+                name={forwardingHealth.displayStatus === "failed" ? "alertTriangle" : "check"}
+                size={14}
+              />
+              <span>Line health</span>
+              <strong>{lineHealthLabel}</strong>
+            </summary>
+            <div className="line-health__panel">
+              <ForwardingHealthCard initialSummary={forwardingHealth} />
+              <SmsHealthCard />
+            </div>
+          </details>
         </div>
-      </details>
+      </section>
 
       <nav className="filters clean-scroll" aria-label="Filter leads">
         {FILTERS.map((item) => {
