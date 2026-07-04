@@ -6,6 +6,8 @@ import {
   listActiveAccountIds,
 } from "@/lib/supabase";
 
+export const maxDuration = 300;
+
 // Vercel cron hits this weekly (see vercel.json). Vercel automatically sends
 // `Authorization: Bearer ${CRON_SECRET}` when the CRON_SECRET env var is set.
 export async function GET(request: Request) {
