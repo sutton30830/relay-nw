@@ -5,6 +5,7 @@ import {
   assertTenantAccount,
   createInboundMessageIfNew,
   createMessageIfNew,
+  clearOptOut,
   logWebhookEvent,
   recordOptOut,
   resolveAccountByTwilioNumber,
@@ -21,10 +22,12 @@ import {
   validateTwilioWebhook,
 } from "@/lib/twilio";
 import { handleUnresolvedTwilioAccount } from "@/lib/twilio/unresolved-account";
-import { emptyTwiml, twimlResponse } from "@/lib/twiml";
+import { emptyTwiml, helpReplyTwiml, twimlResponse } from "@/lib/twiml";
 
 const INBOUND_SMS_WEBHOOK_SOURCE = "twilio_inbound_sms";
-const OPT_OUT_WORDS = new Set(["STOP", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"]);
+const OPT_OUT_WORDS = new Set(["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"]);
+const OPT_IN_WORDS = new Set(["START", "UNSTOP", "YES"]);
+const HELP_WORDS = new Set(["HELP", "INFO"]);
 
 function normalizeBody(value: string) {
   return value.trim().toUpperCase();
@@ -42,6 +45,8 @@ function parseInboundSmsPayload(payload: Record<string, string>) {
     to,
     body,
     isOptOut: Boolean(from) && OPT_OUT_WORDS.has(normalizeBody(body)),
+    isOptIn: Boolean(from) && OPT_IN_WORDS.has(normalizeBody(body)),
+    isHelp: Boolean(from) && HELP_WORDS.has(normalizeBody(body)),
     shouldNotifyOwner: Boolean(from && body),
   };
 }
@@ -50,6 +55,8 @@ function webhookEventNote(input: {
   matchedUrl: string | null;
   action:
     | "recorded_opt_out"
+    | "recorded_opt_in"
+    | "answered_help"
     | "notified_owner"
     | "forwarded_to_owner"
     | "sms_disabled"
@@ -67,6 +74,14 @@ function webhookEventNote(input: {
 
   if (input.action === "recorded_opt_out") {
     notes.push("Recorded opt-out.");
+  }
+
+  if (input.action === "recorded_opt_in") {
+    notes.push("Recorded re-opt-in (START).");
+  }
+
+  if (input.action === "answered_help") {
+    notes.push("Answered HELP with business info.");
   }
 
   if (input.action === "forwarded_to_owner") {
@@ -132,6 +147,15 @@ async function handleInboundSms(
     return "ignored_owner_message" as const;
   }
 
+  if (input.isOptIn) {
+    await clearOptOut(input.from, account.accountId);
+    return "recorded_opt_in" as const;
+  }
+
+  if (input.isHelp) {
+    return "answered_help" as const;
+  }
+
   if (input.isOptOut) {
     await recordOptOut(input.from, account.accountId);
     await notifyOwnerOptOut({
@@ -181,7 +205,7 @@ export async function POST(request: Request) {
   const message = parseInboundSmsPayload(payload);
   const accountResolution = await resolveAccountSafely(() => resolveAccountByTwilioNumber(message.to || payload.To), "inbound SMS");
   const resolvedAccount = accountResolution.status === "resolved" ? accountResolution.account : null;
-  const xml = emptyTwiml();
+  let responseXml = emptyTwiml();
 
   console.info("Twilio inbound SMS webhook received", {
     correlationId,
@@ -191,6 +215,8 @@ export async function POST(request: Request) {
     ...requestSummary,
     hasBody: Boolean(message.body),
     isOptOut: message.isOptOut,
+    isOptIn: message.isOptIn,
+    isHelp: message.isHelp,
   });
 
   if (validation.shouldReject) {
@@ -227,7 +253,7 @@ export async function POST(request: Request) {
       label: "inbound SMS",
       payload,
       correlationId,
-      responseBody: xml,
+      responseBody: responseXml,
     });
   }
 
@@ -235,6 +261,7 @@ export async function POST(request: Request) {
 
   try {
     const action = await handleInboundSms(account, message, correlationId);
+    responseXml = action === "answered_help" ? helpReplyTwiml({ businessName: account.businessName }) : emptyTwiml();
 
     await logWebhookEvent({
       accountId: account.accountId,
@@ -242,7 +269,7 @@ export async function POST(request: Request) {
       correlationId,
       payload,
       responseStatus: 200,
-      responseBody: xml,
+      responseBody: responseXml,
       error: webhookEventNote({
         matchedUrl: validation.matchedUrl,
         action,
@@ -257,7 +284,7 @@ export async function POST(request: Request) {
       correlationId,
       payload,
       responseStatus: 200,
-      responseBody: xml,
+      responseBody: responseXml,
       error: errorMessage,
     });
 
@@ -274,5 +301,5 @@ export async function POST(request: Request) {
     });
   }
 
-  return twimlResponse(xml);
+  return twimlResponse(responseXml);
 }

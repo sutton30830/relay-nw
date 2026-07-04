@@ -43,6 +43,24 @@ Update after pre-customer confidence pass (June 2026):
 - `supabase.sql` drops the redundant global unique indexes on `leads.call_sid` / `leads.twilio_message_sid` (idempotency is per-account; the account-scoped unique indexes remain) and adds a non-unique `leads_call_sid_idx`. Re-run `supabase.sql` to apply.
 - Removed the dead `app/api/leads-login` stub (`leads-logout` remains as a live alias for `/api/auth/logout`).
 
+Update after production-readiness audit (July 3, 2026 — audit only, no fixes; specs handed to implementation agent):
+- Full audit of tenant isolation, SMS compliance live path, serverless concurrency/durability, silent-failure observability, and scale ceiling. Deliverables in `docs/impl-specs/` (executive verdict `00`, workstream specs `01`–`07`, residual-risk register `99`).
+- Verified sound, with evidence: account scoping on every tenant helper and authed route (`assertAccountId` throughout `lib/supabase/*`; behavioral isolation tests); DB-constraint idempotency for leads/inbound_messages/messages (partial unique indexes + `23505` handling); deterministic concurrent-missed-call winner; fail-closed cooldown/opt-out on both automatic and manual send paths; Twilio signature validation on all five webhook routes with the production unsigned-override guard; unresolved-account webhooks make zero tenant writes; `envAccountConfig()` fallback is dead in production tenant paths (resolvers return unresolved; `assertTenantAccount` throws on null accountId); viewer read-only enforcement; magic-link-only auth with `shouldCreateUser: false` and escaped email lookup.
+- Found (specs written, pinned by skipped tests in `tests/compliance-gaps.pinned.test.mjs`): no START/UNSTOP re-opt-in (opt_outs rows are permanent) + STOPALL unrecognized + no app-side HELP response (spec 01, before customer #1); A2P gating is display-only — `sms_enabled` can be enabled without an approved campaign (spec 02); dial-status/recording webhooks resolve only by CallSid, so a failed voice-webhook calls upsert means the caller is never texted (spec 03); voicemail transcription has a non-atomic processing claim and no automatic retry after instance death (spec 04); failed/skipped alert emails are themselves silent — no Sentry escalation (spec 05); intake rate limiting is per-instance memory (spec 06); recording playback would send Twilio credentials to whatever URL is stored on the lead row, and the RLS service-role-only posture is implicit with zero policies (spec 07).
+- Scale ceiling stated: safe at 1-5 accounts / tens of missed calls per day each; first breaks are inbox pagination, then the sequential weekly-digest cron (~15-25 accounts), then the single-Twilio-account assumption.
+- Could not verify in sandbox (manual checks listed in the executive verdict): `npm run build`, Twilio console default STOP handling, Supabase Auth signup settings, production env completeness (`CRON_SECRET`, `RESEND_API_KEY`, `ADMIN_ALERT_EMAIL`, `SENTRY_DSN`), and whether production has run the current `supabase.sql`.
+- Test suite after audit: 70 pass, 7 pinned-skip, 0 fail.
+
+Update after Spec 01 implementation (July 4, 2026):
+- Implemented app-side inbound SMS lifecycle compliance for `docs/impl-specs/01-sms-opt-out-lifecycle.md`.
+- `STOPALL` now records an opt-out alongside `STOP`, `UNSUBSCRIBE`, `CANCEL`, `END`, and `QUIT`.
+- `START`, `UNSTOP`, and `YES` now clear the account-scoped `opt_outs` row, allowing the app-level suppression state to reconverge with Twilio's carrier-level re-opt-in state.
+- `HELP` and `INFO` now return app-side TwiML containing the account business name, message/data-rate language, variable frequency language, and STOP opt-out language; these messages are not forwarded to the owner.
+- Owner-originated messages still short-circuit before keyword handling, preserving owner operational SMS behavior.
+- New regression suite: `tests/sms-opt-lifecycle.test.mjs`.
+- The three Spec 01 pinned tests in `tests/compliance-gaps.pinned.test.mjs` are now unskipped and passing.
+- No schema changes; `supabase.sql` does not need to be re-run for this spec.
+
 Recommended launch posture:
 - Personally onboard each business.
 - Run one real end-to-end test per business.

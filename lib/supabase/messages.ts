@@ -178,6 +178,24 @@ export async function recordOptOut(phone: string, inputAccountId: string) {
   }
 }
 
+export async function clearOptOut(phone: string, inputAccountId: string) {
+  const accountId = assertAccountId(inputAccountId, "clearOptOut");
+
+  if (shouldSkipDatabaseWrite("opt-out delete", { phone, accountId })) {
+    return;
+  }
+
+  const { error } = await supabaseAdmin
+    .from("opt_outs")
+    .delete()
+    .eq("phone", phone)
+    .eq("account_id", accountId);
+
+  if (error) {
+    throw error;
+  }
+}
+
 export async function createInboundMessageIfNew(input: {
   accountId: string;
   messageSid: string;

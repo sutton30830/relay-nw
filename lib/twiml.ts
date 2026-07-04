@@ -35,6 +35,15 @@ export function emptyTwiml() {
 <Response></Response>`;
 }
 
+export function helpReplyTwiml(input: { businessName: string }) {
+  const body = `${input.businessName} via Relay NW: we text you back when we miss your call. Msg&data rates may apply. Msg frequency varies. Reply STOP to opt out.`;
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Message>${escapeXml(body)}</Message>
+</Response>`;
+}
+
 const defaultForwardingMessage =
   "Thanks for calling. Sorry we missed you. We will text you shortly. Please leave a quick recorded message after the tone.";
 
