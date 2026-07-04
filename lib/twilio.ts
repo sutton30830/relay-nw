@@ -85,6 +85,17 @@ export function missedCallSmsBodyForAccount(config: Pick<
   });
 }
 
+export function isTrustedTwilioMediaUrl(value: string | null | undefined): boolean {
+  if (!value) return false;
+
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname === "api.twilio.com";
+  } catch {
+    return false;
+  }
+}
+
 export function validateTwilioRequest(input: {
   urls: string[];
   params: Record<string, string>;

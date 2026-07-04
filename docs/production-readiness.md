@@ -108,6 +108,15 @@ Update after Spec 06 implementation (July 4, 2026):
 - The Spec 06 pinned test in `tests/compliance-gaps.pinned.test.mjs` is now unskipped and passing.
 - Schema change: re-run `supabase.sql` before deploying the code so `setup_requests.submitter_hash` and `setup_requests_submitter_created_at_idx` exist. The statements are idempotent and can be re-run safely.
 
+Update after Spec 07 implementation (July 4, 2026):
+- Implemented defense-in-depth recording media allowlisting for `docs/impl-specs/07-defense-in-depth.md`.
+- Recording playback now only uses stored `recording_url` values when they are `https://api.twilio.com`; untrusted stored URLs fall back to the canonical SID-derived Twilio URL and log a warning.
+- Voicemail transcription download remains unchanged because it already derives the media URL from the validated Twilio recording SID.
+- `supabase.sql` now declares the service-role-only RLS posture with restrictive `deny_client_access` policies for anon/authenticated roles on every RLS-enabled table.
+- New regression suite: `tests/defense-in-depth.test.mjs`.
+- Extended `tests/tenant-contract.test.mjs` so any RLS-enabled table missing the deny policy fails tests.
+- Schema change: re-run `supabase.sql` before deploying the code so the explicit deny policies are present. The drop/create policy blocks are idempotent and safe to re-run.
+
 Recommended launch posture:
 - Personally onboard each business.
 - Run one real end-to-end test per business.

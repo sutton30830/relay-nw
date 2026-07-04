@@ -358,5 +358,66 @@ create index if not exists setup_requests_submitter_created_at_idx
 
 alter table public.setup_requests enable row level security;
 
--- This MVP uses the Supabase service role key from server-only Next.js routes.
--- No browser/client table access is needed, so no public RLS policies are added.
+-- Service-role-only posture, made explicit. The app talks to these tables solely
+-- through the service-role key from server routes. These restrictive deny-all
+-- policies for client roles are a tripwire: if someone later adds a permissive
+-- policy or flips RLS off in the dashboard, drift is visible right here in SQL.
+drop policy if exists deny_client_access on public.accounts;
+create policy deny_client_access on public.accounts
+  as restrictive for all to anon, authenticated
+  using (false) with check (false);
+
+drop policy if exists deny_client_access on public.account_settings;
+create policy deny_client_access on public.account_settings
+  as restrictive for all to anon, authenticated
+  using (false) with check (false);
+
+drop policy if exists deny_client_access on public.account_phone_numbers;
+create policy deny_client_access on public.account_phone_numbers
+  as restrictive for all to anon, authenticated
+  using (false) with check (false);
+
+drop policy if exists deny_client_access on public.account_users;
+create policy deny_client_access on public.account_users
+  as restrictive for all to anon, authenticated
+  using (false) with check (false);
+
+drop policy if exists deny_client_access on public.leads;
+create policy deny_client_access on public.leads
+  as restrictive for all to anon, authenticated
+  using (false) with check (false);
+
+drop policy if exists deny_client_access on public.webhook_events;
+create policy deny_client_access on public.webhook_events
+  as restrictive for all to anon, authenticated
+  using (false) with check (false);
+
+drop policy if exists deny_client_access on public.opt_outs;
+create policy deny_client_access on public.opt_outs
+  as restrictive for all to anon, authenticated
+  using (false) with check (false);
+
+drop policy if exists deny_client_access on public.inbound_messages;
+create policy deny_client_access on public.inbound_messages
+  as restrictive for all to anon, authenticated
+  using (false) with check (false);
+
+drop policy if exists deny_client_access on public.calls;
+create policy deny_client_access on public.calls
+  as restrictive for all to anon, authenticated
+  using (false) with check (false);
+
+drop policy if exists deny_client_access on public.messages;
+create policy deny_client_access on public.messages
+  as restrictive for all to anon, authenticated
+  using (false) with check (false);
+
+drop policy if exists deny_client_access on public.forwarding_health_checks;
+create policy deny_client_access on public.forwarding_health_checks
+  as restrictive for all to anon, authenticated
+  using (false) with check (false);
+
+drop policy if exists deny_client_access on public.setup_requests;
+create policy deny_client_access on public.setup_requests
+  as restrictive for all to anon, authenticated
+  using (false) with check (false);

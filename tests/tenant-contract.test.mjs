@@ -212,3 +212,28 @@ test("webhook sanitizer records metadata instead of raw SMS body", () => {
   assert.match(sql, /payload jsonb not null default '\{\}'::jsonb/);
   assert.doesNotMatch(sql, /raw_payload/);
 });
+
+test("RLS-enabled tables declare restrictive deny-all client policies", () => {
+  const tables = Array.from(
+    sql.matchAll(/alter table public\.([a-z_]+) enable row level security;/g),
+    (match) => match[1],
+  );
+
+  assert.ok(tables.length > 0, "expected at least one RLS-enabled table");
+
+  for (const table of tables) {
+    assert.match(
+      sql,
+      new RegExp(`drop policy if exists deny_client_access on public\\.${table};`),
+      `${table} should drop/recreate the deny policy idempotently`,
+    );
+    assert.match(
+      sql,
+      new RegExp(
+        `create policy deny_client_access on public\\.${table}\\s+as restrictive for all to anon, authenticated\\s+using \\(false\\) with check \\(false\\);`,
+        "m",
+      ),
+      `${table} should deny anon/authenticated access with a restrictive policy`,
+    );
+  }
+});

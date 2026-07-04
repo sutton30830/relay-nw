@@ -1,6 +1,7 @@
 import { env } from "@/lib/env";
 import { requireAccountUserJson } from "@/lib/auth";
 import { getLeadRecordingForPlayback } from "@/lib/supabase";
+import { isTrustedTwilioMediaUrl } from "@/lib/twilio";
 
 const PRIVATE_AUDIO_HEADERS = {
   "Cache-Control": "private, no-store, max-age=0",
@@ -33,9 +34,16 @@ export async function GET(
     });
   }
 
-  const recordingUrl =
-    recording.recording_url
-    ?? `https://api.twilio.com/2010-04-01/Accounts/${env.twilioAccountSid}/Recordings/${recordingSid}.mp3`;
+  const storedUrl = recording.recording_url;
+  const isTrustedStoredUrl = isTrustedTwilioMediaUrl(storedUrl);
+  const recordingUrl = isTrustedStoredUrl
+    ? storedUrl!
+    : `https://api.twilio.com/2010-04-01/Accounts/${env.twilioAccountSid}/Recordings/${recordingSid}.mp3`;
+
+  if (storedUrl && !isTrustedStoredUrl) {
+    console.warn("Stored recording_url rejected by allowlist", { recordingSid });
+  }
+
   const twilioAuth = Buffer.from(`${env.twilioAccountSid}:${env.twilioAuthToken}`).toString("base64");
   const recordingResponse = await fetch(recordingUrl, {
     headers: {
