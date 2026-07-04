@@ -433,6 +433,10 @@ export async function getA2pRegistrationStatus(accountId: string) {
     .maybeSingle();
 
   if (error) {
+    console.error("Could not read a2p_registration_status; treating as not approved", {
+      accountId,
+      error: error.message,
+    });
     return null;
   }
 

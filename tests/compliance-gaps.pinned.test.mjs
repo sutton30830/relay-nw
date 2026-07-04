@@ -48,7 +48,6 @@ test(
 
 test(
   "settings route refuses to enable SMS unless the account's A2P registration is approved",
-  { skip: "PINNED BUG (spec 02): sms_enabled can be flipped on with a2p_registration_status != 'approved'; A2P gating is display-only today. Unskip with docs/impl-specs/02-a2p-gating-enforcement.md." },
   () => {
     assert.match(settingsRoute, /getA2pRegistrationStatus|a2p_registration_status/);
   },

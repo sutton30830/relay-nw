@@ -61,6 +61,16 @@ Update after Spec 01 implementation (July 4, 2026):
 - The three Spec 01 pinned tests in `tests/compliance-gaps.pinned.test.mjs` are now unskipped and passing.
 - No schema changes; `supabase.sql` does not need to be re-run for this spec.
 
+Update after Spec 02 implementation (July 4, 2026):
+- Implemented A2P enablement gating for `docs/impl-specs/02-a2p-gating-enforcement.md`.
+- The settings route now refuses to transition `sms_enabled` from off to on unless `account_settings.a2p_registration_status = 'approved'`.
+- A2P status lookup failures fail closed as not approved and now log a visible server error.
+- Turning SMS off remains allowed without consulting A2P status, and admin/viewer roles still cannot mutate `sms_enabled`.
+- `scripts/provision-account.mjs` now refuses `SMS_ENABLED=true` unless it is setting `A2P_REGISTRATION_STATUS=approved` or reading an existing approved status for the account.
+- New regression suite: `tests/a2p-gating.test.mjs`.
+- The Spec 02 pinned test in `tests/compliance-gaps.pinned.test.mjs` is now unskipped and passing.
+- No schema changes; `supabase.sql` does not need to be re-run for this spec.
+
 Recommended launch posture:
 - Personally onboard each business.
 - Run one real end-to-end test per business.

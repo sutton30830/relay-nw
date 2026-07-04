@@ -74,7 +74,9 @@ export default async function SettingsPage({
               ? "Your role does not allow editing settings."
               : params.error === "save_failed"
                 ? "Could not save settings. Try again."
-                : "Please check the highlighted values and try again."}
+                : params.error === "a2p_not_approved"
+                  ? "Texting can't be enabled until this account's A2P registration is approved. Update the status with the provisioning script first."
+                  : "Please check the highlighted values and try again."}
           </div>
         ) : null}
 

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { requireAccountUser } from "@/lib/auth";
 import { normalizePhoneNumber } from "@/lib/phone";
-import { updateAccountSettings, type AccountSettingsUpdate } from "@/lib/supabase";
+import { getA2pRegistrationStatus, updateAccountSettings, type AccountSettingsUpdate } from "@/lib/supabase";
 
 const LIMITS = {
   dialTimeoutSeconds: { min: 5, max: 60 },
@@ -74,7 +74,19 @@ export async function POST(request: Request) {
 
   // Only the owner can flip texting on/off — it is the compliance-sensitive switch.
   if (session.role === "owner") {
-    update.sms_enabled = formData.get("sms_enabled") === "on";
+    const wantsSmsEnabled = formData.get("sms_enabled") === "on";
+
+    if (wantsSmsEnabled && !session.account.smsEnabled) {
+      // Turning texting ON requires an approved A2P campaign. Fail closed on
+      // lookup failure: a status we cannot read is not an approved status.
+      const a2pStatus = await getA2pRegistrationStatus(session.accountId);
+
+      if (a2pStatus !== "approved") {
+        redirect("/settings?error=a2p_not_approved");
+      }
+    }
+
+    update.sms_enabled = wantsSmsEnabled;
   }
 
   try {

@@ -44,6 +44,10 @@ const supabase = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KE
 const now = new Date().toISOString();
 const slug = env("ACCOUNT_SLUG");
 const businessName = env("BUSINESS_NAME");
+const smsEnabled = optionalEnv("SMS_ENABLED", "false") === "true";
+const a2pRegistrationStatus = optionalEnv("A2P_REGISTRATION_STATUS");
+const a2pNotApprovedMessage =
+  "Texting can't be enabled until this account's A2P registration is approved. Update the status with the provisioning script first.";
 
 const { data: account, error: accountError } = await supabase
   .from("accounts")
@@ -59,6 +63,21 @@ const { data: account, error: accountError } = await supabase
 if (accountError) throw accountError;
 
 const accountId = account.id;
+
+if (smsEnabled && a2pRegistrationStatus !== "approved") {
+  const { data: existingSettings, error: existingSettingsError } = await supabase
+    .from("account_settings")
+    .select("a2p_registration_status")
+    .eq("account_id", accountId)
+    .maybeSingle();
+
+  if (existingSettingsError) throw existingSettingsError;
+
+  if (existingSettings?.a2p_registration_status !== "approved") {
+    throw new Error(a2pNotApprovedMessage);
+  }
+}
+
 const settingsPayload = {
   account_id: accountId,
   business_name: businessName,
@@ -67,9 +86,13 @@ const settingsPayload = {
   intake_url: env("INTAKE_URL"),
   scheduling_url: optionalEnv("SCHEDULING_URL", env("INTAKE_URL")),
   call_mode: optionalEnv("CALL_MODE", "forwarding"),
-  sms_enabled: optionalEnv("SMS_ENABLED", "false") === "true",
+  sms_enabled: smsEnabled,
   updated_at: now,
 };
+
+if (a2pRegistrationStatus) {
+  settingsPayload.a2p_registration_status = a2pRegistrationStatus;
+}
 
 const missedCallVoiceMessage = optionalEnv("MISSED_CALL_VOICE_MESSAGE");
 if (missedCallVoiceMessage) {
