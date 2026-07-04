@@ -55,7 +55,6 @@ test(
 
 test(
   "dial-status webhook falls back to To-number account resolution when the CallSid is unknown",
-  { skip: "PINNED BUG (spec 03): if the voice webhook's calls-row upsert failed, dial-status cannot resolve the account and the caller is never texted. Unskip with docs/impl-specs/03-dial-status-resolution-fallback.md." },
   () => {
     assert.match(dialStatusRoute, /resolveAccountByTwilioNumber/);
   },

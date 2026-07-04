@@ -2,6 +2,7 @@ import {
   assertTenantAccount,
   logWebhookEvent,
   resolveAccountByCallSid,
+  resolveAccountByTwilioNumber,
   type TenantAccountRuntimeConfig,
   upsertCall,
   resolveAccountSafely,
@@ -117,7 +118,27 @@ export async function POST(request: Request) {
   const dialCallStatus = payload.DialCallStatus ?? "";
   const callerPhone = (payload.From ?? "").trim();
   const callSid = (payload.CallSid ?? "").trim();
-  const accountResolution = await resolveAccountSafely(() => resolveAccountByCallSid(callSid), "dial status");
+  const accountResolution = await resolveAccountSafely(async () => {
+    const byCallSid = await resolveAccountByCallSid(callSid);
+
+    if (byCallSid.status === "resolved") {
+      return byCallSid;
+    }
+
+    // The calls row may be missing (the voice webhook's bookkeeping upsert is
+    // deliberately non-fatal). The To number identifies the same tenant.
+    const byNumber = await resolveAccountByTwilioNumber(payload.To);
+
+    if (byNumber.status === "resolved") {
+      console.warn("dial-status resolved by To-number fallback; calls row was missing", {
+        correlationId,
+        callSid,
+      });
+      return byNumber;
+    }
+
+    return byCallSid;
+  }, "dial status");
   const resolvedAccount = accountResolution.status === "resolved" ? accountResolution.account : null;
   const xml = emptyTwiml();
 

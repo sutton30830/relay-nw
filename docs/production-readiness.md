@@ -71,6 +71,15 @@ Update after Spec 02 implementation (July 4, 2026):
 - The Spec 02 pinned test in `tests/compliance-gaps.pinned.test.mjs` is now unskipped and passing.
 - No schema changes; `supabase.sql` does not need to be re-run for this spec.
 
+Update after Spec 03 implementation (July 4, 2026):
+- Implemented dial-status To-number fallback for `docs/impl-specs/03-dial-status-resolution-fallback.md`.
+- `app/api/twilio/dial-status/route.ts` now falls back from unresolved `CallSid` lookup to the webhook `To` number, preserving the original `CallSid` unresolved reason if both fail.
+- The fallback logs a visible warning and the existing `upsertCall` path heals the missing calls row before missed-call processing.
+- `app/api/twilio/recording/route.ts` uses the same fallback so recording callbacks can still attach voicemail when earlier call bookkeeping failed.
+- New regression suite: `tests/dial-status-fallback.test.mjs`.
+- The Spec 03 pinned test in `tests/compliance-gaps.pinned.test.mjs` is now unskipped and passing.
+- No schema changes; `supabase.sql` does not need to be re-run for this spec.
+
 Recommended launch posture:
 - Personally onboard each business.
 - Run one real end-to-end test per business.
