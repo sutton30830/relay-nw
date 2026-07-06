@@ -59,23 +59,12 @@ export async function getAccountRecoveryStats(
   const since = period.since;
   const until = period.until ?? null;
 
-  const missedCalls = await countLeadsWhere(accountId, since, until, (query) =>
-    query.eq("source", "missed_call"));
-
-  const textedBack = await countLeadsWhere(accountId, since, until, (query) =>
-    query.in("sms_status", ["sent", "delivered"]));
-
-  const urgent = await countLeadsWhere(accountId, since, until, (query) =>
-    query.eq("priority", "fast"));
-
   let repliesQuery = supabaseAdmin
     .from("inbound_messages")
     .select("id", { count: "exact", head: true })
     .eq("account_id", accountId);
   if (since) repliesQuery = repliesQuery.gte("created_at", since);
   if (until) repliesQuery = repliesQuery.lt("created_at", until);
-  const { count: replies, error: repliesError } = await repliesQuery;
-  throwIfSupabaseError(repliesError);
 
   // Booked jobs are attributed to when they were booked, not when the call came in.
   let bookedQuery = supabaseAdmin
@@ -86,7 +75,22 @@ export async function getAccountRecoveryStats(
     .not("booked_at", "is", null);
   if (since) bookedQuery = bookedQuery.gte("booked_at", since);
   if (until) bookedQuery = bookedQuery.lt("booked_at", until);
-  const { data: bookedRows, error: bookedError } = await bookedQuery.limit(2000);
+
+  const [
+    missedCalls,
+    textedBack,
+    urgent,
+    { count: replies, error: repliesError },
+    { data: bookedRows, error: bookedError },
+  ] = await Promise.all([
+    countLeadsWhere(accountId, since, until, (query) => query.eq("source", "missed_call")),
+    countLeadsWhere(accountId, since, until, (query) => query.in("sms_status", ["sent", "delivered"])),
+    countLeadsWhere(accountId, since, until, (query) => query.eq("priority", "fast")),
+    repliesQuery,
+    bookedQuery.limit(2000),
+  ]);
+
+  throwIfSupabaseError(repliesError);
   throwIfSupabaseError(bookedError);
 
   const booked = bookedRows?.length ?? 0;

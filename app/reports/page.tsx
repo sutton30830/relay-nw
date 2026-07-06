@@ -62,14 +62,14 @@ export default async function ReportsPage() {
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
-  const [thisMonth, lastMonth, allTime] = [
-    await getAccountRecoveryStats(accountId, { since: thisMonthStart.toISOString() }),
-    await getAccountRecoveryStats(accountId, {
+  const [thisMonth, lastMonth, allTime] = await Promise.all([
+    getAccountRecoveryStats(accountId, { since: thisMonthStart.toISOString() }),
+    getAccountRecoveryStats(accountId, {
       since: lastMonthStart.toISOString(),
       until: thisMonthStart.toISOString(),
     }),
-    await getAccountRecoveryStats(accountId, { since: null }),
-  ];
+    getAccountRecoveryStats(accountId, { since: null }),
+  ]);
 
   const heroCents = thisMonth.recoveredCents;
 

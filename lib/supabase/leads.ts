@@ -139,6 +139,19 @@ export type LeadsPageResult = {
 export const DEFAULT_LEADS_PAGE_LIMIT = 100;
 const MAX_LEADS_PAGE_LIMIT = 250;
 
+async function attachThreadMessages(leads: Lead[], accountId: string) {
+  const [withInbound, withOutbound] = await Promise.all([
+    attachInboundMessages(leads, accountId),
+    attachOutboundMessages(leads, accountId),
+  ]);
+
+  return leads.map((lead, index) => ({
+    ...lead,
+    inbound_messages: withInbound[index]?.inbound_messages ?? [],
+    outbound_messages: withOutbound[index]?.outbound_messages ?? [],
+  }));
+}
+
 function normalizePageOptions(options?: { limit?: number; offset?: number }) {
   const rawLimit = Number(options?.limit ?? DEFAULT_LEADS_PAGE_LIMIT);
   const rawOffset = Number(options?.offset ?? 0);
@@ -313,15 +326,15 @@ export async function getLeadInboxPageForAccount(
       } as Lead),
     );
 
-    const leads = await attachOutboundMessages(await attachInboundMessages(legacyLeads, accountId), accountId);
+    const leads = await attachThreadMessages(legacyLeads, accountId);
     return { leads, total: legacyCount ?? null, limit, offset };
   }
 
   throwIfSupabaseError(error);
 
-  const leads = await attachInboundMessages(((data ?? []) as Lead[]).map(normalizeLead), accountId);
+  const leads = await attachThreadMessages(((data ?? []) as Lead[]).map(normalizeLead), accountId);
   return {
-    leads: await attachOutboundMessages(leads, accountId),
+    leads,
     total: count ?? null,
     limit,
     offset,

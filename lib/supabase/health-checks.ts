@@ -103,23 +103,14 @@ export async function getForwardingHealthSummary(inputAccountId: string) {
 
   await expirePendingForwardingHealthChecks(accountId);
 
-  let latestQuery = supabaseAdmin
+  const latestQuery = supabaseAdmin
     .from("forwarding_health_checks")
     .select(HEALTH_CHECK_SELECT)
     .eq("account_id", accountId)
     .order("created_at", { ascending: false })
     .limit(1);
 
-  const { data: latest, error: latestError } = await latestQuery.maybeSingle();
-
-  if (isMissingHealthCheckTableError(latestError)) {
-    logMissingHealthCheckTable("summary_latest");
-    return emptySummary();
-  }
-
-  throwIfSupabaseError(latestError);
-
-  let lastPassedQuery = supabaseAdmin
+  const lastPassedQuery = supabaseAdmin
     .from("forwarding_health_checks")
     .select("completed_at")
     .eq("account_id", accountId)
@@ -127,7 +118,20 @@ export async function getForwardingHealthSummary(inputAccountId: string) {
     .order("completed_at", { ascending: false })
     .limit(1);
 
-  const { data: lastPassed, error: lastPassedError } = await lastPassedQuery.maybeSingle();
+  const [
+    { data: latest, error: latestError },
+    { data: lastPassed, error: lastPassedError },
+  ] = await Promise.all([
+    latestQuery.maybeSingle(),
+    lastPassedQuery.maybeSingle(),
+  ]);
+
+  if (isMissingHealthCheckTableError(latestError)) {
+    logMissingHealthCheckTable("summary_latest");
+    return emptySummary();
+  }
+
+  throwIfSupabaseError(latestError);
 
   if (isMissingHealthCheckTableError(lastPassedError)) {
     logMissingHealthCheckTable("summary_last_passed");
