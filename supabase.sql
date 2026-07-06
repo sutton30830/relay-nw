@@ -160,6 +160,18 @@ alter table public.leads alter column account_id set not null;
 
 create index if not exists leads_created_at_idx on public.leads (created_at desc);
 create index if not exists leads_account_created_at_idx on public.leads (account_id, created_at desc);
+create index if not exists leads_account_source_created_at_idx
+  on public.leads (account_id, source, created_at desc)
+  where deleted_at is null;
+create index if not exists leads_account_sms_status_created_at_idx
+  on public.leads (account_id, sms_status, created_at desc)
+  where deleted_at is null and sms_status is not null;
+create index if not exists leads_account_priority_created_at_idx
+  on public.leads (account_id, priority, created_at desc)
+  where deleted_at is null and priority is not null;
+create index if not exists leads_account_booked_at_idx
+  on public.leads (account_id, booked_at desc)
+  where deleted_at is null and booked_at is not null;
 create index if not exists leads_phone_created_at_idx on public.leads (phone, created_at desc);
 create index if not exists leads_account_phone_created_at_idx on public.leads (account_id, phone, created_at desc);
 create unique index if not exists leads_account_call_sid_unique_idx
@@ -246,6 +258,8 @@ create unique index if not exists inbound_messages_account_message_sid_unique_id
   where account_id is not null;
 create index if not exists inbound_messages_account_from_created_at_idx
   on public.inbound_messages (account_id, from_phone, created_at desc);
+create index if not exists inbound_messages_account_created_at_idx
+  on public.inbound_messages (account_id, created_at desc);
 
 alter table public.inbound_messages enable row level security;
 
@@ -295,6 +309,9 @@ create table if not exists public.messages (
 
 create index if not exists messages_account_created_at_idx on public.messages (account_id, created_at desc);
 create index if not exists messages_account_phone_created_at_idx on public.messages (account_id, from_phone, to_phone, created_at desc);
+create index if not exists messages_account_direction_lead_created_at_idx
+  on public.messages (account_id, direction, lead_id, created_at desc)
+  where lead_id is not null;
 create index if not exists messages_twilio_message_sid_idx on public.messages (twilio_message_sid);
 
 alter table public.messages enable row level security;
@@ -329,8 +346,14 @@ create index if not exists forwarding_health_checks_created_at_idx
   on public.forwarding_health_checks (created_at desc);
 create index if not exists forwarding_health_checks_account_created_at_idx
   on public.forwarding_health_checks (account_id, created_at desc);
+create index if not exists forwarding_health_checks_account_status_completed_at_idx
+  on public.forwarding_health_checks (account_id, status, completed_at desc)
+  where completed_at is not null;
 create index if not exists forwarding_health_checks_pending_started_at_idx
   on public.forwarding_health_checks (started_at desc)
+  where status = 'pending';
+create index if not exists forwarding_health_checks_account_pending_started_at_idx
+  on public.forwarding_health_checks (account_id, started_at desc)
   where status = 'pending';
 
 alter table public.forwarding_health_checks enable row level security;

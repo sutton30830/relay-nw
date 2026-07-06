@@ -60,6 +60,10 @@ export function ForwardingHealthCard({ initialSummary }: { initialSummary: Forwa
   }
 
   useEffect(() => {
+    setSummary(initialSummary);
+  }, [initialSummary]);
+
+  useEffect(() => {
     const currentTime = Date.now();
 
     if (!canRunAt || canRunAt <= currentTime) {

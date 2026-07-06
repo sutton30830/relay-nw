@@ -12,6 +12,15 @@ export type ForwardingHealthSummary = {
   canRunAt: string | null;
 };
 
+export const EMPTY_FORWARDING_HEALTH_SUMMARY: ForwardingHealthSummary = {
+  latest: null,
+  lastPassedAt: null,
+  displayStatus: "unknown",
+  statusLabel: "Unknown",
+  failureText: null,
+  canRunAt: null,
+};
+
 export function forwardingHealthFailureText(reason: ForwardingHealthCheckFailureReason) {
   if (reason === "no_forwarded_call_received") {
     return "Relay did not receive the forwarded call. Call forwarding may be off or voicemail may have intercepted it.";
