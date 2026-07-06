@@ -544,10 +544,6 @@ export function filterLeads(leads: Lead[], filter: Filter, query: string) {
       return false;
     }
 
-    if (filter === "booked") {
-      return isBookedLead(lead) && leadMatchesSearch(lead, query);
-    }
-
     const matchesFilter = filter === "all" || lead.status === filter;
     return matchesFilter && leadMatchesSearch(lead, query);
   });

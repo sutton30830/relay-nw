@@ -99,6 +99,12 @@ export function LeadCard({
   ].filter(Boolean);
   const showPriorityCue = !trashed && priority.level !== "normal";
   const showBookedValueNudge = booked && !lead.job_value_cents;
+  const categoryActions = STATUS_OPTIONS
+    .filter((status) => status !== lead.status)
+    .map((status) => ({
+      label: `Move to ${STATUS_LABELS[status]}`,
+      onSelect: () => onStatus(lead.id, status),
+    }));
 
   return (
     <article
@@ -249,9 +255,7 @@ export function LeadCard({
               // No blocking confirm: delete is soft and the inbox offers Undo.
               <OverflowMenu
                 items={[
-                  ...(lead.status === "new"
-                    ? [{ label: "Mark contacted", onSelect: () => onStatus(lead.id, "contacted") }]
-                    : []),
+                  ...categoryActions,
                   ...(!booked ? [{ label: "Mark as booked", onSelect: () => onBooked(lead.id, true) }] : []),
                   { label: "Move to Trash", danger: true, onSelect: () => onDelete(lead.id) },
                 ]}
