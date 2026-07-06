@@ -50,7 +50,7 @@ export default function LeadsLoading() {
         </div>
       </section>
 
-      <div className="lead-list" aria-label="Loading leads">
+      <div className="leads-list" aria-label="Loading leads">
         <LoadingLeadCard />
         <LoadingLeadCard />
       </div>

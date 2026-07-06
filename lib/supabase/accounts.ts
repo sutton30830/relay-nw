@@ -150,11 +150,16 @@ export async function getAccountConfigByAccountId(accountId: string | null | und
     return null;
   }
 
-  const { data, error } = await supabaseAdmin
-    .from("account_settings")
-    .select(ACCOUNT_SETTINGS_SELECT)
-    .eq("account_id", accountId)
-    .maybeSingle();
+  const [settingsResult, primaryNumber] = await Promise.all([
+    supabaseAdmin
+      .from("account_settings")
+      .select(ACCOUNT_SETTINGS_SELECT)
+      .eq("account_id", accountId)
+      .maybeSingle(),
+    getPrimaryAccountPhoneNumber(accountId),
+  ]);
+
+  const { data, error } = settingsResult;
 
   if (error) {
     if (error.message.includes("account_settings")) {
@@ -165,12 +170,7 @@ export async function getAccountConfigByAccountId(accountId: string | null | und
     throw error;
   }
 
-  return data
-    ? configFromSettings(
-        data as unknown as AccountSettingsRow,
-        await getPrimaryAccountPhoneNumber((data as unknown as AccountSettingsRow).account_id),
-      )
-    : null;
+  return data ? configFromSettings(data as unknown as AccountSettingsRow, primaryNumber) : null;
 }
 
 export async function getDefaultAccountConfig() {
