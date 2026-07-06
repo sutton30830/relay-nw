@@ -3525,14 +3525,21 @@ code {
   }
 
   .lead-card__meta {
-    gap: 5px;
+    gap: 7px 10px;
     font-size: 12.5px;
   }
 
   .lead-card__facts {
     width: 100%;
     justify-content: flex-start;
+    gap: 7px 10px;
     font-size: 12.5px;
+  }
+
+  .lead-card__meta span:not(:first-child)::before,
+  .lead-card__facts span:not(:first-child)::before {
+    content: none;
+    margin-right: 0;
   }
 
   .lead-card__badges {
@@ -3582,7 +3589,7 @@ code {
   .lead-card__utility-actions {
     display: grid;
     width: 100%;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
     margin-left: 0;
   }
@@ -3605,7 +3612,9 @@ code {
   }
 
   .lead-card__overflow-menu {
-    min-width: min(220px, calc(100vw - 40px)) !important;
+    width: min(220px, calc(100vw - 40px)) !important;
+    min-width: 0 !important;
+    max-width: calc(100vw - 40px);
   }
 }
 
@@ -3642,9 +3651,22 @@ code {
     flex-direction: column;
   }
 
+  .lead-card__value {
+    display: grid;
+    width: 100%;
+    border-radius: 12px;
+    background: color-mix(in oklab, var(--panel-2) 44%, transparent);
+    padding: 12px;
+  }
+
+  .lead-card__value-label {
+    font-size: 11px;
+  }
+
   .money-field,
   .money-field--compact {
     width: 100%;
+    min-width: 0;
   }
 
   .filter-pill {
