@@ -3608,6 +3608,7 @@ code {
   }
 
   .lead-card__overflow {
+    grid-column: 3;
     width: 100%;
   }
 
