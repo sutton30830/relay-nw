@@ -96,12 +96,6 @@ export function LeadsList({
             )}
           </h2>
         </div>
-        <div className="page-head__actions">
-          <Link className="btn btn-secondary" href="/setup">
-            <Icon name="settings" size={14} />
-            Setup
-          </Link>
-        </div>
       </section>
 
       <nav className="filters clean-scroll" aria-label="Filter leads">

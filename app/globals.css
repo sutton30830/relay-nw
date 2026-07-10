@@ -3542,13 +3542,12 @@ code {
   }
 
   .live-dot {
-    margin-left: auto;
-    padding: 3px 8px;
+    display: none;
   }
 
   .app-head__right {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
   }
 
@@ -3581,8 +3580,8 @@ code {
   }
 
   .search {
-    min-height: 42px;
-    border-radius: 10px;
+    min-height: 40px;
+    border-radius: 12px;
     background: color-mix(in oklab, var(--panel) 88%, white);
     box-shadow: var(--shadow-sm);
   }
@@ -3600,19 +3599,14 @@ code {
   }
 
   .page-head {
-    gap: 14px;
-    padding: 20px 0 14px;
-  }
-
-  .page-head__actions {
-    width: 100%;
-    justify-content: stretch;
+    gap: 10px;
+    padding: 16px 0 12px;
   }
 
   .page-head__title {
     margin-top: 4px;
-    font-size: 29px;
-    line-height: 1.06;
+    font-size: clamp(27px, 7.8vw, 31px);
+    line-height: 1.08;
   }
 
   .line-health {
