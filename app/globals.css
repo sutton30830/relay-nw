@@ -3653,10 +3653,6 @@ code {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .app-head__right {
-    width: 100%;
-  }
-
   .leads-view {
     padding: 14px 12px 44px;
   }
@@ -3750,8 +3746,19 @@ code {
   }
 
   .page-head {
+    display: flex;
+    position: relative;
+    z-index: 1;
     gap: 10px;
     padding: 16px 0 10px;
+  }
+
+  .mobile-inbox-search,
+  .filters,
+  .inbox-page-meta,
+  .leads-list {
+    position: relative;
+    z-index: 1;
   }
 
   .page-head__title {
