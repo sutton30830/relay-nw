@@ -11,6 +11,7 @@ const emailTs = await readFile(new URL("../lib/email.ts", import.meta.url), "utf
 const missedCallTs = await readFile(new URL("../lib/missed-call.ts", import.meta.url), "utf8");
 const intakeRouteTs = await readFile(new URL("../app/api/intake/route.ts", import.meta.url), "utf8");
 const inboundSmsRouteTs = await readFile(new URL("../app/api/twilio/sms/route.ts", import.meta.url), "utf8");
+const homePageTsx = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 const intakeFormTsx = await readFile(new URL("../app/intake/intake-form.tsx", import.meta.url), "utf8");
 const leadsPageTsx = await readFile(new URL("../app/leads/page.tsx", import.meta.url), "utf8");
 const setupPageTsx = await readFile(new URL("../app/setup/page.tsx", import.meta.url), "utf8");
@@ -103,6 +104,14 @@ test("human-facing pages require authenticated account context", () => {
   assert.doesNotMatch(leadsPageTsx, /getDefaultAccountConfig/);
   assert.doesNotMatch(setupPageTsx, /getDefaultAccountConfig/);
   assert.doesNotMatch(opsPageTsx, /getDefaultAccountConfig/);
+});
+
+test("public homepage keeps an owner inbox path visible", () => {
+  assert.match(homePageTsx, /<InboxLink className="btn btn-secondary btn-header">/);
+  assert.match(homePageTsx, /<InboxLink className="btn btn-secondary">/);
+  assert.match(homePageTsx, /Open inbox/);
+  assert.match(globalsCss, /\.leads-view \.app-head__right > \.btn/);
+  assert.doesNotMatch(globalsCss, /\n\s*\.app-head__right > \.btn,\n\s*\.app-head__right > \.app-head__logout/);
 });
 
 test("Supabase Auth fails closed and refreshes sessions in middleware", () => {

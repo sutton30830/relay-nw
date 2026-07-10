@@ -61,6 +61,9 @@ export default function HomePage() {
             <Link className="btn btn-primary" href="/intake">
               <Icon name="settings" size={14} /> Start setup
             </Link>
+            <InboxLink className="btn btn-secondary">
+              <Icon name="inbox" size={14} /> Open inbox
+            </InboxLink>
           </div>
           <p className="home-hero__note">
             $99/month. Try it for 30 days free.

@@ -3699,9 +3699,9 @@ code {
     justify-content: flex-end;
   }
 
-  .app-head__desktop-search,
-  .app-head__right > .btn,
-  .app-head__right > .app-head__logout {
+  .leads-view .app-head__desktop-search,
+  .leads-view .app-head__right > .btn,
+  .leads-view .app-head__right > .app-head__logout {
     display: none;
   }
 
@@ -3709,11 +3709,13 @@ code {
     display: flex;
     width: 100%;
     align-items: center;
+    justify-content: stretch;
   }
 
   .home-view .app-head__right--primary .btn-header {
-    width: auto;
-    flex: 0 0 auto;
+    width: 100%;
+    flex: 1 1 0;
+    justify-content: center;
   }
 
   .mobile-owner-menu {
