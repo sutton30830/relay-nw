@@ -25,6 +25,7 @@ export function LeadsList({
 }) {
   const router = useRouter();
   const inbox = useLeadsInbox(leads);
+  const businessInitial = businessName.trim().charAt(0).toUpperCase() || "R";
   const loadedStart = leads.length > 0 ? pagination.offset + 1 : 0;
   const loadedEnd = pagination.offset + leads.length;
   const knownTotal = pagination.total ?? null;
@@ -50,7 +51,7 @@ export function LeadsList({
         </Link>
 
         <div className="app-head__right">
-          <div className="search">
+          <div className="search app-head__desktop-search">
             <Icon name="search" size={14} />
             <input
               ref={inbox.searchRef}
@@ -82,6 +83,50 @@ export function LeadsList({
           <form className="app-head__logout" action="/api/leads-logout" method="POST">
             <button className="btn btn-secondary btn-sm">Log out</button>
           </form>
+
+          <details className="mobile-owner-menu">
+            <summary className="mobile-owner-menu__trigger" aria-label="Open account menu">
+              <span>{businessInitial}</span>
+              <Icon name="more" size={16} />
+            </summary>
+            <div className="mobile-owner-menu__panel">
+              <div className="mobile-owner-menu__profile">
+                <div className="mobile-owner-menu__avatar">{businessInitial}</div>
+                <div>
+                  <p>{businessName}</p>
+                  <span>Missed-call inbox</span>
+                </div>
+              </div>
+              <Link className="mobile-owner-menu__item" href="/setup">
+                <Icon name="settings" size={15} />
+                Setup
+              </Link>
+              <Link className="mobile-owner-menu__item" href="/reports">
+                <Icon name="inbox" size={15} />
+                Reports
+              </Link>
+              <Link className="mobile-owner-menu__item" href="/settings">
+                <Icon name="user" size={15} />
+                Settings
+              </Link>
+              {inbox.sampleMode || inbox.activeItems.length === 0 ? (
+                <button
+                  className="mobile-owner-menu__item"
+                  type="button"
+                  onClick={inbox.toggleSampleMode}
+                >
+                  <Icon name="sparkle" size={15} />
+                  {inbox.sampleMode ? "Hide sample data" : "Sample data"}
+                </button>
+              ) : null}
+              <form action="/api/leads-logout" method="POST">
+                <button className="mobile-owner-menu__item mobile-owner-menu__item--muted" type="submit">
+                  <Icon name="external" size={15} />
+                  Log out
+                </button>
+              </form>
+            </div>
+          </details>
         </div>
       </header>
 
@@ -97,6 +142,18 @@ export function LeadsList({
           </h2>
         </div>
       </section>
+
+      <div className="mobile-inbox-search">
+        <div className="search">
+          <Icon name="search" size={14} />
+          <input
+            className="search__input"
+            placeholder="Search leads..."
+            value={inbox.query}
+            onChange={(event) => inbox.setQuery(event.target.value)}
+          />
+        </div>
+      </div>
 
       <nav className="filters clean-scroll" aria-label="Filter leads">
         {FILTERS.map((item) => {
