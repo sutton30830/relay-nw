@@ -58,6 +58,7 @@ export default async function SettingsPage({
             </p>
           </div>
           <div className="lead-actions">
+            <Link className="btn btn-secondary" href="/setup">Setup</Link>
             <Link className="btn btn-secondary" href="/leads">Back to leads</Link>
           </div>
         </div>

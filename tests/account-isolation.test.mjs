@@ -12,6 +12,7 @@ function compact(value) {
 
 const files = {
   leadsPage: await source("app/leads/page.tsx"),
+  setupPage: await source("app/setup/page.tsx"),
   opsPage: await source("app/ops/page.tsx"),
   leadApi: await source("app/api/leads/[id]/route.ts"),
   transcribeApi: await source("app/api/leads/[id]/transcribe/route.ts"),
@@ -36,6 +37,10 @@ test("authenticated lead, ops, recording, and transcription routes use session a
   assert.match(files.leadsPage, /const \{ account, accountId \} = await requireAccountUser\(\)/);
   assert.match(files.leadsPage, /getLeadInboxPageForAccount\(accountId/);
   assert.match(files.leadsPage, /getForwardingHealthSummary\(accountId\)/);
+
+  assert.match(files.setupPage, /const \{ account, accountId, role \} = await requireAccountUser\(\)/);
+  assert.match(files.setupPage, /getForwardingHealthSummary\(accountId\)/);
+  assert.match(files.setupPage, /getA2pRegistrationStatus\(accountId\)/);
 
   assert.match(files.opsPage, /const \{ account, accountId \} = await requireAccountUser\(\)/);
   assert.match(files.opsPage, /getRecentWebhookEventsForAccount\(accountId,\s*50\)/);

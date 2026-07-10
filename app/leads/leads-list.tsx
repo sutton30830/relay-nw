@@ -104,6 +104,9 @@ export function LeadsList({
           <Link className="btn btn-secondary btn-sm" href="/reports">
             Reports
           </Link>
+          <Link className="btn btn-secondary btn-sm" href="/setup">
+            Setup
+          </Link>
           <Link className="btn btn-secondary btn-sm" href="/settings">
             Settings
           </Link>

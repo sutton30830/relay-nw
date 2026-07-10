@@ -13,6 +13,7 @@ const intakeRouteTs = await readFile(new URL("../app/api/intake/route.ts", impor
 const inboundSmsRouteTs = await readFile(new URL("../app/api/twilio/sms/route.ts", import.meta.url), "utf8");
 const intakeFormTsx = await readFile(new URL("../app/intake/intake-form.tsx", import.meta.url), "utf8");
 const leadsPageTsx = await readFile(new URL("../app/leads/page.tsx", import.meta.url), "utf8");
+const setupPageTsx = await readFile(new URL("../app/setup/page.tsx", import.meta.url), "utf8");
 const leadUtilsTs = await readFile(new URL("../app/leads/_utils.ts", import.meta.url), "utf8");
 const leadConstantsTs = await readFile(new URL("../app/leads/_constants.ts", import.meta.url), "utf8");
 const leadCardTsx = await readFile(new URL("../app/leads/_components/lead-card.tsx", import.meta.url), "utf8");
@@ -97,8 +98,10 @@ test("human-facing pages require authenticated account context", () => {
   assert.match(authTs, /export async function requireAccountUser\(\)/);
   assert.match(authTs, /account_users/);
   assert.match(leadsPageTsx, /requireAccountUser\(\)/);
+  assert.match(setupPageTsx, /requireAccountUser\(\)/);
   assert.match(opsPageTsx, /requireAccountUser\(\)/);
   assert.doesNotMatch(leadsPageTsx, /getDefaultAccountConfig/);
+  assert.doesNotMatch(setupPageTsx, /getDefaultAccountConfig/);
   assert.doesNotMatch(opsPageTsx, /getDefaultAccountConfig/);
 });
 
@@ -109,11 +112,24 @@ test("Supabase Auth fails closed and refreshes sessions in middleware", () => {
   assert.match(middlewareTs, /supabase\.auth\.getUser\(\)/);
   assert.match(middlewareTs, /setAll\(cookiesToSet\)/);
   assert.match(middlewareTs, /"\/leads\/:path\*"/);
+  assert.match(middlewareTs, /"\/setup\/:path\*"/);
   assert.match(middlewareTs, /"\/api\/leads\/:path\*"/);
   assert.match(middlewareTs, /"\/api\/sms-test\/:path\*"/);
   assert.doesNotMatch(middlewareTs, /\/api\/twilio/);
   assert.doesNotMatch(middlewareTs, /\/api\/intake/);
   assert.doesNotMatch(middlewareTs, /\/\(\(\?!_next\/static/);
+});
+
+test("authenticated setup page exposes onboarding checks without creating a new tenant path", () => {
+  assert.match(setupPageTsx, /getForwardingHealthSummary\(accountId\)/);
+  assert.match(setupPageTsx, /getA2pRegistrationStatus\(accountId\)/);
+  assert.match(setupPageTsx, /ForwardingHealthCard/);
+  assert.match(setupPageTsx, /SmsHealthCard/);
+  assert.match(setupPageTsx, /setupCode\("\*61\*", account\.twilioPhoneNumber\)/);
+  assert.match(setupPageTsx, /setupCode\("\*67\*", account\.twilioPhoneNumber\)/);
+  assert.match(setupPageTsx, /setupCode\("\*62\*", account\.twilioPhoneNumber\)/);
+  assert.match(setupPageTsx, /CopyButton/);
+  assert.doesNotMatch(setupPageTsx, /provisionAccount|signUp|createUser|stripe/i);
 });
 
 test("README documents Supabase Auth instead of legacy leads password auth", () => {

@@ -59,6 +59,8 @@ For the customer-by-customer onboarding checklist, see `docs/customer-setup.md`.
 - `/` setup/status home page
 - `/intake` public intake form
 - `/leads` Supabase-authenticated lead inbox
+- `/setup` authenticated owner setup/status checklist
+- `/settings` authenticated account settings
 - `/api/intake` intake form submission
 - `/api/leads/[id]` lead status update
 - `/api/twilio/voice` Twilio incoming call webhook

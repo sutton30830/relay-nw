@@ -2502,6 +2502,222 @@ code {
   overflow-wrap: anywhere;
 }
 
+.setup-status {
+  display: grid;
+  gap: 22px;
+}
+
+.setup-metrics,
+.setup-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.setup-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+.setup-metric,
+.setup-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+}
+
+.setup-metric {
+  min-width: 0;
+  padding: 16px;
+}
+
+.setup-metric strong {
+  display: block;
+  margin: 8px 0 4px;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 26px;
+  line-height: 1;
+}
+
+.setup-metric span,
+.setup-copy {
+  color: var(--ink-3);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.setup-metric--good {
+  border-color: color-mix(in oklab, var(--good) 24%, var(--line));
+  background: color-mix(in oklab, var(--good-soft) 58%, var(--panel));
+}
+
+.setup-metric--warn {
+  border-color: color-mix(in oklab, var(--accent) 24%, var(--line));
+  background: color-mix(in oklab, var(--accent-soft) 48%, var(--panel));
+}
+
+.setup-panel {
+  overflow: hidden;
+}
+
+.setup-panel__head {
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in oklab, var(--panel-2) 62%, transparent);
+  padding: 18px;
+}
+
+.setup-panel__head h2 {
+  margin: 6px 0 0;
+  font-size: 24px;
+}
+
+.setup-status__steps {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.setup-status__step {
+  display: flex;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding: 16px 18px;
+}
+
+.setup-status__step:last-child {
+  border-bottom: 0;
+}
+
+.setup-status__dot {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--ink-3);
+}
+
+.setup-status__step strong {
+  display: block;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.setup-status__step p {
+  margin: 4px 0 0;
+  color: var(--ink-3);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.setup-status__step--complete .setup-status__dot {
+  background: var(--good-soft);
+  color: var(--good);
+}
+
+.setup-status__step--pending .setup-status__dot {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.setup-status__step--blocked .setup-status__dot {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.setup-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  margin: 0;
+}
+
+.setup-details div {
+  min-width: 0;
+  border-bottom: 1px solid var(--line);
+  padding: 16px 18px;
+}
+
+.setup-details div:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.setup-details dt {
+  margin: 0 0 5px;
+  color: var(--ink-4);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.setup-details dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 760;
+  overflow-wrap: anywhere;
+}
+
+.setup-copy {
+  margin: 0;
+  padding: 18px 18px 0;
+}
+
+.setup-codes {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+}
+
+.setup-code {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  padding: 12px;
+}
+
+.setup-code span {
+  display: block;
+  color: var(--ink-4);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.setup-code strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--ink);
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+
+.setup-panel--tests {
+  display: grid;
+  gap: 0;
+}
+
+.setup-panel--tests .forwarding-health,
+.setup-panel--tests .sms-health {
+  border-width: 0;
+  border-top-width: 1px;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 .priority-badge {
   border-color: color-mix(in oklab, var(--brand) 18%, var(--line));
   background: color-mix(in oklab, var(--brand-soft) 62%, var(--panel));
@@ -3434,6 +3650,38 @@ code {
   .health-action-btn {
     width: 100%;
     justify-content: center;
+  }
+
+  .setup-metrics,
+  .setup-grid,
+  .setup-details {
+    grid-template-columns: 1fr;
+  }
+
+  .setup-panel__head,
+  .setup-status__step,
+  .setup-details div,
+  .setup-codes {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .setup-panel__head h2 {
+    font-size: 22px;
+    line-height: 1.08;
+  }
+
+  .setup-details div:nth-last-child(-n + 2) {
+    border-bottom: 1px solid var(--line);
+  }
+
+  .setup-details div:last-child {
+    border-bottom: 0;
+  }
+
+  .setup-code {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .filters {
