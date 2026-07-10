@@ -107,9 +107,10 @@ test("human-facing pages require authenticated account context", () => {
 });
 
 test("public homepage keeps an owner inbox path visible", () => {
-  assert.match(homePageTsx, /<InboxLink className="btn btn-secondary btn-header">/);
-  assert.match(homePageTsx, /<InboxLink className="btn btn-secondary">/);
-  assert.match(homePageTsx, /Open inbox/);
+  assert.match(homePageTsx, /<InboxLink className="btn btn-secondary btn-header home-header__inbox">/);
+  assert.match(homePageTsx, /<InboxLink className="text-link">Open your inbox<\/InboxLink>/);
+  assert.match(globalsCss, /\.home-view \.home-header__setup/);
+  assert.match(globalsCss, /\.home-view \.home-header__inbox/);
   assert.match(globalsCss, /\.leads-view \.app-head__right > \.btn/);
   assert.doesNotMatch(globalsCss, /\n\s*\.app-head__right > \.btn,\n\s*\.app-head__right > \.app-head__logout/);
 });

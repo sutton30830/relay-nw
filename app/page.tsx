@@ -39,10 +39,10 @@ export default function HomePage() {
           </div>
         </div>
         <div className="app-head__right app-head__right--primary">
-          <Link className="btn btn-primary btn-header" href="/intake">
+          <Link className="btn btn-primary btn-header home-header__setup" href="/intake">
             <Icon name="settings" size={13} /> Get started
           </Link>
-          <InboxLink className="btn btn-secondary btn-header">
+          <InboxLink className="btn btn-secondary btn-header home-header__inbox">
             <Icon name="inbox" size={13} /> Inbox
           </InboxLink>
         </div>
@@ -61,10 +61,11 @@ export default function HomePage() {
             <Link className="btn btn-primary" href="/intake">
               <Icon name="settings" size={14} /> Start setup
             </Link>
-            <InboxLink className="btn btn-secondary">
-              <Icon name="inbox" size={14} /> Open inbox
-            </InboxLink>
           </div>
+          <p className="home-hero__owner-link">
+            Already using Relay?{" "}
+            <InboxLink className="text-link">Open your inbox</InboxLink>
+          </p>
           <p className="home-hero__note">
             $99/month. Try it for 30 days free.
           </p>
