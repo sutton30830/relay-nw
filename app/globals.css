@@ -2670,6 +2670,10 @@ code {
   padding: 18px 18px 0;
 }
 
+.setup-copy--tight {
+  padding-top: 8px;
+}
+
 .setup-codes {
   display: grid;
   gap: 10px;

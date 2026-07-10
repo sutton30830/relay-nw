@@ -36,7 +36,7 @@ const files = {
 test("authenticated lead, ops, recording, and transcription routes use session account scope", () => {
   assert.match(files.leadsPage, /const \{ account, accountId \} = await requireAccountUser\(\)/);
   assert.match(files.leadsPage, /getLeadInboxPageForAccount\(accountId/);
-  assert.match(files.leadsPage, /getForwardingHealthSummary\(accountId\)/);
+  assert.doesNotMatch(files.leadsPage, /getForwardingHealthSummary\(accountId\)/);
 
   assert.match(files.setupPage, /const \{ account, accountId, role \} = await requireAccountUser\(\)/);
   assert.match(files.setupPage, /getForwardingHealthSummary\(accountId\)/);

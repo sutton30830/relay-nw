@@ -30,7 +30,7 @@ function statusTone(status: "complete" | "pending" | "blocked") {
   return "setup-status__step--pending";
 }
 
-function setupCode(prefix: string, relayNumber: string) {
+function carrierCodeExample(prefix: string, relayNumber: string) {
   const digits = relayNumber.replace(/\D/g, "");
   return digits ? `${prefix}${digits}#` : "";
 }
@@ -90,9 +90,9 @@ export default async function SetupPage() {
   const isForwardingReady = account.callMode === "direct" || forwardingHealth.displayStatus === "passed";
   const isSmsReady = account.smsEnabled && isA2pApproved;
   const completedSteps = [isProfileReady, isA2pApproved, isForwardingReady, isSmsReady].filter(Boolean).length;
-  const noAnswerCode = setupCode("*61*", account.twilioPhoneNumber);
-  const busyCode = setupCode("*67*", account.twilioPhoneNumber);
-  const unreachableCode = setupCode("*62*", account.twilioPhoneNumber);
+  const noAnswerCode = carrierCodeExample("*61*", account.twilioPhoneNumber);
+  const busyCode = carrierCodeExample("*67*", account.twilioPhoneNumber);
+  const unreachableCode = carrierCodeExample("*62*", account.twilioPhoneNumber);
 
   return (
     <main className="leads-view">
@@ -200,13 +200,16 @@ export default async function SetupPage() {
             <div className="setup-panel__head">
               <div>
                 <p className="t-eyebrow">Call forwarding</p>
-                <h2 className="t-display">Give the owner the carrier codes.</h2>
+                <h2 className="t-display">Guide the owner through their carrier setup.</h2>
               </div>
             </div>
             {account.callMode === "forwarding" ? (
               <>
                 <p className="setup-copy">
-                  Configure the existing business number to forward unanswered, busy, and unreachable calls to the Relay number.
+                  The owner should configure their existing business number to forward unanswered, busy, and unreachable calls to the Relay number. The examples below work for many US mobile carriers, but carrier apps, landlines, VoIP providers, and some regional carriers use different steps.
+                </p>
+                <p className="setup-copy setup-copy--tight">
+                  Treat these as starting points, then confirm against the customer&apos;s carrier instructions before launch.
                 </p>
                 <div className="setup-codes">
                   {[

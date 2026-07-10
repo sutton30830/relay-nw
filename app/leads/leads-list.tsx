@@ -1,28 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/icon";
 import type { Lead } from "@/lib/supabase";
-import type { ForwardingHealthSummary } from "@/lib/forwarding-health";
 import { FILTERS } from "./_constants";
-import { fetchForwardingHealthStatus } from "./_api";
-import { ForwardingHealthCard } from "./_components/forwarding-health-card";
 import { LeadCard } from "./_components/lead-card";
 import { LeadDrawer } from "./_components/lead-drawer";
-import { SmsHealthCard } from "./_components/sms-health-card";
 import { useLeadsInbox } from "./_hooks/use-leads-inbox";
 import { useRouter } from "next/navigation";
 
 export function LeadsList({
   leads,
   businessName,
-  forwardingHealth,
   pagination,
 }: {
   leads: Lead[];
   businessName: string;
-  forwardingHealth: ForwardingHealthSummary;
   pagination: {
     page: number;
     limit: number;
@@ -31,7 +24,6 @@ export function LeadsList({
   };
 }) {
   const router = useRouter();
-  const [currentForwardingHealth, setCurrentForwardingHealth] = useState(forwardingHealth);
   const inbox = useLeadsInbox(leads);
   const loadedStart = leads.length > 0 ? pagination.offset + 1 : 0;
   const loadedEnd = pagination.offset + leads.length;
@@ -40,38 +32,6 @@ export function LeadsList({
   const hasNextPage = knownTotal === null
     ? leads.length === pagination.limit
     : loadedEnd < knownTotal;
-  const lineHealthTone =
-    currentForwardingHealth.displayStatus === "failed"
-      ? "issue"
-      : currentForwardingHealth.displayStatus === "pending"
-        ? "pending"
-        : currentForwardingHealth.displayStatus === "passed"
-          ? "healthy"
-          : "unknown";
-  const lineHealthLabel =
-    currentForwardingHealth.displayStatus === "failed"
-      ? "Issue"
-      : currentForwardingHealth.displayStatus === "pending"
-        ? "Listening"
-        : currentForwardingHealth.displayStatus === "passed"
-          ? "Healthy"
-          : currentForwardingHealth.statusLabel;
-
-  useEffect(() => {
-    let isMounted = true;
-
-    fetchForwardingHealthStatus()
-      .then((summary) => {
-        if (isMounted) setCurrentForwardingHealth(summary);
-      })
-      .catch((error) => {
-        console.error("Unable to load forwarding health after inbox render", { error });
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   return (
     <>
@@ -137,20 +97,10 @@ export function LeadsList({
           </h2>
         </div>
         <div className="page-head__actions">
-          <details className={`line-health line-health--${lineHealthTone}`}>
-            <summary className="line-health__summary">
-              <Icon
-                name={currentForwardingHealth.displayStatus === "failed" ? "alertTriangle" : "check"}
-                size={14}
-              />
-              <span>Line health</span>
-              <strong>{lineHealthLabel}</strong>
-            </summary>
-            <div className="line-health__panel">
-              <ForwardingHealthCard initialSummary={currentForwardingHealth} />
-              <SmsHealthCard />
-            </div>
-          </details>
+          <Link className="btn btn-secondary" href="/setup">
+            <Icon name="settings" size={14} />
+            Setup
+          </Link>
         </div>
       </section>
 

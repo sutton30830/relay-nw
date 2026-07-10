@@ -1,7 +1,7 @@
 import { LeadsList } from "@/app/leads/leads-list";
 import { publicBusinessName } from "@/lib/display-name";
 import { requireAccountUser } from "@/lib/auth";
-import { DEFAULT_LEADS_PAGE_LIMIT, getForwardingHealthSummary, getLeadInboxPageForAccount } from "@/lib/supabase";
+import { DEFAULT_LEADS_PAGE_LIMIT, getLeadInboxPageForAccount } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
@@ -22,17 +22,13 @@ export default async function LeadsPage({
   const page = readPage(params.page);
   const offset = (page - 1) * DEFAULT_LEADS_PAGE_LIMIT;
 
-  const [leadPage, forwardingHealth] = await Promise.all([
-    getLeadInboxPageForAccount(accountId, { limit: DEFAULT_LEADS_PAGE_LIMIT, offset }),
-    getForwardingHealthSummary(accountId),
-  ]);
+  const leadPage = await getLeadInboxPageForAccount(accountId, { limit: DEFAULT_LEADS_PAGE_LIMIT, offset });
 
   return (
     <main className="leads-view">
       <LeadsList
         businessName={businessName}
         leads={leadPage.leads}
-        forwardingHealth={forwardingHealth}
         pagination={{
           page,
           limit: leadPage.limit,
