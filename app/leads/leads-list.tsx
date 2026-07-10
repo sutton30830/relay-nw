@@ -33,6 +33,9 @@ export function LeadsList({
   const hasNextPage = knownTotal === null
     ? leads.length === pagination.limit
     : loadedEnd < knownTotal;
+  const isScopedToPage = pagination.page > 1 || hasNextPage;
+  const isFilteringOrSearching = inbox.filter !== "all" || inbox.query.trim().length > 0;
+  const showScopeNotice = isScopedToPage && isFilteringOrSearching;
 
   return (
     <>
@@ -195,6 +198,21 @@ export function LeadsList({
           ) : null}
         </div>
       </div>
+
+      {showScopeNotice ? (
+        <div className="filter-scope-notice" role="status">
+          <Icon name="info" size={14} />
+          <span>
+            {inbox.query.trim() ? "Search" : "Filter"} only covers the leads loaded on this page.
+            {" "}
+            {hasNextPage ? (
+              <Link href={`/leads?page=${pagination.page + 1}`}>Check older leads</Link>
+            ) : (
+              <Link href={pagination.page === 2 ? "/leads" : `/leads?page=${pagination.page - 1}`}>Check newer leads</Link>
+            )}
+          </span>
+        </div>
+      ) : null}
 
       <div className="leads-list">
         {inbox.sortedItems.map((lead) => (
