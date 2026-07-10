@@ -39,9 +39,6 @@ export default function HomePage() {
           </div>
         </div>
         <div className="app-head__right app-head__right--primary">
-          <Link className="btn btn-primary btn-header home-header__setup" href="/intake">
-            <Icon name="settings" size={13} /> Get started
-          </Link>
           <InboxLink className="btn btn-secondary btn-header home-header__inbox">
             <Icon name="inbox" size={13} /> Inbox
           </InboxLink>
@@ -59,7 +56,7 @@ export default function HomePage() {
           </p>
           <div className="home-hero__actions">
             <Link className="btn btn-primary" href="/intake">
-              <Icon name="settings" size={14} /> Start setup
+              <Icon name="settings" size={14} /> Set up Relay NW
             </Link>
           </div>
           <p className="home-hero__owner-link">
@@ -126,7 +123,7 @@ export default function HomePage() {
           <span>$99/month. Try it for 30 days free.</span>
           <p className="home-optional__punch">If Relay doesn&apos;t help you recover missed calls, you don&apos;t pay.</p>
           <Link className="btn btn-primary home-optional__cta" href="/intake">
-            Start setup
+            Set up Relay NW
           </Link>
         </div>
       </section>

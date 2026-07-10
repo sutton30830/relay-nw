@@ -3734,10 +3734,6 @@ code {
     justify-content: center;
   }
 
-  .home-view .home-header__setup {
-    display: none;
-  }
-
   .home-view .home-header__inbox {
     min-height: 36px;
     border-radius: 999px;
