@@ -21,7 +21,7 @@ function StatTile({ label, value, hint }: { label: string; value: string; hint?:
   return (
     <div className="panel" style={{ padding: "16px 18px" }}>
       <p className="t-eyebrow" style={{ margin: 0 }}>{label}</p>
-      <p style={{ fontSize: 28, fontWeight: 700, margin: "6px 0 0", color: "var(--ink-1, inherit)" }}>{value}</p>
+      <p style={{ fontSize: 28, fontWeight: 700, margin: "6px 0 0", color: "var(--ink)" }}>{value}</p>
       {hint ? <p style={{ color: "var(--ink-4)", fontSize: 12.5, margin: "4px 0 0" }}>{hint}</p> : null}
     </div>
   );
