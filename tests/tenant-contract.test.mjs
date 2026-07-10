@@ -128,7 +128,10 @@ test("authenticated setup page exposes onboarding checks without creating a new 
   assert.match(setupPageTsx, /carrierCodeExample\("\*61\*", account\.twilioPhoneNumber\)/);
   assert.match(setupPageTsx, /carrierCodeExample\("\*67\*", account\.twilioPhoneNumber\)/);
   assert.match(setupPageTsx, /carrierCodeExample\("\*62\*", account\.twilioPhoneNumber\)/);
+  assert.match(setupPageTsx, /Set up forwarding from your business number/);
   assert.match(setupPageTsx, /carrier apps, landlines, VoIP providers, and some regional carriers use different steps/);
+  assert.match(setupPageTsx, /use your carrier&apos;s call-forwarding instructions/);
+  assert.doesNotMatch(setupPageTsx, /Guide the owner|The owner should|customer&apos;s carrier instructions/);
   assert.match(setupPageTsx, /CopyButton/);
   assert.doesNotMatch(setupPageTsx, /provisionAccount|signUp|createUser|stripe/i);
 });

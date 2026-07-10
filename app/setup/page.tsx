@@ -17,10 +17,10 @@ const A2P_LABELS: Record<string, string> = {
 };
 
 const A2P_DETAILS: Record<string, string> = {
-  not_started: "Texting stays off until carrier registration is underway and approved.",
-  in_progress: "Carrier review is in progress. Calls and voicemail can be tested now.",
-  approved: "Carrier registration is approved, so automatic texting can be enabled safely.",
-  rejected: "Carrier registration needs attention before customer texts should go live.",
+  not_started: "Texting stays off until your carrier registration is approved.",
+  in_progress: "Your carrier review is in progress. You can still test calls and voicemail now.",
+  approved: "Your carrier registration is approved, so automatic texting can be enabled safely.",
+  rejected: "Your carrier registration needs attention before Relay texts callers.",
   paused: "Texting is paused until registration is active again.",
 };
 
@@ -102,7 +102,7 @@ export default async function SetupPage() {
             <p className="t-eyebrow">Setup</p>
             <h1 className="t-display">{account.businessName}</h1>
             <p className="leads-subtitle">
-              Confirm the Relay line, carrier registration, forwarding test, and owner SMS before go-live.
+              Connect your phone line, test missed-call forwarding, and make sure Relay can text from your number.
             </p>
           </div>
           <div className="lead-actions">
@@ -115,13 +115,13 @@ export default async function SetupPage() {
           <MetricCard
             label="Setup progress"
             value={`${completedSteps}/4`}
-            detail={completedSteps === 4 ? "Ready for a supervised launch" : "Finish the remaining checks before launch"}
+            detail={completedSteps === 4 ? "Relay is ready for missed calls" : "Finish these checks before relying on Relay"}
             tone={completedSteps === 4 ? "good" : "warn"}
           />
           <MetricCard
             label="Call mode"
             value={account.callMode === "forwarding" ? "Forwarding" : "Direct"}
-            detail={account.callMode === "forwarding" ? "Customer keeps their public number" : "Customer calls the Relay number directly"}
+            detail={account.callMode === "forwarding" ? "Keep your public business number" : "Use the Relay number directly"}
           />
           <MetricCard
             label="Texting"
@@ -135,33 +135,33 @@ export default async function SetupPage() {
           <article className="panel setup-panel">
             <div className="setup-panel__head">
               <div>
-                <p className="t-eyebrow">Go-live checklist</p>
-                <h2 className="t-display">The shortest path to a working account.</h2>
+                <p className="t-eyebrow">Checklist</p>
+                <h2 className="t-display">Get Relay ready for your next missed call.</h2>
               </div>
             </div>
             <ol className="setup-status__steps">
               <Step
                 title="Business profile"
-                detail={`${account.ownerPhoneNumber} is the owner phone. ${role === "viewer" ? "Ask an owner/admin to edit settings." : "Edit settings if this is wrong."}`}
+                detail={`${account.ownerPhoneNumber} is where Relay sends alerts. ${role === "viewer" ? "Ask an owner or admin to edit settings." : "Edit settings if this is wrong."}`}
                 status={isProfileReady ? "complete" : "blocked"}
               />
               <Step
                 title="Carrier registration"
-                detail={A2P_DETAILS[carrierStatus] ?? "Carrier status is unknown. Verify provisioning before texting customers."}
+                detail={A2P_DETAILS[carrierStatus] ?? "Carrier status is unknown. Check with Relay support before texting callers."}
                 status={isA2pApproved ? "complete" : carrierStatus === "rejected" || carrierStatus === "paused" ? "blocked" : "pending"}
               />
               <Step
                 title="Call routing test"
                 detail={account.callMode === "forwarding"
-                  ? "Use Start listening, then call the business number and let it go unanswered."
+                  ? "Use Start listening, then call your business number and let it go unanswered."
                   : "Direct mode routes calls through the Relay number without carrier forwarding."}
                 status={isForwardingReady ? "complete" : "pending"}
               />
               <Step
                 title="Automatic SMS readiness"
                 detail={account.smsEnabled
-                  ? "Automatic texting is enabled. Send an owner-only SMS test below before relying on it."
-                  : "Automatic SMS is off. Enable it from Settings after A2P is approved."}
+                  ? "Automatic texting is enabled. Send yourself a test text below before relying on it."
+                  : "Automatic SMS is off. Enable it from Settings after texting registration is approved."}
                 status={isSmsReady ? "complete" : "blocked"}
               />
             </ol>
@@ -171,7 +171,7 @@ export default async function SetupPage() {
             <div className="setup-panel__head">
               <div>
                 <p className="t-eyebrow">Relay line</p>
-                <h2 className="t-display">Numbers and registration.</h2>
+                <h2 className="t-display">Your numbers and texting status.</h2>
               </div>
             </div>
             <dl className="setup-details">
@@ -180,15 +180,15 @@ export default async function SetupPage() {
                 <dd>{account.twilioPhoneNumber}</dd>
               </div>
               <div>
-                <dt>Owner phone</dt>
+                <dt>Your phone</dt>
                 <dd>{account.ownerPhoneNumber}</dd>
               </div>
               <div>
-                <dt>A2P status</dt>
+                <dt>Texting registration</dt>
                 <dd>{A2P_LABELS[carrierStatus] ?? "Unknown"}</dd>
               </div>
               <div>
-                <dt>Owner email</dt>
+                <dt>Email</dt>
                 <dd>{account.ownerEmail ?? "Not set"}</dd>
               </div>
             </dl>
@@ -200,16 +200,16 @@ export default async function SetupPage() {
             <div className="setup-panel__head">
               <div>
                 <p className="t-eyebrow">Call forwarding</p>
-                <h2 className="t-display">Guide the owner through their carrier setup.</h2>
+                <h2 className="t-display">Set up forwarding from your business number.</h2>
               </div>
             </div>
             {account.callMode === "forwarding" ? (
               <>
                 <p className="setup-copy">
-                  The owner should configure their existing business number to forward unanswered, busy, and unreachable calls to the Relay number. The examples below work for many US mobile carriers, but carrier apps, landlines, VoIP providers, and some regional carriers use different steps.
+                  Configure your existing business number to forward unanswered, busy, and unreachable calls to your Relay number. The examples below work for many US mobile carriers, but carrier apps, landlines, VoIP providers, and some regional carriers use different steps.
                 </p>
                 <p className="setup-copy setup-copy--tight">
-                  Treat these as starting points, then confirm against the customer&apos;s carrier instructions before launch.
+                  If these codes do not work, use your carrier&apos;s call-forwarding instructions or contact their support team.
                 </p>
                 <div className="setup-codes">
                   {[
@@ -229,7 +229,7 @@ export default async function SetupPage() {
               </>
             ) : (
               <p className="setup-copy">
-                Direct mode is active. Use the Relay number as the public call number, then make a real missed-call test before launch.
+                Direct mode is active. Use the Relay number as your public call number, then make a real missed-call test before relying on it.
               </p>
             )}
           </article>
@@ -238,7 +238,7 @@ export default async function SetupPage() {
             <div className="setup-panel__head">
               <div>
                 <p className="t-eyebrow">Live tests</p>
-                <h2 className="t-display">Prove the loop before launch.</h2>
+                <h2 className="t-display">Test Relay before you rely on it.</h2>
               </div>
             </div>
             {account.callMode === "forwarding" ? (
