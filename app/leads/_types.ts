@@ -1,6 +1,6 @@
 import type { LeadStatus, ReplyPriorityOverride } from "@/lib/supabase";
 
-export type Filter = "all" | "new" | "contacted" | "dead" | "trash";
+export type Filter = "all" | "new" | "contacted" | "booked" | "dead" | "trash";
 
 export type LeadCounts = Record<Filter, number> & {
   actionable: number;

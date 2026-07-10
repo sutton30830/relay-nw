@@ -136,7 +136,7 @@ export type LeadsPageResult = {
   offset: number;
 };
 
-export const DEFAULT_LEADS_PAGE_LIMIT = 50;
+export const DEFAULT_LEADS_PAGE_LIMIT = 100;
 const MAX_LEADS_PAGE_LIMIT = 250;
 
 async function attachThreadMessages(leads: Lead[], accountId: string) {
