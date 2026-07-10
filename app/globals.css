@@ -3988,15 +3988,16 @@ code {
   }
 
   .lead-card__request {
-    border-radius: 10px;
-    background: color-mix(in oklab, var(--panel-2) 54%, transparent);
+    border-top: 1px solid color-mix(in oklab, var(--line) 76%, transparent);
+    border-radius: 0;
+    background: transparent;
     margin-top: 12px;
-    padding: 12px;
+    padding: 12px 0 0;
   }
 
   .lead-card__request p {
-    font-size: 15px;
-    line-height: 1.42;
+    font-size: 15.5px;
+    line-height: 1.4;
   }
 
   .setup-request {
@@ -4009,30 +4010,33 @@ code {
   }
 
   .lead-card__actions {
-    display: grid;
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    justify-content: space-between;
     gap: 8px;
-    margin-top: 14px;
+    margin-top: 16px;
   }
 
   .lead-card__primary-actions {
-    display: grid;
-    width: 100%;
-    grid-template-columns: 1fr;
+    display: flex;
+    width: auto;
   }
 
   .lead-card__utility-actions {
-    display: grid;
-    width: 100%;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    display: flex;
+    width: auto;
+    align-items: center;
+    justify-content: flex-end;
     gap: 8px;
-    margin-left: 0;
+    margin-left: auto;
   }
 
   .lead-card__primary-actions .btn,
   .lead-card__utility-actions .btn {
     min-width: 0;
-    width: 100%;
-    padding: 0 10px;
+    width: auto;
+    padding: 0 12px;
   }
 
   .lead-card__utility-actions .btn {
@@ -4042,8 +4046,7 @@ code {
   }
 
   .lead-card__overflow {
-    grid-column: 3;
-    width: 100%;
+    width: auto;
   }
 
   .lead-card__overflow-menu {
@@ -4080,18 +4083,19 @@ code {
   .drawer__hero,
   .drawer__status-row,
   .drawer__priority-row,
-  .drawer__value-row,
-  .lead-card__value {
+  .drawer__value-row {
     align-items: stretch;
     flex-direction: column;
   }
 
   .lead-card__value {
-    display: grid;
+    display: inline-flex;
     width: 100%;
-    border-radius: 12px;
-    background: color-mix(in oklab, var(--panel-2) 44%, transparent);
-    padding: 12px;
+    align-items: center;
+    flex-direction: row;
+    border-radius: 999px;
+    background: transparent;
+    padding: 7px 8px 7px 12px;
   }
 
   .lead-card__value-label {
@@ -4102,6 +4106,12 @@ code {
   .money-field--compact {
     width: 100%;
     min-width: 0;
+  }
+
+  .lead-card__value .money-field--compact {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 150px;
   }
 
   .filter-pill {
