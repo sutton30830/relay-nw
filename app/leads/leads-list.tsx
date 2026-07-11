@@ -35,7 +35,6 @@ export function LeadsList({
     filter: pagination.filter,
     query: pagination.query,
   });
-  const loadedStart = leads.length > 0 ? pagination.offset + 1 : 0;
   const loadedEnd = pagination.offset + leads.length;
   const knownTotal = pagination.total ?? null;
   const hasPreviousPage = pagination.page > 1;
@@ -94,19 +93,6 @@ export function LeadsList({
         }}
       />
 
-      <section className="page-head">
-        <div>
-          <p className="t-eyebrow">Inbox</p>
-          <h2 className="t-display page-head__title">
-            {inbox.counts.actionable > 0 ? (
-              <>You have <em>{inbox.counts.actionable}</em> {inbox.counts.actionable === 1 ? "lead" : "leads"} to work.</>
-            ) : (
-              <>Inbox is clear. Nice work.</>
-            )}
-          </h2>
-        </div>
-      </section>
-
       <div className="mobile-inbox-search">
         <div className="search">
           <Icon name="search" size={14} />
@@ -138,29 +124,22 @@ export function LeadsList({
         })}
       </nav>
 
-      <div className="inbox-page-meta">
-        <span>
-          {knownTotal === null
-            ? `Showing ${leads.length} most recent loaded leads`
-            : leads.length > 0
-              ? `Showing ${loadedStart}-${loadedEnd} of ${knownTotal} leads`
-              : hasSearch
-                ? "No matching leads"
-                : "No leads loaded"}
-        </span>
-        <div className="inbox-page-meta__actions">
-          {hasPreviousPage ? (
-            <Link className="btn btn-secondary btn-sm" href={pageHref(pagination.page - 1)}>
-              Previous
-            </Link>
-          ) : null}
-          {hasNextPage ? (
-            <Link className="btn btn-secondary btn-sm" href={pageHref(pagination.page + 1)}>
-              Next
-            </Link>
-          ) : null}
+      {hasPreviousPage || hasNextPage ? (
+        <div className="inbox-page-meta">
+          <div className="inbox-page-meta__actions">
+            {hasPreviousPage ? (
+              <Link className="btn btn-secondary btn-sm" href={pageHref(pagination.page - 1)}>
+                Previous
+              </Link>
+            ) : null}
+            {hasNextPage ? (
+              <Link className="btn btn-secondary btn-sm" href={pageHref(pagination.page + 1)}>
+                Next
+              </Link>
+            ) : null}
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <div className={`leads-list ${inbox.isSearching ? "leads-list--loading" : ""}`} aria-busy={inbox.isSearching}>
         {inbox.sortedItems.map((lead) => (
