@@ -9,6 +9,10 @@ export default async function LoginPage({
 }) {
   const params = await searchParams;
   const next = params.next || "/leads";
+  const alreadySent = params.sent === "recent";
+  const rateLimited = params.error === "rate_limited";
+  const emailError = params.error === "email";
+  const genericError = params.error && !rateLimited && !emailError;
 
   return (
     <main className="gate-view">
@@ -18,11 +22,25 @@ export default async function LoginPage({
         <p className="gate-sub">Enter the email connected to your Relay NW account.</p>
 
         {params.sent ? (
-          <p className="gate-sub"><strong>Check your email.</strong> Your secure sign-in link is on the way.</p>
+          <p className="gate-sub">
+            <strong>{alreadySent ? "Use the latest email link." : "Check your email."}</strong>{" "}
+            {alreadySent
+              ? "A sign-in link was already requested a moment ago. To avoid a temporary lockout, wait about a minute before asking for another one."
+              : "Your secure sign-in link is on the way."}
+          </p>
         ) : null}
 
         {params.error ? (
-          <p className="gate-sub"><strong>Sign-in failed.</strong> Try again or confirm this email is invited.</p>
+          <p className="gate-sub">
+            <strong>{rateLimited ? "Too many sign-in link requests." : emailError ? "Enter your email." : "Sign-in failed."}</strong>{" "}
+            {rateLimited
+              ? "Use the most recent email link if it arrived, or wait a minute before requesting another one."
+              : emailError
+                ? "Use the email connected to your Relay NW account."
+                : genericError
+                  ? "Try again or confirm this email is invited."
+                  : null}
+          </p>
         ) : null}
 
         <form action="/api/auth/login" method="POST" className="gate-form">
