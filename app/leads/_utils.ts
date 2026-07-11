@@ -490,7 +490,7 @@ export function leadMatchesSearch(lead: Lead, query: string) {
   }
 
   return [
-    lead.name,
+    lead.name || "Unknown caller",
     lead.phone,
     lead.message,
     lead.notes,

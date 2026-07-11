@@ -120,6 +120,14 @@ test("lead inbox sorting has a deterministic tie-break for identical timestamps"
   );
 });
 
+test("lead search matches the visible Unknown caller label", async () => {
+  const { leadMatchesSearch } = await loadLeadUtils();
+
+  assert.equal(leadMatchesSearch(lead({ name: null }), "unknown"), true);
+  assert.equal(leadMatchesSearch(lead({ name: "" }), "unknown caller"), true);
+  assert.equal(leadMatchesSearch(lead({ name: "Joey" }), "unknown"), false);
+});
+
 test("booked leads remain in their workflow status filters", async () => {
   const { countLeads, filterLeads } = await loadLeadUtils();
   const openLead = lead({ id: "open-lead", status: "new" });

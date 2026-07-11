@@ -613,6 +613,7 @@ as $$
         escaped.q = ''
         or (
           coalesce(name, '') || ' ' || coalesce(phone, '') || ' ' ||
+          case when nullif(btrim(coalesce(name, '')), '') is null then 'Unknown caller ' else '' end ||
           coalesce(message, '') || ' ' || coalesce(notes, '') || ' ' ||
           coalesce(voicemail_summary, '') || ' ' || coalesce(voicemail_transcript, '')
         ) ilike '%' || escaped.q || '%' escape '\'

@@ -260,11 +260,67 @@ function createSupabaseFake(seed) {
     }
   }
 
+  function leadSearchText(lead) {
+    return [
+      lead.name || "Unknown caller",
+      lead.phone,
+      lead.message,
+      lead.notes,
+      lead.voicemail_summary,
+      lead.voicemail_transcript,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+  }
+
+  function searchLeadInbox(params) {
+    const filter = params.p_filter ?? "all";
+    const query = String(params.p_query ?? "").trim().toLowerCase();
+    const limit = params.p_limit ?? 50;
+    const offset = params.p_offset ?? 0;
+    const accountLeads = table("leads").filter((lead) => lead.account_id === params.p_account);
+    const callCounts = new Map();
+
+    for (const lead of accountLeads) {
+      callCounts.set(lead.phone, (callCounts.get(lead.phone) ?? 0) + 1);
+    }
+
+    const filtered = accountLeads
+      .filter((lead) => {
+        const inTrash = Boolean(lead.deleted_at);
+        if (filter === "trash" ? !inTrash : inTrash) return false;
+        if (filter === "booked" && !(lead.booked_at || lead.status === "booked")) return false;
+        if (!["all", "trash", "booked"].includes(filter) && lead.status !== filter) return false;
+        return !query || leadSearchText(lead).includes(query);
+      })
+      .sort((a, b) => {
+        if (a.created_at < b.created_at) return 1;
+        if (a.created_at > b.created_at) return -1;
+        return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+      });
+
+    const total = filtered.length;
+
+    return filtered.slice(offset, offset + limit).map((lead) => ({
+      ...lead,
+      call_count: callCounts.get(lead.phone) ?? 1,
+      total_count: total,
+    }));
+  }
+
   return {
     tables,
     client: {
       from(tableName) {
         return new Query(tableName);
+      },
+      rpc(name, params) {
+        if (name === "search_lead_inbox") {
+          return Promise.resolve({ data: searchLeadInbox(params), error: null });
+        }
+
+        throw new Error(`Unsupported rpc ${name}`);
       },
     },
   };

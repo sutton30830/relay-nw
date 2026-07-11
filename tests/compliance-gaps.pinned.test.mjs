@@ -21,6 +21,8 @@ const recordingRoute = await readFile(new URL("../app/api/twilio/recording/route
 const voicemailAi = await readFile(new URL("../lib/voicemail-ai.ts", import.meta.url), "utf8");
 const messagesTs = await readFile(new URL("../lib/supabase/messages.ts", import.meta.url), "utf8");
 const intakeRoute = await readFile(new URL("../app/api/intake/route.ts", import.meta.url), "utf8");
+const leadsInboxHook = await readFile(new URL("../app/leads/_hooks/use-leads-inbox.ts", import.meta.url), "utf8");
+const supabaseSql = await readFile(new URL("../supabase.sql", import.meta.url), "utf8");
 
 test(
   "inbound SMS route handles START/UNSTOP re-opt-in by clearing the opt_outs row",
@@ -81,6 +83,22 @@ test(
   () => {
     assert.match(recordingRoute, /Skipping duplicate automatic voicemail transcription/);
     assert.match(recordingRoute, /Voicemail summary is already generating\./);
+  },
+);
+
+test(
+  "lead search keeps active typing stable across stale server refreshes",
+  () => {
+    assert.match(leadsInboxHook, /pendingQueryRef/);
+    assert.match(leadsInboxHook, /server\.query !== pendingQueryRef\.current/);
+  },
+);
+
+test(
+  "server-side lead search matches the visible Unknown caller label",
+  () => {
+    assert.match(supabaseSql, /Unknown caller/);
+    assert.match(supabaseSql, /nullif\(btrim\(coalesce\(name, ''\)\), ''\) is null/);
   },
 );
 

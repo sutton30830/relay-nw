@@ -59,6 +59,7 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
   const pendingPhoneWrites = useRef<Map<string, Partial<Lead>>>(new Map());
   const undoTimerRef = useRef<number | null>(null);
   const searchDebounceRef = useRef<number | null>(null);
+  const pendingQueryRef = useRef<string | null>(null);
   const [items, setItems] = useState(leads);
   const [sampleItems, setSampleItems] = useState(() => createSampleLeads());
   const [sampleMode, setSampleMode] = useState(false);
@@ -85,6 +86,15 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
   useEffect(() => {
     if (sampleMode) return;
     setFilterState(server.filter);
+
+    if (pendingQueryRef.current !== null && server.query !== pendingQueryRef.current) {
+      return;
+    }
+
+    if (pendingQueryRef.current !== null && server.query === pendingQueryRef.current) {
+      pendingQueryRef.current = null;
+    }
+
     setQueryState(server.query);
   }, [server.filter, server.query, sampleMode]);
 
@@ -108,6 +118,7 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
   function setQuery(nextQuery: string) {
     setQueryState(nextQuery);
     if (sampleMode) return;
+    pendingQueryRef.current = nextQuery.trim();
     if (searchDebounceRef.current) window.clearTimeout(searchDebounceRef.current);
     searchDebounceRef.current = window.setTimeout(() => {
       navigateToInbox(filter, nextQuery);
