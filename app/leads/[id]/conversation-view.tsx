@@ -427,6 +427,7 @@ export function ConversationView({
               className="field convo__input"
               rows={1}
               maxLength={640}
+              enterKeyHint="send"
               placeholder="Text from your business number..."
               value={replyText}
               disabled={replySending}
@@ -451,6 +452,9 @@ export function ConversationView({
               <Icon name="arrowRight" size={18} />
             </button>
           </div>
+          <p className="convo__composer-hint">
+            <strong>Enter</strong> sends · <strong>Shift+Enter</strong> for a new line
+          </p>
         </footer>
       ) : null}
     </div>

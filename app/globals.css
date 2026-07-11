@@ -4286,6 +4286,22 @@ code {
   opacity: 0.4;
   cursor: default;
 }
+/* Keyboard hint for the composer. Only meaningful with a physical keyboard —
+   hidden on touch, where there's no Shift+Enter and the key shows "send". */
+.convo__composer-hint {
+  margin: 6px 4px 0;
+  font-size: 11px;
+  color: var(--ink-4);
+}
+.convo__composer-hint strong {
+  font-weight: 650;
+  color: var(--ink-3);
+}
+@media (hover: none) and (pointer: coarse) {
+  .convo__composer-hint {
+    display: none;
+  }
+}
 .convo__earlier-notes {
   display: grid;
   gap: 4px;
