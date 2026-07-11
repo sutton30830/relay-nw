@@ -32,7 +32,9 @@ export function LeadCard({
   now,
   callCount = 1,
   href,
+  isOpening = false,
   onOpen,
+  onPrefetch,
   onStatus,
   onBooked,
   onJobValue,
@@ -48,7 +50,9 @@ export function LeadCard({
   // middle-click, prefetch). Without it (sample leads), the name is a button
   // that calls onOpen to open the in-memory drawer instead.
   href?: string;
+  isOpening?: boolean;
   onOpen: (id: string) => void;
+  onPrefetch?: (id: string) => void;
   onStatus: (id: string, status: LeadStatus) => void;
   onBooked: (id: string, booked: boolean) => void;
   onJobValue: (id: string, jobValueCents: number | null) => void;
@@ -116,7 +120,8 @@ export function LeadCard({
     <article
       className={`lead-card ${attention ? "lead-card--attention" : ""} ${
         priority.level === "fast" && !trashed ? "lead-card--fast" : ""
-      } ${trashed ? "lead-card--trashed" : ""}`}
+      } ${trashed ? "lead-card--trashed" : ""} ${isOpening ? "lead-card--opening" : ""}`}
+      aria-busy={isOpening}
     >
       <div className="lead-card__head">
         <div className="lead-card__id">
@@ -127,11 +132,25 @@ export function LeadCard({
                 lead while inner controls stay clickable via a higher z-index. */}
             <h3 className="lead-card__name">
               {href ? (
-                <Link href={href} className="lead-card__name-link">
+                <Link
+                  href={href}
+                  className="lead-card__name-link"
+                  onClick={() => onOpen(lead.id)}
+                  onFocus={() => onPrefetch?.(lead.id)}
+                  onMouseEnter={() => onPrefetch?.(lead.id)}
+                  onTouchStart={() => onPrefetch?.(lead.id)}
+                >
                   <span className="lead-card__name-text">{lead.name || "Unknown caller"}</span>
                 </Link>
               ) : (
-                <button type="button" className="lead-card__name-link" onClick={() => onOpen(lead.id)}>
+                <button
+                  type="button"
+                  className="lead-card__name-link"
+                  onClick={() => onOpen(lead.id)}
+                  onFocus={() => onPrefetch?.(lead.id)}
+                  onMouseEnter={() => onPrefetch?.(lead.id)}
+                  onTouchStart={() => onPrefetch?.(lead.id)}
+                >
                   <span className="lead-card__name-text">{lead.name || "Unknown caller"}</span>
                 </button>
               )}
@@ -288,6 +307,12 @@ export function LeadCard({
           </div>
         ) : null}
       </div>
+      {isOpening ? (
+        <div className="lead-card__opening" role="status">
+          <Icon name="sparkle" size={13} />
+          Opening conversation...
+        </div>
+      ) : null}
     </article>
   );
 }

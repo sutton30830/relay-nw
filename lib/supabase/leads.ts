@@ -150,7 +150,7 @@ export type LeadsPageResult = {
   callCounts?: Record<string, number>;
 };
 
-export const DEFAULT_LEADS_PAGE_LIMIT = 100;
+export const DEFAULT_LEADS_PAGE_LIMIT = 50;
 const MAX_LEADS_PAGE_LIMIT = 250;
 
 async function attachThreadMessages(leads: Lead[], accountId: string) {
@@ -682,14 +682,14 @@ export async function getLeadConversation(inputAccountId: string, id: string): P
       // Deleted rows stay in the thread: they're calls that really happened,
       // and the card's "N calls" count includes them.
       .order("created_at", { ascending: false })
-      .limit(50),
+      .limit(25),
     supabaseAdmin
       .from("inbound_messages")
       .select("id, message_sid, from_phone, to_phone, body, created_at")
       .eq("account_id", accountId)
       .eq("from_phone", lead.phone)
       .order("created_at", { ascending: true })
-      .limit(500),
+      .limit(100),
     supabaseAdmin
       .from("messages")
       .select("id, lead_id, twilio_message_sid, from_phone, to_phone, body, status, created_at")
@@ -697,7 +697,7 @@ export async function getLeadConversation(inputAccountId: string, id: string): P
       .eq("direction", "outbound")
       .eq("to_phone", lead.phone)
       .order("created_at", { ascending: true })
-      .limit(500),
+      .limit(100),
   ]);
 
   // Message history is non-fatal: the page still renders the lead and calls.

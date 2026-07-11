@@ -104,7 +104,7 @@ test("lead queries and mutations filter by account_id when an account is supplie
   assert.match(files.tenantStore, /export function assertAccountId/);
   assert.match(files.leadsStore, /query = query\.eq\("account_id", accountId\)/);
   assert.match(files.leadsStore, /\.range\(offset, offset \+ limit - 1\)/);
-  assert.match(files.leadsStore, /DEFAULT_LEADS_PAGE_LIMIT = 100/);
+  assert.match(files.leadsStore, /DEFAULT_LEADS_PAGE_LIMIT = 50/);
   assert.match(files.leadsStore, /legacyQuery = legacyQuery\.eq\("account_id", accountId\)/);
   assert.match(files.leadsStore, /\.eq\("id", input\.id\)\s*\.eq\("account_id", accountId\)/);
   assert.match(files.leadsStore, /\.eq\("id", id\)\s*\.eq\("account_id", accountId\)/);

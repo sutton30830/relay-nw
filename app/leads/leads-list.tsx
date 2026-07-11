@@ -8,7 +8,6 @@ import { AppHeader } from "./_components/app-header";
 import { LeadCard } from "./_components/lead-card";
 import { LeadDrawer } from "./_components/lead-drawer";
 import { useLeadsInbox } from "./_hooks/use-leads-inbox";
-import { useRouter } from "next/navigation";
 
 export function LeadsList({
   leads,
@@ -30,7 +29,6 @@ export function LeadsList({
     query: string;
   };
 }) {
-  const router = useRouter();
   const inbox = useLeadsInbox(leads, {
     counts,
     callCounts,
@@ -153,7 +151,9 @@ export function LeadsList({
             // (keyboard, middle-click, prefetch); sample leads have no page, so
             // they fall back to opening the in-memory drawer through onOpen.
             href={lead.id.startsWith("sample-") ? undefined : `/leads/${lead.id}`}
-            onOpen={(id) => (id.startsWith("sample-") ? inbox.setOpenId(id) : router.push(`/leads/${id}`))}
+            isOpening={inbox.openingLeadId === lead.id}
+            onOpen={inbox.openLeadConversation}
+            onPrefetch={inbox.prefetchLeadConversation}
             onStatus={inbox.updateStatus}
             onBooked={inbox.updateBooked}
             onJobValue={inbox.updateJobValue}

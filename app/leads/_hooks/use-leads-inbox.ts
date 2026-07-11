@@ -113,6 +113,7 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
   const [expandedLeadIds, setExpandedLeadIds] = useState<Set<string>>(() => new Set());
   const [undoableDelete, setUndoableDelete] = useState<UndoableDelete | null>(null);
   const [optimisticCounts, setOptimisticCounts] = useState<LeadCounts>(server.counts);
+  const [openingLeadId, setOpeningLeadId] = useState<string | null>(null);
   const [isNavigating, startNavigation] = useTransition();
   const activeItems = sampleMode ? sampleItems : items;
 
@@ -298,6 +299,35 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
   );
 
   const openLead = activeItems.find((lead) => lead.id === openId) ?? null;
+
+  useEffect(() => {
+    if (sampleMode) return;
+
+    for (const lead of sortedItems.slice(0, 10)) {
+      router.prefetch(`/leads/${lead.id}`);
+    }
+  }, [router, sampleMode, sortedItems]);
+
+  useEffect(() => {
+    if (!openingLeadId) return;
+    const timeout = window.setTimeout(() => setOpeningLeadId(null), 8_000);
+    return () => window.clearTimeout(timeout);
+  }, [openingLeadId]);
+
+  function prefetchLeadConversation(id: string) {
+    if (id.startsWith("sample-")) return;
+    router.prefetch(`/leads/${id}`);
+  }
+
+  function openLeadConversation(id: string) {
+    if (id.startsWith("sample-")) {
+      setOpenId(id);
+      return;
+    }
+
+    setOpeningLeadId(id);
+    prefetchLeadConversation(id);
+  }
 
   function updateLocalLead(id: string, updates: Partial<Lead>) {
     const setter = sampleMode ? setSampleItems : setItems;
@@ -711,7 +741,10 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
     filteredItems,
     isSearching: isNavigating,
     now,
+    openingLeadId,
     openLead,
+    openLeadConversation,
+    prefetchLeadConversation,
     query,
     sampleMode,
     searchRef,

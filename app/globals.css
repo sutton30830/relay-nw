@@ -2121,6 +2121,11 @@ code {
   box-shadow: var(--shadow-sm);
 }
 
+.lead-card--opening {
+  border-color: color-mix(in oklab, var(--brand) 46%, var(--line));
+  box-shadow: var(--shadow-sm);
+}
+
 .lead-card--attention {
   border-color: color-mix(in oklab, var(--danger) 50%, var(--line));
   background: var(--panel);
@@ -2231,6 +2236,23 @@ code {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.lead-card__opening {
+  position: absolute;
+  inset: auto 14px 14px auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid color-mix(in oklab, var(--brand) 34%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--brand-soft) 76%, var(--panel));
+  color: var(--brand-ink);
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
 }
 
 /* Controls stay clickable above the stretched-link overlay. Using position

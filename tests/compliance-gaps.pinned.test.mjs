@@ -22,6 +22,7 @@ const voicemailAi = await readFile(new URL("../lib/voicemail-ai.ts", import.meta
 const messagesTs = await readFile(new URL("../lib/supabase/messages.ts", import.meta.url), "utf8");
 const intakeRoute = await readFile(new URL("../app/api/intake/route.ts", import.meta.url), "utf8");
 const leadsInboxHook = await readFile(new URL("../app/leads/_hooks/use-leads-inbox.ts", import.meta.url), "utf8");
+const leadCardTsx = await readFile(new URL("../app/leads/_components/lead-card.tsx", import.meta.url), "utf8");
 const supabaseSql = await readFile(new URL("../supabase.sql", import.meta.url), "utf8");
 const globalsCss = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
@@ -121,6 +122,18 @@ test(
   () => {
     const loadingRule = globalsCss.match(/\.leads-list--loading\s*\{[^}]+\}/)?.[0] ?? "";
     assert.doesNotMatch(loadingRule, /pointer-events:\s*none/);
+  },
+);
+
+test(
+  "lead conversation opens feel responsive without changing the card workflow",
+  () => {
+    assert.match(leadsInboxHook, /sortedItems\.slice\(0,\s*10\)/);
+    assert.match(leadsInboxHook, /router\.prefetch\(`\/leads\/\$\{lead\.id\}`\)/);
+    assert.match(leadsInboxHook, /openingLeadId/);
+    assert.match(leadCardTsx, /isOpening/);
+    assert.match(leadCardTsx, /Opening conversation/);
+    assert.match(globalsCss, /\.lead-card--opening/);
   },
 );
 
