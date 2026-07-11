@@ -231,7 +231,10 @@ export function LeadCard({
 
       {booked ? (
         <div className="lead-card__value" onClick={(event) => event.stopPropagation()}>
-          <span className="lead-card__value-label">Booked value</span>
+          <span className="lead-card__value-label">
+            <Icon name="star" size={13} />
+            Booked value
+          </span>
           <BookedValueInput
             compact
             valueCents={lead.job_value_cents}

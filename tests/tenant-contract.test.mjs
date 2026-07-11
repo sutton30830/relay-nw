@@ -112,6 +112,13 @@ test("lead card actions keep workflow controls explicit and avoid duplicate deta
   assert.doesNotMatch(leadCardTsx, />Details</);
 });
 
+test("mobile booked value control stays compact and polished", () => {
+  assert.match(leadCardTsx, /<Icon name="star" size=\{13\} \/>/);
+  assert.match(globalsCss, /@media \(max-width: 560px\)[\s\S]*\.lead-card__value\s*\{[\s\S]*display:\s*grid/);
+  assert.match(globalsCss, /@media \(max-width: 560px\)[\s\S]*\.lead-card__value \.money-field--compact\s*\{[\s\S]*min-height:\s*46px/);
+  assert.match(globalsCss, /@media \(max-width: 560px\)[\s\S]*\.lead-card__value \.money-field--compact input\s*\{[\s\S]*font-size:\s*20px/);
+});
+
 test("lead inbox empty states distinguish search misses from no leads", () => {
   assert.match(leadsListTsx, /const hasSearch = trimmedQuery\.length > 0/);
   assert.match(leadsListTsx, /accountHasAnyLeads = inbox\.counts\.all \+ inbox\.counts\.trash > 0/);
