@@ -7,7 +7,7 @@ import { Icon } from "@/components/icon";
 import type { InboundMessage, Lead, LeadStatus, OutboundMessage, ReplyPriorityOverride } from "@/lib/supabase";
 import { patchLead, requestVoicemailSummary, sendLeadReply } from "../_api";
 import { QUICK_REPLIES } from "../_constants";
-import { formatDuration, formatPhone, getLeadPriority, initials, isBookedLead, sourceLabel } from "../_utils";
+import { formatPhone, getLeadPriority, initials, isBookedLead, sourceLabel } from "../_utils";
 import { BookedToggle, BookedValueInput, PriorityControl, StatusControl } from "../_components/controls";
 
 type ThreadItem =
@@ -17,25 +17,43 @@ type ThreadItem =
 
 const AUTO_TEXT_SENT_STATUSES = new Set(["queued", "sending", "sent", "delivered"]);
 
-function VoicemailPlayer({ recordingSid }: { recordingSid: string }) {
+function formatClock(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  const whole = Math.floor(seconds);
+  const minutes = Math.floor(whole / 60);
+  const remainder = whole % 60;
+  return `${minutes}:${remainder.toString().padStart(2, "0")}`;
+}
+
+// The core "listen → call back" control. It fetches the recording once as a
+// blob (the API route needs the auth cookie and doesn't serve range requests),
+// holds the whole file in memory so scrubbing is reliable, and cleans up the
+// object URL so repeated visits don't leak. fallbackDuration comes from the
+// stored recording_duration and seeds the total time before metadata loads.
+function VoicemailPlayer({
+  recordingSid,
+  fallbackDuration,
+}: {
+  recordingSid: string;
+  fallbackDuration: number | null;
+}) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [state, setState] = useState<"idle" | "loading" | "playing" | "paused" | "error">("idle");
+  const objectUrlRef = useRef<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [status, setStatus] = useState<"idle" | "loading" | "playing" | "paused" | "error">("idle");
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(fallbackDuration && fallbackDuration > 0 ? fallbackDuration : 0);
 
-  async function toggle() {
-    if (state === "playing") {
-      audioRef.current?.pause();
-      setState("paused");
-      return;
-    }
+  // Revoke the blob URL when the player unmounts (navigating away from the
+  // conversation) so the fetched audio isn't held forever.
+  useEffect(() => {
+    return () => {
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    };
+  }, []);
 
-    if (audioRef.current) {
-      void audioRef.current.play();
-      setState("playing");
-      return;
-    }
-
-    setState("loading");
-
+  async function loadAudio() {
+    setStatus("loading");
     try {
       const response = await fetch(`/api/recordings/${recordingSid}`, {
         cache: "no-store",
@@ -43,24 +61,94 @@ function VoicemailPlayer({ recordingSid }: { recordingSid: string }) {
       });
       if (!response.ok) throw new Error("Recording unavailable");
       const blob = await response.blob();
-      const audio = new Audio(URL.createObjectURL(blob));
-      audio.onended = () => setState("paused");
-      audioRef.current = audio;
-      void audio.play();
-      setState("playing");
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+      const url = URL.createObjectURL(blob);
+      objectUrlRef.current = url;
+      const audio = audioRef.current;
+      if (!audio) return;
+      audio.src = url;
+      setLoaded(true);
+      await audio.play();
+      setStatus("playing");
     } catch {
-      setState("error");
+      setStatus("error");
     }
   }
 
-  if (state === "error") {
-    return <span className="convo__vm-error">Recording unavailable</span>;
+  function togglePlayback() {
+    const audio = audioRef.current;
+    if (!loaded || !audio) {
+      void loadAudio();
+      return;
+    }
+
+    if (audio.paused) {
+      void audio.play();
+      setStatus("playing");
+    } else {
+      audio.pause();
+      setStatus("paused");
+    }
   }
 
+  function seek(value: number) {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.currentTime = value;
+    setCurrentTime(value);
+  }
+
+  const isBusy = status === "loading";
+  const effectiveDuration = duration > 0 ? duration : fallbackDuration ?? 0;
+
   return (
-    <button className="convo__play" type="button" onClick={() => void toggle()} aria-label="Play voicemail">
-      {state === "loading" ? "…" : state === "playing" ? "❚❚" : "▶"}
-    </button>
+    <div className="convo__vm-player">
+      <audio
+        ref={audioRef}
+        preload="none"
+        onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+        onLoadedMetadata={(event) => {
+          const value = event.currentTarget.duration;
+          if (Number.isFinite(value) && value > 0) setDuration(value);
+        }}
+        onEnded={() => setStatus("paused")}
+      />
+      <button
+        className="convo__play"
+        type="button"
+        onClick={togglePlayback}
+        disabled={isBusy}
+        aria-label={status === "playing" ? "Pause voicemail" : "Play voicemail"}
+      >
+        {isBusy ? <Icon name="clock" size={13} /> : <Icon name={status === "playing" ? "pause" : "play"} size={13} />}
+      </button>
+
+      {status === "error" ? (
+        <span className="convo__vm-error">
+          Recording unavailable.{" "}
+          <button className="convo__vm-retry" type="button" onClick={() => void loadAudio()}>
+            Retry
+          </button>
+        </span>
+      ) : (
+        <div className="convo__vm-scrub">
+          <input
+            className="convo__vm-range"
+            type="range"
+            min={0}
+            max={effectiveDuration || 0}
+            step={0.1}
+            value={Math.min(currentTime, effectiveDuration || 0)}
+            disabled={!loaded || !effectiveDuration}
+            onChange={(event) => seek(Number(event.target.value))}
+            aria-label="Seek voicemail"
+          />
+          <span className="convo__vm-time" suppressHydrationWarning>
+            {formatClock(currentTime)} / {formatClock(effectiveDuration)}
+          </span>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -369,12 +457,11 @@ export function ConversationView({
               </p>
               {item.lead.recording_sid ? (
                 <div className="convo__msg convo__msg--in convo__vm">
-                  <div className="convo__vm-row">
-                    <VoicemailPlayer recordingSid={item.lead.recording_sid} />
-                    <span className="convo__vm-label">
-                      Voicemail{item.lead.recording_duration ? ` · ${formatDuration(item.lead.recording_duration)}` : ""}
-                    </span>
-                  </div>
+                  <span className="convo__vm-label">Voicemail</span>
+                  <VoicemailPlayer
+                    recordingSid={item.lead.recording_sid}
+                    fallbackDuration={item.lead.recording_duration}
+                  />
                   {item.lead.voicemail_summary ? (
                     <p className="convo__msg-body">{item.lead.voicemail_summary}</p>
                   ) : null}

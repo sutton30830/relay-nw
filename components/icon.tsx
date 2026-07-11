@@ -14,8 +14,10 @@ type IconName =
   | "info"
   | "message"
   | "more"
+  | "pause"
   | "phone"
   | "phoneMissed"
+  | "play"
   | "refresh"
   | "relay"
   | "search"
@@ -77,7 +79,14 @@ const ICONS: Record<IconName, ReactNode> = {
       <circle cx="15" cy="10" r="1.2" />
     </>
   ),
+  pause: (
+    <>
+      <rect x="6" y="4.5" width="2.8" height="11" rx="1" fill="currentColor" stroke="none" />
+      <rect x="11.2" y="4.5" width="2.8" height="11" rx="1" fill="currentColor" stroke="none" />
+    </>
+  ),
   phone: <path d="M5 3.5h2.2l1.4 3.3-1.8 1.1a9 9 0 0 0 4.3 4.3l1.1-1.8 3.3 1.4V14a2.5 2.5 0 0 1-2.5 2.5A11 11 0 0 1 2.5 5.5 2.5 2.5 0 0 1 5 3Z" />,
+  play: <path d="M6.5 4.3 15.5 10l-9 5.7Z" fill="currentColor" stroke="currentColor" strokeWidth="1.2" />,
   phoneMissed: (
     <>
       <path d="M5 3.5h2.2l1.4 3.3-1.8 1.1a9 9 0 0 0 4.3 4.3l1.1-1.8 3.3 1.4V14a2.5 2.5 0 0 1-2.5 2.5A11 11 0 0 1 2.5 5.5 2.5 2.5 0 0 1 5 3Z" />
