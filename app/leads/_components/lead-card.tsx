@@ -40,8 +40,6 @@ export function LeadCard({
   onJobValue,
   onDelete,
   onRestore,
-  expanded,
-  onToggleDetails,
 }: {
   lead: Lead;
   now: number;
@@ -58,15 +56,11 @@ export function LeadCard({
   onJobValue: (id: string, jobValueCents: number | null) => void;
   onDelete: (id: string) => void;
   onRestore: (id: string, status: LeadStatus) => void;
-  expanded: boolean;
-  onToggleDetails: (id: string) => void;
 }) {
   const attention = needsAttention(lead);
   const booked = isBookedLead(lead);
   const trashed = Boolean(lead.deleted_at);
   const priority = getLeadPriority(lead);
-  const hasDetails = Boolean(lead.voicemail_transcript || lead.notes);
-  const detailsVisible = hasDetails && expanded;
   const hasUsefulMessage = Boolean(lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE);
   const setupRequestFields = lead.source === "intake_form" ? parseSetupRequestMessage(lead.message) : [];
   const setupSummary = setupRequestSummary(setupRequestFields);
@@ -246,23 +240,6 @@ export function LeadCard({
         </div>
       ) : null}
 
-      {detailsVisible ? (
-        <div className="lead-card__details" onClick={(event) => event.stopPropagation()}>
-          {lead.notes ? (
-            <section>
-              <p className="t-eyebrow">Private notes</p>
-              <p>{lead.notes}</p>
-            </section>
-          ) : null}
-          {lead.voicemail_transcript ? (
-            <details className="lead-card__transcript">
-              <summary>Transcript</summary>
-              <p>{lead.voicemail_transcript}</p>
-            </details>
-          ) : null}
-        </div>
-      ) : null}
-
       <div className="lead-card__actions" onClick={(event) => event.stopPropagation()}>
         <div className="lead-card__primary-actions">
           {trashed ? (
@@ -282,31 +259,25 @@ export function LeadCard({
             </a>
           )}
         </div>
-        {!trashed || hasDetails ? (
+        {!trashed ? (
           <div className="lead-card__utility-actions">
-            {!trashed ? (
-              <a className="btn btn-ghost btn-sm" href={`sms:${lead.phone}`}>
-                <Icon name="message" size={13} /> Text
-              </a>
-            ) : null}
-            {hasDetails ? (
-              <button className="btn btn-ghost btn-sm" type="button" onClick={() => onToggleDetails(lead.id)}>
-                {detailsVisible ? "Hide details" : "Details"}
-              </button>
-            ) : null}
-            {!trashed ? (
-              // No blocking confirm: delete is soft and the inbox offers Undo.
-              <OverflowMenu
-                items={[
-                  ...categoryActions,
-                  {
-                    label: booked ? "Mark as unbooked" : "Mark as booked",
-                    onSelect: () => onBooked(lead.id, !booked),
-                  },
-                  { label: "Move to Trash", danger: true, onSelect: () => onDelete(lead.id) },
-                ]}
-              />
-            ) : null}
+            <a className="btn btn-ghost btn-sm" href={`sms:${lead.phone}`}>
+              <Icon name="message" size={13} /> Text
+            </a>
+            {/* The workflow menu is a core owner action, so label it instead of
+                hiding category/booked/trash changes behind anonymous dots. */}
+            <OverflowMenu
+              trigger={<>Status</>}
+              triggerAriaLabel="Change lead status"
+              items={[
+                ...categoryActions,
+                {
+                  label: booked ? "Mark as unbooked" : "Mark as booked",
+                  onSelect: () => onBooked(lead.id, !booked),
+                },
+                { label: "Move to Trash", danger: true, onSelect: () => onDelete(lead.id) },
+              ]}
+            />
           </div>
         ) : null}
       </div>

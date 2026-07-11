@@ -106,6 +106,12 @@ test("booked is an outcome flag, never a workflow status button", () => {
   assert.match(leadCardTsx, /onBooked\(lead\.id, !booked\)/);
 });
 
+test("lead card actions keep workflow controls explicit and avoid duplicate details", () => {
+  assert.match(leadCardTsx, /trigger=\{<>Status<\/>\}/);
+  assert.match(leadCardTsx, /triggerAriaLabel="Change lead status"/);
+  assert.doesNotMatch(leadCardTsx, />Details</);
+});
+
 test("human-facing pages require authenticated account context", () => {
   assert.match(authTs, /export async function requireAccountUser\(\)/);
   assert.match(authTs, /account_users/);

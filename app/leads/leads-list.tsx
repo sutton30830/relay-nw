@@ -159,8 +159,6 @@ export function LeadsList({
             onJobValue={inbox.updateJobValue}
             onDelete={inbox.deleteLead}
             onRestore={inbox.restoreLead}
-            expanded={inbox.expandedLeadIds.has(lead.id)}
-            onToggleDetails={inbox.toggleLeadDetails}
           />
         ))}
 
