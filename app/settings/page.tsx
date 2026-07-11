@@ -24,14 +24,10 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <label style={{ display: "block", marginBottom: 16 }}>
-      <span className="t-eyebrow" style={{ display: "block", marginBottom: 6 }}>{label}</span>
+    <label className="form-field">
+      <span className="t-eyebrow form-field__label">{label}</span>
       {children}
-      {hint ? (
-        <span style={{ color: "var(--ink-4)", display: "block", fontSize: 12.5, marginTop: 4 }}>
-          {hint}
-        </span>
-      ) : null}
+      {hint ? <span className="form-field__hint">{hint}</span> : null}
     </label>
   );
 }
@@ -49,7 +45,7 @@ export default async function SettingsPage({
 
   return (
     <main className="leads-view">
-      <section className="leads-shell" style={{ maxWidth: 720 }}>
+      <section className="leads-shell settings-shell">
         <div className="leads-header">
           <div>
             <p className="t-eyebrow">Settings</p>
@@ -65,12 +61,12 @@ export default async function SettingsPage({
         </div>
 
         {params.saved ? (
-          <div className="panel" style={{ borderColor: "var(--good, #2e7d32)", marginBottom: 20, padding: "12px 16px" }} role="status">
+          <div className="panel settings-notice settings-notice--ok" role="status">
             <Icon name="check" size={14} /> Settings saved.
           </div>
         ) : null}
         {params.error ? (
-          <div className="intake-error" style={{ marginBottom: 20 }} role="alert">
+          <div className="intake-error settings-notice" role="alert">
             <Icon name="alertTriangle" size={14} />
             {params.error === "forbidden"
               ? "Your role does not allow editing settings."
@@ -82,19 +78,19 @@ export default async function SettingsPage({
           </div>
         ) : null}
 
-        <section className="panel" style={{ marginBottom: 20, padding: "16px 18px" }}>
-          <p className="t-eyebrow" style={{ margin: "0 0 10px" }}>Your Relay line</p>
-          <p style={{ margin: "0 0 4px" }}>
+        <section className="panel settings-section">
+          <p className="t-eyebrow settings-section__title">Your Relay line</p>
+          <p className="settings-section__lead">
             Relay number: <strong>{account.twilioPhoneNumber}</strong> · Mode: {account.callMode}
           </p>
-          <p style={{ color: "var(--ink-4)", fontSize: 13, margin: 0 }}>
+          <p className="settings-section__meta">
             Carrier registration: {A2P_LABELS[a2pStatus ?? ""] ?? "Unknown"}
           </p>
         </section>
 
-        <form className="panel" style={{ padding: "20px 18px" }} action="/api/settings" method="POST">
-          <fieldset disabled={readOnly} style={{ border: 0, margin: 0, padding: 0 }}>
-            <p className="t-eyebrow" style={{ margin: "0 0 14px" }}>Business</p>
+        <form className="panel settings-form" action="/api/settings" method="POST">
+          <fieldset disabled={readOnly} className="settings-fieldset">
+            <p className="t-eyebrow settings-group-title settings-group-title--first">Business</p>
             <Field label="Business name" hint="Used in texts and voicemail greetings.">
               <input className="field" name="business_name" required maxLength={120} defaultValue={account.businessName} />
             </Field>
@@ -108,13 +104,13 @@ export default async function SettingsPage({
               <input className="field" name="scheduling_url" defaultValue={account.schedulingUrl ?? ""} />
             </Field>
 
-            <p className="t-eyebrow" style={{ margin: "22px 0 14px" }}>Messaging</p>
+            <p className="t-eyebrow settings-group-title">Messaging</p>
             {role === "owner" ? (
               <Field
                 label="Automatic texting"
                 hint="Master switch. Off = no texts to customers or to you. Only enable after carrier registration is approved."
               >
-                <span style={{ alignItems: "center", display: "inline-flex", gap: 8 }}>
+                <span className="settings-toggle">
                   <input type="checkbox" name="sms_enabled" defaultChecked={account.smsEnabled} />
                   Send automatic texts
                 </span>
@@ -142,7 +138,7 @@ export default async function SettingsPage({
               />
             </Field>
 
-            <p className="t-eyebrow" style={{ margin: "22px 0 14px" }}>Voice</p>
+            <p className="t-eyebrow settings-group-title">Voice</p>
             <Field
               label="Greeting recording URL"
               hint="Optional audio file (https://... .mp3/.wav). When set, this recording plays to callers and the text greeting below is ignored."
@@ -165,7 +161,7 @@ export default async function SettingsPage({
             </Field>
 
             {!readOnly ? (
-              <button className="btn btn-primary" type="submit" style={{ marginTop: 8 }}>
+              <button className="btn btn-primary settings-submit" type="submit">
                 Save settings
               </button>
             ) : null}

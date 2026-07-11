@@ -19,27 +19,21 @@ function monthLabel(date: Date) {
 
 function StatTile({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="panel" style={{ padding: "16px 18px" }}>
-      <p className="t-eyebrow" style={{ margin: 0 }}>{label}</p>
-      <p style={{ fontSize: 28, fontWeight: 700, margin: "6px 0 0", color: "var(--ink)" }}>{value}</p>
-      {hint ? <p style={{ color: "var(--ink-4)", fontSize: 12.5, margin: "4px 0 0" }}>{hint}</p> : null}
+    <div className="panel report-tile">
+      <p className="t-eyebrow report-tile__label">{label}</p>
+      <p className="report-tile__value">{value}</p>
+      {hint ? <p className="report-tile__hint">{hint}</p> : null}
     </div>
   );
 }
 
 function PeriodSection({ title, stats }: { title: string; stats: RecoveryStats }) {
   return (
-    <section style={{ marginBottom: 28 }}>
-      <div className="drawer__section-head" style={{ marginBottom: 12 }}>
+    <section className="report-period">
+      <div className="drawer__section-head report-period__head">
         <p className="t-eyebrow">{title}</p>
       </div>
-      <div
-        style={{
-          display: "grid",
-          gap: 12,
-          gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-        }}
-      >
+      <div className="report-tile-grid">
         <StatTile label="Missed calls caught" value={String(stats.missedCalls)} />
         <StatTile label="Texted back" value={String(stats.textedBack)} />
         <StatTile label="ASAP callbacks" value={String(stats.urgent)} />
@@ -89,17 +83,14 @@ export default async function ReportsPage() {
           </div>
         </div>
 
-        <section
-          className="panel"
-          style={{ marginBottom: 28, padding: "24px 22px", textAlign: "center" }}
-        >
-          <p className="t-eyebrow" style={{ margin: 0 }}>
+        <section className="panel report-hero">
+          <p className="t-eyebrow report-hero__label">
             Recovered so far in {monthLabel(now)}
           </p>
-          <p style={{ fontSize: 44, fontWeight: 800, margin: "8px 0 4px" }}>
+          <p className="report-hero__value">
             {formatDollars(heroCents)}
           </p>
-          <p style={{ color: "var(--ink-4)", margin: 0, fontSize: 14 }}>
+          <p className="report-hero__sub">
             from {thisMonth.booked} booked {thisMonth.booked === 1 ? "job" : "jobs"} out of{" "}
             {thisMonth.missedCalls} missed {thisMonth.missedCalls === 1 ? "call" : "calls"} caught
           </p>
@@ -109,7 +100,7 @@ export default async function ReportsPage() {
         <PeriodSection title={monthLabel(lastMonthStart)} stats={lastMonth} />
         <PeriodSection title="All time" stats={allTime} />
 
-        <p style={{ color: "var(--ink-4)", fontSize: 12.5 }}>
+        <p className="report-note">
           Recovered revenue counts the booked value you enter on leads, attributed to the
           month the job was booked.
         </p>

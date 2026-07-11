@@ -2575,6 +2575,127 @@ code {
   overflow: hidden;
 }
 
+/* Settings & Reports pages: these were built with ad-hoc inline styles whose
+   font sizes and spacings drifted from the rest of the app. Consolidated here
+   so both pages read from one place and stay on the design system. */
+
+/* --- Form field (Settings) --- */
+.form-field {
+  display: block;
+  margin-bottom: 16px;
+}
+.form-field__label {
+  display: block;
+  margin-bottom: 6px;
+}
+.form-field__hint {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-4);
+  font-size: 12.5px;
+}
+
+/* --- Settings layout --- */
+.settings-shell {
+  max-width: 720px;
+}
+.settings-notice {
+  margin-bottom: 20px;
+}
+.settings-notice--ok {
+  border-color: var(--good, #2e7d32);
+  padding: 12px 16px;
+}
+.settings-section {
+  margin-bottom: 20px;
+  padding: 16px 18px;
+}
+.settings-section__title {
+  margin: 0 0 10px;
+}
+.settings-section__lead {
+  margin: 0 0 4px;
+}
+.settings-section__meta {
+  margin: 0;
+  color: var(--ink-4);
+  font-size: 13px;
+}
+.settings-form {
+  padding: 20px 18px;
+}
+.settings-fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.settings-group-title {
+  margin: 22px 0 14px;
+}
+.settings-group-title--first {
+  margin-top: 0;
+}
+.settings-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.settings-submit {
+  margin-top: 8px;
+}
+
+/* --- Reports --- */
+.report-hero {
+  margin-bottom: 28px;
+  padding: 24px 22px;
+  text-align: center;
+}
+.report-hero__label {
+  margin: 0;
+}
+.report-hero__value {
+  margin: 8px 0 4px;
+  font-size: 44px;
+  font-weight: 800;
+}
+.report-hero__sub {
+  margin: 0;
+  color: var(--ink-4);
+  font-size: 14px;
+}
+.report-period {
+  margin-bottom: 28px;
+}
+.report-period__head {
+  margin-bottom: 12px;
+}
+.report-tile-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.report-tile {
+  padding: 16px 18px;
+}
+.report-tile__label {
+  margin: 0;
+}
+.report-tile__value {
+  margin: 6px 0 0;
+  color: var(--ink);
+  font-size: 28px;
+  font-weight: 700;
+}
+.report-tile__hint {
+  margin: 4px 0 0;
+  color: var(--ink-4);
+  font-size: 12.5px;
+}
+.report-note {
+  color: var(--ink-4);
+  font-size: 12.5px;
+}
+
 .setup-panel__head {
   border-bottom: 1px solid var(--line);
   background: color-mix(in oklab, var(--panel-2) 62%, transparent);
