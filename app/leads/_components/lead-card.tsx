@@ -89,20 +89,18 @@ export function LeadCard({
             ? "No summary — the voicemail didn't say what they need. Open the lead to listen."
             : "Voicemail saved. Open the lead to listen or summarize."
         : "No voicemail left. Call back while the request is still fresh.";
-  const headerMeta = [
-    formatPhone(lead.phone),
-    formatRelativeTime(lead.created_at, now),
-    trashed ? "Trash" : STATUS_LABELS[lead.status],
-    callCount > 1 ? `${callCount} calls` : null,
-  ].filter(Boolean);
+  const statusLabel = trashed ? "Trash" : STATUS_LABELS[lead.status];
+  const statusTone = trashed ? "trash" : lead.status;
+  const headerMeta = [formatPhone(lead.phone), formatRelativeTime(lead.created_at, now), callCount > 1 ? `${callCount} calls` : null].filter(
+    Boolean,
+  );
   const quietMeta = [
-    booked ? (lead.job_value_cents ? `${formatCurrency(lead.job_value_cents)} booked` : "Booked value missing") : null,
+    booked && lead.job_value_cents ? `${formatCurrency(lead.job_value_cents)} booked` : null,
     lead.source === "intake_form" ? sourceLabel(lead.source) : null,
     smsMetaText(lead, now),
     lead.recording_sid ? "Voicemail" : null,
   ].filter(Boolean);
   const showPriorityCue = !trashed && priority.level !== "normal";
-  const showBookedValueNudge = booked && !lead.job_value_cents;
   const categoryActions = STATUS_OPTIONS
     .filter((status) => status !== lead.status)
     .map((status) => ({
@@ -124,31 +122,34 @@ export function LeadCard({
             {/* The name is the card's primary link and its ::after stretches to
                 cover the whole card, so a click (or Enter) anywhere opens the
                 lead while inner controls stay clickable via a higher z-index. */}
-            <h3 className="lead-card__name">
-              {href ? (
-                <Link
-                  href={href}
-                  className="lead-card__name-link"
-                  onClick={() => onOpen(lead.id)}
-                  onFocus={() => onPrefetch?.(lead.id)}
-                  onMouseEnter={() => onPrefetch?.(lead.id)}
-                  onTouchStart={() => onPrefetch?.(lead.id)}
-                >
-                  <span className="lead-card__name-text">{lead.name || "Unknown caller"}</span>
-                </Link>
-              ) : (
-                <button
-                  type="button"
-                  className="lead-card__name-link"
-                  onClick={() => onOpen(lead.id)}
-                  onFocus={() => onPrefetch?.(lead.id)}
-                  onMouseEnter={() => onPrefetch?.(lead.id)}
-                  onTouchStart={() => onPrefetch?.(lead.id)}
-                >
-                  <span className="lead-card__name-text">{lead.name || "Unknown caller"}</span>
-                </button>
-              )}
-            </h3>
+            <div className="lead-card__title-row">
+              <h3 className="lead-card__name">
+                {href ? (
+                  <Link
+                    href={href}
+                    className="lead-card__name-link"
+                    onClick={() => onOpen(lead.id)}
+                    onFocus={() => onPrefetch?.(lead.id)}
+                    onMouseEnter={() => onPrefetch?.(lead.id)}
+                    onTouchStart={() => onPrefetch?.(lead.id)}
+                  >
+                    <span className="lead-card__name-text">{lead.name || "Unknown caller"}</span>
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    className="lead-card__name-link"
+                    onClick={() => onOpen(lead.id)}
+                    onFocus={() => onPrefetch?.(lead.id)}
+                    onMouseEnter={() => onPrefetch?.(lead.id)}
+                    onTouchStart={() => onPrefetch?.(lead.id)}
+                  >
+                    <span className="lead-card__name-text">{lead.name || "Unknown caller"}</span>
+                  </button>
+                )}
+              </h3>
+              <span className={`lead-card__status-pill lead-card__status-pill--${statusTone}`}>{statusLabel}</span>
+            </div>
             <div className="lead-card__meta">
               {headerMeta.map((item, index) => (
                 <span key={`${item}-${index}`} className={index === 0 ? "t-mono" : undefined}>
@@ -173,21 +174,13 @@ export function LeadCard({
         ) : null}
       </div>
 
-      {showPriorityCue || showBookedValueNudge ? (
+      {showPriorityCue ? (
         <div className="lead-card__cue-row">
-          {showPriorityCue ? (
-            <span className={`lead-card__cue lead-card__cue--${priority.level}`}>
-              <Icon name={priority.level === "fast" ? "alertTriangle" : "clock"} size={13} />
-              {priority.label}
-              {priority.reason ? <span className="lead-card__cue-reason">· {priority.reason}</span> : null}
-            </span>
-          ) : null}
-          {showBookedValueNudge ? (
-            <span className="lead-card__cue lead-card__cue--good">
-              <Icon name="star" size={13} />
-              Booked value missing
-            </span>
-          ) : null}
+          <span className={`lead-card__cue lead-card__cue--${priority.level}`}>
+            <Icon name={priority.level === "fast" ? "alertTriangle" : "clock"} size={13} />
+            {priority.label}
+            {priority.reason ? <span className="lead-card__cue-reason">· {priority.reason}</span> : null}
+          </span>
         </div>
       ) : null}
 
@@ -233,7 +226,7 @@ export function LeadCard({
         <div className="lead-card__value" onClick={(event) => event.stopPropagation()}>
           <span className="lead-card__value-label">
             <Icon name="star" size={13} />
-            Booked value
+            {lead.job_value_cents ? "Booked value" : "Add booked value"}
           </span>
           <BookedValueInput
             compact

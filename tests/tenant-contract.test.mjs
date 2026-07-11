@@ -107,16 +107,21 @@ test("booked is an outcome flag, never a workflow status button", () => {
 });
 
 test("lead card actions keep workflow controls explicit and avoid duplicate details", () => {
+  assert.match(leadCardTsx, /const statusLabel = trashed \? "Trash" : STATUS_LABELS\[lead\.status\]/);
+  assert.match(leadCardTsx, /lead-card__status-pill lead-card__status-pill--\$\{statusTone\}/);
   assert.match(leadCardTsx, /trigger=\{<>Status<\/>\}/);
   assert.match(leadCardTsx, /triggerAriaLabel="Change lead status"/);
   assert.doesNotMatch(leadCardTsx, />Details</);
+  assert.doesNotMatch(leadCardTsx, /Booked value missing/);
 });
 
 test("mobile booked value control stays compact and polished", () => {
   assert.match(leadCardTsx, /<Icon name="star" size=\{13\} \/>/);
   assert.match(globalsCss, /@media \(max-width: 560px\)[\s\S]*\.lead-card__value\s*\{[\s\S]*display:\s*grid/);
-  assert.match(globalsCss, /@media \(max-width: 560px\)[\s\S]*\.lead-card__value \.money-field--compact\s*\{[\s\S]*min-height:\s*46px/);
-  assert.match(globalsCss, /@media \(max-width: 560px\)[\s\S]*\.lead-card__value \.money-field--compact input\s*\{[\s\S]*font-size:\s*20px/);
+  assert.match(globalsCss, /@media \(max-width: 720px\)[\s\S]*\.lead-card__status-pill\s*\{[\s\S]*min-height:\s*28px/);
+  assert.match(globalsCss, /@media \(max-width: 560px\)[\s\S]*\.lead-card__value\s*\{[\s\S]*grid-template-columns:\s*auto minmax\(0, 1fr\)/);
+  assert.match(globalsCss, /@media \(max-width: 560px\)[\s\S]*\.lead-card__value \.money-field--compact\s*\{[\s\S]*min-height:\s*40px/);
+  assert.match(globalsCss, /@media \(max-width: 560px\)[\s\S]*\.lead-card__value \.money-field--compact input\s*\{[\s\S]*font-size:\s*18px/);
 });
 
 test("lead inbox empty states distinguish search misses from no leads", () => {
