@@ -95,9 +95,15 @@ test("booked is an outcome flag, never a workflow status button", () => {
   // (the booked_at flag), never on lead.status, so it works for any status.
   assert.match(constantsTs, /filter === "booked"[\s\S]{0,120}isBookedLead\(lead\)/);
   assert.match(leadConstantsTs, /key: "booked"/);
+  assert.match(
+    leadConstantsTs,
+    /key: "new"[\s\S]*key: "contacted"[\s\S]*key: "dead"[\s\S]*key: "booked"[\s\S]*key: "trash"/,
+  );
   // Status buttons stay New/Contacted/Closed — booked is set via the outcome
   // toggle or booked-value input, not by changing workflow status.
   assert.doesNotMatch(leadConstantsTs, /STATUS_OPTIONS: LeadStatus\[\] = \["new", "contacted", "booked", "dead"\]/);
+  assert.match(leadCardTsx, /booked \? "Mark as unbooked" : "Mark as booked"/);
+  assert.match(leadCardTsx, /onBooked\(lead\.id, !booked\)/);
 });
 
 test("human-facing pages require authenticated account context", () => {

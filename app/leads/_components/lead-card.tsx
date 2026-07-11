@@ -299,7 +299,10 @@ export function LeadCard({
               <OverflowMenu
                 items={[
                   ...categoryActions,
-                  ...(!booked ? [{ label: "Mark as booked", onSelect: () => onBooked(lead.id, true) }] : []),
+                  {
+                    label: booked ? "Mark as unbooked" : "Mark as booked",
+                    onSelect: () => onBooked(lead.id, !booked),
+                  },
                   { label: "Move to Trash", danger: true, onSelect: () => onDelete(lead.id) },
                 ]}
               />
