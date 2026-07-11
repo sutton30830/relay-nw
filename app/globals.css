@@ -3886,6 +3886,12 @@ code {
     display: none;
   }
 
+  /* ...but the back-to-inbox button stays: on mobile it's the primary way
+     out of a sub-page, not something to bury in the overflow menu. */
+  .leads-view .app-head__right > .app-head__back {
+    display: inline-flex;
+  }
+
   .home-view .app-head__right--primary {
     display: flex;
     width: auto;

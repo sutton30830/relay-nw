@@ -32,6 +32,10 @@ export function AppHeader({
   search?: HeaderSearch;
 }) {
   const businessInitial = businessName.trim().charAt(0).toUpperCase() || "R";
+  // Sub-pages get a plain, always-visible way back to the inbox. The
+  // conversation view has its own back control, and the inbox is the
+  // destination, so neither shows this.
+  const showBackToInbox = currentPage != null && currentPage !== "inbox" && currentPage !== "conversation";
   const menuItems = [
     { key: "inbox", href: "/leads", icon: "inbox" as const, label: "Inbox" },
     { key: "setup", href: "/setup", icon: "settings" as const, label: "Setup" },
@@ -57,6 +61,12 @@ export function AppHeader({
       </Link>
 
       <div className="app-head__right">
+        {showBackToInbox ? (
+          <Link className="btn btn-secondary btn-sm app-head__back" href="/leads">
+            <Icon name="arrowLeft" size={14} /> Inbox
+          </Link>
+        ) : null}
+
         {search ? (
           <div className="search app-head__desktop-search">
             <Icon name="search" size={14} />

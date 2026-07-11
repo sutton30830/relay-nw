@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 type IconName =
   | "alertTriangle"
+  | "arrowLeft"
   | "arrowRight"
   | "calendar"
   | "check"
@@ -31,6 +32,7 @@ type IconName =
 
 const ICONS: Record<IconName, ReactNode> = {
   alertTriangle: <path d="M10 3 2.5 16.5h15L10 3ZM10 8v4M10 14.5v0.01" />,
+  arrowLeft: <path d="M16 10H4M9 5l-5 5 5 5" />,
   arrowRight: <path d="M4 10h12M11 5l5 5-5 5" />,
   calendar: (
     <>
