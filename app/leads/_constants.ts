@@ -14,6 +14,8 @@ export const UNDO_DELETE_MS = 7_000;
 export const AUTO_VOICEMAIL_SUMMARY_LOOKBACK_MS = 10 * 60 * 1000;
 export const INBOX_REFRESH_MS = 8_000;
 export const RELATIVE_TIME_TICK_MS = 15_000;
+// How long to wait after the last keystroke before firing a server-side search.
+export const SEARCH_DEBOUNCE_MS = 300;
 
 export const FILTERS: Array<{ key: Filter; label: string }> = [
   { key: "all", label: "All" },

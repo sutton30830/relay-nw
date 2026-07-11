@@ -1,7 +1,12 @@
 import { LeadsList } from "@/app/leads/leads-list";
 import { publicBusinessName } from "@/lib/display-name";
 import { requireAccountUser } from "@/lib/auth";
-import { DEFAULT_LEADS_PAGE_LIMIT, getLeadInboxPageForAccount, type LeadInboxFilter } from "@/lib/supabase";
+import {
+  DEFAULT_LEADS_PAGE_LIMIT,
+  getLeadInboxCountsForAccount,
+  getLeadInboxPageForAccount,
+  type LeadInboxFilter,
+} from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
@@ -36,18 +41,25 @@ export default async function LeadsPage({
   const query = readQuery(params.q);
   const offset = (page - 1) * DEFAULT_LEADS_PAGE_LIMIT;
 
-  const leadPage = await getLeadInboxPageForAccount(accountId, {
-    limit: DEFAULT_LEADS_PAGE_LIMIT,
-    offset,
-    filter,
-    query,
-  });
+  // Counts span the whole account (every filter pill), so they're a separate
+  // query from the current filtered/searched page of rows.
+  const [leadPage, counts] = await Promise.all([
+    getLeadInboxPageForAccount(accountId, {
+      limit: DEFAULT_LEADS_PAGE_LIMIT,
+      offset,
+      filter,
+      query,
+    }),
+    getLeadInboxCountsForAccount(accountId),
+  ]);
 
   return (
     <main className="leads-view">
       <LeadsList
         businessName={businessName}
         leads={leadPage.leads}
+        counts={counts}
+        callCounts={leadPage.callCounts ?? {}}
         pagination={{
           page,
           limit: leadPage.limit,

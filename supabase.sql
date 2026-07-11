@@ -534,8 +534,15 @@ grant execute on function public.lead_inbox_counts(uuid) to service_role;
 -- Mirrors filterLeads + leadMatchesSearch in app/leads/_utils.ts, minus
 -- inbound SMS bodies and the derived priority/source labels (not worth a
 -- join for an inbox search box). p_query is escaped so a caller searching a
--- literal "%" or "_" isn't surprised by wildcard behavior.
-create or replace function public.search_lead_inbox(
+-- literal "%" or "_" isn't surprised by wildcard behavior. call_count is the
+-- total number of call rows for the phone across the whole account (every row,
+-- including trashed), mirroring countCallsByPhone — this is the "Called N×"
+-- badge, and is now accurate across pages rather than only within the loaded
+-- page as the old client-only count was.
+-- Dropped-then-created (not create-or-replace) because the returned columns
+-- changed, which Postgres treats as a return-type change.
+drop function if exists public.search_lead_inbox(uuid, text, text, int, int);
+create function public.search_lead_inbox(
   p_account uuid,
   p_filter text,
   p_query text,
@@ -572,6 +579,7 @@ returns table (
   voicemail_transcribed_at timestamptz,
   deleted_at timestamptz,
   created_at timestamptz,
+  call_count bigint,
   total_count bigint
 )
 language sql
@@ -579,6 +587,12 @@ stable
 as $$
   with rollup as (
     select * from public.lead_inbox_condensed(p_account)
+  ),
+  phone_calls as (
+    select phone, count(*) as call_count
+    from public.leads
+    where account_id = p_account
+    group by phone
   ),
   escaped as (
     select replace(replace(replace(coalesce(p_query, ''), '\', '\\'), '%', '\%'), '_', '\_') as q
@@ -609,8 +623,10 @@ as $$
     f.recording_url, f.recording_duration, f.recording_status, f.voicemail_transcript,
     f.voicemail_summary, f.voicemail_transcription_status, f.voicemail_transcription_error,
     f.voicemail_transcribed_at, f.deleted_at, f.created_at,
+    coalesce(pc.call_count, 1) as call_count,
     count(*) over () as total_count
   from filtered f
+  left join phone_calls pc on pc.phone = f.phone
   order by f.created_at desc, f.id desc
   limit p_limit offset p_offset;
 $$;

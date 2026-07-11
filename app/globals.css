@@ -2019,23 +2019,12 @@ code {
   flex: 0 0 auto;
 }
 
-.filter-scope-notice {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border-radius: 8px;
-  background: var(--warn-soft);
-  color: var(--warn);
-  padding: 8px 12px;
-  margin: -2px 0 12px;
-  font-size: 12.5px;
-  font-weight: 600;
-}
-
-.filter-scope-notice a {
-  color: inherit;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+/* While a filter/search navigation is in flight, dim the current results so
+   the change registers without the list jumping or clearing. */
+.leads-list--loading {
+  opacity: 0.55;
+  transition: opacity 120ms ease;
+  pointer-events: none;
 }
 
 .sort-pill {

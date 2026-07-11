@@ -145,6 +145,9 @@ export type LeadsPageResult = {
   total: number | null;
   limit: number;
   offset: number;
+  // Total call rows per phone across the whole account (the "Called N×" badge).
+  // Empty on the legacy fallback path, where the client recomputes it locally.
+  callCounts?: Record<string, number>;
 };
 
 export const DEFAULT_LEADS_PAGE_LIMIT = 100;
@@ -293,10 +296,13 @@ export async function createMissedCallLeadIfNew(input: {
   };
 }
 
-type SearchLeadInboxRow = Omit<Lead, "inbound_messages" | "outbound_messages"> & { total_count: number | string };
+type SearchLeadInboxRow = Omit<Lead, "inbound_messages" | "outbound_messages"> & {
+  call_count: number | string;
+  total_count: number | string;
+};
 
 function rowToLead(row: SearchLeadInboxRow): Lead {
-  const { total_count: _totalCount, ...lead } = row;
+  const { call_count: _callCount, total_count: _totalCount, ...lead } = row;
   return { ...lead, inbound_messages: [], outbound_messages: [] };
 }
 
@@ -402,9 +408,13 @@ export async function getLeadInboxPageForAccount(
 
     const searchRows = (rows ?? []) as SearchLeadInboxRow[];
     const total = searchRows.length > 0 ? Number(searchRows[0].total_count) : 0;
+    const callCounts: Record<string, number> = {};
+    for (const row of searchRows) {
+      callCounts[row.phone] = Number(row.call_count);
+    }
     const leads = await attachThreadMessages(searchRows.map(rowToLead).map(normalizeLead), accountId);
 
-    return { leads, total, limit, offset };
+    return { leads, total, limit, offset, callCounts };
   }
 
   console.warn("search_lead_inbox is missing. Run supabase.sql to enable server-side lead search and filtering.");

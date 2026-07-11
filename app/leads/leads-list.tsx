@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Icon } from "@/components/icon";
-import type { Lead, LeadInboxFilter } from "@/lib/supabase";
+import type { Lead, LeadInboxCounts, LeadInboxFilter } from "@/lib/supabase";
 import { FILTERS } from "./_constants";
 import { LeadCard } from "./_components/lead-card";
 import { LeadDrawer } from "./_components/lead-drawer";
@@ -12,10 +12,14 @@ import { useRouter } from "next/navigation";
 export function LeadsList({
   leads,
   businessName,
+  counts,
+  callCounts,
   pagination,
 }: {
   leads: Lead[];
   businessName: string;
+  counts: LeadInboxCounts;
+  callCounts: Record<string, number>;
   pagination: {
     page: number;
     limit: number;
@@ -26,7 +30,12 @@ export function LeadsList({
   };
 }) {
   const router = useRouter();
-  const inbox = useLeadsInbox(leads);
+  const inbox = useLeadsInbox(leads, {
+    counts,
+    callCounts,
+    filter: pagination.filter,
+    query: pagination.query,
+  });
   const businessInitial = businessName.trim().charAt(0).toUpperCase() || "R";
   const loadedStart = leads.length > 0 ? pagination.offset + 1 : 0;
   const loadedEnd = pagination.offset + leads.length;
@@ -35,13 +44,10 @@ export function LeadsList({
   const hasNextPage = knownTotal === null
     ? leads.length === pagination.limit
     : loadedEnd < knownTotal;
-  const isScopedToPage = pagination.page > 1 || hasNextPage;
-  const isFilteringOrSearching = inbox.filter !== "all" || inbox.query.trim().length > 0;
-  const showScopeNotice = isScopedToPage && isFilteringOrSearching;
 
-  // Preserves the server-side filter/search params (from a deep link or manual
-  // URL edit) across pagination — the client filter/search inputs don't push
-  // to the URL yet, but the URL's own state shouldn't be lost when paging.
+  // Preserves the active filter/search across pagination. Sample mode has no
+  // server pagination, so these links only appear in real mode where the URL is
+  // the source of truth.
   function pageHref(page: number) {
     const params = new URLSearchParams();
     if (page > 1) params.set("page", String(page));
@@ -213,22 +219,7 @@ export function LeadsList({
         </div>
       </div>
 
-      {showScopeNotice ? (
-        <div className="filter-scope-notice" role="status">
-          <Icon name="info" size={14} />
-          <span>
-            {inbox.query.trim() ? "Search" : "Filter"} only covers the leads loaded on this page.
-            {" "}
-            {hasNextPage ? (
-              <Link href={pageHref(pagination.page + 1)}>Check older leads</Link>
-            ) : (
-              <Link href={pageHref(pagination.page - 1)}>Check newer leads</Link>
-            )}
-          </span>
-        </div>
-      ) : null}
-
-      <div className="leads-list">
+      <div className={`leads-list ${inbox.isSearching ? "leads-list--loading" : ""}`} aria-busy={inbox.isSearching}>
         {inbox.sortedItems.map((lead) => (
           <LeadCard
             key={lead.id}

@@ -1,12 +1,34 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Lead, LeadStatus, OutboundMessage, ReplyPriorityOverride } from "@/lib/supabase";
-import { AUTO_VOICEMAIL_SUMMARY_LIMIT, INBOX_REFRESH_MS, RELATIVE_TIME_TICK_MS, UNDO_DELETE_MS } from "../_constants";
-import type { Filter } from "../_types";
+import { AUTO_VOICEMAIL_SUMMARY_LIMIT, INBOX_REFRESH_MS, RELATIVE_TIME_TICK_MS, SEARCH_DEBOUNCE_MS, UNDO_DELETE_MS } from "../_constants";
+import type { Filter, LeadCounts } from "../_types";
 import { deleteLead as deleteLeadRequest, patchLead, requestVoicemailSummary, sendLeadReply, type SendReplyResult } from "../_api";
 import { condenseLeadsByPhone, countCallsByPhone, countLeads, createSampleLeads, filterLeads, shouldAutoSummarizeVoicemail, sortLeadsForWork } from "../_utils";
+
+// Filter and search now run on the server (the RPC in lib/supabase/leads.ts):
+// the page fetches only the rows that match the active filter/query across the
+// whole account, and pushes those choices into the URL so a refetch is a normal
+// navigation. The client keeps applying filterLeads/countLeads on top, but only
+// as (a) the real filter for sample mode, which has no server, and (b) an
+// optimistic layer so an edit that changes a lead's filter membership updates
+// the view instantly instead of waiting for the next refetch.
+type ServerInboxState = {
+  counts: LeadCounts;
+  callCounts: Record<string, number>;
+  filter: Filter;
+  query: string;
+};
+
+function buildInboxHref(filter: Filter, query: string) {
+  const params = new URLSearchParams();
+  if (filter !== "all") params.set("filter", filter);
+  if (query.trim()) params.set("q", query.trim());
+  const qs = params.toString();
+  return qs ? `/leads?${qs}` : "/leads";
+}
 
 type UndoableDelete = {
   leadId: string;
@@ -25,7 +47,7 @@ function serverConfirms(field: keyof Lead, serverValue: unknown, optimisticValue
   return (serverValue ?? null) === (optimisticValue ?? null);
 }
 
-export function useLeadsInbox(leads: Lead[]) {
+export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
   const router = useRouter();
   const searchRef = useRef<HTMLInputElement | null>(null);
   const initiallyLoadedLeadIds = useRef<Set<string>>(new Set(leads.map((lead) => lead.id)));
@@ -36,16 +58,18 @@ export function useLeadsInbox(leads: Lead[]) {
   const pendingLeadWrites = useRef<Map<string, Partial<Lead>>>(new Map());
   const pendingPhoneWrites = useRef<Map<string, Partial<Lead>>>(new Map());
   const undoTimerRef = useRef<number | null>(null);
+  const searchDebounceRef = useRef<number | null>(null);
   const [items, setItems] = useState(leads);
   const [sampleItems, setSampleItems] = useState(() => createSampleLeads());
   const [sampleMode, setSampleMode] = useState(false);
-  const [filter, setFilter] = useState<Filter>("all");
-  const [query, setQuery] = useState("");
+  const [filter, setFilterState] = useState<Filter>(server.filter);
+  const [query, setQueryState] = useState(server.query);
   const [openId, setOpenId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [transcribingIds, setTranscribingIds] = useState<Set<string>>(() => new Set());
   const [expandedLeadIds, setExpandedLeadIds] = useState<Set<string>>(() => new Set());
   const [undoableDelete, setUndoableDelete] = useState<UndoableDelete | null>(null);
+  const [isNavigating, startNavigation] = useTransition();
   const activeItems = sampleMode ? sampleItems : items;
 
   useEffect(() => {
@@ -53,6 +77,48 @@ export function useLeadsInbox(leads: Lead[]) {
     if (leads.length > 0) setSampleMode(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leads]);
+
+  // Keep local filter/query aligned with the server (the URL) so browser
+  // back/forward, or a link that lands with ?filter=/?q= already set, is
+  // reflected in the pills and search box. Only syncs real (non-sample) mode;
+  // sample mode filters purely client-side and never touches the URL.
+  useEffect(() => {
+    if (sampleMode) return;
+    setFilterState(server.filter);
+    setQueryState(server.query);
+  }, [server.filter, server.query, sampleMode]);
+
+  // Push the active filter/search into the URL, which refetches the matching
+  // rows server-side. Filter changes navigate immediately; search is debounced
+  // so we don't fire a request per keystroke. Either one drops the page param,
+  // so a new filter/search starts from page 1.
+  function navigateToInbox(nextFilter: Filter, nextQuery: string) {
+    startNavigation(() => {
+      router.push(buildInboxHref(nextFilter, nextQuery), { scroll: false });
+    });
+  }
+
+  function setFilter(nextFilter: Filter) {
+    setFilterState(nextFilter);
+    if (sampleMode) return;
+    if (searchDebounceRef.current) window.clearTimeout(searchDebounceRef.current);
+    navigateToInbox(nextFilter, query);
+  }
+
+  function setQuery(nextQuery: string) {
+    setQueryState(nextQuery);
+    if (sampleMode) return;
+    if (searchDebounceRef.current) window.clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = window.setTimeout(() => {
+      navigateToInbox(filter, nextQuery);
+    }, SEARCH_DEBOUNCE_MS);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (searchDebounceRef.current) window.clearTimeout(searchDebounceRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     function refreshInbox() {
@@ -120,12 +186,21 @@ export function useLeadsInbox(leads: Lead[]) {
 
   // "N calls" counts every lead row for the phone — including trashed ones —
   // so the number is the truth about the caller and never moves when a card
-  // is trashed or restored.
-  const callCounts = useMemo(() => countCallsByPhone(activeItems), [activeItems]);
+  // is trashed or restored. Real mode uses the server's account-wide count
+  // (search_lead_inbox returns it per row); sample mode has no server, so it
+  // counts its own in-memory rows.
+  const sampleCallCounts = useMemo(() => countCallsByPhone(sampleItems), [sampleItems]);
+  const serverCallCounts = useMemo(
+    () => new Map(Object.entries(server.callCounts)),
+    [server.callCounts],
+  );
+  const callCounts = sampleMode ? sampleCallCounts : serverCallCounts;
 
   // One conversation per customer: live leads condense to the newest row per
   // phone, and Trash condenses the same way so a repeat caller is one card
-  // there too, not a fragment per call.
+  // there too, not a fragment per call. Real rows arrive already condensed
+  // from the server, so this is a no-op there; it still does the real work for
+  // sample mode's uncondensed data.
   const condensed = useMemo(
     () => condenseLeadsByPhone(activeItems.filter((lead) => !lead.deleted_at)),
     [activeItems],
@@ -134,10 +209,13 @@ export function useLeadsInbox(leads: Lead[]) {
     () => condenseLeadsByPhone(activeItems.filter((lead) => lead.deleted_at)),
     [activeItems],
   );
-  const counts = useMemo(
+  // Server counts are account-wide and correct past page 1; the client count is
+  // only right when it can see every lead, which is exactly sample mode.
+  const sampleCounts = useMemo(
     () => countLeads([...condensed.leads, ...condensedTrash.leads]),
     [condensed, condensedTrash],
   );
+  const counts = sampleMode ? sampleCounts : server.counts;
   const filteredItems = useMemo(
     () =>
       filter === "trash"
@@ -533,6 +611,7 @@ export function useLeadsInbox(leads: Lead[]) {
     expandedLeadIds,
     filter,
     filteredItems,
+    isSearching: isNavigating,
     now,
     openLead,
     query,

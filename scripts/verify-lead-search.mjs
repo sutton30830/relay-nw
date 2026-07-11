@@ -209,8 +209,9 @@ async function main() {
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at) || b.id.localeCompare(a.id));
     const jsIds = jsRows.map((l) => l.id);
 
-    // Page through the RPC to gather every id for this filter.
+    // Page through the RPC to gather every id (and call_count) for this filter.
     const rpcIds = [];
+    const rpcRows = [];
     let total = null;
     for (let offset = 0; ; offset += PAGE_LIMIT) {
       const { data, error } = await supabase.rpc("search_lead_inbox", {
@@ -224,6 +225,7 @@ async function main() {
       if (!data || data.length === 0) break;
       if (total === null) total = Number(data[0].total_count);
       rpcIds.push(...data.map((r) => r.id));
+      rpcRows.push(...data);
       if (data.length < PAGE_LIMIT) break;
     }
 
@@ -235,6 +237,14 @@ async function main() {
       if (!totalMatch) fail(`filter="${filter}" total_count`, jsIds.length, total);
       if (!idsMatch) fail(`filter="${filter}" id set/order`, jsIds.slice(0, 10), rpcIds.slice(0, 10));
     }
+
+    // call_count = total call rows for the phone across the whole account,
+    // matching countCallsByPhone over every raw lead (incl. trashed).
+    const jsCallByPhone = new Map();
+    for (const l of rawLeads) jsCallByPhone.set(l.phone, (jsCallByPhone.get(l.phone) ?? 0) + 1);
+    const badCall = rpcRows.find((r) => Number(r.call_count) !== jsCallByPhone.get(r.phone));
+    if (!badCall) pass(`filter="${filter}": call_count matches for all ${rpcRows.length} rows`);
+    else fail(`filter="${filter}" call_count for ${badCall.phone}`, jsCallByPhone.get(badCall.phone), Number(badCall.call_count));
   }
 
   // ---- 3. Search ----
