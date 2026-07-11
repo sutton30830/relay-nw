@@ -3,6 +3,7 @@ import { AppHeader } from "@/app/leads/_components/app-header";
 import { requireAccountUser } from "@/lib/auth";
 import { getA2pRegistrationStatus } from "@/lib/supabase";
 import { QUICK_REPLIES } from "@/app/leads/_constants";
+import { SmsToggle } from "./sms-toggle";
 
 export const dynamic = "force-dynamic";
 
@@ -103,17 +104,7 @@ export default async function SettingsPage({
             </Field>
 
             <p className="t-eyebrow settings-group-title">Messaging</p>
-            {role === "owner" ? (
-              <Field
-                label="Automatic texting"
-                hint="Master switch. Off = no texts to customers or to you. Only enable after carrier registration is approved."
-              >
-                <span className="settings-toggle">
-                  <input type="checkbox" name="sms_enabled" defaultChecked={account.smsEnabled} />
-                  Send automatic texts
-                </span>
-              </Field>
-            ) : null}
+            {role === "owner" ? <SmsToggle defaultEnabled={account.smsEnabled} /> : null}
             <Field
               label="Missed-call text"
               hint="Sent to callers you miss. Variables: {BUSINESS_NAME}, {INTAKE_URL}, {SCHEDULING_URL}. Leave blank for the default."

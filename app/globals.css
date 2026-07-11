@@ -2719,13 +2719,114 @@ code {
 .settings-group-title--first {
   margin-top: 0;
 }
-.settings-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
 .settings-submit {
   margin-top: 8px;
+}
+
+/* SMS master switch: the highest-stakes control, set apart in its own callout
+   with a real toggle and the state spelled out. */
+.sms-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--panel-2);
+}
+.sms-switch--on {
+  border-color: color-mix(in oklab, var(--good) 40%, var(--line));
+  background: color-mix(in oklab, var(--good-soft) 40%, var(--panel));
+}
+.sms-switch__info {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+.sms-switch__icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--ink-4);
+}
+.sms-switch--on .sms-switch__icon {
+  color: var(--good);
+}
+.sms-switch__title {
+  margin: 0 0 2px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.sms-switch__note {
+  margin: 0;
+  color: var(--ink-4);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.sms-switch__control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.sms-switch__state {
+  font-size: 12.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.sms-switch__state strong {
+  color: var(--ink);
+}
+.sms-switch--on .sms-switch__state strong {
+  color: var(--good);
+}
+
+/* Toggle switch primitive. */
+.switch {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.switch__input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.switch__track {
+  display: flex;
+  align-items: center;
+  width: 44px;
+  height: 26px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--ink-4);
+  transition: background 140ms ease;
+}
+.switch__thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+  transition: transform 140ms ease;
+}
+.switch__input:checked + .switch__track {
+  background: var(--good);
+}
+.switch__input:checked + .switch__track .switch__thumb {
+  transform: translateX(18px);
+}
+.switch__input:focus-visible + .switch__track {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
 }
 
 /* --- Reports --- */
