@@ -4252,6 +4252,14 @@ code {
 .convo__chips .quick-reply {
   flex-shrink: 0;
 }
+/* The booking-link chip is the money action — set it apart from plain replies. */
+.quick-reply--book {
+  gap: 5px;
+  border-color: color-mix(in oklab, var(--brand) 40%, var(--line));
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-weight: 650;
+}
 .convo__input-row {
   display: flex;
   gap: 8px;

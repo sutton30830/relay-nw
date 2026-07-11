@@ -37,6 +37,14 @@ export async function POST(request: Request) {
   const ownerEmail = readString(formData, "owner_email", 200).toLowerCase();
   const schedulingUrl = readString(formData, "scheduling_url", 500);
   const smsTemplate = readString(formData, "sms_template", 600);
+  // One reply per line; blank lines dropped, each capped, at most six. Empty
+  // means "use the shared defaults", stored as null.
+  const quickReplies = String(formData.get("quick_replies") ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 6)
+    .map((line) => line.slice(0, 200));
   const voiceMessage = readString(formData, "missed_call_voice_message", 600);
   const greetingAudioUrl = readString(formData, "missed_call_greeting_audio_url", 500);
   const dialTimeout = readNumber(formData, "dial_timeout_seconds", LIMITS.dialTimeoutSeconds);
@@ -65,6 +73,7 @@ export async function POST(request: Request) {
     owner_email: ownerEmail || null,
     scheduling_url: schedulingUrl || null,
     sms_template: smsTemplate || null,
+    quick_reply_templates: quickReplies.length ? quickReplies : null,
     missed_call_voice_message: voiceMessage || null,
     missed_call_greeting_audio_url: greetingAudioUrl || null,
     dial_timeout_seconds: dialTimeout,

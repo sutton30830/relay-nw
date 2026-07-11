@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { requireAccountUser } from "@/lib/auth";
 import { getLeadConversation } from "@/lib/supabase";
+import { QUICK_REPLIES } from "../_constants";
 import { ConversationView } from "./conversation-view";
 
 export const dynamic = "force-dynamic";
@@ -10,8 +11,10 @@ export default async function LeadConversationPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { accountId, role } = await requireAccountUser();
+  const { account, accountId, role } = await requireAccountUser();
   const { id } = await params;
+
+  const quickReplies = account.quickReplyTemplates?.length ? account.quickReplyTemplates : QUICK_REPLIES;
 
   const conversation = await getLeadConversation(accountId, id);
 
@@ -39,6 +42,8 @@ export default async function LeadConversationPage({
         inbound={conversation.inbound}
         outbound={conversation.outbound}
         readOnly={role === "viewer"}
+        quickReplies={quickReplies}
+        schedulingUrl={account.schedulingUrl}
       />
     </main>
   );

@@ -12,6 +12,9 @@ export type AccountRuntimeConfig = {
   intakeUrl: string;
   schedulingUrl: string;
   smsTemplate: string | null;
+  // Per-account quick-reply templates for the SMS composer. null = the account
+  // hasn't customized them, so the UI falls back to the shared defaults.
+  quickReplyTemplates: string[] | null;
   missedCallVoiceMessage: string | null;
   missedCallVoiceName: string;
   missedCallGreetingAudioUrl: string | null;
@@ -64,6 +67,7 @@ type AccountSettingsRow = {
   call_mode: "direct" | "forwarding";
   sms_enabled: boolean;
   sms_template: string | null;
+  quick_reply_templates: string[] | null;
   missed_call_voice_message: string | null;
   missed_call_voice_name: string | null;
   missed_call_greeting_audio_url: string | null;
@@ -75,6 +79,11 @@ type AccountSettingsRow = {
 };
 
 const ACCOUNT_SETTINGS_SELECT =
+  "account_id, business_name, owner_email, owner_phone_number, intake_url, scheduling_url, call_mode, sms_enabled, sms_template, quick_reply_templates, missed_call_voice_message, missed_call_voice_name, missed_call_greeting_audio_url, voicemail_max_seconds, dial_timeout_seconds, missed_call_sms_cooldown_hours, voicemail_transcription_enabled, accounts(slug)";
+// Same columns minus quick_reply_templates, for a deploy that lands before the
+// supabase.sql migration adds the column. Account config is on every request's
+// critical path, so a missing optional column must degrade, not throw.
+const ACCOUNT_SETTINGS_SELECT_LEGACY =
   "account_id, business_name, owner_email, owner_phone_number, intake_url, scheduling_url, call_mode, sms_enabled, sms_template, missed_call_voice_message, missed_call_voice_name, missed_call_greeting_audio_url, voicemail_max_seconds, dial_timeout_seconds, missed_call_sms_cooldown_hours, voicemail_transcription_enabled, accounts(slug)";
 
 export function envAccountConfig(): AccountRuntimeConfig {
@@ -88,6 +97,7 @@ export function envAccountConfig(): AccountRuntimeConfig {
     intakeUrl: env.intakeUrl,
     schedulingUrl: env.schedulingUrl,
     smsTemplate: env.smsTemplate ?? null,
+    quickReplyTemplates: null,
     missedCallVoiceMessage: env.missedCallVoiceMessage ?? null,
     missedCallVoiceName: env.missedCallVoiceName,
     missedCallGreetingAudioUrl: env.missedCallGreetingAudioUrl ?? null,
@@ -113,6 +123,7 @@ function configFromSettings(row: AccountSettingsRow, primaryNumber: string): Acc
     intakeUrl: row.intake_url,
     schedulingUrl: row.scheduling_url ?? env.schedulingUrl,
     smsTemplate: row.sms_template,
+    quickReplyTemplates: row.quick_reply_templates ?? null,
     missedCallVoiceMessage: row.missed_call_voice_message,
     missedCallVoiceName: row.missed_call_voice_name ?? "Polly.Joanna-Neural",
     missedCallGreetingAudioUrl: row.missed_call_greeting_audio_url,
@@ -159,7 +170,16 @@ export async function getAccountConfigByAccountId(accountId: string | null | und
     getPrimaryAccountPhoneNumber(accountId),
   ]);
 
-  const { data, error } = settingsResult;
+  let { data, error } = settingsResult;
+
+  if (error?.message.includes("quick_reply_templates")) {
+    console.warn("account_settings.quick_reply_templates is missing. Run supabase.sql to enable editable quick replies.");
+    ({ data, error } = await supabaseAdmin
+      .from("account_settings")
+      .select(ACCOUNT_SETTINGS_SELECT_LEGACY)
+      .eq("account_id", accountId)
+      .maybeSingle());
+  }
 
   if (error) {
     if (error.message.includes("account_settings")) {
@@ -403,6 +423,7 @@ export type AccountSettingsUpdate = Partial<{
   scheduling_url: string | null;
   sms_enabled: boolean;
   sms_template: string | null;
+  quick_reply_templates: string[] | null;
   missed_call_voice_message: string | null;
   missed_call_greeting_audio_url: string | null;
   dial_timeout_seconds: number;

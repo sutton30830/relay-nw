@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { requireAccountUser } from "@/lib/auth";
 import { getA2pRegistrationStatus } from "@/lib/supabase";
+import { QUICK_REPLIES } from "@/app/leads/_constants";
 
 export const dynamic = "force-dynamic";
 
@@ -127,6 +128,18 @@ export default async function SettingsPage({
             </Field>
             <Field label="Text cooldown (hours)" hint="Never auto-text the same caller twice within this window.">
               <input className="field" type="number" name="missed_call_sms_cooldown_hours" min={1} max={168} required defaultValue={account.missedCallSmsCooldownHours} />
+            </Field>
+            <Field
+              label="Quick replies"
+              hint="One per line (up to 6). These are the one-tap replies in the message composer. Leave blank for the defaults. When a scheduling link is set, a 'Send booking link' chip is added automatically."
+            >
+              <textarea
+                className="field"
+                name="quick_replies"
+                rows={5}
+                defaultValue={(account.quickReplyTemplates ?? QUICK_REPLIES).join("\n")}
+                placeholder={QUICK_REPLIES.join("\n")}
+              />
             </Field>
 
             <p className="t-eyebrow" style={{ margin: "22px 0 14px" }}>Voice</p>

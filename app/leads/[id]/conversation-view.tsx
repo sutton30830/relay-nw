@@ -7,7 +7,6 @@ import { Icon } from "@/components/icon";
 import type { InboundMessage, Lead, LeadStatus, OutboundMessage, ReplyPriorityOverride } from "@/lib/supabase";
 import { patchLead, requestVoicemailSummary, sendLeadReply } from "../_api";
 import { VoicemailPlayer } from "../_components/voicemail-player";
-import { QUICK_REPLIES } from "../_constants";
 import { formatPhone, getLeadPriority, initials, isBookedLead, sourceLabel } from "../_utils";
 import { BookedToggle, BookedValueInput, PriorityControl, StatusControl } from "../_components/controls";
 
@@ -38,12 +37,16 @@ export function ConversationView({
   inbound,
   outbound,
   readOnly,
+  quickReplies,
+  schedulingUrl,
 }: {
   lead: Lead;
   previousLeads: Lead[];
   inbound: InboundMessage[];
   outbound: OutboundMessage[];
   readOnly: boolean;
+  quickReplies: string[];
+  schedulingUrl: string | null;
 }) {
   const router = useRouter();
   const [name, setName] = useState(lead.name ?? "");
@@ -383,7 +386,7 @@ export function ConversationView({
             </p>
           ) : null}
           <div className="convo__chips clean-scroll">
-            {QUICK_REPLIES.map((template) => (
+            {quickReplies.map((template) => (
               <button
                 key={template}
                 className="quick-reply"
@@ -397,6 +400,26 @@ export function ConversationView({
                 {template}
               </button>
             ))}
+            {schedulingUrl ? (
+              <button
+                className="quick-reply quick-reply--book"
+                type="button"
+                onClick={() => {
+                  // Append the booking link so the owner can pair it with a
+                  // reply ("Can I come by tomorrow? Book here: …") instead of
+                  // replacing what they've already picked.
+                  setReplyText((current) => {
+                    const bookingLine = `Book here: ${schedulingUrl}`;
+                    const trimmed = current.trim();
+                    return trimmed ? `${trimmed}\n\n${bookingLine}` : bookingLine;
+                  });
+                  setReplyError(null);
+                  composerRef.current?.focus();
+                }}
+              >
+                <Icon name="calendar" size={13} /> Send booking link
+              </button>
+            ) : null}
           </div>
           <div className="convo__input-row">
             <textarea

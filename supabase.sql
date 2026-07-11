@@ -22,6 +22,7 @@ create table if not exists public.account_settings (
   call_mode text not null default 'forwarding' check (call_mode in ('direct', 'forwarding')),
   sms_enabled boolean not null default false,
   sms_template text,
+  quick_reply_templates text[],
   missed_call_voice_message text,
   missed_call_voice_name text not null default 'Polly.Joanna-Neural',
   missed_call_greeting_audio_url text,
@@ -37,6 +38,7 @@ create table if not exists public.account_settings (
 );
 
 alter table public.account_settings add column if not exists owner_email text;
+alter table public.account_settings add column if not exists quick_reply_templates text[];
 
 alter table public.account_settings enable row level security;
 
