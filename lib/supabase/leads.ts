@@ -1,6 +1,6 @@
 import { isPlaceholderSupabaseConfig, shouldSkipDatabaseWrite, supabaseAdmin, throwIfSupabaseError } from "./client";
 import { assertAccountId } from "./tenant";
-import type { InboundMessage, Lead, LeadSource, LeadStatus, OutboundMessage, ReplyPriorityOverride } from "./types";
+import type { InboundMessage, Lead, LeadInboxFilter, LeadSource, LeadStatus, OutboundMessage, ReplyPriorityOverride } from "./types";
 
 const LEAD_SELECT_COLUMNS =
   "id, account_id, call_sid, name, phone, message, notes, booked_at, job_value_cents, reply_priority_override, priority, priority_reason, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, voicemail_transcript, voicemail_summary, voicemail_transcription_status, voicemail_transcription_error, voicemail_transcribed_at, deleted_at, created_at";
@@ -9,6 +9,17 @@ const LEGACY_LEAD_SELECT_COLUMNS =
 
 function isMissingBookedAtColumnError(error: { message: string } | null) {
   return Boolean(error?.message.includes("booked_at"));
+}
+
+function isMissingSearchRpcError(error: { message: string; code?: string } | null) {
+  // 42883: undefined_function (raw Postgres). PGRST202: PostgREST's "could not
+  // find function in schema cache" — either way, supabase.sql hasn't been run yet.
+  return Boolean(
+    error?.code === "42883" ||
+      error?.code === "PGRST202" ||
+      error?.message.includes("search_lead_inbox") ||
+      error?.message.includes("lead_inbox_counts"),
+  );
 }
 
 function isMissingOptionalLeadColumnError(error: { message: string } | null) {
@@ -282,26 +293,131 @@ export async function createMissedCallLeadIfNew(input: {
   };
 }
 
+type SearchLeadInboxRow = Omit<Lead, "inbound_messages" | "outbound_messages"> & { total_count: number | string };
+
+function rowToLead(row: SearchLeadInboxRow): Lead {
+  const { total_count: _totalCount, ...lead } = row;
+  return { ...lead, inbound_messages: [], outbound_messages: [] };
+}
+
+export type LeadInboxCounts = {
+  all: number;
+  new: number;
+  contacted: number;
+  booked: number;
+  dead: number;
+  trash: number;
+  actionable: number;
+  smsIssues: number;
+  bookedValueCents: number;
+  bookedWithValue: number;
+};
+
+const EMPTY_LEAD_INBOX_COUNTS: LeadInboxCounts = {
+  all: 0,
+  new: 0,
+  contacted: 0,
+  booked: 0,
+  dead: 0,
+  trash: 0,
+  actionable: 0,
+  smsIssues: 0,
+  bookedValueCents: 0,
+  bookedWithValue: 0,
+};
+
+// Server-side counterpart to countLeads in app/leads/_utils.ts, computed over
+// every lead for the account (not just the loaded page) so filter-pill counts
+// stay correct past the first page.
+export async function getLeadInboxCountsForAccount(inputAccountId: string): Promise<LeadInboxCounts> {
+  const accountId = assertAccountId(inputAccountId, "getLeadInboxCountsForAccount");
+
+  if (isPlaceholderSupabaseConfig()) {
+    return EMPTY_LEAD_INBOX_COUNTS;
+  }
+
+  const { data, error } = await supabaseAdmin.rpc("lead_inbox_counts", { p_account: accountId }).maybeSingle();
+
+  if (isMissingSearchRpcError(error)) {
+    console.warn("lead_inbox_counts is missing. Run supabase.sql to enable server-side lead counts.");
+    return EMPTY_LEAD_INBOX_COUNTS;
+  }
+
+  throwIfSupabaseError(error);
+
+  if (!data) {
+    return EMPTY_LEAD_INBOX_COUNTS;
+  }
+
+  const row = data as {
+    all_count: number | string;
+    new_count: number | string;
+    contacted_count: number | string;
+    booked_count: number | string;
+    dead_count: number | string;
+    trash_count: number | string;
+    actionable_count: number | string;
+    sms_issues_count: number | string;
+    booked_value_cents: number | string;
+    booked_with_value_count: number | string;
+  };
+
+  return {
+    all: Number(row.all_count),
+    new: Number(row.new_count),
+    contacted: Number(row.contacted_count),
+    booked: Number(row.booked_count),
+    dead: Number(row.dead_count),
+    trash: Number(row.trash_count),
+    actionable: Number(row.actionable_count),
+    smsIssues: Number(row.sms_issues_count),
+    bookedValueCents: Number(row.booked_value_cents),
+    bookedWithValue: Number(row.booked_with_value_count),
+  };
+}
+
 export async function getLeadInboxPageForAccount(
   inputAccountId: string,
-  options?: { limit?: number; offset?: number },
+  options?: { limit?: number; offset?: number; filter?: LeadInboxFilter; query?: string },
 ): Promise<LeadsPageResult> {
   const accountId = assertAccountId(inputAccountId, "getLeadsForAccount");
   const { limit, offset } = normalizePageOptions(options);
+  const filter = options?.filter ?? "all";
+  const query = options?.query?.trim() ?? "";
 
   if (isPlaceholderSupabaseConfig()) {
     return { leads: [] as Lead[], total: 0, limit, offset };
   }
 
-  let query = supabaseAdmin
+  const { data: rows, error: rpcError } = await supabaseAdmin.rpc("search_lead_inbox", {
+    p_account: accountId,
+    p_filter: filter,
+    p_query: query,
+    p_limit: limit,
+    p_offset: offset,
+  });
+
+  if (!isMissingSearchRpcError(rpcError)) {
+    throwIfSupabaseError(rpcError);
+
+    const searchRows = (rows ?? []) as SearchLeadInboxRow[];
+    const total = searchRows.length > 0 ? Number(searchRows[0].total_count) : 0;
+    const leads = await attachThreadMessages(searchRows.map(rowToLead).map(normalizeLead), accountId);
+
+    return { leads, total, limit, offset };
+  }
+
+  console.warn("search_lead_inbox is missing. Run supabase.sql to enable server-side lead search and filtering.");
+
+  let legacyBaseQuery = supabaseAdmin
     .from("leads")
     .select(LEAD_SELECT_COLUMNS, { count: "exact" })
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
-  query = query.eq("account_id", accountId);
+  legacyBaseQuery = legacyBaseQuery.eq("account_id", accountId);
 
-  const { data, error, count } = await query;
+  const { data, error, count } = await legacyBaseQuery;
 
   if (isMissingOptionalLeadColumnError(error)) {
     console.warn("Some optional leads columns are missing. Run supabase.sql to enable all inbox features.");

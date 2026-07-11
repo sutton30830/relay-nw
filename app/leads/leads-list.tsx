@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Icon } from "@/components/icon";
-import type { Lead } from "@/lib/supabase";
+import type { Lead, LeadInboxFilter } from "@/lib/supabase";
 import { FILTERS } from "./_constants";
 import { LeadCard } from "./_components/lead-card";
 import { LeadDrawer } from "./_components/lead-drawer";
@@ -21,6 +21,8 @@ export function LeadsList({
     limit: number;
     offset: number;
     total: number | null;
+    filter: LeadInboxFilter;
+    query: string;
   };
 }) {
   const router = useRouter();
@@ -36,6 +38,18 @@ export function LeadsList({
   const isScopedToPage = pagination.page > 1 || hasNextPage;
   const isFilteringOrSearching = inbox.filter !== "all" || inbox.query.trim().length > 0;
   const showScopeNotice = isScopedToPage && isFilteringOrSearching;
+
+  // Preserves the server-side filter/search params (from a deep link or manual
+  // URL edit) across pagination — the client filter/search inputs don't push
+  // to the URL yet, but the URL's own state shouldn't be lost when paging.
+  function pageHref(page: number) {
+    const params = new URLSearchParams();
+    if (page > 1) params.set("page", String(page));
+    if (pagination.filter !== "all") params.set("filter", pagination.filter);
+    if (pagination.query) params.set("q", pagination.query);
+    const qs = params.toString();
+    return qs ? `/leads?${qs}` : "/leads";
+  }
 
   return (
     <>
@@ -187,12 +201,12 @@ export function LeadsList({
         </span>
         <div className="inbox-page-meta__actions">
           {hasPreviousPage ? (
-            <Link className="btn btn-secondary btn-sm" href={pagination.page === 2 ? "/leads" : `/leads?page=${pagination.page - 1}`}>
+            <Link className="btn btn-secondary btn-sm" href={pageHref(pagination.page - 1)}>
               Previous
             </Link>
           ) : null}
           {hasNextPage ? (
-            <Link className="btn btn-secondary btn-sm" href={`/leads?page=${pagination.page + 1}`}>
+            <Link className="btn btn-secondary btn-sm" href={pageHref(pagination.page + 1)}>
               Next
             </Link>
           ) : null}
@@ -206,9 +220,9 @@ export function LeadsList({
             {inbox.query.trim() ? "Search" : "Filter"} only covers the leads loaded on this page.
             {" "}
             {hasNextPage ? (
-              <Link href={`/leads?page=${pagination.page + 1}`}>Check older leads</Link>
+              <Link href={pageHref(pagination.page + 1)}>Check older leads</Link>
             ) : (
-              <Link href={pagination.page === 2 ? "/leads" : `/leads?page=${pagination.page - 1}`}>Check newer leads</Link>
+              <Link href={pageHref(pagination.page - 1)}>Check newer leads</Link>
             )}
           </span>
         </div>

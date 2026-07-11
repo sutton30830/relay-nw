@@ -1,14 +1,8 @@
-import type { LeadStatus, ReplyPriorityOverride } from "@/lib/supabase";
+import type { LeadInboxCounts, LeadInboxFilter, LeadStatus, ReplyPriorityOverride } from "@/lib/supabase";
 
-export type Filter = "all" | "new" | "contacted" | "booked" | "dead" | "trash";
+export type Filter = LeadInboxFilter;
 
-export type LeadCounts = Record<Filter, number> & {
-  actionable: number;
-  booked: number;
-  smsIssues: number;
-  bookedValueCents: number;
-  bookedWithValue: number;
-};
+export type LeadCounts = LeadInboxCounts;
 
 export type LeadPatch = {
   name?: string | null;

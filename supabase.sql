@@ -1,4 +1,5 @@
 create extension if not exists pgcrypto;
+create extension if not exists pg_trgm;
 
 create table if not exists public.accounts (
   id uuid primary key default gen_random_uuid(),
@@ -444,3 +445,175 @@ drop policy if exists deny_client_access on public.setup_requests;
 create policy deny_client_access on public.setup_requests
   as restrictive for all to anon, authenticated
   using (false) with check (false);
+
+-- Server-side lead inbox search/filter/counts. The inbox UI condenses leads by
+-- phone (one card per caller, newest row wins) before filtering, counting, or
+-- searching; these functions do the same condensation in SQL so filter-pill
+-- counts, the Booked tab, and search see every page for the account, not just
+-- whichever page happens to be loaded client-side.
+create index if not exists leads_search_trgm_idx on public.leads
+  using gin (
+    (
+      coalesce(name, '') || ' ' || coalesce(phone, '') || ' ' ||
+      coalesce(message, '') || ' ' || coalesce(notes, '') || ' ' ||
+      coalesce(voicemail_summary, '') || ' ' || coalesce(voicemail_transcript, '')
+    ) gin_trgm_ops
+  );
+
+-- Mirrors condenseLeadsByPhone in app/leads/_utils.ts, which the inbox applies
+-- SEPARATELY to live and trashed rows. A caller who is trashed and then calls
+-- again has both a trashed row and a fresh live row for the same phone, and the
+-- UI shows that phone in both the inbox and Trash — so we condense per
+-- (phone, is-deleted), yielding up to two rows per phone (newest live + newest
+-- trashed), not one.
+create or replace function public.lead_inbox_condensed(p_account uuid)
+returns setof public.leads
+language sql
+stable
+as $$
+  select distinct on (phone, (deleted_at is null)) *
+  from public.leads
+  where account_id = p_account
+  order by phone, (deleted_at is null), created_at desc;
+$$;
+
+revoke all on function public.lead_inbox_condensed(uuid) from public, anon, authenticated;
+grant execute on function public.lead_inbox_condensed(uuid) to service_role;
+
+-- Mirrors countLeads in app/leads/_utils.ts, including its quirks (a
+-- migrated "booked" lead has status = 'dead' with booked_at set, so it
+-- counts toward both booked and dead, matching client behavior exactly).
+create or replace function public.lead_inbox_counts(p_account uuid)
+returns table (
+  all_count bigint,
+  new_count bigint,
+  actionable_count bigint,
+  contacted_count bigint,
+  booked_count bigint,
+  dead_count bigint,
+  trash_count bigint,
+  sms_issues_count bigint,
+  booked_value_cents bigint,
+  booked_with_value_count bigint
+)
+language sql
+stable
+as $$
+  with rollup as (
+    select * from public.lead_inbox_condensed(p_account)
+  )
+  select
+    count(*) filter (where deleted_at is null) as all_count,
+    count(*) filter (where deleted_at is null and status = 'new') as new_count,
+    count(*) filter (where deleted_at is null and status in ('new', 'contacted')) as actionable_count,
+    count(*) filter (where deleted_at is null and status = 'contacted') as contacted_count,
+    count(*) filter (where deleted_at is null and (booked_at is not null or status = 'booked')) as booked_count,
+    count(*) filter (where deleted_at is null and status = 'dead') as dead_count,
+    count(*) filter (where deleted_at is not null) as trash_count,
+    count(*) filter (
+      where deleted_at is null and status = 'new' and sms_status in ('failed', 'undelivered')
+    ) as sms_issues_count,
+    coalesce(
+      sum(job_value_cents) filter (
+        where deleted_at is null and (booked_at is not null or status = 'booked')
+      ),
+      0
+    ) as booked_value_cents,
+    count(*) filter (
+      where deleted_at is null
+        and (booked_at is not null or status = 'booked')
+        and job_value_cents is not null
+        and job_value_cents <> 0
+    ) as booked_with_value_count
+  from rollup;
+$$;
+
+revoke all on function public.lead_inbox_counts(uuid) from public, anon, authenticated;
+grant execute on function public.lead_inbox_counts(uuid) to service_role;
+
+-- Mirrors filterLeads + leadMatchesSearch in app/leads/_utils.ts, minus
+-- inbound SMS bodies and the derived priority/source labels (not worth a
+-- join for an inbox search box). p_query is escaped so a caller searching a
+-- literal "%" or "_" isn't surprised by wildcard behavior.
+create or replace function public.search_lead_inbox(
+  p_account uuid,
+  p_filter text,
+  p_query text,
+  p_limit int,
+  p_offset int
+)
+returns table (
+  id uuid,
+  account_id uuid,
+  call_sid text,
+  name text,
+  phone text,
+  message text,
+  notes text,
+  booked_at timestamptz,
+  job_value_cents integer,
+  reply_priority_override text,
+  priority text,
+  priority_reason text,
+  source text,
+  status text,
+  sms_status text,
+  sms_error text,
+  twilio_message_sid text,
+  sms_updated_at timestamptz,
+  recording_sid text,
+  recording_url text,
+  recording_duration integer,
+  recording_status text,
+  voicemail_transcript text,
+  voicemail_summary text,
+  voicemail_transcription_status text,
+  voicemail_transcription_error text,
+  voicemail_transcribed_at timestamptz,
+  deleted_at timestamptz,
+  created_at timestamptz,
+  total_count bigint
+)
+language sql
+stable
+as $$
+  with rollup as (
+    select * from public.lead_inbox_condensed(p_account)
+  ),
+  escaped as (
+    select replace(replace(replace(coalesce(p_query, ''), '\', '\\'), '%', '\%'), '_', '\_') as q
+  ),
+  filtered as (
+    select rollup.*
+    from rollup, escaped
+    where
+      (case when coalesce(p_filter, 'all') = 'trash' then deleted_at is not null else deleted_at is null end)
+      and (
+        coalesce(p_filter, 'all') in ('all', 'trash')
+        or (p_filter = 'booked' and (booked_at is not null or status = 'booked'))
+        or (p_filter not in ('all', 'trash', 'booked') and status = p_filter)
+      )
+      and (
+        escaped.q = ''
+        or (
+          coalesce(name, '') || ' ' || coalesce(phone, '') || ' ' ||
+          coalesce(message, '') || ' ' || coalesce(notes, '') || ' ' ||
+          coalesce(voicemail_summary, '') || ' ' || coalesce(voicemail_transcript, '')
+        ) ilike '%' || escaped.q || '%' escape '\'
+      )
+  )
+  select
+    f.id, f.account_id, f.call_sid, f.name, f.phone, f.message, f.notes, f.booked_at,
+    f.job_value_cents, f.reply_priority_override, f.priority, f.priority_reason, f.source,
+    f.status, f.sms_status, f.sms_error, f.twilio_message_sid, f.sms_updated_at, f.recording_sid,
+    f.recording_url, f.recording_duration, f.recording_status, f.voicemail_transcript,
+    f.voicemail_summary, f.voicemail_transcription_status, f.voicemail_transcription_error,
+    f.voicemail_transcribed_at, f.deleted_at, f.created_at,
+    count(*) over () as total_count
+  from filtered f
+  order by f.created_at desc, f.id desc
+  limit p_limit offset p_offset;
+$$;
+
+revoke all on function public.search_lead_inbox(uuid, text, text, int, int) from public, anon, authenticated;
+grant execute on function public.search_lead_inbox(uuid, text, text, int, int) to service_role;
