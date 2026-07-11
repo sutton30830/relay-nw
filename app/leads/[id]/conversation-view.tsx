@@ -62,8 +62,16 @@ export function ConversationView({
   const [priorityOverride, setPriorityOverride] = useState<ReplyPriorityOverride>(lead.reply_priority_override);
   const [booked, setBooked] = useState(() => isBookedLead(lead));
   const [jobValueCents, setJobValueCents] = useState<number | null>(lead.job_value_cents);
+  // On touch devices Enter should insert a newline (send is the button) — phones
+  // have no Shift+Enter, so sending on Enter would strand multi-line messages.
+  // Desktop keeps Enter-to-send. Defaults to false (desktop) until mounted.
+  const [isTouch, setIsTouch] = useState(false);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const threadEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setIsTouch(window.matchMedia("(hover: none) and (pointer: coarse)").matches);
+  }, []);
 
   const priority = getLeadPriority(lead);
   const smsTrouble = lead.sms_status === "failed" || lead.sms_status === "undelivered";
@@ -427,7 +435,7 @@ export function ConversationView({
               className="field convo__input"
               rows={1}
               maxLength={640}
-              enterKeyHint="send"
+              enterKeyHint={isTouch ? "enter" : "send"}
               placeholder="Text from your business number..."
               value={replyText}
               disabled={replySending}
@@ -436,7 +444,9 @@ export function ConversationView({
                 if (replyError) setReplyError(null);
               }}
               onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
+                // Desktop only: Enter sends, Shift+Enter is a newline. On touch,
+                // Enter falls through to its default (newline) and the button sends.
+                if (!isTouch && event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
                   void submitReply();
                 }
