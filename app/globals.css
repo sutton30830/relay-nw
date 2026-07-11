@@ -4268,12 +4268,18 @@ code {
   gap: 6px;
   justify-items: start;
 }
-.convo__vm-player {
+.convo__vm-label {
+  font-size: 12px;
+  color: var(--ink-4);
+}
+
+/* Shared lazy voicemail player (inbox card + conversation view). */
+.vm-player {
   display: flex;
   align-items: center;
   gap: 10px;
 }
-.convo__play {
+.vm-player__btn {
   width: 32px;
   height: 32px;
   border-radius: 50%;
@@ -4285,42 +4291,38 @@ code {
   place-items: center;
   flex-shrink: 0;
 }
-.convo__play:disabled {
+.vm-player__btn:disabled {
   cursor: default;
   opacity: 0.6;
 }
-.convo__vm-scrub {
+.vm-player__scrub {
   display: flex;
   align-items: center;
   gap: 10px;
 }
-.convo__vm-range {
-  /* Definite (viewport-based) width: the player lives in an auto-sized grid
-     track, so a percentage/flex width here collapses the whole bubble. */
+.vm-player__range {
+  /* Definite (viewport-based) width: on the inbox card the player sits in an
+     auto-sized grid track, where a percentage/flex width collapses to nothing. */
   width: clamp(140px, 42vw, 240px);
   height: 4px;
   cursor: pointer;
   accent-color: var(--brand);
 }
-.convo__vm-range:disabled {
+.vm-player__range:disabled {
   cursor: default;
   opacity: 0.6;
 }
-.convo__vm-time {
+.vm-player__time {
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
   color: var(--ink-4);
   flex-shrink: 0;
 }
-.convo__vm-label {
+.vm-player__error {
   font-size: 12px;
   color: var(--ink-4);
 }
-.convo__vm-error {
-  font-size: 12px;
-  color: var(--ink-4);
-}
-.convo__vm-retry {
+.vm-player__retry {
   border: none;
   background: none;
   padding: 0;
@@ -4329,6 +4331,11 @@ code {
   color: var(--brand);
   cursor: pointer;
   text-decoration: underline;
+}
+
+/* Inbox card gets the player inline under the summary. */
+.lead-card__voicemail {
+  margin-top: 8px;
 }
 .convo__vm-transcript summary {
   font-size: 12px;

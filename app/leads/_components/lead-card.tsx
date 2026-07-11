@@ -6,7 +6,7 @@ import { LEGACY_FORWARDING_MESSAGE, STATUS_LABELS, STATUS_OPTIONS } from "../_co
 import { formatCurrency, formatPhone, formatRelativeTime, getLeadPriority, initials, isBookedLead, needsAttention, parseSetupRequestMessage, setupRequestSummary, shouldShowVoicemailSummaryProgress, sourceLabel } from "../_utils";
 import { BookedValueInput } from "./controls";
 import { OverflowMenu } from "./overflow-menu";
-import { VoicemailAudio } from "./voicemail-audio";
+import { VoicemailPlayer } from "./voicemail-player";
 
 function smsMetaText(lead: Lead, now: number) {
   if (!lead.sms_status || lead.source !== "missed_call") return null;
@@ -55,7 +55,7 @@ export function LeadCard({
   const booked = isBookedLead(lead);
   const trashed = Boolean(lead.deleted_at);
   const priority = getLeadPriority(lead);
-  const hasDetails = Boolean(lead.voicemail_transcript || lead.notes || lead.recording_sid);
+  const hasDetails = Boolean(lead.voicemail_transcript || lead.notes);
   const detailsVisible = hasDetails && expanded;
   const hasUsefulMessage = Boolean(lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE);
   const setupRequestFields = lead.source === "intake_form" ? parseSetupRequestMessage(lead.message) : [];
@@ -182,6 +182,15 @@ export function LeadCard({
         )}
       </section>
 
+      {/* Play the voicemail straight from the inbox — the core listen→call-back
+          loop shouldn't need a click into the lead. Lazy (loads on play), so a
+          full inbox doesn't fetch every recording. */}
+      {lead.recording_sid ? (
+        <div className="lead-card__voicemail" onClick={(event) => event.stopPropagation()}>
+          <VoicemailPlayer recordingSid={lead.recording_sid} fallbackDuration={lead.recording_duration} />
+        </div>
+      ) : null}
+
       {attention ? (
         <div className="lead-card__alert">
           <Icon name="alertTriangle" size={14} />
@@ -207,9 +216,6 @@ export function LeadCard({
               <p className="t-eyebrow">Private notes</p>
               <p>{lead.notes}</p>
             </section>
-          ) : null}
-          {lead.recording_sid ? (
-            <VoicemailAudio className="lead-card__audio" recordingSid={lead.recording_sid} />
           ) : null}
           {lead.voicemail_transcript ? (
             <details className="lead-card__transcript">
