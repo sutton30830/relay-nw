@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Icon } from "@/components/icon";
 import type { Lead, LeadInboxCounts, LeadInboxFilter } from "@/lib/supabase";
 import { FILTERS } from "./_constants";
+import { AppHeader } from "./_components/app-header";
 import { LeadCard } from "./_components/lead-card";
 import { LeadDrawer } from "./_components/lead-drawer";
 import { useLeadsInbox } from "./_hooks/use-leads-inbox";
@@ -36,7 +37,6 @@ export function LeadsList({
     filter: pagination.filter,
     query: pagination.query,
   });
-  const businessInitial = businessName.trim().charAt(0).toUpperCase() || "R";
   const loadedStart = leads.length > 0 ? pagination.offset + 1 : 0;
   const loadedEnd = pagination.offset + leads.length;
   const knownTotal = pagination.total ?? null;
@@ -59,99 +59,22 @@ export function LeadsList({
 
   return (
     <>
-      <header className="app-head">
-        <Link className="app-head__brand app-head__brand--link" href="/">
-          <div className="brand-mark"><Icon name="relay" size={18} /></div>
-          <div>
-            <p className="t-eyebrow" style={{ fontSize: 10 }}>Relay NW</p>
-            <h1 className="t-display" style={{ fontSize: 22, margin: 0 }}>{businessName}</h1>
-          </div>
-          <span className="live-dot" title="Auto-refreshes every few seconds">
-            <span className="live-dot__pulse" />
-            <span className="live-dot__core" />
-            Live
-          </span>
-        </Link>
-
-        <div className="app-head__right">
-          <div className="search app-head__desktop-search">
-            <Icon name="search" size={14} />
-            <input
-              ref={inbox.searchRef}
-              className="search__input"
-              placeholder="Search name, phone, message..."
-              value={inbox.query}
-              onChange={(event) => inbox.setQuery(event.target.value)}
-            />
-            <span className="kbd">⌘K</span>
-          </div>
-          <Link className="btn btn-secondary btn-sm" href="/reports">
-            Reports
-          </Link>
-          <Link className="btn btn-secondary btn-sm" href="/setup">
-            Setup
-          </Link>
-          <Link className="btn btn-secondary btn-sm" href="/settings">
-            Settings
-          </Link>
-          {inbox.sampleMode || inbox.activeItems.length === 0 ? (
-            <button
-              className={`btn btn-secondary btn-sm app-head__sample ${inbox.sampleMode ? "btn-sample-on" : ""}`}
-              type="button"
-              onClick={inbox.toggleSampleMode}
-            >
-              Sample data
-            </button>
-          ) : null}
-          <form className="app-head__logout" action="/api/leads-logout" method="POST">
-            <button className="btn btn-secondary btn-sm">Log out</button>
-          </form>
-
-          <details className="mobile-owner-menu">
-            <summary className="mobile-owner-menu__trigger" aria-label="Open account menu">
-              <span>{businessInitial}</span>
-              <Icon name="more" size={16} />
-            </summary>
-            <div className="mobile-owner-menu__panel">
-              <div className="mobile-owner-menu__profile">
-                <div className="mobile-owner-menu__avatar">{businessInitial}</div>
-                <div>
-                  <p>{businessName}</p>
-                  <span>Missed-call inbox</span>
-                </div>
-              </div>
-              <Link className="mobile-owner-menu__item" href="/setup">
-                <Icon name="settings" size={15} />
-                Setup
-              </Link>
-              <Link className="mobile-owner-menu__item" href="/reports">
-                <Icon name="inbox" size={15} />
-                Reports
-              </Link>
-              <Link className="mobile-owner-menu__item" href="/settings">
-                <Icon name="user" size={15} />
-                Settings
-              </Link>
-              {inbox.sampleMode || inbox.activeItems.length === 0 ? (
-                <button
-                  className="mobile-owner-menu__item"
-                  type="button"
-                  onClick={inbox.toggleSampleMode}
-                >
-                  <Icon name="sparkle" size={15} />
-                  {inbox.sampleMode ? "Hide sample data" : "Sample data"}
-                </button>
-              ) : null}
-              <form action="/api/leads-logout" method="POST">
-                <button className="mobile-owner-menu__item mobile-owner-menu__item--muted" type="submit">
-                  <Icon name="external" size={15} />
-                  Log out
-                </button>
-              </form>
-            </div>
-          </details>
-        </div>
-      </header>
+      <AppHeader
+        businessName={businessName}
+        currentPage="inbox"
+        search={{
+          inputRef: inbox.searchRef,
+          onChange: inbox.setQuery,
+          placeholder: "Search name, phone, message...",
+          value: inbox.query,
+        }}
+        sample={{
+          active: inbox.sampleMode,
+          label: "Sample data",
+          onToggle: inbox.toggleSampleMode,
+          visible: inbox.sampleMode || inbox.activeItems.length === 0,
+        }}
+      />
 
       <section className="page-head">
         <div>

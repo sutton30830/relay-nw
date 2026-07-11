@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { Icon } from "@/components/icon";
+import { AppHeader } from "@/app/leads/_components/app-header";
 import { requireAccountUser } from "@/lib/auth";
 import { getAccountRecoveryStats, type RecoveryStats } from "@/lib/supabase";
 
@@ -70,16 +69,13 @@ export default async function ReportsPage() {
   return (
     <main className="leads-view">
       <section className="leads-shell">
+        <AppHeader businessName={account.businessName} currentPage="reports" />
+
         <div className="leads-header">
           <div>
             <p className="t-eyebrow">Reports</p>
             <h1 className="t-display">Recovered revenue</h1>
             <p className="leads-subtitle">{account.businessName}</p>
-          </div>
-          <div className="lead-actions">
-            <Link className="btn btn-secondary" href="/leads">
-              <Icon name="message" size={14} /> Back to leads
-            </Link>
           </div>
         </div>
 

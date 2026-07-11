@@ -14,7 +14,12 @@ const inboundSmsRouteTs = await readFile(new URL("../app/api/twilio/sms/route.ts
 const homePageTsx = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 const intakeFormTsx = await readFile(new URL("../app/intake/intake-form.tsx", import.meta.url), "utf8");
 const leadsPageTsx = await readFile(new URL("../app/leads/page.tsx", import.meta.url), "utf8");
+const leadsListTsx = await readFile(new URL("../app/leads/leads-list.tsx", import.meta.url), "utf8");
 const setupPageTsx = await readFile(new URL("../app/setup/page.tsx", import.meta.url), "utf8");
+const settingsPageTsx = await readFile(new URL("../app/settings/page.tsx", import.meta.url), "utf8");
+const reportsPageTsx = await readFile(new URL("../app/reports/page.tsx", import.meta.url), "utf8");
+const leadConversationPageTsx = await readFile(new URL("../app/leads/[id]/page.tsx", import.meta.url), "utf8");
+const appHeaderTsx = await readFile(new URL("../app/leads/_components/app-header.tsx", import.meta.url), "utf8");
 const leadUtilsTs = await readFile(new URL("../app/leads/_utils.ts", import.meta.url), "utf8");
 const leadConstantsTs = await readFile(new URL("../app/leads/_constants.ts", import.meta.url), "utf8");
 const leadCardTsx = await readFile(new URL("../app/leads/_components/lead-card.tsx", import.meta.url), "utf8");
@@ -100,10 +105,34 @@ test("human-facing pages require authenticated account context", () => {
   assert.match(authTs, /account_users/);
   assert.match(leadsPageTsx, /requireAccountUser\(\)/);
   assert.match(setupPageTsx, /requireAccountUser\(\)/);
+  assert.match(settingsPageTsx, /requireAccountUser\(\)/);
+  assert.match(reportsPageTsx, /requireAccountUser\(\)/);
+  assert.match(leadConversationPageTsx, /requireAccountUser\(\)/);
   assert.match(opsPageTsx, /requireAccountUser\(\)/);
   assert.doesNotMatch(leadsPageTsx, /getDefaultAccountConfig/);
   assert.doesNotMatch(setupPageTsx, /getDefaultAccountConfig/);
+  assert.doesNotMatch(settingsPageTsx, /getDefaultAccountConfig/);
+  assert.doesNotMatch(reportsPageTsx, /getDefaultAccountConfig/);
+  assert.doesNotMatch(leadConversationPageTsx, /getDefaultAccountConfig/);
   assert.doesNotMatch(opsPageTsx, /getDefaultAccountConfig/);
+});
+
+test("authenticated app pages share the Relay brand header and owner menu", () => {
+  assert.match(appHeaderTsx, /export function AppHeader/);
+  assert.match(appHeaderTsx, /app-head__brand/);
+  assert.match(appHeaderTsx, /mobile-owner-menu/);
+  assert.match(appHeaderTsx, /\/leads/);
+  assert.match(appHeaderTsx, /\/setup/);
+  assert.match(appHeaderTsx, /\/reports/);
+  assert.match(appHeaderTsx, /\/settings/);
+  assert.match(appHeaderTsx, /\/api\/leads-logout/);
+
+  for (const source of [leadsListTsx, setupPageTsx, settingsPageTsx, reportsPageTsx, leadConversationPageTsx]) {
+    assert.match(source, /AppHeader/);
+  }
+
+  assert.doesNotMatch(globalsCss, /\.mobile-owner-menu,\s*\.mobile-inbox-search\s*\{\s*display:\s*none/);
+  assert.match(globalsCss, /\.mobile-owner-menu\s*\{[\s\S]{0,80}display:\s*block/);
 });
 
 test("public homepage keeps an owner inbox path visible", () => {

@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { Icon } from "@/components/icon";
+import { AppHeader } from "@/app/leads/_components/app-header";
 import { requireAccountUser } from "@/lib/auth";
 import { getA2pRegistrationStatus } from "@/lib/supabase";
 import { QUICK_REPLIES } from "@/app/leads/_constants";
@@ -46,6 +46,8 @@ export default async function SettingsPage({
   return (
     <main className="leads-view">
       <section className="leads-shell settings-shell">
+        <AppHeader businessName={account.businessName} currentPage="settings" />
+
         <div className="leads-header">
           <div>
             <p className="t-eyebrow">Settings</p>
@@ -53,10 +55,6 @@ export default async function SettingsPage({
             <p className="leads-subtitle">
               {readOnly ? "View-only access" : "Changes apply to the next call that comes in."}
             </p>
-          </div>
-          <div className="lead-actions">
-            <Link className="btn btn-secondary" href="/setup">Setup</Link>
-            <Link className="btn btn-secondary" href="/leads">Back to leads</Link>
           </div>
         </div>
 

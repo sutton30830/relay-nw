@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { AppHeader } from "@/app/leads/_components/app-header";
 import { requireAccountUser } from "@/lib/auth";
 import { getLeadConversation } from "@/lib/supabase";
 import { QUICK_REPLIES } from "../_constants";
@@ -36,6 +37,9 @@ export default async function LeadConversationPage({
 
   return (
     <main className="convo-page">
+      <div className="convo-app-head">
+        <AppHeader businessName={account.businessName} currentPage="conversation" />
+      </div>
       <ConversationView
         lead={conversation.lead}
         previousLeads={conversation.previousLeads}

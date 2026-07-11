@@ -520,12 +520,12 @@ code {
   display: none;
 }
 
-.mobile-owner-menu,
 .mobile-inbox-search {
   display: none;
 }
 
 .mobile-owner-menu {
+  display: block;
   position: relative;
 }
 
@@ -4196,6 +4196,11 @@ code {
   height: 100dvh;
   display: flex;
   flex-direction: column;
+}
+.convo-app-head {
+  width: min(100%, 720px);
+  margin: 0 auto;
+  padding: 14px 14px 0;
 }
 .convo {
   flex: 1;

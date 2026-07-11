@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { CopyButton } from "@/app/copy-button";
+import { AppHeader } from "@/app/leads/_components/app-header";
 import { ForwardingHealthCard } from "@/app/leads/_components/forwarding-health-card";
 import { SmsHealthCard } from "@/app/leads/_components/sms-health-card";
 import { Icon } from "@/components/icon";
@@ -97,6 +97,8 @@ export default async function SetupPage() {
   return (
     <main className="leads-view">
       <section className="leads-shell setup-status">
+        <AppHeader businessName={account.businessName} currentPage="setup" />
+
         <header className="leads-header">
           <div>
             <p className="t-eyebrow">Setup</p>
@@ -104,10 +106,6 @@ export default async function SetupPage() {
             <p className="leads-subtitle">
               Connect your phone line, test missed-call forwarding, and make sure Relay can text from your number.
             </p>
-          </div>
-          <div className="lead-actions">
-            <Link className="btn btn-secondary" href="/leads">Inbox</Link>
-            <Link className="btn btn-secondary" href="/settings">Settings</Link>
           </div>
         </header>
 
