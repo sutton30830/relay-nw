@@ -2022,9 +2022,8 @@ code {
 /* While a filter/search navigation is in flight, dim the current results so
    the change registers without the list jumping or clearing. */
 .leads-list--loading {
-  opacity: 0.55;
+  opacity: 0.88;
   transition: opacity 120ms ease;
-  pointer-events: none;
 }
 
 .sort-pill {

@@ -23,6 +23,7 @@ const messagesTs = await readFile(new URL("../lib/supabase/messages.ts", import.
 const intakeRoute = await readFile(new URL("../app/api/intake/route.ts", import.meta.url), "utf8");
 const leadsInboxHook = await readFile(new URL("../app/leads/_hooks/use-leads-inbox.ts", import.meta.url), "utf8");
 const supabaseSql = await readFile(new URL("../supabase.sql", import.meta.url), "utf8");
+const globalsCss = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
 test(
   "inbound SMS route handles START/UNSTOP re-opt-in by clearing the opt_outs row",
@@ -99,6 +100,25 @@ test(
   () => {
     assert.match(supabaseSql, /Unknown caller/);
     assert.match(supabaseSql, /nullif\(btrim\(coalesce\(name, ''\)\), ''\) is null/);
+  },
+);
+
+test(
+  "lead category changes optimistically update counts and reveal the destination bucket",
+  () => {
+    assert.match(leadsInboxHook, /optimisticCounts/);
+    assert.match(leadsInboxHook, /applyCountDeltas/);
+    assert.match(leadsInboxHook, /filter !== status/);
+    assert.match(leadsInboxHook, /setFilter\(status\)/);
+    assert.match(leadsInboxHook, /router\.prefetch\(buildInboxHref\(item\.key, query\)\)/);
+  },
+);
+
+test(
+  "lead list stays interactive while category navigation refreshes",
+  () => {
+    const loadingRule = globalsCss.match(/\.leads-list--loading\s*\{[^}]+\}/)?.[0] ?? "";
+    assert.doesNotMatch(loadingRule, /pointer-events:\s*none/);
   },
 );
 
