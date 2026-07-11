@@ -226,6 +226,10 @@ export function LeadsList({
             lead={lead}
             now={inbox.now}
             callCount={inbox.phoneCallCounts.get(lead.phone) ?? 1}
+            // Real leads navigate to their conversation page via a real link
+            // (keyboard, middle-click, prefetch); sample leads have no page, so
+            // they fall back to opening the in-memory drawer through onOpen.
+            href={lead.id.startsWith("sample-") ? undefined : `/leads/${lead.id}`}
             onOpen={(id) => (id.startsWith("sample-") ? inbox.setOpenId(id) : router.push(`/leads/${id}`))}
             onStatus={inbox.updateStatus}
             onBooked={inbox.updateBooked}

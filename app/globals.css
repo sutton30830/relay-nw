@@ -2176,14 +2176,59 @@ code {
 }
 
 .lead-card__name {
-  overflow: hidden;
   margin: 0;
   font-family: var(--font-ui);
   font-size: 18px;
   font-weight: 750;
   line-height: 1.2;
+  min-width: 0;
+}
+
+/* Stretched link: the visible name is the accessible link, and its ::after
+   covers the whole card so any click/Enter opens the lead. Overflow lives on
+   the inner text (not the link) so the ellipsis doesn't clip the overlay. */
+.lead-card__name-link {
+  display: inline-block;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.lead-card__name-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.lead-card__name-link:hover .lead-card__name-text {
+  text-decoration: underline;
+}
+.lead-card__name-link:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+.lead-card__name-text {
+  display: block;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Controls stay clickable above the stretched-link overlay. Using position
+   without z-index (rather than a z-index stacking context) keeps them painting
+   on top by DOM order while letting the OverflowMenu dropdown still escape above
+   later cards. */
+.lead-card__value,
+.lead-card__voicemail,
+.lead-card__actions,
+.lead-card__details {
+  position: relative;
 }
 
 .lead-card__meta {

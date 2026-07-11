@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Icon } from "@/components/icon";
 import type { Lead, LeadStatus } from "@/lib/supabase";
 import { LEGACY_FORWARDING_MESSAGE, STATUS_LABELS, STATUS_OPTIONS } from "../_constants";
@@ -30,6 +31,7 @@ export function LeadCard({
   lead,
   now,
   callCount = 1,
+  href,
   onOpen,
   onStatus,
   onBooked,
@@ -42,6 +44,10 @@ export function LeadCard({
   lead: Lead;
   now: number;
   callCount?: number;
+  // When set, the card is a real link to the conversation page (keyboard,
+  // middle-click, prefetch). Without it (sample leads), the name is a button
+  // that calls onOpen to open the in-memory drawer instead.
+  href?: string;
   onOpen: (id: string) => void;
   onStatus: (id: string, status: LeadStatus) => void;
   onBooked: (id: string, booked: boolean) => void;
@@ -111,13 +117,25 @@ export function LeadCard({
       className={`lead-card ${attention ? "lead-card--attention" : ""} ${
         priority.level === "fast" && !trashed ? "lead-card--fast" : ""
       } ${trashed ? "lead-card--trashed" : ""}`}
-      onClick={() => onOpen(lead.id)}
     >
       <div className="lead-card__head">
         <div className="lead-card__id">
           <div className="lead-card__avatar">{initials(lead) ?? <Icon name="user" size={14} />}</div>
           <div style={{ minWidth: 0 }}>
-            <h3 className="lead-card__name">{lead.name || "Unknown caller"}</h3>
+            {/* The name is the card's primary link and its ::after stretches to
+                cover the whole card, so a click (or Enter) anywhere opens the
+                lead while inner controls stay clickable via a higher z-index. */}
+            <h3 className="lead-card__name">
+              {href ? (
+                <Link href={href} className="lead-card__name-link">
+                  <span className="lead-card__name-text">{lead.name || "Unknown caller"}</span>
+                </Link>
+              ) : (
+                <button type="button" className="lead-card__name-link" onClick={() => onOpen(lead.id)}>
+                  <span className="lead-card__name-text">{lead.name || "Unknown caller"}</span>
+                </button>
+              )}
+            </h3>
             <div className="lead-card__meta">
               {headerMeta.map((item, index) => (
                 <span key={`${item}-${index}`} className={index === 0 ? "t-mono" : undefined}>
