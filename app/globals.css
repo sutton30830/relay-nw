@@ -444,7 +444,7 @@ code {
 .app-head {
   position: relative;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
@@ -453,6 +453,8 @@ code {
 }
 
 .app-head__brand {
+  flex: 0 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -481,14 +483,24 @@ code {
 }
 
 .app-head__right {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: auto;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
 }
 
 .app-head__right--primary {
   gap: 10px;
+}
+
+.app-head__desktop-search {
+  flex: 0 1 340px;
+  width: min(34vw, 340px);
+  min-width: 220px;
 }
 
 .live-dot {
@@ -525,6 +537,8 @@ code {
 }
 
 .mobile-owner-menu {
+  flex: 0 0 auto;
+  margin-left: 8px;
   display: block;
   position: relative;
 }

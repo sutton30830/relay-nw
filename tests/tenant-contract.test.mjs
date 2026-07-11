@@ -133,6 +133,9 @@ test("authenticated app pages share the Relay brand header and owner menu", () =
 
   assert.doesNotMatch(globalsCss, /\.mobile-owner-menu,\s*\.mobile-inbox-search\s*\{\s*display:\s*none/);
   assert.match(globalsCss, /\.mobile-owner-menu\s*\{[\s\S]{0,80}display:\s*block/);
+  assert.match(globalsCss, /\.app-head__right\s*\{[\s\S]{0,180}flex-wrap:\s*nowrap/);
+  assert.match(globalsCss, /\.app-head__right\s*\{[\s\S]{0,220}justify-content:\s*flex-end/);
+  assert.match(globalsCss, /\.mobile-owner-menu\s*\{[\s\S]{0,100}flex:\s*0 0 auto/);
 });
 
 test("public homepage keeps an owner inbox path visible", () => {
