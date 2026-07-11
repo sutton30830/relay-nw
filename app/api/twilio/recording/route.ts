@@ -225,6 +225,15 @@ export async function POST(request: Request) {
         } catch (error) {
           const message = error instanceof Error ? error.message : "Unknown voicemail transcription error";
 
+          if (message === "Voicemail summary is already generating.") {
+            console.info("Skipping duplicate automatic voicemail transcription", {
+              correlationId,
+              leadId: result.leadId,
+              recordingSid: recording.recordingSid,
+            });
+            return;
+          }
+
           console.error("Automatic voicemail transcription failed", {
             correlationId,
             leadId: result.leadId,

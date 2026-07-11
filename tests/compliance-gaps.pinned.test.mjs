@@ -17,6 +17,7 @@ import test from "node:test";
 const smsRoute = await readFile(new URL("../app/api/twilio/sms/route.ts", import.meta.url), "utf8");
 const settingsRoute = await readFile(new URL("../app/api/settings/route.ts", import.meta.url), "utf8");
 const dialStatusRoute = await readFile(new URL("../app/api/twilio/dial-status/route.ts", import.meta.url), "utf8");
+const recordingRoute = await readFile(new URL("../app/api/twilio/recording/route.ts", import.meta.url), "utf8");
 const voicemailAi = await readFile(new URL("../lib/voicemail-ai.ts", import.meta.url), "utf8");
 const messagesTs = await readFile(new URL("../lib/supabase/messages.ts", import.meta.url), "utf8");
 const intakeRoute = await readFile(new URL("../app/api/intake/route.ts", import.meta.url), "utf8");
@@ -64,6 +65,22 @@ test(
   "voicemail transcription claims the lead atomically before processing",
   () => {
     assert.match(voicemailAi, /claimVoicemailTranscription/);
+  },
+);
+
+test(
+  "non-service voicemails still get useful summaries",
+  () => {
+    assert.match(voicemailAi, /Non-service voicemail:/);
+    assert.match(voicemailAi, /vendor notice, billing notice, sales call, wrong number, or spam/);
+  },
+);
+
+test(
+  "duplicate automatic voicemail transcription callbacks are not logged as failures",
+  () => {
+    assert.match(recordingRoute, /Skipping duplicate automatic voicemail transcription/);
+    assert.match(recordingRoute, /Voicemail summary is already generating\./);
   },
 );
 

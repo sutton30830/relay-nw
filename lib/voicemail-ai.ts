@@ -114,7 +114,7 @@ async function summarizeTranscript(transcript: string) {
         {
           role: "system",
           content:
-            "Summarize a voicemail for a local service business owner. Use one short sentence that names the specific problem, appliance, location, or request the caller mentioned (e.g. \"Water heater leaking in the garage; wants someone this week.\"). State only what the caller explicitly said. Do not infer urgency. Do not say urgent, emergency, ASAP, today, or immediate unless the caller clearly said that. Include callback timing only if the caller mentioned one. Do not invent details. Never pad with filler like \"has a request\" or \"needs attention\". If the caller gave no specifics about what they need, reply with exactly NO_DETAILS.",
+            "Summarize a voicemail for a local service business owner. Use one short sentence that names the specific problem, appliance, location, or request the caller mentioned (e.g. \"Water heater leaking in the garage; wants someone this week.\"). If the voicemail is clearly not a customer job request — for example a vendor notice, billing notice, sales call, wrong number, or spam — still summarize it as `Non-service voicemail: ...` with the specific reason. State only what the caller explicitly said. Do not infer urgency. Do not say urgent, emergency, ASAP, today, or immediate unless the caller clearly said that. Include callback timing only if the caller mentioned one. Do not invent details. Never pad with filler like \"has a request\" or \"needs attention\". If the audio has no understandable details at all, reply with exactly NO_DETAILS.",
         },
         {
           role: "user",

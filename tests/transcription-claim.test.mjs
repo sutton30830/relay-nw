@@ -209,6 +209,65 @@ test("completed lead returns cached summary without claiming", async () => {
   assert.deepEqual(calls.claims, []);
 });
 
+test("non-service voicemails persist a useful summary instead of no-details", async () => {
+  const originalFetch = globalThis.fetch;
+  const transcript = "Hello, this is Sophia from AT&T. Your monthly bill discount will be removed today.";
+  const summary = "Non-service voicemail: AT&T billing discount notice.";
+  const fetches = [];
+
+  globalThis.fetch = async (url) => {
+    fetches.push(String(url));
+
+    if (String(url).includes("Recordings/RE_1.mp3")) {
+      return new Response("fake-audio", { status: 200 });
+    }
+
+    if (String(url).endsWith("/audio/transcriptions")) {
+      return Response.json({ text: transcript });
+    }
+
+    if (String(url).endsWith("/responses")) {
+      const responseIndex = fetches.filter((item) => item.endsWith("/responses")).length;
+      if (responseIndex === 1) return Response.json({ output_text: transcript });
+      if (responseIndex === 2) return Response.json({ output_text: summary });
+      return Response.json({ output_text: "normal - billing notice" });
+    }
+
+    throw new Error(`Unexpected fetch: ${url}`);
+  };
+
+  try {
+    const { mocks, calls } = makeVoicemailMocks({
+      lead: {
+        id: "lead-1",
+        phone: "+12065550123",
+        recording_sid: "RE_1",
+        voicemail_transcript: null,
+        voicemail_summary: null,
+        voicemail_transcription_status: "pending",
+        voicemail_transcribed_at: null,
+      },
+    });
+    const { transcribeLeadVoicemail } = await loadTsModule("lib/voicemail-ai.ts", mocks);
+
+    const result = await transcribeLeadVoicemail("lead-1", "acct-1");
+
+    assert.equal(result.status, "completed");
+    assert.equal(result.summary, summary);
+    assert.equal(calls.claims.length, 1);
+    assert.deepEqual(calls.transcriptionUpdates.at(-1), {
+      accountId: "acct-1",
+      id: "lead-1",
+      transcript,
+      summary,
+      status: "completed",
+      error: null,
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 function makeCronMocks({ cronSecret = "secret", leads = [], failLeadIds = new Set() } = {}) {
   const calls = {
     listed: 0,
