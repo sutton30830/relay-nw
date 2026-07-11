@@ -110,6 +110,8 @@ test(
     assert.match(leadsInboxHook, /applyCountDeltas/);
     assert.match(leadsInboxHook, /filter !== status/);
     assert.match(leadsInboxHook, /setFilter\(status\)/);
+    assert.match(leadsInboxHook, /setItems\(\(current\) => applyPendingWrites\(leads, current\)\)/);
+    assert.match(leadsInboxHook, /missingPendingItems/);
     assert.match(leadsInboxHook, /router\.prefetch\(buildInboxHref\(item\.key, query\)\)/);
   },
 );

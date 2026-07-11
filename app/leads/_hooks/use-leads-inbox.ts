@@ -117,7 +117,7 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
   const activeItems = sampleMode ? sampleItems : items;
 
   useEffect(() => {
-    setItems(applyPendingWrites(leads));
+    setItems((current) => applyPendingWrites(leads, current));
     if (leads.length > 0) setSampleMode(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leads]);
@@ -307,7 +307,7 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
   // Reconcile server data against in-flight optimistic edits. Fields the
   // server already reflects are confirmed and dropped; the rest stay applied
   // on top so a stale refresh can never undo what the user just did.
-  function applyPendingWrites(nextItems: Lead[]) {
+  function applyPendingWrites(nextItems: Lead[], currentItems: Lead[] = []) {
     if (pendingLeadWrites.current.size === 0 && pendingPhoneWrites.current.size === 0) {
       return nextItems;
     }
@@ -338,16 +338,23 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
       if (Object.keys(fields).length === 0) pendingPhoneWrites.current.delete(phone);
     }
 
-    if (pendingLeadWrites.current.size === 0 && pendingPhoneWrites.current.size === 0) {
-      return nextItems;
-    }
-
-    return nextItems.map((lead) => {
+    const mergedItems = nextItems.map((lead) => {
       const phoneFields = pendingPhoneWrites.current.get(lead.phone);
       const leadFields = pendingLeadWrites.current.get(lead.id);
       if (!phoneFields && !leadFields) return lead;
       return { ...lead, ...phoneFields, ...leadFields };
     });
+
+    if (pendingLeadWrites.current.size === 0 && pendingPhoneWrites.current.size === 0) {
+      return mergedItems;
+    }
+
+    const serverIds = new Set(mergedItems.map((lead) => lead.id));
+    const missingPendingItems = currentItems
+      .filter((lead) => !serverIds.has(lead.id) && pendingLeadWrites.current.has(lead.id))
+      .map((lead) => ({ ...lead, ...pendingLeadWrites.current.get(lead.id) }));
+
+    return [...missingPendingItems, ...mergedItems];
   }
 
   function recordPendingWrite(map: Map<string, Partial<Lead>>, key: string, fields: Partial<Lead>) {
@@ -458,11 +465,14 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
   }
 
   async function updateStatus(id: string, status: LeadStatus) {
-    if (!sampleMode && filter !== "all" && filter !== "trash" && filter !== status) {
+    const shouldRevealDestination = !sampleMode && filter !== "all" && filter !== "trash" && filter !== status;
+    const saved = mutateLeads([{ id, fields: { status } }], () => patchLead(id, { status }));
+
+    if (shouldRevealDestination) {
       setFilter(status);
     }
 
-    await mutateLeads([{ id, fields: { status } }], () => patchLead(id, { status }));
+    await saved;
   }
 
   // Trashing a caller trashes the whole thread: the visible card is just the
