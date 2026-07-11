@@ -42,6 +42,26 @@ export function LeadsList({
   const hasNextPage = knownTotal === null
     ? leads.length === pagination.limit
     : loadedEnd < knownTotal;
+  const trimmedQuery = inbox.query.trim();
+  const hasSearch = trimmedQuery.length > 0;
+  const accountHasAnyLeads = inbox.counts.all + inbox.counts.trash > 0;
+  const activeFilter = FILTERS.find((item) => item.key === inbox.filter);
+  const emptyStateTitle = hasSearch
+    ? `No leads match "${trimmedQuery}".`
+    : !accountHasAnyLeads
+      ? "No missed calls yet."
+      : inbox.filter === "trash"
+        ? "Trash is empty."
+        : inbox.filter !== "all"
+          ? `No ${activeFilter?.label.toLowerCase() ?? "matching"} leads.`
+          : "No leads in this view.";
+  const emptyStateCopy = hasSearch
+    ? "There are leads in the inbox — this keyword just does not match them. Clear the search or try a different word."
+    : !accountHasAnyLeads
+      ? "Once someone calls and you miss it, Relay NW will save the caller, voicemail, and follow-up status here."
+      : inbox.filter === "trash"
+        ? "Deleted leads will appear here so you can restore them if you make a mistake."
+        : "Try another status filter or wait for new missed calls to come in.";
 
   // Preserves the active filter/search across pagination. Sample mode has no
   // server pagination, so these links only appear in real mode where the URL is
@@ -124,7 +144,9 @@ export function LeadsList({
             ? `Showing ${leads.length} most recent loaded leads`
             : leads.length > 0
               ? `Showing ${loadedStart}-${loadedEnd} of ${knownTotal} leads`
-              : "No leads loaded"}
+              : hasSearch
+                ? "No matching leads"
+                : "No leads loaded"}
         </span>
         <div className="inbox-page-meta__actions">
           {hasPreviousPage ? (
@@ -166,18 +188,10 @@ export function LeadsList({
           <div className="empty-state">
             <div className="empty-state__icon"><Icon name="inbox" size={28} /></div>
             <h3 className="t-display" style={{ fontSize: 24, margin: "12px 0 4px" }}>
-              {inbox.filter === "trash"
-                ? "Trash is empty."
-                : inbox.activeItems.length === 0
-                  ? "No missed calls yet."
-                  : "No leads in this view."}
+              {emptyStateTitle}
             </h3>
             <p style={{ color: "var(--ink-3)", margin: 0 }}>
-              {inbox.filter === "trash"
-                ? "Deleted leads will appear here so you can restore them if you make a mistake."
-                : inbox.activeItems.length === 0
-                  ? "Once someone calls and you miss it, Relay NW will save the caller, voicemail, and follow-up status here."
-                  : "Try another status filter or wait for new missed calls to come in."}
+              {emptyStateCopy}
             </p>
           </div>
         ) : null}

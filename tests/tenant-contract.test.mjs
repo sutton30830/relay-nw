@@ -112,6 +112,14 @@ test("lead card actions keep workflow controls explicit and avoid duplicate deta
   assert.doesNotMatch(leadCardTsx, />Details</);
 });
 
+test("lead inbox empty states distinguish search misses from no leads", () => {
+  assert.match(leadsListTsx, /const hasSearch = trimmedQuery\.length > 0/);
+  assert.match(leadsListTsx, /accountHasAnyLeads = inbox\.counts\.all \+ inbox\.counts\.trash > 0/);
+  assert.match(leadsListTsx, /No leads match/);
+  assert.match(leadsListTsx, /this keyword just does not match them/);
+  assert.match(leadsListTsx, /No missed calls yet/);
+});
+
 test("human-facing pages require authenticated account context", () => {
   assert.match(authTs, /export async function requireAccountUser\(\)/);
   assert.match(authTs, /account_users/);
