@@ -4267,16 +4267,11 @@ code {
   display: grid;
   gap: 6px;
   justify-items: start;
-  /* Wider than a normal chat bubble so the scrubber has room to be usable. */
-  max-width: min(92%, 440px);
-  width: 100%;
 }
 .convo__vm-player {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: 100%;
-  min-width: 0;
 }
 .convo__play {
   width: 32px;
@@ -4298,12 +4293,12 @@ code {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex: 1;
 }
 .convo__vm-range {
-  flex: 1;
+  /* Definite (viewport-based) width: the player lives in an auto-sized grid
+     track, so a percentage/flex width here collapses the whole bubble. */
+  width: clamp(140px, 42vw, 240px);
   height: 4px;
-  min-width: 90px;
   cursor: pointer;
   accent-color: var(--brand);
 }
