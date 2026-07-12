@@ -1,10 +1,12 @@
+import Link from "next/link";
 import { CopyButton } from "@/app/copy-button";
 import { AppHeader } from "@/app/leads/_components/app-header";
 import { ForwardingHealthCard } from "@/app/leads/_components/forwarding-health-card";
 import { SmsHealthCard } from "@/app/leads/_components/sms-health-card";
 import { Icon } from "@/components/icon";
 import { requireAccountUser } from "@/lib/auth";
-import { getA2pRegistrationStatus, getForwardingHealthSummary } from "@/lib/supabase";
+import { getA2pRegistrationStatus, getAccountRecoveryStats, getForwardingHealthSummary } from "@/lib/supabase";
+import { computeSetupReadiness, type A2pStatus } from "@/lib/readiness";
 
 export const dynamic = "force-dynamic";
 
@@ -79,9 +81,10 @@ function MetricCard({
 
 export default async function SetupPage() {
   const { account, accountId, role } = await requireAccountUser();
-  const [forwardingHealth, a2pStatus] = await Promise.all([
+  const [forwardingHealth, a2pStatus, recovery] = await Promise.all([
     getForwardingHealthSummary(accountId),
     getA2pRegistrationStatus(accountId),
+    getAccountRecoveryStats(accountId, { since: null }),
   ]);
 
   const carrierStatus = a2pStatus ?? "unknown";
@@ -89,7 +92,21 @@ export default async function SetupPage() {
   const isProfileReady = Boolean(account.businessName && account.ownerPhoneNumber && account.twilioPhoneNumber);
   const isForwardingReady = account.callMode === "direct" || forwardingHealth.displayStatus === "passed";
   const isSmsReady = account.smsEnabled && isA2pApproved;
-  const completedSteps = [isProfileReady, isA2pApproved, isForwardingReady, isSmsReady].filter(Boolean).length;
+
+  // One decisive state (Not ready / Needs attention / Testing / Live) with a
+  // single next action, so Setup leads instead of listing four half-answers.
+  const readiness = computeSetupReadiness({
+    role,
+    hasProfile: isProfileReady,
+    callMode: account.callMode,
+    smsEnabled: account.smsEnabled,
+    a2pStatus: (["not_started", "in_progress", "approved", "rejected", "paused"].includes(carrierStatus)
+      ? carrierStatus
+      : "unknown") as A2pStatus,
+    forwardingStatus: forwardingHealth.displayStatus,
+    hasRecoveredCall: recovery.missedCalls > 0,
+  });
+
   const noAnswerCode = carrierCodeExample("*61*", account.twilioPhoneNumber);
   const busyCode = carrierCodeExample("*67*", account.twilioPhoneNumber);
   const unreachableCode = carrierCodeExample("*62*", account.twilioPhoneNumber);
@@ -109,13 +126,23 @@ export default async function SetupPage() {
           </div>
         </header>
 
-        <section className="setup-metrics" aria-label="Setup readiness">
-          <MetricCard
-            label="Setup progress"
-            value={`${completedSteps}/4`}
-            detail={completedSteps === 4 ? "Relay is ready for missed calls" : "Finish these checks before relying on Relay"}
-            tone={completedSteps === 4 ? "good" : "warn"}
-          />
+        <section className={`readiness readiness--${readiness.state}`} aria-label="Relay status">
+          <div className="readiness__main">
+            <span className="readiness__badge">
+              <span className="readiness__dot" aria-hidden="true" />
+              {readiness.stateLabel}
+            </span>
+            <h2 className="readiness__headline">{readiness.headline}</h2>
+            <p className="readiness__summary">{readiness.summary}</p>
+          </div>
+          {readiness.nextAction ? (
+            <Link className="btn btn-primary readiness__action" href={readiness.nextAction.href}>
+              {readiness.nextAction.label}
+            </Link>
+          ) : null}
+        </section>
+
+        <section className="setup-metrics" aria-label="Setup details">
           <MetricCard
             label="Call mode"
             value={account.callMode === "forwarding" ? "Forwarding" : "Direct"}
