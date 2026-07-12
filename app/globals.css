@@ -1599,6 +1599,12 @@ code {
   text-align: left;
 }
 
+.gate-form--secondary {
+  border-top: 1px solid var(--line-soft);
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
 .gate-input {
   display: flex;
   align-items: center;

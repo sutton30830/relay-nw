@@ -59,6 +59,8 @@ For the customer-by-customer onboarding checklist, see `docs/customer-setup.md`.
 - `/` setup/status home page
 - `/intake` public intake form
 - `/leads` Supabase-authenticated lead inbox
+- `/login` owner email/password sign-in, with setup/reset and magic-link fallback
+- `/account/password` authenticated password setup/reset page
 - `/setup` authenticated owner setup/status checklist
 - `/settings` authenticated account settings
 - `/api/intake` intake form submission
@@ -91,7 +93,7 @@ Required:
 - `OWNER_PHONE_NUMBER`: owner's real phone number
 - `SUPABASE_URL`: Supabase project URL
 - `NEXT_PUBLIC_SUPABASE_URL`: same Supabase project URL, kept for Next.js compatibility
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Supabase anon key used for owner magic-link sign-in
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Supabase anon key used for owner auth
 - `SUPABASE_SERVICE_ROLE_KEY`: Supabase service role key, server-only
 
 Optional:
@@ -297,7 +299,7 @@ The simplest deployment path is Vercel:
 
 ## Security Notes
 
-- `/leads` and `/ops` require Supabase Auth magic-link sign-in.
+- `/leads` and `/ops` require Supabase Auth. Email/password is the primary owner sign-in path; magic links remain a fallback.
 - Human access is scoped through `account_users`, then resolved to one tenant account.
 - Supabase Auth session cookies are refreshed in middleware so active owners are less likely to be bounced back to `/login`.
 - The public setup form has a small per-IP throttle to reduce spam submissions.

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { env } from "@/lib/env";
 import { createSupabaseAuthServerClient } from "@/lib/auth";
 
-const LOGIN_LINK_COOLDOWN_SECONDS = 75;
+const LOGIN_LINK_COOLDOWN_SECONDS = 10 * 60;
 const LOGIN_LINK_COOKIE = "relay_login_link_requested";
 
 function safeNext(value: FormDataEntryValue | null) {
@@ -39,6 +39,16 @@ function isAuthRateLimit(error: { message?: string; status?: number } | null) {
   return error.status === 429 || /rate|too many|security purposes|after \d+ seconds/i.test(error.message ?? "");
 }
 
+function setLoginCooldownCookie(cookieStore: Awaited<ReturnType<typeof cookies>>, email: string, now: number) {
+  cookieStore.set(LOGIN_LINK_COOKIE, `${loginEmailHash(email)}.${now}`, {
+    httpOnly: true,
+    maxAge: LOGIN_LINK_COOLDOWN_SECONDS,
+    path: "/api/auth/login",
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+  });
+}
+
 export async function POST(request: Request) {
   const formData = await request.formData();
   const email = String(formData.get("email") || "").trim().toLowerCase();
@@ -67,17 +77,12 @@ export async function POST(request: Request) {
   if (error) {
     console.warn("Supabase magic-link sign-in failed", { email, error: error.message });
     if (isAuthRateLimit(error)) {
+      setLoginCooldownCookie(cookieStore, email, now);
       redirect(`/login?error=rate_limited&next=${encodeURIComponent(next)}`);
     }
     redirect(`/login?error=sign_in&next=${encodeURIComponent(next)}`);
   }
 
-    cookieStore.set(LOGIN_LINK_COOKIE, `${loginEmailHash(email)}.${now}`, {
-      httpOnly: true,
-      maxAge: LOGIN_LINK_COOLDOWN_SECONDS,
-      path: "/api/auth/login",
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-    });
+  setLoginCooldownCookie(cookieStore, email, now);
   redirect(`/login?sent=1&next=${encodeURIComponent(next)}`);
 }

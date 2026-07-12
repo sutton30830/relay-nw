@@ -11,10 +11,14 @@ const emailTs = await readFile(new URL("../lib/email.ts", import.meta.url), "utf
 const missedCallTs = await readFile(new URL("../lib/missed-call.ts", import.meta.url), "utf8");
 const intakeRouteTs = await readFile(new URL("../app/api/intake/route.ts", import.meta.url), "utf8");
 const authLoginRouteTs = await readFile(new URL("../app/api/auth/login/route.ts", import.meta.url), "utf8");
+const authPasswordLoginRouteTs = await readFile(new URL("../app/api/auth/password-login/route.ts", import.meta.url), "utf8");
+const authPasswordResetRouteTs = await readFile(new URL("../app/api/auth/password-reset/route.ts", import.meta.url), "utf8");
+const authUpdatePasswordRouteTs = await readFile(new URL("../app/api/auth/update-password/route.ts", import.meta.url), "utf8");
 const authCallbackRouteTs = await readFile(new URL("../app/auth/callback/route.ts", import.meta.url), "utf8");
 const inboundSmsRouteTs = await readFile(new URL("../app/api/twilio/sms/route.ts", import.meta.url), "utf8");
 const homePageTsx = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 const loginPageTsx = await readFile(new URL("../app/login/page.tsx", import.meta.url), "utf8");
+const accountPasswordPageTsx = await readFile(new URL("../app/account/password/page.tsx", import.meta.url), "utf8");
 const intakeFormTsx = await readFile(new URL("../app/intake/intake-form.tsx", import.meta.url), "utf8");
 const leadsPageTsx = await readFile(new URL("../app/leads/page.tsx", import.meta.url), "utf8");
 const leadsListTsx = await readFile(new URL("../app/leads/leads-list.tsx", import.meta.url), "utf8");
@@ -199,16 +203,37 @@ test("Supabase Auth fails closed and refreshes sessions in middleware", () => {
 });
 
 test("login throttling avoids repeated magic-link lockouts and explains recovery", () => {
-  assert.match(authLoginRouteTs, /LOGIN_LINK_COOLDOWN_SECONDS = 75/);
+  assert.match(authLoginRouteTs, /LOGIN_LINK_COOLDOWN_SECONDS = 10 \* 60/);
   assert.match(authLoginRouteTs, /LOGIN_LINK_COOKIE = "relay_login_link_requested"/);
   assert.match(authLoginRouteTs, /requestedRecently\(cookieStore\.get\(LOGIN_LINK_COOKIE\)\?\.value, email, now\)/);
   assert.match(authLoginRouteTs, /redirect\(`\/login\?sent=recent/);
   assert.match(authLoginRouteTs, /error\.status === 429/);
+  assert.match(authLoginRouteTs, /setLoginCooldownCookie\(cookieStore, email, now\)/);
   assert.match(authLoginRouteTs, /redirect\(`\/login\?error=rate_limited/);
   assert.match(authLoginRouteTs, /httpOnly:\s*true/);
   assert.match(authLoginRouteTs, /sameSite:\s*"lax"/);
   assert.match(loginPageTsx, /Too many sign-in link requests/);
-  assert.match(loginPageTsx, /wait about a minute/);
+  assert.match(loginPageTsx, /wait about 10 minutes/);
+  assert.match(loginPageTsx, /disabled=\{shouldPauseRequests\}/);
+});
+
+test("email password is the primary owner sign-in path with magic link as fallback", () => {
+  assert.match(loginPageTsx, /action="\/api\/auth\/password-login"/);
+  assert.match(loginPageTsx, /autoComplete="current-password"/);
+  assert.match(loginPageTsx, />\s*Sign in\s*</);
+  assert.match(loginPageTsx, /action="\/api\/auth\/password-reset"/);
+  assert.match(loginPageTsx, /Email password setup link/);
+  assert.match(loginPageTsx, /Backup magic link/);
+  assert.match(authPasswordLoginRouteTs, /signInWithPassword\(\{/);
+  assert.match(authPasswordLoginRouteTs, /getAccountUserSessionForUser\(data\.user\)/);
+  assert.match(authPasswordLoginRouteTs, /supabase\.auth\.signOut\(\)/);
+  assert.match(authPasswordResetRouteTs, /resetPasswordForEmail\(email/);
+  assert.match(authPasswordResetRouteTs, /\/account\/password/);
+  assert.match(accountPasswordPageTsx, /requireAccountUser\(\)/);
+  assert.match(authUpdatePasswordRouteTs, /getAccountUserSessionForUser\(userData\.user\)/);
+  assert.match(authUpdatePasswordRouteTs, /updateUser\(\{ password \}\)/);
+  assert.match(middlewareTs, /"\/account\/:path\*"/);
+  assert.match(middlewareTs, /"\/api\/auth\/update-password"/);
 });
 
 test("magic-link callback resolves account from exchanged user, not same-request cookies", () => {
@@ -236,7 +261,8 @@ test("authenticated setup page exposes onboarding checks without creating a new 
 });
 
 test("README documents Supabase Auth instead of legacy leads password auth", () => {
-  assert.match(readme, /Supabase Auth magic-link sign-in/);
+  assert.match(readme, /Email\/password is the primary owner sign-in path/);
+  assert.match(readme, /magic links remain a fallback/);
   assert.match(readme, /NEXT_PUBLIC_SUPABASE_ANON_KEY/);
   assert.doesNotMatch(readme, /LEADS_PASSWORD/);
   assert.doesNotMatch(readme, /LEADS_COOKIE_SECRET/);
