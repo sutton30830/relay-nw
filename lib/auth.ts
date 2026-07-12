@@ -97,16 +97,9 @@ async function findAccountUser(userId: string, email: string | null) {
   return row;
 }
 
-export async function getAccountUserSession() {
-  const supabase = await createSupabaseAuthServerClient();
-  const { data, error } = await supabase.auth.getUser();
-
-  if (error || !data.user) {
-    return null;
-  }
-
-  const email = data.user.email ?? null;
-  const accountUser = await findAccountUser(data.user.id, email);
+export async function getAccountUserSessionForUser(user: { id: string; email?: string | null }) {
+  const email = user.email ?? null;
+  const accountUser = await findAccountUser(user.id, email);
 
   if (!accountUser) {
     return null;
@@ -119,12 +112,23 @@ export async function getAccountUserSession() {
   }
 
   return {
-    userId: data.user.id,
+    userId: user.id,
     email,
     accountId: account.accountId,
     role: accountUser.role,
     account,
   } satisfies AccountUserSession;
+}
+
+export async function getAccountUserSession() {
+  const supabase = await createSupabaseAuthServerClient();
+  const { data, error } = await supabase.auth.getUser();
+
+  if (error || !data.user) {
+    return null;
+  }
+
+  return getAccountUserSessionForUser(data.user);
 }
 
 export async function requireAccountUser() {

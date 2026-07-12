@@ -11,6 +11,7 @@ const emailTs = await readFile(new URL("../lib/email.ts", import.meta.url), "utf
 const missedCallTs = await readFile(new URL("../lib/missed-call.ts", import.meta.url), "utf8");
 const intakeRouteTs = await readFile(new URL("../app/api/intake/route.ts", import.meta.url), "utf8");
 const authLoginRouteTs = await readFile(new URL("../app/api/auth/login/route.ts", import.meta.url), "utf8");
+const authCallbackRouteTs = await readFile(new URL("../app/auth/callback/route.ts", import.meta.url), "utf8");
 const inboundSmsRouteTs = await readFile(new URL("../app/api/twilio/sms/route.ts", import.meta.url), "utf8");
 const homePageTsx = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 const loginPageTsx = await readFile(new URL("../app/login/page.tsx", import.meta.url), "utf8");
@@ -208,6 +209,14 @@ test("login throttling avoids repeated magic-link lockouts and explains recovery
   assert.match(authLoginRouteTs, /sameSite:\s*"lax"/);
   assert.match(loginPageTsx, /Too many sign-in link requests/);
   assert.match(loginPageTsx, /wait about a minute/);
+});
+
+test("magic-link callback resolves account from exchanged user, not same-request cookies", () => {
+  assert.match(authTs, /getAccountUserSessionForUser\(user: \{ id: string; email\?: string \| null \}\)/);
+  assert.match(authTs, /return getAccountUserSessionForUser\(data\.user\)/);
+  assert.match(authCallbackRouteTs, /const \{ data, error \} = await supabase\.auth\.exchangeCodeForSession\(code\)/);
+  assert.match(authCallbackRouteTs, /getAccountUserSessionForUser\(data\.user\)/);
+  assert.doesNotMatch(authCallbackRouteTs, /getAccountUserSession\(\)/);
 });
 
 test("authenticated setup page exposes onboarding checks without creating a new tenant path", () => {
