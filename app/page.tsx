@@ -56,7 +56,7 @@ export default function HomePage() {
           </p>
           <div className="home-hero__actions">
             <Link className="btn btn-primary" href="/intake">
-              <Icon name="settings" size={14} /> Set up Relay NW
+              Request setup <Icon name="arrowRight" size={14} />
             </Link>
           </div>
           <p className="home-hero__owner-link">
@@ -123,7 +123,7 @@ export default function HomePage() {
           <span>$99/month. Try it for 30 days free.</span>
           <p className="home-optional__punch">If Relay doesn&apos;t help you recover missed calls, you don&apos;t pay.</p>
           <Link className="btn btn-primary home-optional__cta" href="/intake">
-            Set up Relay NW
+            Request setup
           </Link>
         </div>
       </section>
