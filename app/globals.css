@@ -2748,6 +2748,12 @@ code {
   overflow: hidden;
 }
 
+/* When the readiness banner links to the live-tests tool, leave breathing room
+   above it so it doesn't land flush against the top of the viewport. */
+#live-tests {
+  scroll-margin-top: 20px;
+}
+
 /* Settings & Reports pages: these were built with ad-hoc inline styles whose
    font sizes and spacings drifted from the rest of the app. Consolidated here
    so both pages read from one place and stay on the design system. */

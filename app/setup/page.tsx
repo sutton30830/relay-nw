@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { CopyButton } from "@/app/copy-button";
 import { AppHeader } from "@/app/leads/_components/app-header";
 import { ForwardingHealthCard } from "@/app/leads/_components/forwarding-health-card";
@@ -135,10 +134,13 @@ export default async function SetupPage() {
             <h2 className="readiness__headline">{readiness.headline}</h2>
             <p className="readiness__summary">{readiness.summary}</p>
           </div>
+          {/* Plain anchor (not next/link): the test actions point to
+              /setup#live-tests, and a same-page hash must scroll to the tool
+              natively rather than soft-navigating the page it's already on. */}
           {readiness.nextAction ? (
-            <Link className="btn btn-primary readiness__action" href={readiness.nextAction.href}>
+            <a className="btn btn-primary readiness__action" href={readiness.nextAction.href}>
               {readiness.nextAction.label}
-            </Link>
+            </a>
           ) : null}
         </section>
 
@@ -259,7 +261,7 @@ export default async function SetupPage() {
             )}
           </article>
 
-          <article className="panel setup-panel setup-panel--tests">
+          <article id="live-tests" className="panel setup-panel setup-panel--tests">
             <div className="setup-panel__head">
               <div>
                 <p className="t-eyebrow">Live tests</p>

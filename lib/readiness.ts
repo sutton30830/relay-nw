@@ -162,18 +162,21 @@ function pickNextAction(signals: ReadinessSignals, checks: Record<ReadinessCheck
       ? { label: "Complete your business profile", href: "/settings" }
       : { label: "Ask an owner to finish the profile", href: "/settings" };
   }
+  // The test actions scroll to the live-tests tool at the bottom of Setup, where
+  // the actual "Start listening" control lives — a plain /setup link would just
+  // reload the page the owner is already on.
   if (signals.callMode === "forwarding" && signals.forwardingStatus === "failed") {
-    return { label: "Re-run the forwarding test", href: "/setup" };
+    return { label: "Re-run the forwarding test", href: "/setup#live-tests" };
   }
   if (signals.callMode === "forwarding" && checks.routing.status !== "ok") {
-    return { label: "Run a forwarding test", href: "/setup" };
+    return { label: "Run a forwarding test", href: "/setup#live-tests" };
   }
   if (signals.callMode === "direct" && !signals.hasRecoveredCall) {
-    return { label: "Make a test missed call", href: "/setup" };
+    return { label: "Make a test missed call", href: "/setup#live-tests" };
   }
   // Core pipeline is live below. Texting only becomes a to-do if it's broken.
   if (signals.a2pStatus === "rejected" || signals.a2pStatus === "paused") {
-    return { label: "Resolve carrier registration", href: "/setup" };
+    return { label: "Resolve carrier registration", href: "/setup#live-tests" };
   }
   return null;
 }

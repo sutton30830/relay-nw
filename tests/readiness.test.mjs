@@ -88,6 +88,8 @@ test("forwarding not yet tested => testing with run-test action", () => {
   const r = computeSetupReadiness(signals({ forwardingStatus: "pending" }));
   assert.equal(r.state, "testing");
   assert.equal(r.nextAction?.label, "Run a forwarding test");
+  // Must anchor to the live-tests tool, not just reload /setup.
+  assert.equal(r.nextAction?.href, "/setup#live-tests");
 });
 
 test("direct mode with no recovered call => testing, prompts a test call", () => {

@@ -181,7 +181,7 @@ test("public homepage keeps an owner inbox path visible", () => {
   assert.match(homePageTsx, /<InboxLink className="btn btn-secondary btn-header home-header__inbox">/);
   assert.match(homePageTsx, /<InboxLink className="text-link">Open your inbox<\/InboxLink>/);
   assert.doesNotMatch(homePageTsx, /home-header__setup/);
-  assert.match(homePageTsx, /Set up Relay NW/);
+  assert.match(homePageTsx, /Request setup/);
   assert.match(globalsCss, /\.home-view \.home-header__inbox/);
   assert.match(globalsCss, /\.leads-view \.app-head__right > \.btn/);
   assert.doesNotMatch(globalsCss, /\n\s*\.app-head__right > \.btn,\n\s*\.app-head__right > \.app-head__logout/);
