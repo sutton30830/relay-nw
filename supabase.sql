@@ -76,6 +76,20 @@ create index if not exists account_users_email_idx
   on public.account_users (lower(email))
   where email is not null;
 
+-- Owner-facing audit trail for account changes (who changed texting/settings).
+create table if not exists public.account_audit_events (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  actor_user_id uuid,
+  actor_email text,
+  action text not null,
+  summary text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists account_audit_events_account_created_at_idx
+  on public.account_audit_events (account_id, created_at desc);
+alter table public.account_audit_events enable row level security;
+
 alter table public.account_users enable row level security;
 
 create table if not exists public.leads (
@@ -405,6 +419,11 @@ create policy deny_client_access on public.account_phone_numbers
 
 drop policy if exists deny_client_access on public.account_users;
 create policy deny_client_access on public.account_users
+  as restrictive for all to anon, authenticated
+  using (false) with check (false);
+
+drop policy if exists deny_client_access on public.account_audit_events;
+create policy deny_client_access on public.account_audit_events
   as restrictive for all to anon, authenticated
   using (false) with check (false);
 

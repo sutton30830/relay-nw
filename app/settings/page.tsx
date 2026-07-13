@@ -1,11 +1,30 @@
 import { Icon } from "@/components/icon";
 import { AppHeader } from "@/app/leads/_components/app-header";
 import { requireAccountUser } from "@/lib/auth";
-import { getA2pRegistrationStatus } from "@/lib/supabase";
+import {
+  getA2pRegistrationStatus,
+  getAccountAuditEvents,
+  getAccountTeamMembers,
+} from "@/lib/supabase";
 import { QUICK_REPLIES } from "@/app/leads/_constants";
 import { SmsToggle } from "./sms-toggle";
 
 export const dynamic = "force-dynamic";
+
+const ROLE_LABELS: Record<string, string> = {
+  owner: "Owner",
+  admin: "Admin",
+  viewer: "Viewer",
+};
+
+function formatAuditTime(iso: string) {
+  return new Date(iso).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 const A2P_LABELS: Record<string, string> = {
   not_started: "Not started — texting cannot be enabled yet",
@@ -41,7 +60,11 @@ export default async function SettingsPage({
   const session = await requireAccountUser();
   const { account, role } = session;
   const params = await searchParams;
-  const a2pStatus = await getA2pRegistrationStatus(session.accountId);
+  const [a2pStatus, teamMembers, auditEvents] = await Promise.all([
+    getA2pRegistrationStatus(session.accountId),
+    getAccountTeamMembers(session.accountId),
+    getAccountAuditEvents(session.accountId, 8),
+  ]);
   const readOnly = role === "viewer";
 
   return (
@@ -156,6 +179,55 @@ export default async function SettingsPage({
             ) : null}
           </fieldset>
         </form>
+
+        <section className="panel settings-form" aria-label="Team and activity">
+          <p className="t-eyebrow settings-group-title settings-group-title--first">Team</p>
+          <ul className="team-list">
+            {teamMembers.length === 0 ? (
+              <li className="team-list__empty">No teammates yet.</li>
+            ) : (
+              teamMembers.map((member, index) => (
+                <li className="team-member" key={`${member.email ?? "member"}-${index}`}>
+                  <span className="team-member__email">{member.email ?? "Pending invite"}</span>
+                  <span className={`team-member__role team-member__role--${member.role}`}>
+                    {ROLE_LABELS[member.role] ?? member.role}
+                  </span>
+                </li>
+              ))
+            )}
+          </ul>
+          <p className="form-field__hint team-list__note">
+            To add or remove teammates, contact Relay. Self-serve invitations are coming soon.
+          </p>
+
+          <p className="t-eyebrow settings-group-title">Recent changes</p>
+          {auditEvents.length === 0 ? (
+            <p className="form-field__hint">No account changes recorded yet.</p>
+          ) : (
+            <ul className="audit-list">
+              {auditEvents.map((event) => (
+                <li className="audit-event" key={event.id}>
+                  <Icon
+                    name={
+                      event.action === "texting.enabled"
+                        ? "check"
+                        : event.action === "texting.disabled"
+                          ? "alertTriangle"
+                          : "clock"
+                    }
+                    size={13}
+                  />
+                  <div>
+                    <p className="audit-event__summary">{event.summary}</p>
+                    <p className="audit-event__meta">
+                      {event.actorEmail ?? "Someone"} · {formatAuditTime(event.createdAt)}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </section>
     </main>
   );

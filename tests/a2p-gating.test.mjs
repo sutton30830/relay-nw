@@ -60,6 +60,7 @@ async function runSettingsPost({
   const calls = {
     a2pLookups: [],
     updates: [],
+    auditEvents: [],
     redirects: [],
   };
 
@@ -76,6 +77,9 @@ async function runSettingsPost({
     "@/lib/phone": {
       normalizePhoneNumber: (value) => value,
     },
+    "@/lib/audit": {
+      diffSettingsForAudit: () => [],
+    },
     "@/lib/supabase": {
       getA2pRegistrationStatus: async (accountId) => {
         calls.a2pLookups.push(accountId);
@@ -83,6 +87,9 @@ async function runSettingsPost({
       },
       updateAccountSettings: async (accountId, update) => {
         calls.updates.push({ accountId, update });
+      },
+      recordAccountAuditEvents: async (input) => {
+        calls.auditEvents.push(input);
       },
     },
   });

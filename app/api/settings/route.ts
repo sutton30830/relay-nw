@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { requireAccountUser } from "@/lib/auth";
 import { normalizePhoneNumber } from "@/lib/phone";
-import { getA2pRegistrationStatus, updateAccountSettings, type AccountSettingsUpdate } from "@/lib/supabase";
+import { diffSettingsForAudit, type AuditableSettings } from "@/lib/audit";
+import { getA2pRegistrationStatus, recordAccountAuditEvents, updateAccountSettings, type AccountSettingsUpdate } from "@/lib/supabase";
 
 const LIMITS = {
   dialTimeoutSeconds: { min: 5, max: 60 },
@@ -107,6 +108,45 @@ export async function POST(request: Request) {
     });
     redirect("/settings?error=save_failed");
   }
+
+  // Audit trail: record what actually changed, with the SMS master switch called
+  // out explicitly. Non-fatal — a logging failure must not fail the save.
+  const before: AuditableSettings = {
+    smsEnabled: session.account.smsEnabled,
+    businessName: session.account.businessName,
+    ownerPhoneNumber: session.account.ownerPhoneNumber,
+    ownerEmail: session.account.ownerEmail,
+    schedulingUrl: session.account.schedulingUrl,
+    smsTemplate: session.account.smsTemplate,
+    quickReplyTemplates: session.account.quickReplyTemplates,
+    missedCallVoiceMessage: session.account.missedCallVoiceMessage,
+    missedCallGreetingAudioUrl: session.account.missedCallGreetingAudioUrl,
+    dialTimeoutSeconds: session.account.dialTimeoutSeconds,
+    voicemailMaxSeconds: session.account.voicemailMaxSeconds,
+    missedCallSmsCooldownHours: session.account.missedCallSmsCooldownHours,
+  };
+  const after: AuditableSettings = {
+    businessName,
+    ownerPhoneNumber: ownerPhone,
+    ownerEmail: ownerEmail || null,
+    schedulingUrl: schedulingUrl || null,
+    smsTemplate: smsTemplate || null,
+    quickReplyTemplates: quickReplies.length ? quickReplies : null,
+    missedCallVoiceMessage: voiceMessage || null,
+    missedCallGreetingAudioUrl: greetingAudioUrl || null,
+    dialTimeoutSeconds: dialTimeout,
+    voicemailMaxSeconds: voicemailMax,
+    missedCallSmsCooldownHours: cooldownHours,
+    // Only owners submit the switch; leaving it undefined keeps it out of the diff.
+    ...(session.role === "owner" ? { smsEnabled: update.sms_enabled } : {}),
+  };
+
+  await recordAccountAuditEvents({
+    accountId: session.accountId,
+    actorUserId: session.userId,
+    actorEmail: session.email,
+    events: diffSettingsForAudit(before, after),
+  });
 
   redirect("/settings?saved=1");
 }

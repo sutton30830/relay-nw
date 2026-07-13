@@ -2818,6 +2818,84 @@ code {
   margin-top: 8px;
 }
 
+/* Team & activity (Settings) */
+.team-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.team-member {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--panel-2);
+}
+.team-member__email {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+}
+.team-member__role {
+  flex-shrink: 0;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.team-member__role--owner {
+  color: var(--brand);
+  border-color: color-mix(in oklab, var(--brand) 35%, var(--line));
+  background: var(--brand-soft);
+}
+.team-list__empty {
+  list-style: none;
+  color: var(--ink-4);
+  font-size: 13px;
+}
+.team-list__note {
+  margin-top: 8px;
+}
+.audit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.audit-event {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  color: var(--ink-3);
+}
+.audit-event > svg {
+  margin-top: 2px;
+  flex-shrink: 0;
+  color: var(--ink-4);
+}
+.audit-event__summary {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13.5px;
+}
+.audit-event__meta {
+  margin: 2px 0 0;
+  color: var(--ink-4);
+  font-size: 12px;
+}
+
 /* SMS master switch: the highest-stakes control, set apart in its own callout
    with a real toggle and the state spelled out. */
 .sms-switch {
