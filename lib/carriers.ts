@@ -34,7 +34,14 @@ function digitsOnly(phone: string): string {
   return (phone ?? "").replace(/\D/g, "");
 }
 
-function gsmCodes(digits: string): ForwardingCode[] {
+// US carriers want the 10-digit national number in these codes — the leading
+// country-code "1" can get the code rejected.
+function nationalDigits(phone: string): string {
+  const digits = digitsOnly(phone);
+  return digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+}
+
+function gsmConditionalCodes(digits: string): ForwardingCode[] {
   return [
     { label: "No answer", code: `*61*${digits}#` },
     { label: "Busy", code: `*67*${digits}#` },
@@ -43,18 +50,34 @@ function gsmCodes(digits: string): ForwardingCode[] {
 }
 
 export function getCarrierForwarding(carrierId: string, relayNumber: string): CarrierForwarding {
-  const digits = digitsOnly(relayNumber);
+  const digits = nationalDigits(relayNumber);
 
-  if (carrierId === "att" || carrierId === "tmobile") {
-    const carrierName = carrierId === "att" ? "AT&T" : "T-Mobile";
+  // AT&T: verified one-dial code that sets no-answer, busy, and unreachable at
+  // once (confirmed on an AT&T iPhone).
+  if (carrierId === "att") {
     return {
       carrierId,
-      carrierName,
+      carrierName: "AT&T",
       confidence: "known",
-      intro: `On ${carrierName}, dial each code from your business phone and press call — you'll hear a confirmation tone.`,
-      codes: digits ? gsmCodes(digits) : [],
-      cancelCode: "##002#",
-      note: "These forward a call only when you don't answer, are busy, or are unreachable — you still get every call normally.",
+      intro:
+        "On AT&T, one code forwards every missed call to Relay. Dial it from your business phone and press call — you'll hear a confirmation tone.",
+      codes: digits ? [{ label: "All missed calls", code: `**004*${digits}#` }] : [],
+      cancelCode: "##004#",
+      note: "This one code forwards a call when you don't answer, are busy, or are unreachable — you still get every call normally. If it doesn't take, set them separately with *61*, *67*, and *62*.",
+    };
+  }
+
+  // T-Mobile: standard GSM conditional codes (well documented; not separately
+  // verified, so shown per-condition).
+  if (carrierId === "tmobile") {
+    return {
+      carrierId,
+      carrierName: "T-Mobile",
+      confidence: "known",
+      intro: "On T-Mobile, dial each code from your business phone and press call — you'll hear a confirmation tone.",
+      codes: digits ? gsmConditionalCodes(digits) : [],
+      cancelCode: "##004#",
+      note: "These forward a call only when you don't answer, are busy, or are unreachable. Many GSM phones also accept the one-dial **004*<number># to set all three at once.",
     };
   }
 
@@ -76,8 +99,8 @@ export function getCarrierForwarding(carrierId: string, relayNumber: string): Ca
     confidence: "generic",
     intro:
       "These are the standard GSM codes — they work on most US carriers. If a code doesn't take, look up your carrier's “conditional call forwarding” steps.",
-    codes: digits ? gsmCodes(digits) : [],
-    cancelCode: "##002#",
+    codes: digits ? gsmConditionalCodes(digits) : [],
+    cancelCode: "##004#",
     note: "MVNOs usually follow their host network — Cricket → AT&T, Mint/Metro → T-Mobile, Visible → Verizon (*71). Whatever you dial, run the Full test below to confirm it worked.",
   };
 }

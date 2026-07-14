@@ -21,23 +21,35 @@ async function loadTsModule(path) {
 const { getCarrierForwarding, CARRIERS } = await loadTsModule("lib/carriers.ts");
 const NUM = "+14253689655";
 
-test("AT&T / T-Mobile use the standard GSM codes, marked known", () => {
-  for (const id of ["att", "tmobile"]) {
-    const f = getCarrierForwarding(id, NUM);
-    assert.equal(f.confidence, "known");
-    assert.deepEqual(
-      f.codes.map((c) => c.code),
-      ["*61*14253689655#", "*67*14253689655#", "*62*14253689655#"],
-    );
-    assert.equal(f.cancelCode, "##002#");
+test("codes use the 10-digit national number, not the 11-digit form with a leading 1", () => {
+  const f = getCarrierForwarding("tmobile", NUM);
+  for (const { code } of f.codes) {
+    assert.ok(!code.includes("14253689655"), `code should not include the leading 1: ${code}`);
+    assert.ok(code.includes("4253689655"), `code should include the 10-digit number: ${code}`);
   }
+});
+
+test("AT&T gets the verified one-dial all-conditional code", () => {
+  const f = getCarrierForwarding("att", NUM);
+  assert.equal(f.confidence, "known");
+  assert.deepEqual(f.codes.map((c) => c.code), ["**004*4253689655#"]);
+  assert.equal(f.cancelCode, "##004#");
+});
+
+test("T-Mobile uses the standard per-condition GSM codes", () => {
+  const f = getCarrierForwarding("tmobile", NUM);
+  assert.equal(f.confidence, "known");
+  assert.deepEqual(
+    f.codes.map((c) => c.code),
+    ["*61*4253689655#", "*67*4253689655#", "*62*4253689655#"],
+  );
 });
 
 test("Verizon uses its single *71 conditional code, not the generic ones", () => {
   const f = getCarrierForwarding("verizon", NUM);
   assert.equal(f.confidence, "known");
   assert.equal(f.codes.length, 1);
-  assert.equal(f.codes[0].code, "*7114253689655");
+  assert.equal(f.codes[0].code, "*714253689655");
   assert.equal(f.cancelCode, "*73");
   assert.match(f.note, /single conditional-forwarding code/i);
 });
@@ -45,7 +57,7 @@ test("Verizon uses its single *71 conditional code, not the generic ones", () =>
 test("unknown carrier => generic codes, clearly labeled, with MVNO guidance", () => {
   const f = getCarrierForwarding("other", NUM);
   assert.equal(f.confidence, "generic");
-  assert.equal(f.codes[0].code, "*61*14253689655#");
+  assert.equal(f.codes[0].code, "*61*4253689655#");
   assert.match(f.note, /MVNOs usually follow their host network/);
 });
 
