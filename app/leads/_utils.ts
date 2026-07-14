@@ -510,12 +510,23 @@ export function isRecentLead(lead: Lead, now: number) {
 }
 
 export function shouldShowVoicemailSummaryProgress(lead: Lead, now: number) {
-  return Boolean(
-    lead.recording_sid &&
-      !lead.voicemail_summary &&
-      lead.voicemail_transcription_status !== "failed" &&
-      (lead.voicemail_transcription_status === "processing" || isRecentLead(lead, now)),
-  );
+  if (!lead.recording_sid || lead.voicemail_summary) {
+    return false;
+  }
+
+  const status = lead.voicemail_transcription_status;
+
+  // A finished transcription is not "in progress" — even when it produced no
+  // usable summary (e.g. the caller said nothing actionable). Without this, a
+  // recent voicemail keeps spinning "Preparing summary…" for the whole recency
+  // window despite already being done.
+  if (status === "completed" || status === "failed") {
+    return false;
+  }
+
+  // Actively transcribing, queued, or a brand-new voicemail waiting for
+  // auto-transcription to kick in.
+  return status === "processing" || status === "pending" || isRecentLead(lead, now);
 }
 
 export function shouldAutoSummarizeVoicemail(lead: Lead, now: number, initiallyLoadedLeadIds: Set<string>) {
