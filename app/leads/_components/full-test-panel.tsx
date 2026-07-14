@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
 import type { ForwardingHealthSummary } from "@/lib/forwarding-health";
 import { combineFullTest, type FullTestLeg, type LegStatus } from "@/lib/full-test";
@@ -18,8 +19,24 @@ export function FullTestPanel({
   initialForwardingSummary: ForwardingHealthSummary;
   showForwarding: boolean;
 }) {
+  const router = useRouter();
   const [forwardingStatus, setForwardingStatus] = useState<LegStatus>("idle");
   const [smsStatus, setSmsStatus] = useState<LegStatus>("idle");
+
+  // The readiness banner (and checklist) above are server-rendered from the
+  // latest forwarding check. When a test finishes, refresh so they re-compute
+  // from fresh data instead of contradicting the live verdict here.
+  const lastForwarding = useRef<LegStatus>("idle");
+  useEffect(() => {
+    // Only when a running (pending) test settles — not on initial mount where an
+    // already-passed check would otherwise trigger a spurious refresh.
+    const testJustFinished =
+      lastForwarding.current === "pending" && (forwardingStatus === "passed" || forwardingStatus === "failed");
+    if (testJustFinished) {
+      router.refresh();
+    }
+    lastForwarding.current = forwardingStatus;
+  }, [forwardingStatus, router]);
 
   const legs: FullTestLeg[] = [
     ...(showForwarding ? [{ key: "forwarding", label: "Call forwarding", status: forwardingStatus }] : []),
