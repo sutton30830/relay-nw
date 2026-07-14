@@ -117,6 +117,14 @@ Update after Spec 07 implementation (July 4, 2026):
 - Extended `tests/tenant-contract.test.mjs` so any RLS-enabled table missing the deny policy fails tests.
 - Schema change: re-run `supabase.sql` before deploying the code so the explicit deny policies are present. The drop/create policy blocks are idempotent and safe to re-run.
 
+Update after Phase 2 activation-proof pass (July 2026):
+- Added a durable route-spanning activation suite: `tests/activation-flow.test.mjs`.
+- The suite exercises the core loop across the actual route handlers with one shared account state: missed call -> lead -> automatic SMS -> delivery callback -> inbound caller reply -> voicemail recording attachment -> automatic transcription trigger.
+- It also covers duplicate missed-call webhook retries, delayed SMS status self-healing after a partial "Twilio accepted but lead update failed" write failure, and the owner-paused SMS mode where the lead is still captured but no caller text is sent.
+- Added `npm run test:activation` for a quick focused activation check.
+- This is deterministic local proof, not a live carrier/A2P delivery test. Keep running one real Twilio missed-call test before handoff for each business.
+- No schema changes; `supabase.sql` does not need to be re-run for this phase.
+
 Recommended launch posture:
 - Personally onboard each business.
 - Run one real end-to-end test per business.

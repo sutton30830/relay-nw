@@ -10,6 +10,7 @@
     "provision:account": "node scripts/provision-account.mjs",
     "verify:account": "node scripts/verify-account.mjs",
     "backfill:account-ids": "node scripts/backfill-account-ids.mjs",
+    "test:activation": "node --test tests/activation-flow.test.mjs",
     "test": "node --test tests/*.test.mjs",
     "typecheck": "tsc --noEmit --incremental false",
     "lint": "npm run typecheck"
