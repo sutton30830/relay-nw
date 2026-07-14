@@ -42,7 +42,7 @@ export default async function LoginPage({
       : passwordMissing
         ? "Enter both fields and try again."
         : passwordError
-          ? "Check the password or use the setup link below."
+          ? "Check the password, or use “Forgot or create password?” below."
           : resetError
             ? "Wait a few minutes before requesting another setup email."
             : sessionExpired
@@ -81,6 +81,7 @@ export default async function LoginPage({
           </p>
         ) : null}
 
+        {/* Primary: email + password. */}
         <form action="/api/auth/password-login" method="POST" className="gate-form">
           <input type="hidden" name="next" value={next} />
           <label className="field-label">
@@ -117,45 +118,56 @@ export default async function LoginPage({
           </button>
         </form>
 
-        <form action="/api/auth/password-reset" method="POST" className="gate-form gate-form--secondary">
-          <input type="hidden" name="next" value="/account/password" />
-          <label className="field-label">
-            <span>Need to set or reset your password?</span>
-            <div className="gate-input">
-              <input
-                className="field"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                placeholder="owner@example.com"
-              />
-            </div>
-          </label>
-          <button className="btn btn-secondary" type="submit" style={{ width: "100%" }}>
-            Email password setup link
-          </button>
-        </form>
+        {/* One recovery path — opens automatically after a failed sign-in or when
+            a setup link was just requested. */}
+        <details className="gate-disclosure" open={passwordError || resetError || Boolean(params.reset)}>
+          <summary>Forgot or create password?</summary>
+          <form action="/api/auth/password-reset" method="POST" className="gate-form">
+            <input type="hidden" name="next" value="/account/password" />
+            <p className="gate-hint">We&apos;ll email a link to set a new password.</p>
+            <label className="field-label">
+              <span>Email</span>
+              <div className="gate-input">
+                <input
+                  className="field"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  placeholder="owner@example.com"
+                />
+              </div>
+            </label>
+            <button className="btn btn-secondary" type="submit" style={{ width: "100%" }}>
+              Email setup link
+            </button>
+          </form>
+        </details>
 
-        <form action="/api/auth/login" method="POST" className="gate-form gate-form--secondary">
-          <input type="hidden" name="next" value={next} />
-          <label className="field-label">
-            <span>Backup magic link</span>
-            <div className="gate-input">
-              <input
-                className="field"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                placeholder="owner@example.com"
-              />
-            </div>
-          </label>
-          <button className="btn btn-secondary" type="submit" disabled={shouldPauseRequests} style={{ width: "100%" }}>
-            {shouldPauseRequests ? "Use the latest magic link" : "Email one-time magic link"}
-          </button>
-        </form>
+        {/* Backup only — quietly available behind a disclosure. */}
+        <details className="gate-disclosure" open={rateLimited || Boolean(params.sent)}>
+          <summary>Other sign-in options</summary>
+          <form action="/api/auth/login" method="POST" className="gate-form">
+            <input type="hidden" name="next" value={next} />
+            <p className="gate-hint">Sign in with a one-time magic link instead of a password.</p>
+            <label className="field-label">
+              <span>Email</span>
+              <div className="gate-input">
+                <input
+                  className="field"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  placeholder="owner@example.com"
+                />
+              </div>
+            </label>
+            <button className="btn btn-secondary" type="submit" disabled={shouldPauseRequests} style={{ width: "100%" }}>
+              {shouldPauseRequests ? "Use the latest magic link" : "Email one-time magic link"}
+            </button>
+          </form>
+        </details>
 
         <p className="gate-foot">
           <Link href="/" style={{ textDecoration: "underline" }}>Back to setup</Link>

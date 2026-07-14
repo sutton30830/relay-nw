@@ -221,9 +221,13 @@ test("email password is the primary owner sign-in path with magic link as fallba
   assert.match(loginPageTsx, /action="\/api\/auth\/password-login"/);
   assert.match(loginPageTsx, /autoComplete="current-password"/);
   assert.match(loginPageTsx, />\s*Sign in\s*</);
+  // Recovery is one disclosed action; the magic link is tucked behind
+  // "Other sign-in options" so the password form stays primary.
   assert.match(loginPageTsx, /action="\/api\/auth\/password-reset"/);
-  assert.match(loginPageTsx, /Email password setup link/);
-  assert.match(loginPageTsx, /Backup magic link/);
+  assert.match(loginPageTsx, /Forgot or create password\?/);
+  assert.match(loginPageTsx, /Email setup link/);
+  assert.match(loginPageTsx, /action="\/api\/auth\/login"/);
+  assert.match(loginPageTsx, /Other sign-in options/);
   assert.match(authPasswordLoginRouteTs, /signInWithPassword\(\{/);
   assert.match(authPasswordLoginRouteTs, /getAccountUserSessionForUser\(data\.user\)/);
   assert.match(authPasswordLoginRouteTs, /supabase\.auth\.signOut\(\)/);

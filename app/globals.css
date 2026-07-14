@@ -1599,10 +1599,32 @@ code {
   text-align: left;
 }
 
-.gate-form--secondary {
+/* Secondary sign-in paths (recovery, magic link) live in disclosures so the
+   password form stays the single clear action. */
+.gate-disclosure {
+  margin-top: 14px;
   border-top: 1px solid var(--line-soft);
-  margin-top: 18px;
-  padding-top: 18px;
+  padding-top: 14px;
+}
+.gate-disclosure > summary {
+  cursor: pointer;
+  list-style: none;
+  color: var(--brand);
+  font-size: 13px;
+  font-weight: 650;
+  text-align: left;
+}
+.gate-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+.gate-disclosure[open] > summary {
+  margin-bottom: 12px;
+}
+.gate-hint {
+  margin: 0 0 10px;
+  color: var(--ink-4);
+  font-size: 12.5px;
+  text-align: left;
 }
 
 .gate-input {
