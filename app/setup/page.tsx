@@ -90,11 +90,18 @@ export default async function SetupPage() {
   const carrierStatus = a2pStatus ?? "unknown";
   const isA2pApproved = carrierStatus === "approved";
   const isProfileReady = Boolean(account.businessName && account.ownerPhoneNumber && account.twilioPhoneNumber);
-  const isForwardingReady = account.callMode === "direct" || forwardingHealth.displayStatus === "passed";
-  const isSmsReady = account.smsEnabled && isA2pApproved;
+  const smsMetric = isA2pApproved
+    ? account.smsEnabled
+      ? { value: "Auto-text on", detail: "Carrier approved. Callers get an immediate reply.", tone: "good" as const }
+      : { value: "Paused", detail: "Carrier approved. Missed calls still reach your inbox.", tone: "neutral" as const }
+    : {
+        value: "Not ready",
+        detail: carrierStatus === "rejected" ? "Carrier registration needs attention" : "Waiting on carrier registration",
+        tone: "warn" as const,
+      };
 
-  // One decisive state (Not ready / Needs attention / Testing / Live) with a
-  // single next action, so Setup leads instead of listing four half-answers.
+  // One decisive operating state with a single next action, so Setup leads
+  // instead of listing four half-answers.
   const readiness = computeSetupReadiness({
     role,
     hasProfile: isProfileReady,
@@ -133,7 +140,7 @@ export default async function SetupPage() {
             </span>
             <h2 className="readiness__headline">{readiness.headline}</h2>
             <p className="readiness__summary">{readiness.summary}</p>
-            {readiness.state === "live" && readiness.evidence ? (
+            {readiness.callCaptureReady && readiness.evidence ? (
               <p className="readiness__evidence" suppressHydrationWarning>
                 <Icon name="check" size={13} />
                 Confirmed {formatRelativeAge(readiness.evidence.at, Date.now())} — {readiness.evidence.label.toLowerCase()}
@@ -158,9 +165,9 @@ export default async function SetupPage() {
           />
           <MetricCard
             label="Texting"
-            value={account.smsEnabled ? "Enabled" : "Off"}
-            detail={isA2pApproved ? "Carrier registration approved" : "Waiting on A2P approval"}
-            tone={isSmsReady ? "good" : "warn"}
+            value={smsMetric.value}
+            detail={smsMetric.detail}
+            tone={smsMetric.tone}
           />
         </section>
 
@@ -188,14 +195,20 @@ export default async function SetupPage() {
                 detail={account.callMode === "forwarding"
                   ? "Use Start listening, then call your business number and let it go unanswered."
                   : "Direct mode routes calls through the Relay number without carrier forwarding."}
-                status={isForwardingReady ? "complete" : "pending"}
+                status={readiness.callCaptureReady ? "complete" : "pending"}
               />
               <Step
                 title="Automatic SMS readiness"
-                detail={account.smsEnabled
-                  ? "Automatic texting is enabled. Send yourself a test text below before relying on it."
-                  : "Automatic SMS is off. Enable it from Settings after texting registration is approved."}
-                status={isSmsReady ? "complete" : "blocked"}
+                detail={readiness.checks.find((check) => check.key === "texting")?.detail ?? "Check automatic texting status."}
+                status={
+                  readiness.operatingState === "live_sms_on"
+                    ? "complete"
+                    : readiness.operatingState === "live_sms_paused"
+                      ? "pending"
+                      : carrierStatus === "rejected" || carrierStatus === "paused"
+                        ? "blocked"
+                        : "pending"
+                }
               />
             </ol>
           </article>

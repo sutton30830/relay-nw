@@ -5,6 +5,44 @@ import { createClient } from "@supabase/supabase-js";
 const READY_A2P_STATUSES = new Set(["approved"]);
 const ADMIN_ROLES = new Set(["owner", "admin"]);
 
+function deriveSmsOperatingState(settings) {
+  const a2pStatus = settings?.a2p_registration_status ?? "not_started";
+  const smsEnabled = Boolean(settings?.sms_enabled);
+
+  if (!READY_A2P_STATUSES.has(a2pStatus)) {
+    return {
+      key: "calls_ready_sms_pending",
+      label: "Calls ready · Texting not ready",
+      ok: !smsEnabled,
+      level: smsEnabled ? "fail" : "warn",
+      detail: smsEnabled
+        ? `sms_enabled=true but a2p_registration_status=${a2pStatus}; automatic texting must stay off until registration is approved.`
+        : a2pStatus === "rejected"
+          ? "Carrier registration was rejected; callers are not receiving automatic texts until Relay re-files and approval is complete."
+          : `a2p_registration_status=${a2pStatus}; callers are not receiving automatic texts yet.`,
+    };
+  }
+
+  if (smsEnabled) {
+    return {
+      key: "live_sms_on",
+      label: "Live · Auto-text on",
+      ok: true,
+      level: "fail",
+      detail: "A2P approved and sms_enabled=true; callers receive automatic missed-call replies.",
+    };
+  }
+
+  return {
+    key: "live_sms_paused",
+    label: "Live · Auto-text paused",
+    ok: false,
+    level: "warn",
+    detail:
+      "A2P approved and sms_enabled=false by choice. Missed calls still appear in the inbox, but callers are not receiving automatic texts.",
+  };
+}
+
 function parseDotenvLine(line) {
   const trimmed = line.trim();
   if (!trimmed || trimmed.startsWith("#")) return null;
@@ -194,14 +232,13 @@ async function main() {
       settings.owner_email ?? "Missing owner_email in account_settings.",
     );
 
-    const a2pStatus = settings.a2p_registration_status ?? "not_started";
+    const smsOperatingState = deriveSmsOperatingState(settings);
     check(
       results,
-      !settings.sms_enabled || READY_A2P_STATUSES.has(a2pStatus),
-      "SMS is disabled unless A2P is ready",
-      settings.sms_enabled
-        ? `sms_enabled=true, a2p_registration_status=${a2pStatus}`
-        : `sms_enabled=false, a2p_registration_status=${a2pStatus}`,
+      smsOperatingState.ok,
+      `operating state: ${smsOperatingState.label}`,
+      smsOperatingState.detail,
+      smsOperatingState.level,
     );
 
     check(

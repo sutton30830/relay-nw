@@ -1,12 +1,12 @@
-// A single, decisive account readiness state for the Setup page. The signals
-// (profile, carrier registration, call routing, texting) already existed but
-// were flattened into a vague "3/4 complete" that never answered the only
-// question an owner has: "Is Relay actually live?" This turns them into one of
-// four states with exactly one next action, so Setup can lead instead of list.
+// A single, decisive account readiness model for the Setup page. The important
+// distinction: Relay can be fully configured while the owner intentionally
+// pauses automatic texting. A paused SMS switch is an operating choice, not a
+// failed setup.
 //
 // Pure and dependency-free so it can be unit-tested in isolation.
 
-export type ReadinessState = "not_ready" | "attention" | "testing" | "live";
+export type OperatingState = "setup_needed" | "calls_ready_sms_pending" | "live_sms_on" | "live_sms_paused";
+export type ReadinessState = OperatingState;
 
 export type ReadinessCheckStatus = "ok" | "pending" | "blocked";
 
@@ -28,6 +28,10 @@ export type ReadinessEvidence = { label: string; at: string } | null;
 
 export type SetupReadiness = {
   state: ReadinessState;
+  operatingState: OperatingState;
+  callCaptureReady: boolean;
+  smsRegistrationReady: boolean;
+  smsEnabled: boolean;
   stateLabel: string;
   headline: string;
   summary: string;
@@ -73,11 +77,11 @@ function pickEvidence(signals: ReadinessSignals): ReadinessEvidence {
   return best ? { label: best.label, at: best.at } : null;
 }
 
-const STATE_LABELS: Record<ReadinessState, string> = {
-  not_ready: "Not ready",
-  attention: "Needs attention",
-  testing: "Testing",
-  live: "Live",
+const STATE_LABELS: Record<OperatingState, string> = {
+  setup_needed: "Setup needed",
+  calls_ready_sms_pending: "Calls ready · Texting not ready",
+  live_sms_on: "Live · Auto-text on",
+  live_sms_paused: "Live · Auto-text paused",
 };
 
 function profileCheck(signals: ReadinessSignals): ReadinessCheck {
@@ -138,10 +142,8 @@ function routingCheck(signals: ReadinessSignals): ReadinessCheck {
   return { key: "routing", label: "Call forwarding", status, detail };
 }
 
-// Texting is an optional enhancement, not part of the core missed-call pipeline.
-// It can be waiting on carrier (A2P) approval, or deliberately left off — neither
-// blocks "Live". Only a rejected/paused registration is a real problem, and even
-// then calls are still being caught.
+// Texting has two gates: carrier registration must be ready, then the owner
+// chooses whether automatic replies are on. These are deliberately separate.
 function textingCheck(signals: ReadinessSignals): ReadinessCheck {
   if (signals.a2pStatus === "rejected" || signals.a2pStatus === "paused") {
     return {
@@ -159,7 +161,7 @@ function textingCheck(signals: ReadinessSignals): ReadinessCheck {
       key: "texting",
       label: "Automatic texting",
       status: "pending",
-      detail: "Optional. Turns on automatically once carrier registration is approved — no action needed.",
+      detail: "Carrier registration is not approved yet. Missed calls can still reach your inbox.",
     };
   }
   if (!signals.smsEnabled) {
@@ -167,7 +169,7 @@ function textingCheck(signals: ReadinessSignals): ReadinessCheck {
       key: "texting",
       label: "Automatic texting",
       status: "pending",
-      detail: "Optional and approved — turn it on in Settings whenever you want it.",
+      detail: "Approved and paused by choice. Turn it on in Settings when you want callers texted automatically.",
     };
   }
   return {
@@ -178,10 +180,7 @@ function textingCheck(signals: ReadinessSignals): ReadinessCheck {
   };
 }
 
-// The single most useful thing to do next, highest priority first. Core-pipeline
-// steps come before texting, and once the core is verified we only surface a
-// texting action when it's genuinely broken (rejected/paused) — a deliberately
-// off or A2P-pending switch is a wait/choice, not a to-do.
+// The single most useful thing to do next, highest priority first.
 function pickNextAction(signals: ReadinessSignals, checks: Record<ReadinessCheckKey, ReadinessCheck>): ReadinessAction {
   const canEdit = signals.role !== "viewer";
 
@@ -202,26 +201,53 @@ function pickNextAction(signals: ReadinessSignals, checks: Record<ReadinessCheck
   if (signals.callMode === "direct" && !signals.hasRecoveredCall) {
     return { label: "Make a test missed call", href: "/setup#live-tests" };
   }
-  // Core pipeline is live below. Texting only becomes a to-do if it's broken.
   if (signals.a2pStatus === "rejected" || signals.a2pStatus === "paused") {
     return { label: "Resolve carrier registration", href: "/setup#live-tests" };
   }
   return null;
 }
 
-// When the core pipeline is live, describe what texting is doing (or waiting on)
-// without ever demoting the account from Live.
-function liveSummary(signals: ReadinessSignals): string {
-  if (signals.a2pStatus === "approved" && signals.smsEnabled) {
-    return "Missed calls are being caught and your callers get an instant text back.";
+function computeOperatingState({
+  callCaptureReady,
+  smsRegistrationReady,
+  smsEnabled,
+}: {
+  callCaptureReady: boolean;
+  smsRegistrationReady: boolean;
+  smsEnabled: boolean;
+}): OperatingState {
+  if (!callCaptureReady) return "setup_needed";
+  if (!smsRegistrationReady) return "calls_ready_sms_pending";
+  return smsEnabled ? "live_sms_on" : "live_sms_paused";
+}
+
+function headlineFor(state: OperatingState): string {
+  if (state === "live_sms_on") return "Relay is live and texting callers.";
+  if (state === "live_sms_paused") return "Relay is live. Auto-texting is paused.";
+  if (state === "calls_ready_sms_pending") return "Calls are ready. Texting needs attention.";
+  return "Relay needs setup.";
+}
+
+function summaryFor(state: OperatingState, signals: ReadinessSignals, checks: Record<ReadinessCheckKey, ReadinessCheck>) {
+  if (state === "live_sms_on") {
+    return "Missed calls will appear in your inbox, and callers will receive an immediate reply.";
   }
-  if (signals.a2pStatus === "approved" && !signals.smsEnabled) {
-    return "Missed calls are being caught. Turn on automatic texting in Settings whenever you want it.";
+  if (state === "live_sms_paused") {
+    return "Automatic texts are paused. Missed calls will still appear in your inbox, but callers will not receive an immediate reply.";
   }
-  if (signals.a2pStatus === "rejected" || signals.a2pStatus === "paused") {
-    return "Missed calls are being caught. Automatic texting is unavailable until carrier registration is resolved.";
+  if (state === "calls_ready_sms_pending") {
+    if (signals.a2pStatus === "rejected") {
+      return "Missed calls will appear in your inbox, but carrier registration was rejected. Contact Relay to re-file before texting callers.";
+    }
+    if (signals.a2pStatus === "paused") {
+      return "Missed calls will appear in your inbox, but carrier registration is paused. Resolve registration before texting callers.";
+    }
+    return "Missed calls will appear in your inbox. Automatic texting is not ready until carrier registration is approved.";
   }
-  return "Missed calls are being caught. Automatic texting will switch on once carrier registration is approved.";
+  if (!signals.hasProfile) {
+    return "Add your business details so Relay can start catching missed calls.";
+  }
+  return checks.routing.detail;
 }
 
 export function computeSetupReadiness(signals: ReadinessSignals): SetupReadiness {
@@ -233,45 +259,25 @@ export function computeSetupReadiness(signals: ReadinessSignals): SetupReadiness
   ];
   const byKey = Object.fromEntries(checks.map((check) => [check.key, check])) as Record<ReadinessCheckKey, ReadinessCheck>;
 
-  // The top-level state reflects only the core missed-call pipeline: is the
-  // account configured (profile) and are missed calls actually reaching the
-  // inbox (routing verified)? Texting is optional and never blocks Live.
-  let state: ReadinessState;
-  if (!signals.hasProfile) {
-    state = "not_ready";
-  } else if (byKey.routing.status === "blocked") {
-    state = "attention";
-  } else if (byKey.routing.status === "ok") {
-    state = "live";
-  } else {
-    state = "testing";
-  }
+  const callCaptureReady = signals.hasProfile && byKey.routing.status === "ok";
+  const smsRegistrationReady = signals.a2pStatus === "approved";
+  const operatingState = computeOperatingState({
+    callCaptureReady,
+    smsRegistrationReady,
+    smsEnabled: signals.smsEnabled,
+  });
 
   const nextAction = pickNextAction(signals, byKey);
 
-  const headline =
-    state === "live"
-      ? "Relay is live."
-      : state === "attention"
-        ? "Relay needs your attention."
-        : state === "testing"
-          ? "Almost there — let's test Relay."
-          : "Relay isn't set up yet.";
-
-  const summary =
-    state === "live"
-      ? liveSummary(signals)
-      : state === "attention"
-        ? byKey.routing.detail
-        : state === "testing"
-          ? "Run a quick test so you know missed calls are reaching your inbox."
-          : "Add your business details so Relay can start catching missed calls.";
-
   return {
-    state,
-    stateLabel: STATE_LABELS[state],
-    headline,
-    summary,
+    state: operatingState,
+    operatingState,
+    callCaptureReady,
+    smsRegistrationReady,
+    smsEnabled: signals.smsEnabled,
+    stateLabel: STATE_LABELS[operatingState],
+    headline: headlineFor(operatingState),
+    summary: summaryFor(operatingState, signals, byKey),
     nextAction,
     checks,
     evidence: pickEvidence(signals),

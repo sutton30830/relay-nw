@@ -66,7 +66,8 @@ test("account verifier checks pilot provisioning prerequisites", () => {
   assert.match(verifyAccountScript, /account_phone_numbers/);
   assert.match(verifyAccountScript, /account_users/);
   assert.match(verifyAccountScript, /owner_email is set/);
-  assert.match(verifyAccountScript, /SMS is disabled unless A2P is ready/);
+  assert.match(verifyAccountScript, /operating state: \$\{smsOperatingState\.label\}/);
+  assert.match(verifyAccountScript, /Live · Auto-text paused/);
   assert.match(verifyAccountScript, /Twilio number is not a placeholder/);
 });
 

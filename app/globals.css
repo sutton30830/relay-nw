@@ -2690,37 +2690,37 @@ code {
 .readiness__action {
   flex-shrink: 0;
 }
-.readiness--live {
+.readiness--live_sms_on {
   border-left-color: var(--good);
   background: color-mix(in oklab, var(--good-soft) 45%, var(--panel));
 }
-.readiness--live .readiness__dot {
+.readiness--live_sms_on .readiness__dot {
   background: var(--good);
 }
-.readiness--live .readiness__badge {
+.readiness--live_sms_on .readiness__badge {
   color: var(--good);
 }
-.readiness--attention {
+.readiness--calls_ready_sms_pending {
   border-left-color: var(--danger);
   background: color-mix(in oklab, var(--danger-soft) 45%, var(--panel));
 }
-.readiness--attention .readiness__dot {
+.readiness--calls_ready_sms_pending .readiness__dot {
   background: var(--danger);
 }
-.readiness--attention .readiness__badge {
+.readiness--calls_ready_sms_pending .readiness__badge {
   color: var(--danger);
 }
-.readiness--testing {
+.readiness--live_sms_paused {
   border-left-color: var(--brand);
   background: color-mix(in oklab, var(--brand) 8%, var(--panel));
 }
-.readiness--testing .readiness__dot {
+.readiness--live_sms_paused .readiness__dot {
   background: var(--brand);
 }
-.readiness--testing .readiness__badge {
+.readiness--live_sms_paused .readiness__badge {
   color: var(--brand);
 }
-.readiness--not_ready {
+.readiness--setup_needed {
   border-left-color: var(--ink-4);
 }
 
