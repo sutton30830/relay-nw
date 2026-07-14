@@ -34,6 +34,10 @@ const leadDrawerTsx = await readFile(new URL("../app/leads/_components/lead-draw
 const setupRequestDetailsTsx = await readFile(new URL("../app/leads/_components/setup-request-details.tsx", import.meta.url), "utf8");
 const globalsCss = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 const opsPageTsx = await readFile(new URL("../app/ops/page.tsx", import.meta.url), "utf8");
+const opsRunbookPageTsx = await readFile(new URL("../app/ops/runbook/page.tsx", import.meta.url), "utf8");
+const privacyPageTsx = await readFile(new URL("../app/privacy/page.tsx", import.meta.url), "utf8");
+const termsPageTsx = await readFile(new URL("../app/terms/page.tsx", import.meta.url), "utf8");
+const opsRunbookMd = await readFile(new URL("../docs/ops-runbook.md", import.meta.url), "utf8");
 const middlewareTs = await readFile(new URL("../middleware.ts", import.meta.url), "utf8");
 const envExample = await readFile(new URL("../.env.example", import.meta.url), "utf8");
 const packageJson = await readFile(new URL("../package.json", import.meta.url), "utf8");
@@ -78,6 +82,33 @@ test("email notifications are documented and lazily initialized", () => {
   assert.match(sql, /owner_email text/);
   assert.match(emailTs, /function getResendClient\(\)/);
   assert.doesNotMatch(emailTs.split("function getResendClient()")[0], /new Resend/);
+});
+
+test("privacy and terms disclose recording, transcription, AI processing, and retention", () => {
+  assert.match(privacyPageTsx, /voicemail recordings, transcripts, and short summaries/);
+  assert.match(privacyPageTsx, /Twilio and OpenAI/);
+  assert.match(privacyPageTsx, /does not use voicemail recordings, transcripts, or summaries for\s+advertising/);
+  assert.match(privacyPageTsx, /Operational webhook logs and\s+inbound SMS bodies are pruned/);
+  assert.match(privacyPageTsx, /delete or export account records/);
+
+  assert.match(termsPageTsx, /voicemail capture, transcription, and SMS\s+follow-up/);
+  assert.match(termsPageTsx, /Calls that reach Relay NW voicemail may be recorded, transcribed, and summarized/);
+  assert.match(termsPageTsx, /Businesses are responsible/);
+});
+
+test("ops runbook is authenticated and covers failure visibility plus retention", () => {
+  assert.match(opsPageTsx, /href="\/ops\/runbook"/);
+  assert.match(opsRunbookPageTsx, /requireAccountUser\(\)/);
+  assert.match(opsRunbookPageTsx, /Search webhook debug by CallSid, MessageSid, RecordingSid/);
+  assert.match(opsRunbookPageTsx, /Auto-text sends only when A2P is approved and texting is on/);
+  assert.match(opsRunbookPageTsx, /WEBHOOK_EVENT_RETENTION_DAYS/);
+  assert.match(opsRunbookPageTsx, /INBOUND_MESSAGE_RETENTION_DAYS/);
+  assert.match(opsRunbookPageTsx, /manual deletion or automated recording retention ships/);
+
+  assert.match(opsRunbookMd, /SMS Failed, Undelivered, or Not Sent/);
+  assert.match(opsRunbookMd, /Voicemail or Transcription Failed/);
+  assert.match(opsRunbookMd, /Alert Email Not Received/);
+  assert.match(opsRunbookMd, /Voicemail recordings, transcripts, and lead records are retained until manually deleted/);
 });
 
 test("missed-call owner notification only follows inserted leads", () => {

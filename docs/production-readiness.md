@@ -125,6 +125,13 @@ Update after Phase 2 activation-proof pass (July 2026):
 - This is deterministic local proof, not a live carrier/A2P delivery test. Keep running one real Twilio missed-call test before handoff for each business.
 - No schema changes; `supabase.sql` does not need to be re-run for this phase.
 
+Update after Phase 3 monitoring/privacy/retention pass (July 2026):
+- Privacy and Terms now explicitly disclose voicemail recording, transcription, AI summarization, service-provider processing, and retention/deletion requests.
+- Added `docs/ops-runbook.md` and an authenticated `/ops/runbook` page covering SMS failures, missing leads, voicemail/transcription failures, alert-email failures, retention posture, and the release checklist.
+- Contract tests now pin the recording/transcription disclosures and the ops runbook coverage.
+- Retention remains partially manual: webhook debug logs and inbound SMS bodies are pruned by existing retention settings, but voicemail recordings/transcripts/lead records still require manual deletion until automated recording retention ships.
+- No schema changes; `supabase.sql` does not need to be re-run for this phase.
+
 Recommended launch posture:
 - Personally onboard each business.
 - Run one real end-to-end test per business.

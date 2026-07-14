@@ -43,6 +43,7 @@ export default async function OpsPage({
             <form action="/api/email-test/start" method="post">
               <button className="btn btn-secondary" type="submit">Test owner email</button>
             </form>
+            <Link className="btn btn-secondary" href="/ops/runbook">Runbook</Link>
             <Link className="btn btn-secondary" href="/leads">Back to leads</Link>
           </div>
         </div>

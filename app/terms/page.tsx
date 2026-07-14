@@ -8,8 +8,19 @@ export default function TermsPage() {
         <section>
           <h2>Service Description</h2>
           <p>
-            Relay NW provides missed-call response and SMS follow-up tools for callers who contact
-            Relay NW.
+            Relay NW provides missed-call response, voicemail capture, transcription, and SMS
+            follow-up tools for businesses that use the service. When callers contact a
+            participating business, Relay NW may help that business receive, organize, and respond
+            to the inquiry.
+          </p>
+        </section>
+
+        <section>
+          <h2>Call Recording and Transcription</h2>
+          <p>
+            Calls that reach Relay NW voicemail may be recorded, transcribed, and summarized for
+            the business. Businesses are responsible for using Relay NW in a way that complies
+            with laws that apply to their calls, notices, and customer communications.
           </p>
         </section>
 
