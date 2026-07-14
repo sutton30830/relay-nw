@@ -27,6 +27,17 @@ function smsMetaText(lead: Lead, now: number) {
   return `SMS ${lead.sms_status}${updated}`;
 }
 
+function smsAlertText(error: string | null) {
+  const normalized = error?.trim();
+  if (!normalized) return "SMS delivery failed. Call them directly.";
+
+  if (/^\d{4,6}$/.test(normalized)) {
+    return "SMS delivery failed. Call them directly.";
+  }
+
+  return `${normalized} Call them directly.`;
+}
+
 export function LeadCard({
   lead,
   now,
@@ -238,7 +249,7 @@ export function LeadCard({
       {attention ? (
         <div className="lead-card__alert">
           <Icon name="alertTriangle" size={14} />
-          <span>{lead.sms_error || "SMS delivery failed"} - call them directly.</span>
+          <span>{smsAlertText(lead.sms_error)}</span>
         </div>
       ) : null}
 
@@ -288,7 +299,7 @@ export function LeadCard({
               items={[
                 ...categoryActions,
                 {
-                  label: booked ? "Mark as unbooked" : "Mark as booked",
+                  label: booked ? "Mark as Unbooked" : "Mark as Booked",
                   onSelect: () => onBooked(lead.id, !booked),
                 },
                 { label: "Move to Trash", danger: true, onSelect: () => onDelete(lead.id) },

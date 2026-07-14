@@ -141,7 +141,7 @@ test("booked is an outcome flag, never a workflow status button", () => {
   // Status buttons stay New/Contacted/Closed — booked is set via the outcome
   // toggle or booked-value input, not by changing workflow status.
   assert.doesNotMatch(leadConstantsTs, /STATUS_OPTIONS: LeadStatus\[\] = \["new", "contacted", "booked", "dead"\]/);
-  assert.match(leadCardTsx, /booked \? "Mark as unbooked" : "Mark as booked"/);
+  assert.match(leadCardTsx, /booked \? "Mark as Unbooked" : "Mark as Booked"/);
   assert.match(leadCardTsx, /onBooked\(lead\.id, !booked\)/);
 });
 
@@ -152,6 +152,13 @@ test("lead card actions keep workflow controls explicit and avoid duplicate deta
   assert.match(leadCardTsx, /triggerAriaLabel="Change lead status"/);
   assert.doesNotMatch(leadCardTsx, />Details</);
   assert.doesNotMatch(leadCardTsx, /Booked value missing/);
+});
+
+test("lead card hides raw sms error codes behind owner-facing language", () => {
+  assert.match(leadCardTsx, /function smsAlertText\(error: string \| null\)/);
+  assert.match(leadCardTsx, /\\d\{4,6\}/);
+  assert.doesNotMatch(leadCardTsx, /Code \$\{normalized\}/);
+  assert.doesNotMatch(leadCardTsx, /\{lead\.sms_error \|\| "SMS delivery failed"\} - call them directly/);
 });
 
 test("mobile lead cards prioritize category and actionable facts", () => {
