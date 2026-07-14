@@ -3165,6 +3165,55 @@ code {
   box-shadow: none;
 }
 
+/* Combined Full-test verdict above the individual leg cards. */
+.full-test__verdict {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-left: 4px solid var(--line);
+  background: var(--panel-2);
+}
+.full-test__count {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+.full-test__headline {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+.full-test__detail {
+  margin: 2px 0 0;
+  color: var(--ink-4);
+  font-size: 12.5px;
+}
+.full-test__verdict--verified {
+  border-left-color: var(--good);
+  background: color-mix(in oklab, var(--good-soft) 45%, var(--panel));
+}
+.full-test__verdict--verified .full-test__count {
+  color: var(--good);
+  border-color: color-mix(in oklab, var(--good) 35%, var(--line));
+}
+.full-test__verdict--attention {
+  border-left-color: var(--danger);
+  background: color-mix(in oklab, var(--danger-soft) 40%, var(--panel));
+}
+.full-test__verdict--running {
+  border-left-color: var(--brand);
+}
+
 .priority-badge {
   border-color: color-mix(in oklab, var(--brand) 18%, var(--line));
   background: color-mix(in oklab, var(--brand-soft) 62%, var(--panel));

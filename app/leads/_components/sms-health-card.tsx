@@ -23,7 +23,11 @@ function smsStatusClass(status: SmsTestResponse["status"]) {
   return "sms-health__status--unknown";
 }
 
-export function SmsHealthCard() {
+export function SmsHealthCard({
+  onStatusChange,
+}: {
+  onStatusChange?: (status: "idle" | "pending" | "passed" | "failed") => void;
+} = {}) {
   const [result, setResult] = useState<SmsTestResponse | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +35,19 @@ export function SmsHealthCard() {
   const status = result?.status;
   const messageSid = result?.messageSid;
   const isPolling = Boolean(messageSid && status && !FINAL_SMS_STATUSES.has(status));
+
+  // Normalize Twilio's message status into the combined Full-test verdict.
+  useEffect(() => {
+    const normalized: "idle" | "pending" | "passed" | "failed" =
+      status === "delivered" || status === "sent"
+        ? "passed"
+        : status === "failed" || status === "undelivered"
+          ? "failed"
+          : status === "queued" || status === "sending" || status === "accepted"
+            ? "pending"
+            : "idle";
+    onStatusChange?.(normalized);
+  }, [status, onStatusChange]);
 
   useEffect(() => {
     if (!messageSid || !isPolling) {

@@ -1,7 +1,6 @@
 import { CopyButton } from "@/app/copy-button";
 import { AppHeader } from "@/app/leads/_components/app-header";
-import { ForwardingHealthCard } from "@/app/leads/_components/forwarding-health-card";
-import { SmsHealthCard } from "@/app/leads/_components/sms-health-card";
+import { FullTestPanel } from "@/app/leads/_components/full-test-panel";
 import { Icon } from "@/components/icon";
 import { requireAccountUser } from "@/lib/auth";
 import {
@@ -279,14 +278,14 @@ export default async function SetupPage() {
           <article id="live-tests" className="panel setup-panel setup-panel--tests">
             <div className="setup-panel__head">
               <div>
-                <p className="t-eyebrow">Live tests</p>
-                <h2 className="t-display">Test Relay before you rely on it.</h2>
+                <p className="t-eyebrow">Full test</p>
+                <h2 className="t-display">Confirm Relay works end to end.</h2>
               </div>
             </div>
-            {account.callMode === "forwarding" ? (
-              <ForwardingHealthCard initialSummary={forwardingHealth} />
-            ) : null}
-            <SmsHealthCard />
+            <FullTestPanel
+              initialForwardingSummary={forwardingHealth}
+              showForwarding={account.callMode === "forwarding"}
+            />
           </article>
         </section>
       </section>

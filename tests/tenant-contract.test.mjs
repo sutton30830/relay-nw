@@ -247,8 +247,8 @@ test("magic-link callback resolves account from exchanged user, not same-request
 test("authenticated setup page exposes onboarding checks without creating a new tenant path", () => {
   assert.match(setupPageTsx, /getForwardingHealthSummary\(accountId\)/);
   assert.match(setupPageTsx, /getA2pRegistrationStatus\(accountId\)/);
-  assert.match(setupPageTsx, /ForwardingHealthCard/);
-  assert.match(setupPageTsx, /SmsHealthCard/);
+  // The forwarding + SMS checks are exposed through the unified Full-test panel.
+  assert.match(setupPageTsx, /FullTestPanel/);
   assert.match(setupPageTsx, /carrierCodeExample\("\*61\*", account\.twilioPhoneNumber\)/);
   assert.match(setupPageTsx, /carrierCodeExample\("\*67\*", account\.twilioPhoneNumber\)/);
   assert.match(setupPageTsx, /carrierCodeExample\("\*62\*", account\.twilioPhoneNumber\)/);

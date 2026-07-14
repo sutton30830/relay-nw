@@ -34,7 +34,13 @@ function statusClass(status: ForwardingHealthSummary["displayStatus"]) {
   return "forwarding-health__status--unknown";
 }
 
-export function ForwardingHealthCard({ initialSummary }: { initialSummary: ForwardingHealthSummary }) {
+export function ForwardingHealthCard({
+  initialSummary,
+  onStatusChange,
+}: {
+  initialSummary: ForwardingHealthSummary;
+  onStatusChange?: (status: "idle" | "pending" | "passed" | "failed") => void;
+}) {
   const [summary, setSummary] = useState(initialSummary);
   const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +59,16 @@ export function ForwardingHealthCard({ initialSummary }: { initialSummary: Forwa
   const isPending = displayStatus === "pending";
   const isButtonDisabled = isStarting || isPending || isCoolingDown;
   const lastPassed = useMemo(() => formatDateTime(summary.lastPassedAt), [summary.lastPassedAt]);
+
+  // Report status upward for the combined Full-test verdict. onStatusChange is a
+  // stable state setter from the parent, so this only fires on real changes.
+  useEffect(() => {
+    const normalized =
+      displayStatus === "passed" || displayStatus === "pending" || displayStatus === "failed"
+        ? displayStatus
+        : "idle";
+    onStatusChange?.(normalized);
+  }, [displayStatus, onStatusChange]);
 
   async function refreshStatus() {
     setSummary(await fetchForwardingHealthStatus());
