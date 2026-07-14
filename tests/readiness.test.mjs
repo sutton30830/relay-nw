@@ -34,6 +34,8 @@ function signals(overrides = {}) {
     a2pStatus: "approved",
     forwardingStatus: "passed",
     hasRecoveredCall: true,
+    lastRecoveredCallAt: null,
+    forwardingLastPassedAt: null,
     ...overrides,
   };
 }
@@ -109,4 +111,38 @@ test("viewer with incomplete profile gets a read-only pointer", () => {
   const r = computeSetupReadiness(signals({ role: "viewer", hasProfile: false }));
   assert.equal(r.state, "not_ready");
   assert.match(r.nextAction?.label ?? "", /ask an owner/i);
+});
+
+test("evidence: a real recovered call outranks a forwarding test", () => {
+  const r = computeSetupReadiness(
+    signals({
+      lastRecoveredCallAt: "2026-07-10T00:00:00Z",
+      forwardingLastPassedAt: "2026-07-11T00:00:00Z",
+    }),
+  );
+  // Forwarding test is newer, so it's shown; both are candidates.
+  assert.equal(r.evidence?.label, "Forwarding test passed");
+
+  const r2 = computeSetupReadiness(
+    signals({
+      lastRecoveredCallAt: "2026-07-12T00:00:00Z",
+      forwardingLastPassedAt: "2026-07-11T00:00:00Z",
+    }),
+  );
+  assert.equal(r2.evidence?.label, "Caught a real missed call");
+});
+
+test("evidence: real call wins ties over a same-time forwarding test", () => {
+  const r = computeSetupReadiness(
+    signals({
+      lastRecoveredCallAt: "2026-07-11T00:00:00Z",
+      forwardingLastPassedAt: "2026-07-11T00:00:00Z",
+    }),
+  );
+  assert.equal(r.evidence?.label, "Caught a real missed call");
+});
+
+test("evidence is null when there is no proof yet", () => {
+  const r = computeSetupReadiness(signals({ lastRecoveredCallAt: null, forwardingLastPassedAt: null }));
+  assert.equal(r.evidence, null);
 });

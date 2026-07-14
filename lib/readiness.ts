@@ -21,6 +21,11 @@ export type ReadinessCheck = {
 
 export type ReadinessAction = { label: string; href: string } | null;
 
+// The freshest proof the pipeline actually works: a real recovered call beats a
+// forwarding test (it exercises the whole path), and both carry a timestamp so
+// the UI can show how recently Relay was confirmed working.
+export type ReadinessEvidence = { label: string; at: string } | null;
+
 export type SetupReadiness = {
   state: ReadinessState;
   stateLabel: string;
@@ -28,6 +33,7 @@ export type SetupReadiness = {
   summary: string;
   nextAction: ReadinessAction;
   checks: ReadinessCheck[];
+  evidence: ReadinessEvidence;
 };
 
 export type A2pStatus = "not_started" | "in_progress" | "approved" | "rejected" | "paused" | "unknown";
@@ -43,7 +49,29 @@ export type ReadinessSignals = {
   // At least one real missed call has flowed all the way into the inbox — the
   // only proof that the pipeline works end-to-end.
   hasRecoveredCall: boolean;
+  // Timestamps behind the proof, for showing how recently Relay was confirmed
+  // working. Null when there's no such evidence yet.
+  lastRecoveredCallAt: string | null;
+  forwardingLastPassedAt: string | null;
 };
+
+// The freshest evidence wins; a real recovered call outranks a forwarding test
+// at the same time because it exercises the entire pipeline.
+function pickEvidence(signals: ReadinessSignals): ReadinessEvidence {
+  const candidates: Array<{ label: string; at: string; rank: number }> = [];
+  if (signals.lastRecoveredCallAt) {
+    candidates.push({ label: "Caught a real missed call", at: signals.lastRecoveredCallAt, rank: 1 });
+  }
+  if (signals.forwardingLastPassedAt) {
+    candidates.push({ label: "Forwarding test passed", at: signals.forwardingLastPassedAt, rank: 0 });
+  }
+  candidates.sort((a, b) => {
+    const timeDiff = new Date(b.at).getTime() - new Date(a.at).getTime();
+    return timeDiff !== 0 ? timeDiff : b.rank - a.rank;
+  });
+  const best = candidates[0];
+  return best ? { label: best.label, at: best.at } : null;
+}
 
 const STATE_LABELS: Record<ReadinessState, string> = {
   not_ready: "Not ready",
@@ -246,5 +274,6 @@ export function computeSetupReadiness(signals: ReadinessSignals): SetupReadiness
     summary,
     nextAction,
     checks,
+    evidence: pickEvidence(signals),
   };
 }

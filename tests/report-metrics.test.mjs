@@ -18,7 +18,7 @@ async function loadTsModule(path) {
   return module.exports;
 }
 
-const { rate, formatPercent, median, formatResponseTime } = await loadTsModule("lib/report-metrics.ts");
+const { rate, formatPercent, median, formatResponseTime, formatRelativeAge } = await loadTsModule("lib/report-metrics.ts");
 
 test("rate returns null on a zero denominator (avoids misleading 0%)", () => {
   assert.equal(rate(0, 0), null);
@@ -52,4 +52,14 @@ test("formatResponseTime scales seconds to a compact label", () => {
   assert.equal(formatResponseTime(150), "3m");
   assert.equal(formatResponseTime(3600), "1h");
   assert.equal(formatResponseTime(90000), "1d");
+});
+
+test("formatRelativeAge labels how long ago a timestamp was", () => {
+  const now = Date.parse("2026-07-12T12:00:00Z");
+  assert.equal(formatRelativeAge("2026-07-12T11:59:30Z", now), "just now");
+  assert.equal(formatRelativeAge("2026-07-12T11:45:00Z", now), "15m ago");
+  assert.equal(formatRelativeAge("2026-07-12T10:00:00Z", now), "2h ago");
+  assert.equal(formatRelativeAge("2026-07-09T12:00:00Z", now), "3d ago");
+  assert.equal(formatRelativeAge("2026-05-12T12:00:00Z", now), "2mo ago");
+  assert.equal(formatRelativeAge("not-a-date", now), "");
 });

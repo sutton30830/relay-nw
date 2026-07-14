@@ -191,6 +191,33 @@ export async function getAccountResponseStats(
   return { medianSeconds: median(deltas), sampleSize: deltas.length };
 }
 
+// When did Relay last catch a real missed call — the strongest, freshest proof
+// the pipeline works end to end. Null if it never has.
+export async function getLastRecoveredCallAt(inputAccountId: string): Promise<string | null> {
+  const accountId = assertAccountId(inputAccountId, "getLastRecoveredCallAt");
+
+  if (isPlaceholderSupabaseConfig()) {
+    return null;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("leads")
+    .select("created_at")
+    .eq("account_id", accountId)
+    .eq("source", "missed_call")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("Could not load last recovered call time.", { accountId, error: error.message });
+    return null;
+  }
+
+  return (data?.created_at as string | undefined) ?? null;
+}
+
 export async function listActiveAccountIds() {
   if (isPlaceholderSupabaseConfig()) {
     return [] as string[];

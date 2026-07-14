@@ -4,8 +4,14 @@ import { ForwardingHealthCard } from "@/app/leads/_components/forwarding-health-
 import { SmsHealthCard } from "@/app/leads/_components/sms-health-card";
 import { Icon } from "@/components/icon";
 import { requireAccountUser } from "@/lib/auth";
-import { getA2pRegistrationStatus, getAccountRecoveryStats, getForwardingHealthSummary } from "@/lib/supabase";
+import {
+  getA2pRegistrationStatus,
+  getAccountRecoveryStats,
+  getForwardingHealthSummary,
+  getLastRecoveredCallAt,
+} from "@/lib/supabase";
 import { computeSetupReadiness, type A2pStatus } from "@/lib/readiness";
+import { formatRelativeAge } from "@/lib/report-metrics";
 
 export const dynamic = "force-dynamic";
 
@@ -80,10 +86,11 @@ function MetricCard({
 
 export default async function SetupPage() {
   const { account, accountId, role } = await requireAccountUser();
-  const [forwardingHealth, a2pStatus, recovery] = await Promise.all([
+  const [forwardingHealth, a2pStatus, recovery, lastRecoveredCallAt] = await Promise.all([
     getForwardingHealthSummary(accountId),
     getA2pRegistrationStatus(accountId),
     getAccountRecoveryStats(accountId, { since: null }),
+    getLastRecoveredCallAt(accountId),
   ]);
 
   const carrierStatus = a2pStatus ?? "unknown";
@@ -104,6 +111,8 @@ export default async function SetupPage() {
       : "unknown") as A2pStatus,
     forwardingStatus: forwardingHealth.displayStatus,
     hasRecoveredCall: recovery.missedCalls > 0,
+    lastRecoveredCallAt,
+    forwardingLastPassedAt: forwardingHealth.lastPassedAt,
   });
 
   const noAnswerCode = carrierCodeExample("*61*", account.twilioPhoneNumber);
@@ -133,6 +142,12 @@ export default async function SetupPage() {
             </span>
             <h2 className="readiness__headline">{readiness.headline}</h2>
             <p className="readiness__summary">{readiness.summary}</p>
+            {readiness.state === "live" && readiness.evidence ? (
+              <p className="readiness__evidence" suppressHydrationWarning>
+                <Icon name="check" size={13} />
+                Confirmed {formatRelativeAge(readiness.evidence.at, Date.now())} — {readiness.evidence.label.toLowerCase()}
+              </p>
+            ) : null}
           </div>
           {/* Plain anchor (not next/link): the test actions point to
               /setup#live-tests, and a same-page hash must scroll to the tool
