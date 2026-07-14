@@ -3174,6 +3174,60 @@ code {
   overflow-wrap: anywhere;
 }
 
+/* Carrier-aware forwarding: pick your carrier, get the right codes. */
+.carrier-select {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 18px 0;
+}
+.carrier-pill {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink-2);
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.carrier-pill--on {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+.carrier-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+.carrier-tag--known {
+  background: var(--good-soft);
+  color: var(--good);
+}
+.carrier-tag--generic {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.carrier-note {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0;
+  padding: 4px 18px 0;
+  color: var(--ink-4);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.carrier-note > svg {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
 .setup-panel--tests {
   display: grid;
   gap: 0;

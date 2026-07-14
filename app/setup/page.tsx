@@ -1,5 +1,5 @@
-import { CopyButton } from "@/app/copy-button";
 import { AppHeader } from "@/app/leads/_components/app-header";
+import { CarrierForwarding } from "./carrier-forwarding";
 import { FullTestPanel } from "@/app/leads/_components/full-test-panel";
 import { Icon } from "@/components/icon";
 import { requireAccountUser } from "@/lib/auth";
@@ -34,11 +34,6 @@ function statusTone(status: "complete" | "pending" | "blocked") {
   if (status === "complete") return "setup-status__step--complete";
   if (status === "blocked") return "setup-status__step--blocked";
   return "setup-status__step--pending";
-}
-
-function carrierCodeExample(prefix: string, relayNumber: string) {
-  const digits = relayNumber.replace(/\D/g, "");
-  return digits ? `${prefix}${digits}#` : "";
 }
 
 function Step({
@@ -114,9 +109,6 @@ export default async function SetupPage() {
     forwardingLastPassedAt: forwardingHealth.lastPassedAt,
   });
 
-  const noAnswerCode = carrierCodeExample("*61*", account.twilioPhoneNumber);
-  const busyCode = carrierCodeExample("*67*", account.twilioPhoneNumber);
-  const unreachableCode = carrierCodeExample("*62*", account.twilioPhoneNumber);
 
   return (
     <main className="leads-view">
@@ -245,29 +237,7 @@ export default async function SetupPage() {
               </div>
             </div>
             {account.callMode === "forwarding" ? (
-              <>
-                <p className="setup-copy">
-                  Configure your existing business number to forward unanswered, busy, and unreachable calls to your Relay number. The examples below work for many US mobile carriers, but carrier apps, landlines, VoIP providers, and some regional carriers use different steps.
-                </p>
-                <p className="setup-copy setup-copy--tight">
-                  If these codes do not work, use your carrier&apos;s call-forwarding instructions or contact their support team.
-                </p>
-                <div className="setup-codes">
-                  {[
-                    ["No answer", noAnswerCode],
-                    ["Busy", busyCode],
-                    ["Unreachable", unreachableCode],
-                  ].map(([label, code]) => (
-                    <div className="setup-code" key={label}>
-                      <div>
-                        <span>{label}</span>
-                        <strong>{code || "Add Relay number first"}</strong>
-                      </div>
-                      {code ? <CopyButton value={code} label="Copy" /> : null}
-                    </div>
-                  ))}
-                </div>
-              </>
+              <CarrierForwarding relayNumber={account.twilioPhoneNumber} />
             ) : (
               <p className="setup-copy">
                 Direct mode is active. Use the Relay number as your public call number, then make a real missed-call test before relying on it.
