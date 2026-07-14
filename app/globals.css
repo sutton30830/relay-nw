@@ -4324,7 +4324,7 @@ code {
   }
 
   .lead-card__name {
-    font-size: 17px;
+    font-size: 18px;
   }
 
   .lead-card__title-row {
@@ -4332,10 +4332,11 @@ code {
   }
 
   .lead-card__status-pill {
-    min-height: 28px;
-    padding: 6px 10px;
-    font-size: 12px;
+    min-height: 32px;
+    padding: 7px 12px;
+    font-size: 12.5px;
     letter-spacing: 0.08em;
+    box-shadow: 0 1px 0 color-mix(in oklab, var(--ink) 8%, transparent);
   }
 
   .lead-card__meta {
@@ -4348,6 +4349,15 @@ code {
     justify-content: flex-start;
     gap: 7px 10px;
     font-size: 12.5px;
+  }
+
+  /* Keep mobile cards focused on the owner workflow. Routine delivery and
+     duplicate voicemail/value facts remain available in the lead drawer and
+     on desktop; only facts that need action stay in the mobile scan path. */
+  .lead-card__meta-secondary,
+  .lead-card__fact--secondary,
+  .lead-card__facts:not(.lead-card__facts--has-mobile-essential) {
+    display: none;
   }
 
   .lead-card__meta span:not(:first-child)::before,

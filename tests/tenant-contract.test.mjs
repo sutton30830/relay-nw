@@ -154,10 +154,19 @@ test("lead card actions keep workflow controls explicit and avoid duplicate deta
   assert.doesNotMatch(leadCardTsx, /Booked value missing/);
 });
 
+test("mobile lead cards prioritize category and actionable facts", () => {
+  assert.match(leadCardTsx, /lead-card__meta-secondary/);
+  assert.match(leadCardTsx, /lead-card__fact--essential/);
+  assert.match(leadCardTsx, /lead-card__fact--secondary/);
+  assert.match(leadCardTsx, /SMS skipped: opted out/);
+  assert.match(globalsCss, /@media \(max-width: 720px\)[\s\S]*\.lead-card__meta-secondary,[\s\S]*\.lead-card__fact--secondary[\s\S]*display:\s*none/);
+  assert.match(globalsCss, /@media \(max-width: 720px\)[\s\S]*\.lead-card__status-pill\s*\{[\s\S]*min-height:\s*32px/);
+});
+
 test("mobile booked value control stays compact and polished", () => {
   assert.match(leadCardTsx, /<Icon name="star" size=\{13\} \/>/);
   assert.match(globalsCss, /@media \(max-width: 560px\)[\s\S]*\.lead-card__value\s*\{[\s\S]*display:\s*grid/);
-  assert.match(globalsCss, /@media \(max-width: 720px\)[\s\S]*\.lead-card__status-pill\s*\{[\s\S]*min-height:\s*28px/);
+  assert.match(globalsCss, /@media \(max-width: 720px\)[\s\S]*\.lead-card__status-pill\s*\{[\s\S]*min-height:\s*32px/);
   assert.match(globalsCss, /@media \(max-width: 560px\)[\s\S]*\.lead-card__value\s*\{[\s\S]*grid-template-columns:\s*auto minmax\(0, 1fr\)/);
   assert.match(globalsCss, /@media \(max-width: 560px\)[\s\S]*\.lead-card__value \.money-field--compact\s*\{[\s\S]*min-height:\s*40px/);
   assert.match(globalsCss, /@media \(max-width: 560px\)[\s\S]*\.lead-card__value \.money-field--compact input\s*\{[\s\S]*font-size:\s*18px/);

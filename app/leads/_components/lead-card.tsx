@@ -91,15 +91,31 @@ export function LeadCard({
         : "No voicemail left. Call back while the request is still fresh.";
   const statusLabel = trashed ? "Trash" : STATUS_LABELS[lead.status];
   const statusTone = trashed ? "trash" : lead.status;
-  const headerMeta = [formatPhone(lead.phone), formatRelativeTime(lead.created_at, now), callCount > 1 ? `${callCount} calls` : null].filter(
-    Boolean,
-  );
+  const smsMeta = smsMetaText(lead, now);
+  const headerMeta = [
+    { text: formatPhone(lead.phone), className: "t-mono" },
+    { text: formatRelativeTime(lead.created_at, now) },
+    callCount > 1 ? { text: `${callCount} calls`, className: "lead-card__meta-secondary" } : null,
+  ].filter((item): item is { text: string; className?: string } => Boolean(item));
   const quietMeta = [
-    booked && lead.job_value_cents ? `${formatCurrency(lead.job_value_cents)} booked` : null,
-    lead.source === "intake_form" ? sourceLabel(lead.source) : null,
-    smsMetaText(lead, now),
-    lead.recording_sid ? "Voicemail" : null,
-  ].filter(Boolean);
+    booked && lead.job_value_cents
+      ? { text: `${formatCurrency(lead.job_value_cents)} booked`, mobileEssential: false }
+      : null,
+    lead.source === "intake_form"
+      ? { text: sourceLabel(lead.source), mobileEssential: false }
+      : null,
+    smsMeta
+      ? {
+          text: smsMeta,
+          mobileEssential:
+            smsMeta.startsWith("SMS failed") ||
+            smsMeta.startsWith("SMS off") ||
+            smsMeta.startsWith("SMS skipped: opted out"),
+        }
+      : null,
+    lead.recording_sid ? { text: "Voicemail", mobileEssential: false } : null,
+  ].filter((item): item is { text: string; mobileEssential: boolean } => Boolean(item));
+  const hasMobileEssentialFact = quietMeta.some((item) => item.mobileEssential);
   const showPriorityCue = !trashed && priority.level !== "normal";
   const categoryActions = STATUS_OPTIONS
     .filter((status) => status !== lead.status)
@@ -152,8 +168,8 @@ export function LeadCard({
             </div>
             <div className="lead-card__meta">
               {headerMeta.map((item, index) => (
-                <span key={`${item}-${index}`} className={index === 0 ? "t-mono" : undefined}>
-                  {item}
+                <span key={`${item.text}-${index}`} className={item.className}>
+                  {item.text}
                 </span>
               ))}
             </div>
@@ -161,13 +177,17 @@ export function LeadCard({
         </div>
 
         {quietMeta.length > 0 ? (
-          <div className="lead-card__facts">
+          <div className={`lead-card__facts ${hasMobileEssentialFact ? "lead-card__facts--has-mobile-essential" : ""}`}>
             {quietMeta.map((item, index) => (
               <span
-                key={`${item}-${index}`}
-                className={String(item).startsWith("SMS failed") || String(item).startsWith("SMS off") ? "lead-card__fact--warn" : ""}
+                key={`${item.text}-${index}`}
+                className={`${
+                  item.text.startsWith("SMS failed") || item.text.startsWith("SMS off")
+                    ? "lead-card__fact--warn"
+                    : ""
+                } ${item.mobileEssential ? "lead-card__fact--essential" : "lead-card__fact--secondary"}`.trim()}
               >
-                {item}
+                {item.text}
               </span>
             ))}
           </div>
