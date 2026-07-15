@@ -470,14 +470,22 @@ export function countCallsByPhone(leads: Lead[]) {
   return counts;
 }
 
-export function sortLeadsForWork(leads: Lead[], now = Date.now()) {
+export function sortLeadsForWork(leads: Lead[], now = Date.now(), options: { prioritizeWork?: boolean } = {}) {
+  const prioritizeWork = options.prioritizeWork ?? true;
+
   return [...leads].sort((a, b) => {
+    const timeDiff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+
+    if (!prioritizeWork) {
+      if (timeDiff !== 0) return timeDiff;
+      return b.id.localeCompare(a.id);
+    }
+
     const aIsFresh = isFreshActiveLead(a, now);
     const bIsFresh = isFreshActiveLead(b, now);
     const freshDiff = Number(bIsFresh) - Number(aIsFresh);
     if (freshDiff !== 0) return freshDiff;
 
-    const timeDiff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     if (aIsFresh && bIsFresh && timeDiff !== 0) return timeDiff;
 
     const recencyDiff = activeRecencySortScore(a, now) - activeRecencySortScore(b, now);

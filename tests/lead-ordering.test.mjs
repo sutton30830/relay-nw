@@ -60,6 +60,29 @@ function lead(overrides) {
   };
 }
 
+test("all inbox sorting is chronological even when an older lead has priority language", async () => {
+  const { sortLeadsForWork } = await loadLeadUtils();
+  const now = new Date("2026-07-03T12:00:00.000Z").getTime();
+
+  const olderPriority = lead({
+    id: "older-priority",
+    message: "Water heater leaking; needs assistance fixing it.",
+    priority: "today",
+    priority_reason: "mentioned a leak",
+    created_at: "2026-07-02T16:00:00.000Z",
+  });
+  const newerNormal = lead({
+    id: "newer-normal",
+    message: "No voicemail left.",
+    created_at: "2026-07-03T05:00:00.000Z",
+  });
+
+  assert.deepEqual(
+    sortLeadsForWork([olderPriority, newerNormal], now, { prioritizeWork: false }).map((item) => item.id),
+    ["newer-normal", "older-priority"],
+  );
+});
+
 test("lead inbox sorting puts urgent work ahead of newer normal leads inside the recent-work bucket", async () => {
   const { sortLeadsForWork } = await loadLeadUtils();
   const now = new Date("2026-07-03T12:00:00.000Z").getTime();
