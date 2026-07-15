@@ -33,7 +33,7 @@ export default async function LeadsPage({
 }: {
   searchParams: Promise<{ page?: string | string[]; filter?: string | string[]; q?: string | string[] }>;
 }) {
-  const { account, accountId } = await requireAccountUser();
+  const { account, accountId, membershipCount } = await requireAccountUser();
   const businessName = publicBusinessName(account.businessName);
   const params = await searchParams;
   const page = readPage(params.page);
@@ -57,6 +57,7 @@ export default async function LeadsPage({
     <main className="leads-view">
       <LeadsList
         businessName={businessName}
+        switchAccountHref={membershipCount > 1 ? "/account/select?next=/leads" : undefined}
         leads={leadPage.leads}
         counts={counts}
         callCounts={leadPage.callCounts ?? {}}

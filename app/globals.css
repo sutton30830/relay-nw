@@ -674,6 +674,88 @@ code {
   color: var(--ink-3);
 }
 
+.account-select-card {
+  max-width: 560px;
+}
+
+.account-select-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.account-choice {
+  display: grid;
+  width: 100%;
+  min-height: 76px;
+  cursor: pointer;
+  appearance: none;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid color-mix(in oklab, var(--line) 82%, transparent);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 92% 0%, color-mix(in oklab, var(--brand-soft) 54%, transparent), transparent 42%),
+    color-mix(in oklab, var(--panel) 94%, white);
+  color: var(--ink);
+  padding: 12px;
+  text-align: left;
+  box-shadow: var(--shadow-sm);
+}
+
+.account-choice:hover,
+.account-choice:focus-visible {
+  border-color: color-mix(in oklab, var(--brand) 32%, var(--line));
+  outline: none;
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--brand) 10%, transparent), var(--shadow-sm);
+}
+
+.account-choice[aria-current="true"] {
+  border-color: color-mix(in oklab, var(--brand) 42%, var(--line));
+}
+
+.account-choice__avatar {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 14px;
+  background: var(--brand);
+  color: #fff;
+  font-weight: 950;
+}
+
+.account-choice__main {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.account-choice__main strong,
+.account-choice__main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-choice__main strong {
+  font-size: 16px;
+  font-weight: 950;
+}
+
+.account-choice__main span {
+  color: var(--ink-3);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.account-choice__action {
+  color: var(--brand);
+  font-size: 13px;
+  font-weight: 900;
+}
+
 .home-hero {
   position: relative;
   display: grid;

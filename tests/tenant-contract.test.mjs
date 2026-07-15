@@ -13,11 +13,13 @@ const intakeRouteTs = await readFile(new URL("../app/api/intake/route.ts", impor
 const authLoginRouteTs = await readFile(new URL("../app/api/auth/login/route.ts", import.meta.url), "utf8");
 const authPasswordLoginRouteTs = await readFile(new URL("../app/api/auth/password-login/route.ts", import.meta.url), "utf8");
 const authPasswordResetRouteTs = await readFile(new URL("../app/api/auth/password-reset/route.ts", import.meta.url), "utf8");
+const authSelectAccountRouteTs = await readFile(new URL("../app/api/auth/select-account/route.ts", import.meta.url), "utf8");
 const authUpdatePasswordRouteTs = await readFile(new URL("../app/api/auth/update-password/route.ts", import.meta.url), "utf8");
 const authCallbackRouteTs = await readFile(new URL("../app/auth/callback/route.ts", import.meta.url), "utf8");
 const inboundSmsRouteTs = await readFile(new URL("../app/api/twilio/sms/route.ts", import.meta.url), "utf8");
 const homePageTsx = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 const loginPageTsx = await readFile(new URL("../app/login/page.tsx", import.meta.url), "utf8");
+const accountSelectPageTsx = await readFile(new URL("../app/account/select/page.tsx", import.meta.url), "utf8");
 const accountPasswordPageTsx = await readFile(new URL("../app/account/password/page.tsx", import.meta.url), "utf8");
 const intakeFormTsx = await readFile(new URL("../app/intake/intake-form.tsx", import.meta.url), "utf8");
 const leadsPageTsx = await readFile(new URL("../app/leads/page.tsx", import.meta.url), "utf8");
@@ -351,6 +353,19 @@ test("magic-link callback resolves account from exchanged user, not same-request
   assert.match(authCallbackRouteTs, /resolveAccountUserSessionForUser\(data\.user\)/);
   assert.match(authCallbackRouteTs, /\/account\/select\?next=/);
   assert.doesNotMatch(authCallbackRouteTs, /getAccountUserSession\(\)/);
+});
+
+test("multi-account users can choose an account through a server-owned selector", () => {
+  assert.match(accountSelectPageTsx, /getAccountMembershipsForUser\(data\.user\)/);
+  assert.match(accountSelectPageTsx, /action="\/api\/auth\/select-account"/);
+  assert.match(accountSelectPageTsx, /Which inbox do you want to open\?/);
+  assert.match(accountSelectPageTsx, /Current business/);
+  assert.match(authSelectAccountRouteTs, /resolveAccountUserSessionForUser\(data\.user, accountId\)/);
+  assert.match(authSelectAccountRouteTs, /setSelectedAccountCookie\(cookieStore, resolution\.session\.accountId\)/);
+  assert.match(authSelectAccountRouteTs, /clearSelectedAccountCookie\(cookieStore\)/);
+  assert.match(authSelectAccountRouteTs, /signOut\(\)/);
+  assert.match(appHeaderTsx, /switchAccountHref/);
+  assert.match(appHeaderTsx, /Switch business/);
 });
 
 test("authenticated setup page exposes onboarding checks without creating a new tenant path", () => {

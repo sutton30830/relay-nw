@@ -79,7 +79,7 @@ function MetricCard({
 }
 
 export default async function SetupPage() {
-  const { account, accountId, role } = await requireAccountUser();
+  const { account, accountId, role, membershipCount } = await requireAccountUser();
   const [forwardingHealth, a2pStatus, recovery, lastRecoveredCallAt] = await Promise.all([
     getForwardingHealthSummary(accountId),
     getA2pRegistrationStatus(accountId),
@@ -120,7 +120,11 @@ export default async function SetupPage() {
   return (
     <main className="leads-view">
       <section className="leads-shell setup-status">
-        <AppHeader businessName={account.businessName} currentPage="setup" />
+        <AppHeader
+          businessName={account.businessName}
+          currentPage="setup"
+          switchAccountHref={membershipCount > 1 ? "/account/select?next=/setup" : undefined}
+        />
 
         <header className="leads-header">
           <div>

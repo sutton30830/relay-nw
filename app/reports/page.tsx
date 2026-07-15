@@ -91,7 +91,7 @@ function PeriodSection({ title, stats }: { title: string; stats: RecoveryStats }
 }
 
 export default async function ReportsPage() {
-  const { account, accountId } = await requireAccountUser();
+  const { account, accountId, membershipCount } = await requireAccountUser();
 
   const now = new Date();
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -119,7 +119,11 @@ export default async function ReportsPage() {
   return (
     <main className="leads-view">
       <section className="leads-shell">
-        <AppHeader businessName={account.businessName} currentPage="reports" />
+        <AppHeader
+          businessName={account.businessName}
+          currentPage="reports"
+          switchAccountHref={membershipCount > 1 ? "/account/select?next=/reports" : undefined}
+        />
 
         <div className="leads-header">
           <div>

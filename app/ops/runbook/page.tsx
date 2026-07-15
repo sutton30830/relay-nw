@@ -112,7 +112,10 @@ export default async function OpsRunbookPage() {
   return (
     <main className="leads-view">
       <section className="leads-shell">
-        <AppHeader businessName={account.businessName} />
+        <AppHeader
+          businessName={account.businessName}
+          switchAccountHref={session.membershipCount > 1 ? "/account/select?next=/ops/runbook" : undefined}
+        />
 
         <OpsToolbar showSetupRequests={showSetupRequests} subtitle="Internal checklist" />
 

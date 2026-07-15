@@ -36,7 +36,10 @@ export default async function OpsPage({
   return (
     <main className="leads-view">
       <section className="leads-shell">
-        <AppHeader businessName={account.businessName} />
+        <AppHeader
+          businessName={account.businessName}
+          switchAccountHref={session.membershipCount > 1 ? "/account/select?next=/ops" : undefined}
+        />
 
         <OpsToolbar showSetupRequests={showSetupRequests} subtitle="Internal diagnostics" />
 

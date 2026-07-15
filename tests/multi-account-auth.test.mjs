@@ -265,3 +265,86 @@ test("viewer write restrictions still pass for the selected account", async () =
   assert.equal(result.response.status, 403);
   assert.equal((await result.response.json()).error, "Viewers have read-only access");
 });
+
+test("account selection route sets the selected account cookie and returns to next", async () => {
+  const cookieSets = [];
+  const route = await loadTsModule("app/api/auth/select-account/route.ts", {
+    "next/headers": {
+      cookies: async () => ({
+        set: (...args) => cookieSets.push(args),
+      }),
+    },
+    "next/navigation": {
+      redirect: (target) => {
+        throw new Error(`redirect:${target}`);
+      },
+    },
+    "@/lib/auth": {
+      createSupabaseAuthServerClient: async () => ({
+        auth: {
+          getUser: async () => ({ data: { user: { id: "user-1", email: "owner@example.com" } }, error: null }),
+        },
+      }),
+      resolveAccountUserSessionForUser: async (_user, selectedAccount) => ({
+        status: "selected_account",
+        session: { accountId: selectedAccount },
+      }),
+      setSelectedAccountCookie: (cookieStore, accountId) => {
+        cookieStore.set("relay_selected_account", accountId, { httpOnly: true, sameSite: "lax" });
+      },
+      clearSelectedAccountCookie: () => {},
+    },
+  });
+  const form = new FormData();
+  form.set("accountId", "acct-b");
+  form.set("next", "/settings");
+
+  await assert.rejects(
+    () => route.POST(new Request("http://relay.test/api/auth/select-account", { method: "POST", body: form })),
+    /redirect:\/settings/,
+  );
+
+  assert.equal(cookieSets[0][0], "relay_selected_account");
+  assert.equal(cookieSets[0][1], "acct-b");
+});
+
+test("account selection route rejects stale selected accounts and clears the cookie", async () => {
+  const cleared = [];
+  const route = await loadTsModule("app/api/auth/select-account/route.ts", {
+    "next/headers": {
+      cookies: async () => ({
+        set: (...args) => cleared.push(args),
+      }),
+    },
+    "next/navigation": {
+      redirect: (target) => {
+        throw new Error(`redirect:${target}`);
+      },
+    },
+    "@/lib/auth": {
+      createSupabaseAuthServerClient: async () => ({
+        auth: {
+          getUser: async () => ({ data: { user: { id: "user-1", email: "owner@example.com" } }, error: null }),
+        },
+      }),
+      resolveAccountUserSessionForUser: async () => ({
+        status: "invalid_selection",
+      }),
+      setSelectedAccountCookie: () => {},
+      clearSelectedAccountCookie: (cookieStore) => {
+        cookieStore.set("relay_selected_account", "", { maxAge: 0 });
+      },
+    },
+  });
+  const form = new FormData();
+  form.set("accountId", "acct-missing");
+  form.set("next", "/reports");
+
+  await assert.rejects(
+    () => route.POST(new Request("http://relay.test/api/auth/select-account", { method: "POST", body: form })),
+    /redirect:\/account\/select\?error=invalid&next=%2Freports/,
+  );
+
+  assert.equal(cleared[0][0], "relay_selected_account");
+  assert.equal(cleared[0][2].maxAge, 0);
+});

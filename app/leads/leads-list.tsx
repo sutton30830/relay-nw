@@ -12,12 +12,14 @@ import { useLeadsInbox } from "./_hooks/use-leads-inbox";
 export function LeadsList({
   leads,
   businessName,
+  switchAccountHref,
   counts,
   callCounts,
   pagination,
 }: {
   leads: Lead[];
   businessName: string;
+  switchAccountHref?: string;
   counts: LeadInboxCounts;
   callCounts: Record<string, number>;
   pagination: {
@@ -79,6 +81,7 @@ export function LeadsList({
       <AppHeader
         businessName={businessName}
         currentPage="inbox"
+        switchAccountHref={switchAccountHref}
         search={{
           inputRef: inbox.searchRef,
           onChange: inbox.setQuery,

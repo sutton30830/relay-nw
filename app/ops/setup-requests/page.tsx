@@ -97,7 +97,8 @@ export default async function SetupRequestsPage({
 }: {
   searchParams: Promise<{ status?: string }>;
 }) {
-  const { account } = await requireRelayOperator();
+  const session = await requireRelayOperator();
+  const { account } = session;
 
   const { status: rawStatus } = await searchParams;
   const status = validStatus(rawStatus);
@@ -106,7 +107,10 @@ export default async function SetupRequestsPage({
   return (
     <main className="leads-view">
       <section className="leads-shell">
-        <AppHeader businessName={account.businessName} />
+        <AppHeader
+          businessName={account.businessName}
+          switchAccountHref={session.membershipCount > 1 ? "/account/select?next=/ops/setup-requests" : undefined}
+        />
 
         <OpsToolbar showSetupRequests subtitle="Assisted onboarding" />
 

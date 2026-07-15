@@ -25,11 +25,13 @@ export function AppHeader({
   currentPage,
   sample,
   search,
+  switchAccountHref,
 }: {
   businessName: string;
   currentPage?: HeaderPage;
   sample?: HeaderSample;
   search?: HeaderSearch;
+  switchAccountHref?: string;
 }) {
   const businessInitial = businessName.trim().charAt(0).toUpperCase() || "R";
   // Sub-pages get a plain, always-visible way back to the inbox. The
@@ -111,6 +113,13 @@ export function AppHeader({
                 {item.label}
               </Link>
             ))}
+
+            {switchAccountHref ? (
+              <Link className="mobile-owner-menu__item" href={switchAccountHref}>
+                <Icon name="external" size={15} />
+                Switch business
+              </Link>
+            ) : null}
 
             {sample?.visible ? (
               <button

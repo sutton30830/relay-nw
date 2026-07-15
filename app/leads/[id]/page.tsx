@@ -12,7 +12,7 @@ export default async function LeadConversationPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { account, accountId, role } = await requireAccountUser();
+  const { account, accountId, role, membershipCount } = await requireAccountUser();
   const { id } = await params;
 
   const quickReplies = account.quickReplyTemplates?.length ? account.quickReplyTemplates : QUICK_REPLIES;
@@ -38,7 +38,11 @@ export default async function LeadConversationPage({
   return (
     <main className="convo-page">
       <div className="convo-app-head">
-        <AppHeader businessName={account.businessName} currentPage="conversation" />
+        <AppHeader
+          businessName={account.businessName}
+          currentPage="conversation"
+          switchAccountHref={membershipCount > 1 ? `/account/select?next=/leads/${id}` : undefined}
+        />
       </div>
       <ConversationView
         lead={conversation.lead}

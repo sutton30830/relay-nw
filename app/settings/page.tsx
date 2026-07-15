@@ -47,7 +47,11 @@ export default async function SettingsPage({
   return (
     <main className="leads-view">
       <section className="leads-shell settings-shell">
-        <AppHeader businessName={account.businessName} currentPage="settings" />
+        <AppHeader
+          businessName={account.businessName}
+          currentPage="settings"
+          switchAccountHref={session.membershipCount > 1 ? "/account/select?next=/settings" : undefined}
+        />
 
         <div className="leads-header">
           <div>

@@ -13,6 +13,7 @@ export type AccountUserSession = {
   accountId: string;
   role: AccountRole;
   account: AccountRuntimeConfig;
+  membershipCount: number;
 };
 
 export type AccountMembership = AccountUserSession & {
@@ -170,10 +171,14 @@ export async function getAccountMembershipsForUser(user: { id: string; email?: s
       role: row.role,
       account,
       membershipId: row.id,
+      membershipCount: 0,
     });
   }
 
-  return memberships;
+  return memberships.map((membership) => ({
+    ...membership,
+    membershipCount: memberships.length,
+  }));
 }
 
 export async function resolveAccountUserSessionForUser(
