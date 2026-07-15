@@ -65,7 +65,9 @@ test("tenant core tables are present", () => {
 
 test("account users can bind Supabase Auth users to accounts", () => {
   assert.match(sql, /alter table public\.account_users add column if not exists user_id uuid/);
-  assert.match(sql, /account_users_user_id_unique_idx/);
+  assert.match(sql, /drop index if exists account_users_user_id_unique_idx/);
+  assert.match(sql, /account_users_user_id_idx/);
+  assert.match(sql, /account_users_account_user_id_unique_idx/);
   assert.match(sql, /account_users_email_idx/);
 });
 
@@ -331,22 +333,23 @@ test("email password is the primary owner sign-in path with magic link as fallba
   assert.match(loginPageTsx, /action="\/api\/auth\/login"/);
   assert.match(loginPageTsx, /Other sign-in options/);
   assert.match(authPasswordLoginRouteTs, /signInWithPassword\(\{/);
-  assert.match(authPasswordLoginRouteTs, /getAccountUserSessionForUser\(data\.user\)/);
+  assert.match(authPasswordLoginRouteTs, /resolveAccountUserSessionForUser\(data\.user\)/);
+  assert.match(authPasswordLoginRouteTs, /\/account\/select\?next=/);
   assert.match(authPasswordLoginRouteTs, /supabase\.auth\.signOut\(\)/);
   assert.match(authPasswordResetRouteTs, /resetPasswordForEmail\(email/);
   assert.match(authPasswordResetRouteTs, /\/account\/password/);
   assert.match(accountPasswordPageTsx, /requireAccountUser\(\)/);
-  assert.match(authUpdatePasswordRouteTs, /getAccountUserSessionForUser\(userData\.user\)/);
+  assert.match(authUpdatePasswordRouteTs, /resolveAccountUserSessionForUser\(userData\.user\)/);
   assert.match(authUpdatePasswordRouteTs, /updateUser\(\{ password \}\)/);
   assert.match(middlewareTs, /"\/account\/:path\*"/);
   assert.match(middlewareTs, /"\/api\/auth\/update-password"/);
 });
 
 test("magic-link callback resolves account from exchanged user, not same-request cookies", () => {
-  assert.match(authTs, /getAccountUserSessionForUser\(user: \{ id: string; email\?: string \| null \}\)/);
-  assert.match(authTs, /return getAccountUserSessionForUser\(data\.user\)/);
+  assert.match(authTs, /resolveAccountUserSessionForUser/);
   assert.match(authCallbackRouteTs, /const \{ data, error \} = await supabase\.auth\.exchangeCodeForSession\(code\)/);
-  assert.match(authCallbackRouteTs, /getAccountUserSessionForUser\(data\.user\)/);
+  assert.match(authCallbackRouteTs, /resolveAccountUserSessionForUser\(data\.user\)/);
+  assert.match(authCallbackRouteTs, /\/account\/select\?next=/);
   assert.doesNotMatch(authCallbackRouteTs, /getAccountUserSession\(\)/);
 });
 

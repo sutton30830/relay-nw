@@ -69,8 +69,16 @@ create table if not exists public.account_users (
 );
 
 alter table public.account_users add column if not exists user_id uuid;
-create unique index if not exists account_users_user_id_unique_idx
+-- Phase 4A multi-account auth: one Supabase Auth user can belong to multiple
+-- existing accounts. Rollback, if ever needed, is to first ensure every user_id
+-- appears in at most one account_users row, then recreate the old unique
+-- account_users_user_id_unique_idx on (user_id).
+drop index if exists account_users_user_id_unique_idx;
+create index if not exists account_users_user_id_idx
   on public.account_users (user_id)
+  where user_id is not null;
+create unique index if not exists account_users_account_user_id_unique_idx
+  on public.account_users (account_id, user_id)
   where user_id is not null;
 create index if not exists account_users_email_idx
   on public.account_users (lower(email))

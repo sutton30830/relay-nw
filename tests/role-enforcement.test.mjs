@@ -31,15 +31,35 @@ async function loadTsModule(path, mocks) {
 
 // --- lib/auth.ts: requireWriteAccessJson ---
 
-function accountUsersAdminFake(row) {
-  const builder = {
-    select: () => builder,
-    eq: () => builder,
-    ilike: () => builder,
-    update: () => builder,
-    maybeSingle: async () => ({ data: row, error: null }),
+function accountUsersAdminFake(rowOrRows) {
+  const rows = rowOrRows ? (Array.isArray(rowOrRows) ? rowOrRows : [rowOrRows]) : [];
+  const makeBuilder = () => {
+    const filters = [];
+    const builder = {
+      select: () => builder,
+      eq: (column, value) => {
+        filters.push((row) => row[column] === value);
+        return builder;
+      },
+      ilike: (column, value) => {
+        const normalized = String(value).replaceAll("\\_", "_").replaceAll("\\%", "%").toLowerCase();
+        filters.push((row) => String(row[column] ?? "").toLowerCase() === normalized);
+        return builder;
+      },
+      update: () => builder,
+      is: () => builder,
+      maybeSingle: async () => {
+        const matches = rows.filter((row) => filters.every((filter) => filter(row)));
+        return { data: matches[0] ?? null, error: null };
+      },
+      then: (resolve) => {
+        const matches = rows.filter((row) => filters.every((filter) => filter(row)));
+        return Promise.resolve({ data: matches, error: null }).then(resolve);
+      },
+    };
+    return builder;
   };
-  return { from: () => builder };
+  return { from: () => makeBuilder() };
 }
 
 async function loadAuthModule({ role, user = { id: "user-1", email: "owner@example.com" } }) {

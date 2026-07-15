@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createSupabaseAuthServerClient, getAccountUserSessionForUser } from "@/lib/auth";
+import { createSupabaseAuthServerClient, resolveAccountUserSessionForUser } from "@/lib/auth";
 
 function safeNext(value: FormDataEntryValue | null) {
   const next = String(value || "/leads");
@@ -31,9 +31,13 @@ export async function POST(request: Request) {
     redirect(`/login?error=password&next=${encodeURIComponent(next)}`);
   }
 
-  const session = await getAccountUserSessionForUser(data.user);
+  const resolution = await resolveAccountUserSessionForUser(data.user);
 
-  if (!session) {
+  if (resolution.status === "ambiguous" || resolution.status === "invalid_selection") {
+    redirect(`/account/select?next=${encodeURIComponent(next)}`);
+  }
+
+  if (resolution.status !== "single_account" && resolution.status !== "selected_account") {
     await supabase.auth.signOut();
     redirect(`/login?error=not_invited&next=${encodeURIComponent(next)}`);
   }

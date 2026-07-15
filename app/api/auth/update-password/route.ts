@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createSupabaseAuthServerClient, getAccountUserSessionForUser } from "@/lib/auth";
+import { createSupabaseAuthServerClient, resolveAccountUserSessionForUser } from "@/lib/auth";
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -23,9 +23,13 @@ export async function POST(request: Request) {
     redirect("/login?error=session_expired&next=/account/password");
   }
 
-  const session = await getAccountUserSessionForUser(userData.user);
+  const resolution = await resolveAccountUserSessionForUser(userData.user);
 
-  if (!session) {
+  if (resolution.status === "ambiguous" || resolution.status === "invalid_selection") {
+    redirect("/account/select?next=/account/password");
+  }
+
+  if (resolution.status !== "single_account" && resolution.status !== "selected_account") {
     await supabase.auth.signOut();
     redirect("/login?error=not_invited&next=/account/password");
   }

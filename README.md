@@ -9,7 +9,7 @@ Relay NW supports two call flows:
 
 In both modes, Relay NW saves the missed call in an account-scoped Supabase inbox and sends one automatic SMS only when the account is configured, A2P is approved, and the owner has automatic texting turned on.
 
-The product is multi-account at the data and auth layer, but early customers are still onboarded by an operator with the provisioning and verification scripts. Billing, workspace switching, and fully self-serve Twilio/A2P setup are intentionally not complete yet.
+The product is multi-account at the data and auth layer, but early customers are still onboarded by an operator with the provisioning and verification scripts. The auth foundation supports one Supabase user belonging to multiple accounts, while the polished owner-facing account switcher, billing, and fully self-serve Twilio/A2P setup are intentionally not complete yet.
 
 ## Day-One Setup Checklist
 
@@ -306,7 +306,7 @@ The simplest deployment path is Vercel:
 ## Security Notes
 
 - `/leads` and `/ops` require Supabase Auth. Email/password is the primary owner sign-in path; magic links remain a fallback.
-- Human access is scoped through `account_users`, then resolved to one tenant account.
+- Human access is scoped through `account_users`, then resolved to one selected tenant account. Users with multiple memberships require an explicit selected account before APIs proceed.
 - Supabase Auth session cookies are refreshed in middleware so active owners are less likely to be bounced back to `/login`.
 - The public setup form has a small per-IP throttle to reduce spam submissions.
 - Twilio webhooks require a valid `X-Twilio-Signature` unless `ALLOW_UNSIGNED_TWILIO_WEBHOOKS=true` is explicitly set for local testing.
@@ -327,5 +327,5 @@ The simplest deployment path is Vercel:
 - Shared inbox
 - Business-hours logic
 - Scheduling engine
-- Multi-business support
+- Polished multi-business switcher
 - User accounts

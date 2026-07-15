@@ -205,7 +205,10 @@ test("account_users email lookup escapes ilike wildcards so j_doe cannot match j
         ilikePatterns.push(pattern);
         return api;
       },
+      update: () => api,
+      is: () => api,
       maybeSingle: async () => ({ data: null, error: null }),
+      then: (resolve) => Promise.resolve({ data: [], error: null }).then(resolve),
     };
     return api;
   };
