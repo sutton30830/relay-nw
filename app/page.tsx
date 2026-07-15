@@ -4,25 +4,26 @@ import { InboxLink } from "@/app/inbox-link";
 import { publicBusinessName } from "@/lib/display-name";
 import { env } from "@/lib/env";
 
+const STEPS = [
+  {
+    number: "01",
+    title: "Forward your missed calls",
+    body: "Keep your number. One dial code sends the calls you can't answer to Relay.",
+  },
+  {
+    number: "02",
+    title: "Callers get a text in seconds",
+    body: "Before they dial the next company, they're already talking to yours.",
+  },
+  {
+    number: "03",
+    title: "You call back and win the job",
+    body: "The voicemail arrives summarized, with the lead waiting in a simple inbox.",
+  },
+];
+
 export default function HomePage() {
   const businessName = publicBusinessName(env.businessName);
-  const steps = [
-    {
-      icon: "phone" as const,
-      title: "Forward missed calls",
-      body: "Keep your number. Send unanswered calls to Relay.",
-    },
-    {
-      icon: "message" as const,
-      title: "We text them instantly",
-      body: "They get a reply before they call someone else.",
-    },
-    {
-      icon: "inbox" as const,
-      title: "You win the job",
-      body: "Call back fast and turn the request into work.",
-    },
-  ];
 
   return (
     <main className="home-view">
@@ -32,10 +33,8 @@ export default function HomePage() {
             <Icon name="relay" size={18} />
           </div>
           <div>
-            <p className="t-eyebrow" style={{ fontSize: 10 }}>Relay NW</p>
-            <h1 className="t-display" style={{ fontSize: 22, margin: 0 }}>
-              {businessName}
-            </h1>
+            <p className="t-eyebrow app-head__eyebrow">Relay NW</p>
+            <h1 className="t-display app-head__name">{businessName}</h1>
           </div>
         </div>
         <div className="app-head__right app-head__right--primary">
@@ -46,86 +45,79 @@ export default function HomePage() {
       </header>
 
       <section className="home-hero">
-        <div>
-          <p className="t-eyebrow">Missed-call follow-up</p>
+        <div className="home-hero__copy">
+          <p className="t-eyebrow">Missed-call recovery for local trades</p>
           <h2 className="t-display home-hero__title">
-            Miss a call? That&apos;s a <em>lost job.</em>
+            Miss a call?
+            <br />
+            That&apos;s a <em>lost job.</em>
           </h2>
           <p className="home-hero__sub">
-            Instant text-back, voicemail summaries, and a simple inbox for every missed call.
+            Relay answers every call you can&apos;t — an instant text back, the voicemail
+            summarized, and the lead waiting in your inbox. You keep your number.
           </p>
           <div className="home-hero__actions">
-            <Link className="btn btn-primary" href="/intake">
+            <Link className="btn btn-primary home-hero__cta" href="/intake">
               Request setup <Icon name="arrowRight" size={14} />
             </Link>
+            <p className="home-hero__owner-link">
+              Already using Relay? <InboxLink className="text-link">Open your inbox</InboxLink>
+            </p>
           </div>
-          <p className="home-hero__owner-link">
-            Already using Relay?{" "}
-            <InboxLink className="text-link">Open your inbox</InboxLink>
-          </p>
-          <p className="home-hero__note">
-            $99/month. Try it for 30 days free.
-          </p>
+          <p className="home-hero__note">$99/month · first 30 days free</p>
         </div>
 
-        <aside className="phone-mock" aria-label="Missed-call SMS preview">
-          <div className="phone-mock__notch" />
-          <div className="phone-mock__screen">
-            <div className="phone-mock__time">10:42</div>
-            <div className="phone-mock__msg-head">
-              <div className="phone-mock__avatar">
-                {businessName
-                  .split(" ")
-                  .map((word) => word[0])
-                  .join("")
-                  .slice(0, 2)
-                  .toUpperCase()}
-              </div>
-              <div>
-                <p style={{ margin: 0, fontWeight: 700, fontSize: 14 }}>Relay NW</p>
-                <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.55)" }}>now</p>
-              </div>
-            </div>
-            <div className="phone-mock__bubble">
-              Sorry we missed your call. Text us what you need and we&apos;ll get back to you shortly. Reply STOP to opt out.
-            </div>
-            <p className="phone-mock__time-stamp">Sent after missed call</p>
+        {/* The product loop in one glance: missed call → instant text → the
+            customer stays yours. Styled like a real thread, not a fake phone. */}
+        <aside className="hero-convo" aria-label="What a caller sees after a missed call">
+          <p className="hero-convo__event">
+            <Icon name="phoneMissed" size={12} /> Missed call · 4:12 PM
+          </p>
+          <div className="hero-convo__msg hero-convo__msg--relay">
+            <p className="hero-convo__bubble">
+              Sorry we missed your call — text us what you need and we&apos;ll get right back to you.
+            </p>
+            <span className="hero-convo__meta">Sent by Relay, seconds later</span>
           </div>
+          <div className="hero-convo__msg hero-convo__msg--caller">
+            <p className="hero-convo__bubble">
+              Water heater&apos;s leaking — can someone come out today?
+            </p>
+            <span className="hero-convo__meta">Customer replies</span>
+          </div>
+          <p className="hero-convo__saved">
+            <Icon name="check" size={13} /> Lead saved to your inbox
+          </p>
         </aside>
       </section>
 
-      <section className="client-section" id="setup">
-        <div className="client-section__intro">
-          <p className="t-eyebrow">Built for busy trades</p>
-          <h2 className="t-display">Your next job will call while you&apos;re busy.</h2>
+      <section className="home-how" id="setup">
+        <div className="home-how__intro">
+          <p className="t-eyebrow">How Relay works</p>
+          <h2 className="t-display">Your next job calls while you&apos;re busy.</h2>
           <p>
-            You&apos;re under a sink, driving to the next house, or closed for the day. If nobody
-            answers, that customer may call the next company. Relay keeps them with you.
+            Under a sink, driving between houses, or closed for the day — if nobody answers,
+            that customer calls the next company. Relay keeps them with you.
           </p>
         </div>
 
-        <p className="t-eyebrow">How Relay NW works</p>
-        <div className="client-steps">
-          {steps.map((step, index) => (
-            <article key={step.title} className="panel client-step">
-              <div className="client-step__top">
-                <span className="client-step__number">{index + 1}</span>
-                <span className="client-step__icon"><Icon name={step.icon} size={22} /></span>
-              </div>
+        <ol className="home-steps">
+          {STEPS.map((step) => (
+            <li key={step.number} className="home-step">
+              <span className="home-step__number t-display">{step.number}</span>
               <h3>{step.title}</h3>
               <p>{step.body}</p>
-            </article>
+            </li>
           ))}
-        </div>
+        </ol>
+      </section>
 
-        <div className="home-optional">
-          <strong>Start turning missed calls into jobs today</strong>
-          <span>$99/month. Try it for 30 days free.</span>
-          <p className="home-optional__punch">If Relay doesn&apos;t help you recover missed calls, you don&apos;t pay.</p>
-          <Link className="btn btn-primary home-optional__cta" href="/intake">
-            Request setup
-          </Link>
-        </div>
+      <section className="home-cta">
+        <h2 className="t-display">Stop losing calls you already earned.</h2>
+        <p>If Relay doesn&apos;t help you recover missed calls, you don&apos;t pay.</p>
+        <Link className="btn btn-primary home-hero__cta" href="/intake">
+          Request setup
+        </Link>
       </section>
     </main>
   );

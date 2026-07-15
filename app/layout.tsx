@@ -33,8 +33,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${inter.variable} ${instrumentSerif.variable}`}>
+    // The font variable classes must live on <html>: globals.css composes them
+    // into --font-display/--font-ui inside :root, and a custom property whose
+    // var() reference is missing at that scope collapses to invalid — which
+    // silently dropped Inter and Instrument Serif across the whole app.
+    <html lang="en" className={`${inter.variable} ${instrumentSerif.variable}`}>
+      <body>
         {children}
         <SiteFooter />
       </body>
