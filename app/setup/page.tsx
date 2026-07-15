@@ -3,8 +3,10 @@ import { CarrierForwarding } from "./carrier-forwarding";
 import { FullTestPanel } from "@/app/leads/_components/full-test-panel";
 import { Icon } from "@/components/icon";
 import { requireAccountUser } from "@/lib/auth";
+import { computeBillingReadiness } from "@/lib/billing";
 import {
   getA2pRegistrationStatus,
+  getAccountBillingRecord,
   getAccountRecoveryStats,
   getForwardingHealthSummary,
   getLastRecoveredCallAt,
@@ -80,11 +82,12 @@ function MetricCard({
 
 export default async function SetupPage() {
   const { account, accountId, role, membershipCount } = await requireAccountUser();
-  const [forwardingHealth, a2pStatus, recovery, lastRecoveredCallAt] = await Promise.all([
+  const [forwardingHealth, a2pStatus, recovery, lastRecoveredCallAt, billing] = await Promise.all([
     getForwardingHealthSummary(accountId),
     getA2pRegistrationStatus(accountId),
     getAccountRecoveryStats(accountId, { since: null }),
     getLastRecoveredCallAt(accountId),
+    getAccountBillingRecord(accountId),
   ]);
 
   const carrierStatus = a2pStatus ?? "unknown";
@@ -114,6 +117,10 @@ export default async function SetupPage() {
     hasRecoveredCall: recovery.missedCalls > 0,
     lastRecoveredCallAt,
     forwardingLastPassedAt: forwardingHealth.lastPassedAt,
+  });
+  const billingReadiness = computeBillingReadiness({
+    billing,
+    setupReadiness: readiness,
   });
 
 
@@ -173,6 +180,12 @@ export default async function SetupPage() {
             detail={smsMetric.detail}
             tone={smsMetric.tone}
           />
+          <MetricCard
+            label="Billing"
+            value={billingReadiness.label}
+            detail={billingReadiness.summary}
+            tone={billingReadiness.tone}
+          />
         </section>
 
         <section className="setup-grid">
@@ -212,6 +225,19 @@ export default async function SetupPage() {
                       : carrierStatus === "rejected" || carrierStatus === "paused"
                         ? "blocked"
                         : "pending"
+                }
+              />
+              <Step
+                title="Billing activation"
+                detail={billingReadiness.summary}
+                status={
+                  billingReadiness.state === "active" ||
+                  billingReadiness.state === "trialing" ||
+                  billingReadiness.state === "comped"
+                    ? "complete"
+                    : billingReadiness.state === "billing_attention"
+                      ? "blocked"
+                      : "pending"
                 }
               />
             </ol>

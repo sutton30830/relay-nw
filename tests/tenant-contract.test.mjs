@@ -4,11 +4,13 @@ import test from "node:test";
 
 const sql = await readFile(new URL("../supabase.sql", import.meta.url), "utf8");
 const envTs = await readFile(new URL("../lib/env.ts", import.meta.url), "utf8");
+const billingTs = await readFile(new URL("../lib/billing.ts", import.meta.url), "utf8");
 const twilioTs = await readFile(new URL("../lib/twilio.ts", import.meta.url), "utf8");
 const twimlTs = await readFile(new URL("../lib/twiml.ts", import.meta.url), "utf8");
 const authTs = await readFile(new URL("../lib/auth.ts", import.meta.url), "utf8");
 const emailTs = await readFile(new URL("../lib/email.ts", import.meta.url), "utf8");
 const missedCallTs = await readFile(new URL("../lib/missed-call.ts", import.meta.url), "utf8");
+const accountStore = await readFile(new URL("../lib/supabase/accounts.ts", import.meta.url), "utf8");
 const intakeRouteTs = await readFile(new URL("../app/api/intake/route.ts", import.meta.url), "utf8");
 const authLoginRouteTs = await readFile(new URL("../app/api/auth/login/route.ts", import.meta.url), "utf8");
 const authPasswordLoginRouteTs = await readFile(new URL("../app/api/auth/password-login/route.ts", import.meta.url), "utf8");
@@ -72,6 +74,22 @@ test("account users can bind Supabase Auth users to accounts", () => {
   assert.match(sql, /account_users_user_id_idx/);
   assert.match(sql, /account_users_account_user_id_unique_idx/);
   assert.match(sql, /account_users_email_idx/);
+});
+
+test("billing foundation is account-scoped and activation-based", () => {
+  assert.match(sql, /billing_status text not null default 'not_started'/);
+  assert.match(sql, /stripe_customer_id text/);
+  assert.match(sql, /stripe_subscription_id text/);
+  assert.match(sql, /accounts_stripe_customer_id_unique_idx/);
+  assert.match(sql, /accounts_stripe_subscription_id_unique_idx/);
+  assert.match(accountStore, /getAccountBillingRecord/);
+  assert.match(accountStore, /Account billing columns are missing/);
+  assert.match(billingTs, /isBillingActivationReady/);
+  assert.match(billingTs, /callCaptureReady && readiness\.smsRegistrationReady/);
+  assert.match(setupPageTsx, /computeBillingReadiness/);
+  assert.match(setupPageTsx, /Billing activation/);
+  assert.match(verifyAccountScript, /deriveBillingVerification/);
+  assert.doesNotMatch(missedCallTs, /billingStatus|stripe/i);
 });
 
 test("account verifier checks pilot provisioning prerequisites", () => {

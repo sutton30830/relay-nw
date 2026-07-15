@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const READY_A2P_STATUSES = new Set(["approved"]);
 const ADMIN_ROLES = new Set(["owner", "admin"]);
+const ACTIVE_BILLING_STATUSES = new Set(["active", "trialing", "comped"]);
 
 function deriveSmsOperatingState(settings) {
   const a2pStatus = settings?.a2p_registration_status ?? "not_started";
@@ -40,6 +41,43 @@ function deriveSmsOperatingState(settings) {
     level: "warn",
     detail:
       "A2P approved and sms_enabled=false by choice. Missed calls still appear in the inbox, but callers are not receiving automatic texts.",
+  };
+}
+
+function deriveBillingVerification(account, settings) {
+  const billingStatus = account?.billing_status ?? "not_started";
+  const a2pReady = READY_A2P_STATUSES.has(settings?.a2p_registration_status ?? "not_started");
+  const billingReady = ACTIVE_BILLING_STATUSES.has(billingStatus);
+
+  if (billingReady) {
+    return {
+      ok: true,
+      label: `billing: ${billingStatus}`,
+      level: "warn",
+      detail: account?.stripe_subscription_id
+        ? `Stripe subscription ${account.stripe_subscription_id} is recorded.`
+        : billingStatus === "comped"
+          ? "Account is intentionally comped."
+          : "Billing is active without a subscription id recorded.",
+    };
+  }
+
+  if (billingStatus === "past_due" || billingStatus === "canceled") {
+    return {
+      ok: false,
+      label: `billing: ${billingStatus}`,
+      level: "warn",
+      detail: "Billing needs attention. Phase 5A does not automatically disable Relay.",
+    };
+  }
+
+  return {
+    ok: false,
+    label: "billing: not started",
+    level: "warn",
+    detail: a2pReady
+      ? "Carrier registration is approved. Start billing when this account is handed off."
+      : "Setup is still pending, so activation-based billing can wait.",
   };
 }
 
@@ -143,14 +181,30 @@ async function main() {
   let primaryNumber = null;
   let adminUsers = [];
 
-  const { data: accountData, error: accountError } = await supabase
+  let accountSelect = await supabase
     .from("accounts")
-    .select("id, slug, name, status")
+    .select("id, slug, name, status, billing_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, trial_ends_at")
     .eq("slug", slug)
     .maybeSingle();
 
-  if (accountError) throw accountError;
-  account = accountData;
+  if (accountSelect.error?.message.includes("billing_status")) {
+    check(
+      results,
+      false,
+      "billing columns exist",
+      "Run supabase.sql to add Phase 5A billing columns.",
+      "warn",
+    );
+
+    accountSelect = await supabase
+      .from("accounts")
+      .select("id, slug, name, status")
+      .eq("slug", slug)
+      .maybeSingle();
+  }
+
+  if (accountSelect.error) throw accountSelect.error;
+  account = accountSelect.data;
 
   check(
     results,
@@ -247,6 +301,17 @@ async function main() {
       "owner phone is not a placeholder",
       settings.owner_phone_number ? normalizePhoneNumber(settings.owner_phone_number) : "Missing owner phone.",
     );
+
+    if (account) {
+      const billingState = deriveBillingVerification(account, settings);
+      check(
+        results,
+        billingState.ok,
+        billingState.label,
+        billingState.detail,
+        billingState.level,
+      );
+    }
   }
 
   if (adminUsers.length > 0) {

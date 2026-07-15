@@ -6,9 +6,38 @@ create table if not exists public.accounts (
   slug text not null unique,
   name text not null,
   status text not null default 'active' check (status in ('active', 'paused', 'archived')),
+  billing_status text not null default 'not_started' check (
+    billing_status in ('not_started', 'trialing', 'active', 'past_due', 'canceled', 'comped')
+  ),
+  stripe_customer_id text,
+  stripe_subscription_id text,
+  stripe_price_id text,
+  trial_ends_at timestamptz,
+  billing_updated_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.accounts add column if not exists billing_status text not null default 'not_started';
+alter table public.accounts add column if not exists stripe_customer_id text;
+alter table public.accounts add column if not exists stripe_subscription_id text;
+alter table public.accounts add column if not exists stripe_price_id text;
+alter table public.accounts add column if not exists trial_ends_at timestamptz;
+alter table public.accounts add column if not exists billing_updated_at timestamptz;
+do $$
+begin
+  alter table public.accounts
+    add constraint accounts_billing_status_check
+    check (billing_status in ('not_started', 'trialing', 'active', 'past_due', 'canceled', 'comped'));
+exception
+  when duplicate_object then null;
+end $$;
+create unique index if not exists accounts_stripe_customer_id_unique_idx
+  on public.accounts (stripe_customer_id)
+  where stripe_customer_id is not null;
+create unique index if not exists accounts_stripe_subscription_id_unique_idx
+  on public.accounts (stripe_subscription_id)
+  where stripe_subscription_id is not null;
 
 alter table public.accounts enable row level security;
 

@@ -9,7 +9,7 @@ Relay NW supports two call flows:
 
 In both modes, Relay NW saves the missed call in an account-scoped Supabase inbox and sends one automatic SMS only when the account is configured, A2P is approved, and the owner has automatic texting turned on.
 
-The product is multi-account at the data and auth layer, but early customers are still onboarded by an operator with the provisioning and verification scripts. The auth foundation supports one Supabase user belonging to multiple accounts, while the polished owner-facing account switcher, billing, and fully self-serve Twilio/A2P setup are intentionally not complete yet.
+The product is multi-account at the data and auth layer, but early customers are still onboarded by an operator with the provisioning and verification scripts. The auth foundation supports one Supabase user belonging to multiple accounts and a simple owner-facing account switcher. Billing has an account-scoped status foundation, but Stripe Checkout, webhooks, and billing enforcement are intentionally not complete yet.
 
 ## Day-One Setup Checklist
 
@@ -322,10 +322,9 @@ The simplest deployment path is Vercel:
 
 ## Not In V1
 
-- Billing
+- Stripe Checkout, webhooks, and billing enforcement
 - CRM automation
 - Shared inbox
 - Business-hours logic
 - Scheduling engine
-- Polished multi-business switcher
 - User accounts

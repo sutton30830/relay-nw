@@ -1,4 +1,5 @@
 import { env } from "@/lib/env";
+import type { AccountBillingRecord, AccountBillingStatus } from "@/lib/billing";
 import { normalizePhoneNumber } from "@/lib/phone";
 import { isPlaceholderSupabaseConfig, shouldSkipDatabaseWrite, supabaseAdmin, throwIfSupabaseError } from "./client";
 
@@ -77,6 +78,43 @@ type AccountSettingsRow = {
   voicemail_transcription_enabled: boolean | null;
   accounts?: { slug: string } | Array<{ slug: string }> | null;
 };
+
+type AccountBillingRow = {
+  billing_status: string | null;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  stripe_price_id: string | null;
+  trial_ends_at: string | null;
+  billing_updated_at: string | null;
+};
+
+const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
+  billingStatus: "not_started",
+  stripeCustomerId: null,
+  stripeSubscriptionId: null,
+  stripePriceId: null,
+  trialEndsAt: null,
+  billingUpdatedAt: null,
+};
+
+function defaultAccountBillingRecord(): AccountBillingRecord {
+  return { ...DEFAULT_BILLING_RECORD };
+}
+
+function normalizeAccountBillingStatus(value: string | null | undefined): AccountBillingStatus {
+  if (
+    value === "not_started" ||
+    value === "trialing" ||
+    value === "active" ||
+    value === "past_due" ||
+    value === "canceled" ||
+    value === "comped"
+  ) {
+    return value;
+  }
+
+  return "not_started";
+}
 
 const ACCOUNT_SETTINGS_SELECT =
   "account_id, business_name, owner_email, owner_phone_number, intake_url, scheduling_url, call_mode, sms_enabled, sms_template, quick_reply_templates, missed_call_voice_message, missed_call_voice_name, missed_call_greeting_audio_url, voicemail_max_seconds, dial_timeout_seconds, missed_call_sms_cooldown_hours, voicemail_transcription_enabled, accounts(slug)";
@@ -214,6 +252,45 @@ export async function getDefaultAccountConfig() {
   }
 
   return (await getAccountConfigByAccountId(data?.id)) ?? envAccountConfig();
+}
+
+export async function getAccountBillingRecord(accountId: string | null | undefined): Promise<AccountBillingRecord> {
+  if (!accountId || isPlaceholderSupabaseConfig()) {
+    return defaultAccountBillingRecord();
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("accounts")
+    .select("billing_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, trial_ends_at, billing_updated_at")
+    .eq("id", accountId)
+    .maybeSingle();
+
+  if (error) {
+    if (
+      error.message.includes("billing_status") ||
+      error.message.includes("stripe_customer_id") ||
+      error.message.includes("stripe_subscription_id")
+    ) {
+      console.warn("Account billing columns are missing. Run supabase.sql before enabling billing.");
+      return defaultAccountBillingRecord();
+    }
+
+    throw error;
+  }
+
+  const row = data as AccountBillingRow | null;
+  if (!row) {
+    return defaultAccountBillingRecord();
+  }
+
+  return {
+    billingStatus: normalizeAccountBillingStatus(row.billing_status),
+    stripeCustomerId: row.stripe_customer_id,
+    stripeSubscriptionId: row.stripe_subscription_id,
+    stripePriceId: row.stripe_price_id,
+    trialEndsAt: row.trial_ends_at,
+    billingUpdatedAt: row.billing_updated_at,
+  };
 }
 
 export async function resolveAccountByTwilioNumber(phoneNumber: string | null | undefined) {
