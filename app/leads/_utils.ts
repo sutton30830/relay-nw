@@ -415,6 +415,17 @@ export function prioritySortScore(lead: Lead) {
   return 2;
 }
 
+const FRESH_CALL_SORT_WINDOW_MS = 15 * 60_000;
+
+function isFreshActiveLead(lead: Lead, now: number) {
+  if (lead.deleted_at || lead.status === "dead") return false;
+
+  const createdAt = Date.parse(lead.created_at);
+  if (!Number.isFinite(createdAt)) return false;
+
+  return now - createdAt <= FRESH_CALL_SORT_WINDOW_MS;
+}
+
 // One card per caller: repeat calls from the same number collapse into the most
 // recent lead, with a count so the owner sees "Called 3×" instead of three cards.
 // The conversation thread is joined by phone, so nothing is hidden in the drawer.
@@ -448,12 +459,19 @@ export function countCallsByPhone(leads: Lead[]) {
   return counts;
 }
 
-export function sortLeadsForWork(leads: Lead[]) {
+export function sortLeadsForWork(leads: Lead[], now = Date.now()) {
   return [...leads].sort((a, b) => {
+    const aIsFresh = isFreshActiveLead(a, now);
+    const bIsFresh = isFreshActiveLead(b, now);
+    const freshDiff = Number(bIsFresh) - Number(aIsFresh);
+    if (freshDiff !== 0) return freshDiff;
+
+    const timeDiff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    if (aIsFresh && bIsFresh && timeDiff !== 0) return timeDiff;
+
     const priorityDiff = prioritySortScore(a) - prioritySortScore(b);
     if (priorityDiff !== 0) return priorityDiff;
 
-    const timeDiff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     if (timeDiff !== 0) return timeDiff;
 
     return b.id.localeCompare(a.id);

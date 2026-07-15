@@ -60,8 +60,9 @@ function lead(overrides) {
   };
 }
 
-test("lead inbox sorting puts urgent work ahead of newer normal leads", async () => {
+test("lead inbox sorting puts urgent work ahead of newer normal leads after the fresh-call window", async () => {
   const { sortLeadsForWork } = await loadLeadUtils();
+  const now = new Date("2026-07-03T12:00:00.000Z").getTime();
 
   const olderUrgent = lead({
     id: "older-urgent",
@@ -76,20 +77,56 @@ test("lead inbox sorting puts urgent work ahead of newer normal leads", async ()
   });
 
   assert.deepEqual(
-    sortLeadsForWork([olderUrgent, newerNormal]).map((item) => item.id),
+    sortLeadsForWork([olderUrgent, newerNormal], now).map((item) => item.id),
     ["older-urgent", "newer-normal"],
+  );
+});
+
+test("lead inbox sorting keeps a just-missed call easy to find above older urgent work", async () => {
+  const { sortLeadsForWork } = await loadLeadUtils();
+  const now = new Date("2026-07-03T12:00:00.000Z").getTime();
+
+  const olderUrgent = lead({
+    id: "older-urgent",
+    status: "contacted",
+    message: "Need help ASAP",
+    created_at: "2026-07-03T11:30:00.000Z",
+  });
+  const justMissed = lead({
+    id: "just-missed",
+    message: "Looking for a quote",
+    created_at: "2026-07-03T11:59:00.000Z",
+  });
+
+  assert.deepEqual(
+    sortLeadsForWork([olderUrgent, justMissed], now).map((item) => item.id),
+    ["just-missed", "older-urgent"],
+  );
+});
+
+test("fresh active leads stay newest first even when one is urgent", async () => {
+  const { sortLeadsForWork } = await loadLeadUtils();
+  const now = new Date("2026-07-03T12:00:00.000Z").getTime();
+
+  assert.deepEqual(
+    sortLeadsForWork([
+      lead({ id: "fresh-urgent", message: "Need help ASAP", created_at: "2026-07-03T11:50:00.000Z" }),
+      lead({ id: "fresh-normal", message: "Looking for a quote", created_at: "2026-07-03T11:59:00.000Z" }),
+    ], now).map((item) => item.id),
+    ["fresh-normal", "fresh-urgent"],
   );
 });
 
 test("closed leads do not outrank active callback work", async () => {
   const { sortLeadsForWork } = await loadLeadUtils();
+  const now = new Date("2026-07-03T12:30:00.000Z").getTime();
 
   assert.deepEqual(
     sortLeadsForWork([
       lead({ id: "closed-today", status: "dead", message: "Can you come today?", created_at: "2026-07-03T12:00:00.000Z" }),
       lead({ id: "active-normal", status: "new", message: "Looking for a quote", created_at: "2026-07-03T11:00:00.000Z" }),
       lead({ id: "active-urgent", status: "contacted", message: "Need help ASAP", created_at: "2026-07-03T10:00:00.000Z" }),
-    ]).map((item) => item.id),
+    ], now).map((item) => item.id),
     ["active-urgent", "active-normal", "closed-today"],
   );
 });
