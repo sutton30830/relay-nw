@@ -293,6 +293,34 @@ export async function getAccountBillingRecord(accountId: string | null | undefin
   };
 }
 
+export async function updateAccountBillingRecord(
+  accountId: string,
+  update: Partial<AccountBillingRecord>,
+) {
+  if (isPlaceholderSupabaseConfig()) {
+    return;
+  }
+
+  const payload: Record<string, string | null> = {
+    billing_updated_at: new Date().toISOString(),
+  };
+
+  if (update.billingStatus !== undefined) payload.billing_status = update.billingStatus;
+  if (update.stripeCustomerId !== undefined) payload.stripe_customer_id = update.stripeCustomerId;
+  if (update.stripeSubscriptionId !== undefined) payload.stripe_subscription_id = update.stripeSubscriptionId;
+  if (update.stripePriceId !== undefined) payload.stripe_price_id = update.stripePriceId;
+  if (update.trialEndsAt !== undefined) payload.trial_ends_at = update.trialEndsAt;
+
+  const { error } = await supabaseAdmin
+    .from("accounts")
+    .update(payload)
+    .eq("id", accountId);
+
+  if (error) {
+    throwIfSupabaseError(error);
+  }
+}
+
 export async function resolveAccountByTwilioNumber(phoneNumber: string | null | undefined) {
   const normalizedPhone = normalizePhoneNumber(phoneNumber ?? "");
 

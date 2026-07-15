@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
@@ -27,6 +28,19 @@ async function loadTsModule(path, mocks = {}) {
 
 const billing = await loadTsModule("lib/billing.ts", {
   "@/lib/readiness": {},
+});
+
+const stripeBilling = await loadTsModule("lib/stripe-billing.ts", {
+  "node:crypto": await import("node:crypto"),
+  "@/lib/env": {
+    env: {
+      appBaseUrl: "https://www.relay-nw.com",
+      stripeSecretKey: "sk_test_example",
+      stripeWebhookSecret: "whsec_example",
+      stripePriceId: "price_123",
+    },
+  },
+  "@/lib/billing": {},
 });
 
 function setupReadiness(overrides = {}) {
@@ -99,4 +113,101 @@ test("past due and canceled are visible attention states but do not disable Rela
 test("unknown billing status falls back to not_started", () => {
   assert.equal(billing.normalizeBillingStatus("surprise"), "not_started");
   assert.equal(billing.normalizeBillingStatus(null), "not_started");
+});
+
+test("stripe subscription statuses map into account billing states", () => {
+  assert.equal(stripeBilling.mapStripeSubscriptionStatus("active"), "active");
+  assert.equal(stripeBilling.mapStripeSubscriptionStatus("trialing"), "trialing");
+  assert.equal(stripeBilling.mapStripeSubscriptionStatus("canceled"), "canceled");
+  assert.equal(stripeBilling.mapStripeSubscriptionStatus("past_due"), "past_due");
+  assert.equal(stripeBilling.mapStripeSubscriptionStatus("unpaid"), "past_due");
+  assert.equal(stripeBilling.mapStripeSubscriptionStatus("incomplete"), "past_due");
+  assert.equal(stripeBilling.mapStripeSubscriptionStatus("unexpected"), "not_started");
+});
+
+test("stripe webhook signatures must be valid and recent", () => {
+  const rawBody = JSON.stringify({ id: "evt_123" });
+  const timestamp = 1_800_000_000;
+  const secret = "whsec_example";
+  const signature = createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex");
+  const header = `t=${timestamp},v1=${signature}`;
+
+  assert.equal(stripeBilling.verifyStripeWebhookSignature(rawBody, header, secret, timestamp * 1000), true);
+  assert.equal(stripeBilling.verifyStripeWebhookSignature(rawBody, header, "wrong_secret", timestamp * 1000), false);
+  assert.equal(stripeBilling.verifyStripeWebhookSignature(rawBody, header, secret, (timestamp + 1_000) * 1000), false);
+});
+
+test("checkout session completed updates the selected account billing identifiers", () => {
+  const update = stripeBilling.extractBillingUpdateFromStripeEvent({
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        client_reference_id: "acct_123",
+        customer: "cus_123",
+        subscription: "sub_123",
+        metadata: { account_id: "acct_123", account_slug: "relay-nw" },
+      },
+    },
+  });
+
+  assert.deepEqual(update, {
+    accountId: "acct_123",
+    billingStatus: "active",
+    stripeCustomerId: "cus_123",
+    stripeSubscriptionId: "sub_123",
+    stripePriceId: "price_123",
+    trialEndsAt: null,
+  });
+});
+
+test("subscription updates use metadata account id and preserve trial end", () => {
+  const update = stripeBilling.extractBillingUpdateFromStripeEvent({
+    type: "customer.subscription.updated",
+    data: {
+      object: {
+        id: "sub_123",
+        customer: "cus_123",
+        status: "trialing",
+        trial_end: 1_800_000_000,
+        metadata: { account_id: "acct_123" },
+        items: {
+          data: [{ price: { id: "price_trial" } }],
+        },
+      },
+    },
+  });
+
+  assert.equal(update.accountId, "acct_123");
+  assert.equal(update.billingStatus, "trialing");
+  assert.equal(update.stripeCustomerId, "cus_123");
+  assert.equal(update.stripeSubscriptionId, "sub_123");
+  assert.equal(update.stripePriceId, "price_trial");
+  assert.equal(update.trialEndsAt, "2027-01-15T08:00:00.000Z");
+});
+
+test("subscription deleted marks the account canceled", () => {
+  const update = stripeBilling.extractBillingUpdateFromStripeEvent({
+    type: "customer.subscription.deleted",
+    data: {
+      object: {
+        id: "sub_123",
+        customer: "cus_123",
+        status: "active",
+        metadata: { account_id: "acct_123" },
+      },
+    },
+  });
+
+  assert.equal(update.billingStatus, "canceled");
+  assert.equal(update.accountId, "acct_123");
+});
+
+test("stripe events without account metadata are ignored instead of guessing a tenant", () => {
+  assert.equal(
+    stripeBilling.extractBillingUpdateFromStripeEvent({
+      type: "customer.subscription.updated",
+      data: { object: { id: "sub_123", status: "active" } },
+    }),
+    null,
+  );
 });

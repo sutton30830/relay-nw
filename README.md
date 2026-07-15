@@ -9,7 +9,7 @@ Relay NW supports two call flows:
 
 In both modes, Relay NW saves the missed call in an account-scoped Supabase inbox and sends one automatic SMS only when the account is configured, A2P is approved, and the owner has automatic texting turned on.
 
-The product is multi-account at the data and auth layer, but early customers are still onboarded by an operator with the provisioning and verification scripts. The auth foundation supports one Supabase user belonging to multiple accounts and a simple owner-facing account switcher. Billing has an account-scoped status foundation, but Stripe Checkout, webhooks, and billing enforcement are intentionally not complete yet.
+The product is multi-account at the data and auth layer, but early customers are still onboarded by an operator with the provisioning and verification scripts. The auth foundation supports one Supabase user belonging to multiple accounts and a simple owner-facing account switcher. Billing has an account-scoped status foundation plus Stripe Checkout/webhook sync, but billing enforcement is intentionally not complete yet.
 
 ## Day-One Setup Checklist
 
@@ -301,7 +301,9 @@ The simplest deployment path is Vercel:
 6. Set `INTAKE_URL` to `https://relay-nw.vercel.app/intake`.
 7. Set Twilio's Voice webhook to `https://relay-nw.vercel.app/api/twilio/voice`.
 8. Set Twilio's Messaging webhook to `https://relay-nw.vercel.app/api/twilio/sms`.
-9. Keep `ALLOW_UNSIGNED_TWILIO_WEBHOOKS` unset or `false` in production.
+9. Set Stripe's webhook endpoint to `https://relay-nw.vercel.app/api/stripe/webhook`.
+10. Set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `STRIPE_PRICE_ID` before using Checkout.
+11. Keep `ALLOW_UNSIGNED_TWILIO_WEBHOOKS` unset or `false` in production.
 
 ## Security Notes
 
@@ -322,7 +324,7 @@ The simplest deployment path is Vercel:
 
 ## Not In V1
 
-- Stripe Checkout, webhooks, and billing enforcement
+- Billing enforcement and customer portal
 - CRM automation
 - Shared inbox
 - Business-hours logic

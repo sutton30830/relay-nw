@@ -4,6 +4,7 @@ import { FullTestPanel } from "@/app/leads/_components/full-test-panel";
 import { Icon } from "@/components/icon";
 import { requireAccountUser } from "@/lib/auth";
 import { computeBillingReadiness } from "@/lib/billing";
+import type { BillingReadiness } from "@/lib/billing";
 import {
   getA2pRegistrationStatus,
   getAccountBillingRecord,
@@ -77,6 +78,45 @@ function MetricCard({
       <strong>{value}</strong>
       <span>{detail}</span>
     </article>
+  );
+}
+
+function BillingAction({ billingReadiness, role }: { billingReadiness: BillingReadiness; role: string }) {
+  if (
+    billingReadiness.state === "active" ||
+    billingReadiness.state === "trialing" ||
+    billingReadiness.state === "comped"
+  ) {
+    return null;
+  }
+
+  if (billingReadiness.state === "billing_attention") {
+    return (
+      <p className="setup-panel__note">
+        Billing needs attention. Relay keeps capturing missed calls while billing is resolved.
+      </p>
+    );
+  }
+
+  if (!billingReadiness.activationReady) {
+    return (
+      <p className="setup-panel__note">
+        Finish call capture and carrier texting setup before starting billing.
+      </p>
+    );
+  }
+
+  if (role !== "owner") {
+    return <p className="setup-panel__note">Ask the owner to start billing when setup is complete.</p>;
+  }
+
+  return (
+    <form action="/api/billing/checkout" method="post" className="setup-panel__action">
+      <button className="btn btn-primary" type="submit">
+        Start billing
+      </button>
+      <p>Opens secure Stripe Checkout. Relay does not turn off missed-call capture in this phase.</p>
+    </form>
   );
 }
 
@@ -241,6 +281,7 @@ export default async function SetupPage() {
                 }
               />
             </ol>
+            <BillingAction billingReadiness={billingReadiness} role={role} />
           </article>
 
           <article className="panel setup-panel">

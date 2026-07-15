@@ -5,6 +5,7 @@ import test from "node:test";
 const sql = await readFile(new URL("../supabase.sql", import.meta.url), "utf8");
 const envTs = await readFile(new URL("../lib/env.ts", import.meta.url), "utf8");
 const billingTs = await readFile(new URL("../lib/billing.ts", import.meta.url), "utf8");
+const stripeBillingTs = await readFile(new URL("../lib/stripe-billing.ts", import.meta.url), "utf8");
 const twilioTs = await readFile(new URL("../lib/twilio.ts", import.meta.url), "utf8");
 const twimlTs = await readFile(new URL("../lib/twiml.ts", import.meta.url), "utf8");
 const authTs = await readFile(new URL("../lib/auth.ts", import.meta.url), "utf8");
@@ -18,6 +19,8 @@ const authPasswordResetRouteTs = await readFile(new URL("../app/api/auth/passwor
 const authSelectAccountRouteTs = await readFile(new URL("../app/api/auth/select-account/route.ts", import.meta.url), "utf8");
 const authLogoutRouteTs = await readFile(new URL("../app/api/auth/logout/route.ts", import.meta.url), "utf8");
 const authUpdatePasswordRouteTs = await readFile(new URL("../app/api/auth/update-password/route.ts", import.meta.url), "utf8");
+const billingCheckoutRouteTs = await readFile(new URL("../app/api/billing/checkout/route.ts", import.meta.url), "utf8");
+const stripeWebhookRouteTs = await readFile(new URL("../app/api/stripe/webhook/route.ts", import.meta.url), "utf8");
 const authCallbackRouteTs = await readFile(new URL("../app/auth/callback/route.ts", import.meta.url), "utf8");
 const inboundSmsRouteTs = await readFile(new URL("../app/api/twilio/sms/route.ts", import.meta.url), "utf8");
 const homePageTsx = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
@@ -89,6 +92,33 @@ test("billing foundation is account-scoped and activation-based", () => {
   assert.match(setupPageTsx, /computeBillingReadiness/);
   assert.match(setupPageTsx, /Billing activation/);
   assert.match(verifyAccountScript, /deriveBillingVerification/);
+  assert.doesNotMatch(missedCallTs, /billingStatus|stripe/i);
+});
+
+test("stripe checkout and webhooks update account billing without gating missed-call capture", () => {
+  assert.match(envTs, /STRIPE_SECRET_KEY/);
+  assert.match(envTs, /STRIPE_WEBHOOK_SECRET/);
+  assert.match(envTs, /STRIPE_PRICE_ID/);
+  assert.match(accountStore, /updateAccountBillingRecord/);
+
+  assert.match(stripeBillingTs, /verifyStripeWebhookSignature/);
+  assert.match(stripeBillingTs, /timingSafeEqual/);
+  assert.match(stripeBillingTs, /metadataAccountId/);
+  assert.match(stripeBillingTs, /mapStripeSubscriptionStatus/);
+
+  assert.match(billingCheckoutRouteTs, /requireAccountUser\(\)/);
+  assert.match(billingCheckoutRouteTs, /session\.role !== "owner"/);
+  assert.match(billingCheckoutRouteTs, /createStripeCheckoutSession/);
+  assert.match(billingCheckoutRouteTs, /getAccountBillingRecord/);
+
+  assert.match(stripeWebhookRouteTs, /request\.text\(\)/);
+  assert.match(stripeWebhookRouteTs, /verifyStripeWebhookSignature/);
+  assert.match(stripeWebhookRouteTs, /JSON\.parse\(rawBody\)/);
+  assert.ok(
+    stripeWebhookRouteTs.indexOf("verifyStripeWebhookSignature") <
+      stripeWebhookRouteTs.indexOf("JSON.parse(rawBody)"),
+  );
+  assert.match(stripeWebhookRouteTs, /updateAccountBillingRecord/);
   assert.doesNotMatch(missedCallTs, /billingStatus|stripe/i);
 });
 
@@ -403,7 +433,7 @@ test("authenticated setup page exposes onboarding checks without creating a new 
   // in carriers.test.mjs) and render through the CarrierForwarding component.
   assert.match(setupPageTsx, /CarrierForwarding relayNumber=/);
   assert.doesNotMatch(setupPageTsx, /Guide the owner|The owner should|customer&apos;s carrier instructions/);
-  assert.doesNotMatch(setupPageTsx, /provisionAccount|signUp|createUser|stripe/i);
+  assert.doesNotMatch(setupPageTsx, /provisionAccount|signUp|createUser/i);
 });
 
 test("README documents Supabase Auth instead of legacy leads password auth", () => {

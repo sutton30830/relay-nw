@@ -3169,6 +3169,30 @@ code {
   padding: 16px 18px;
 }
 
+.setup-panel__note {
+  margin: 0;
+  border-top: 1px solid var(--line);
+  padding: 16px 18px;
+  color: var(--ink-4);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.setup-panel__action {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-top: 1px solid var(--line);
+  padding: 16px 18px;
+}
+
+.setup-panel__action p {
+  margin: 0;
+  color: var(--ink-4);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
 .setup-status__step:last-child {
   border-bottom: 0;
 }
