@@ -1,78 +1,105 @@
 # Relay NW Customer Setup Checklist
 
-Use this checklist for every early customer. Keep setup hands-on until the flow has been tested with a real call.
+Use this checklist for every early customer. Relay NW is multi-account in the database and auth layer, but onboarding is still assisted by an operator until fully self-serve setup ships.
 
-## 1. Collect The Basics
+## 1. Track the Setup Request
+
+1. Open `/ops/setup-requests` from the Relay NW house account.
+2. Filter for `New` requests.
+3. Contact the prospect and mark the request `Contacted`.
+4. When their account is live, mark the request `Onboarded`.
+5. If they are not a fit or stop responding, mark the request `Closed`.
+
+Do not create sales inquiries as tenant leads. The public intake form writes to `setup_requests`, not a customer's missed-call inbox.
+
+## 2. Collect the Basics
 
 - Business name for SMS and greeting copy.
 - Existing public business phone number.
+- Owner email for Supabase Auth.
 - Owner phone number for call-back links and forwarded replies.
-- Relay NW Twilio phone number.
+- Relay NW Twilio recovery number.
 - Public intake form URL.
-- Lead inbox password.
+- Call mode: `forwarding` for most early customers, `direct` only when the Twilio number is their public number.
 - Custom greeting audio URL, if they recorded one.
 
-## 2. Configure The App
+## 3. Provision the Account
 
-In Vercel production environment variables:
+Provision the account with the script so account-scoped rows stay consistent:
 
-- `CALL_MODE=forwarding`
-- `APP_BASE_URL=https://relay-nw.vercel.app`
-- `INTAKE_URL=https://relay-nw.vercel.app/intake`
-- `BUSINESS_NAME` set to the customer-facing business name
-- `OWNER_PHONE_NUMBER` set to the owner phone in E.164 format, like `+12065551234`
-- `TWILIO_PHONE_NUMBER` set to the Relay NW Twilio number
-- `ALLOW_UNSIGNED_TWILIO_WEBHOOKS` unset or `false`
+```bash
+npm run provision:account
+```
 
-After changing Vercel env vars, redeploy production.
+The script should create or update the account, account settings, account phone number, and owner account-user row. After provisioning, create or invite the owner through Supabase Auth if needed.
 
-## 3. Configure Twilio
+Then verify:
 
-On the Relay NW Twilio phone number:
+```bash
+npm run verify:account -- <slug>
+```
 
-- Voice webhook: `https://relay-nw.vercel.app/api/twilio/voice`
+Treat verification output as the source of truth:
+
+- `Live · Auto-text on` means calls and automatic texting are ready.
+- `Live · Auto-text paused` means call capture is ready, but the owner intentionally paused automatic texting.
+- `Calls ready · Texting not ready` means call capture can be tested, but texting needs A2P/configuration attention.
+- `Setup needed` means routing or core configuration is incomplete.
+
+## 4. Configure Twilio
+
+On the customer's Relay NW Twilio phone number:
+
+- Voice webhook: `APP_BASE_URL/api/twilio/voice`
 - Voice method: `POST`
-- Messaging webhook: `https://relay-nw.vercel.app/api/twilio/sms`
+- Messaging webhook: `APP_BASE_URL/api/twilio/sms`
 - Messaging method: `POST`
 
-If A2P 10DLC is not registered yet, calls and voicemail can still be tested, but outbound SMS may fail or be blocked.
+Confirm the number is present in `account_phone_numbers` for the correct account. If A2P 10DLC is not approved yet, calls and voicemail can still be tested, but outbound SMS should not be treated as production-ready.
 
-## 4. Configure Conditional Call Forwarding
+## 5. Configure Conditional Call Forwarding
 
-The customer keeps their existing number. Their carrier forwards missed, busy, or unreachable calls to the Relay NW Twilio number.
+The customer usually keeps their existing number. Their carrier forwards missed, busy, or unreachable calls to the Relay NW recovery number.
 
-Carrier codes vary. For AT&T, these commonly work:
+Use `/setup` with the owner so the app can show carrier-aware forwarding guidance and run the listening test. Carrier codes vary, and carrier apps, landlines, VoIP providers, and regional carriers may use different steps.
 
-- No answer: `*61*TWILIO_NUMBER#`
-- Busy: `*67*TWILIO_NUMBER#`
-- Unreachable: `*62*TWILIO_NUMBER#`
+For many US mobile carriers, these are useful starting points:
 
-Replace `TWILIO_NUMBER` with the Relay NW number, including `1` for US numbers.
+- No answer: `*61*RELAY_NUMBER#`
+- Busy: `*67*RELAY_NUMBER#`
+- Unreachable: `*62*RELAY_NUMBER#`
 
-## 5. Run One Real Test
+Replace `RELAY_NUMBER` with the Relay NW recovery number, including `1` for US numbers.
+
+## 6. Run One Real Test
 
 Test with the customer watching:
 
-1. Call the customer's existing number from a separate phone.
-2. Do not answer.
-3. Confirm the call forwards to Relay NW.
-4. Confirm the greeting plays.
-5. Leave a short voicemail.
-6. Confirm the lead appears in `/leads`.
-7. Confirm the voicemail appears on the lead.
-8. Confirm SMS status is visible on the lead.
-9. Open the recent Twilio activity panel at the bottom of `/leads` and confirm the call, recording, and SMS events are visible.
+1. Run `npm run verify:account -- <slug>` before the call.
+2. In `/setup`, start the forwarding/listening test.
+3. Call the customer's existing number from a separate phone.
+4. Do not answer.
+5. Confirm the call forwards to Relay NW.
+6. Confirm the greeting plays and discloses recording.
+7. Leave a short voicemail.
+8. Confirm the lead appears in `/leads`.
+9. Confirm the voicemail appears on the lead.
+10. Confirm SMS status is visible on the lead.
+11. Reply to the SMS, if texting is approved/on, and confirm the owner receives the forwarded reply.
+12. Open `/ops` and confirm the call, recording, SMS status, and inbound reply events are visible.
 
-If A2P is not active, SMS may show failed because the number is unregistered. That is expected until registration is complete.
+If A2P is pending or automatic texting is paused, the lead should still appear in the inbox, but callers should not receive an automatic text.
 
-## 6. Go-Live Check
+## 7. Go-Live Check
 
-Before charging:
+Before charging for a live account:
 
-- A2P 10DLC registration is approved.
-- One missed call test succeeds.
+- Account verification passes or only warns that automatic texting is intentionally paused.
+- A2P 10DLC registration is approved before promising automatic SMS.
+- One missed-call test succeeds.
 - One voicemail recording test succeeds.
-- One inbound SMS reply test succeeds.
-- The recent Twilio activity panel shows enough detail to explain the test call.
-- The owner knows the lead inbox password.
-- The owner understands that callers who hang up before forwarding may not be captured.
+- One inbound SMS reply test succeeds when texting is on.
+- `/ops` shows enough detail to explain the test call.
+- The owner can sign in with email/password and knows how to reset their password.
+- The owner understands automatic SMS can be paused without turning off call capture.
+- The owner understands callers who hang up before forwarding reaches Relay NW may not be captured.

@@ -1,10 +1,12 @@
 import Link from "next/link";
-import { requireAccountUser } from "@/lib/auth";
+import { isRelayOperator, requireAccountUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function OpsRunbookPage() {
-  const { account } = await requireAccountUser();
+  const session = await requireAccountUser();
+  const { account } = session;
+  const showSetupRequests = isRelayOperator(session);
 
   return (
     <main className="leads-view">
@@ -16,6 +18,9 @@ export default async function OpsRunbookPage() {
             <p className="leads-subtitle">{account.businessName}</p>
           </div>
           <div className="lead-actions">
+            {showSetupRequests ? (
+              <Link className="btn btn-secondary" href="/ops/setup-requests">Setup requests</Link>
+            ) : null}
             <Link className="btn btn-secondary" href="/ops">Webhook debug</Link>
             <Link className="btn btn-secondary" href="/leads">Back to leads</Link>
           </div>
@@ -67,6 +72,30 @@ export default async function OpsRunbookPage() {
               <li>Run `npm run test:activation`.</li>
               <li>Complete one real Twilio missed-call test.</li>
               <li>Confirm webhook debug shows voice, SMS status, inbound reply, and recording events.</li>
+            </ol>
+          </article>
+        </section>
+
+        <section className="setup-grid">
+          <article className="panel setup-panel">
+            <p className="t-eyebrow">Assisted onboarding</p>
+            <h2 className="t-display">Move prospects to live accounts.</h2>
+            <ol className="setup-status__steps">
+              <li>Open setup requests from the Relay NW house account and mark each request contacted, onboarded, or closed.</li>
+              <li>Provision the account with `npm run provision:account`, then verify it with `npm run verify:account -- &lt;slug&gt;`.</li>
+              <li>Confirm Twilio webhooks, A2P status, owner email, and owner phone before giving access.</li>
+              <li>Use `/setup` with the owner for forwarding codes, listening test, and SMS test.</li>
+            </ol>
+          </article>
+
+          <article className="panel setup-panel">
+            <p className="t-eyebrow">Backup and deletion</p>
+            <h2 className="t-display">Handle data changes deliberately.</h2>
+            <ol className="setup-status__steps">
+              <li>Before destructive support work, export the affected account, leads, messages, recordings metadata, opt-outs, and audit rows from Supabase.</li>
+              <li>For deletion requests, identify account slug, lead id, caller phone, RecordingSid, MessageSids, and any opt-out rows before deleting.</li>
+              <li>After deletion or restore, run `npm run verify:account -- &lt;slug&gt;` and inspect `/ops` for related failures.</li>
+              <li>Record what changed in support notes using IDs and caller last 4, not full transcript or SMS content unless needed.</li>
             </ol>
           </article>
         </section>

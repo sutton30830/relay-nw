@@ -1,32 +1,34 @@
 # Relay NW
 
-Relay NW is a small missed-call SMS follow-up MVP for one local home services business.
+Relay NW is a missed-call recovery SaaS for one-truck home-service businesses. It is currently built for manually provisioned pilot accounts, not fully self-serve signup.
 
 Relay NW supports two call flows:
 
 - `CALL_MODE=forwarding`: the business keeps its existing public number and uses conditional call forwarding to send missed calls to Relay NW.
 - `CALL_MODE=direct`: customers call the Twilio number directly, and Relay NW forwards the call to the owner's real phone.
 
-In both modes, Relay NW sends one automatic SMS with the intake link and saves the lead in Supabase when a call is missed.
+In both modes, Relay NW saves the missed call in an account-scoped Supabase inbox and sends one automatic SMS only when the account is configured, A2P is approved, and the owner has automatic texting turned on.
 
-This app is intentionally single-business. No accounts, billing, CRM, shared inbox, business-hours logic, or multi-tenant support.
+The product is multi-account at the data and auth layer, but early customers are still onboarded by an operator with the provisioning and verification scripts. Billing, workspace switching, and fully self-serve Twilio/A2P setup are intentionally not complete yet.
 
 ## Day-One Setup Checklist
 
 1. Create a Supabase project and run `supabase.sql` in the Supabase SQL Editor.
-2. Create a Twilio account and buy or choose one Twilio phone number. This is the Relay NW recovery number.
+2. Create or connect a Twilio account and assign each pilot account a Relay NW recovery number.
 3. Complete Twilio A2P 10DLC registration before expecting US SMS to deliver reliably.
-4. Create `.env.local` from `.env.example` and fill in every required value.
+4. Create `.env.local` from `.env.example` and fill in the platform-level values.
 5. Run locally with `npm install` and `npm run dev`.
 6. For local Twilio testing, run `ngrok http 3000`.
 7. Set `APP_BASE_URL` and `INTAKE_URL` to the ngrok or deployed public URL.
-8. In Twilio, configure the phone number's Voice webhook to `APP_BASE_URL/api/twilio/voice`.
-9. In Twilio, configure the phone number's Messaging webhook to `APP_BASE_URL/api/twilio/sms`.
-10. Use HTTP `POST` for both Twilio webhooks.
-11. For `CALL_MODE=direct`, make a real test call from a separate phone and let the owner's phone ring without answering.
-12. For `CALL_MODE=forwarding`, configure the owner's existing number to forward busy/no-answer calls to the Twilio number, then make a missed-call test to the existing number.
-13. Confirm the caller receives the SMS and the lead appears in `/leads`.
-14. Reply to the SMS and confirm the owner receives the forwarded reply.
+8. Provision each customer account with `npm run provision:account`.
+9. Verify each customer account with `npm run verify:account -- <slug>`.
+10. In Twilio, configure the account's phone number Voice webhook to `APP_BASE_URL/api/twilio/voice`.
+11. In Twilio, configure the account's phone number Messaging webhook to `APP_BASE_URL/api/twilio/sms`.
+12. Use HTTP `POST` for both Twilio webhooks.
+13. For `CALL_MODE=direct`, make a real test call from a separate phone and let the owner's phone ring without answering.
+14. For `CALL_MODE=forwarding`, configure the owner's existing number to forward busy/no-answer calls to the Relay NW recovery number, then make a missed-call test to the existing number.
+15. Confirm the caller receives the SMS when texting is approved/on and the lead appears in `/leads`.
+16. Reply to the SMS and confirm the owner receives the forwarded reply.
 
 For the customer-by-customer onboarding checklist, see `docs/customer-setup.md`.
 
@@ -63,6 +65,10 @@ For the customer-by-customer onboarding checklist, see `docs/customer-setup.md`.
 - `/account/password` authenticated password setup/reset page
 - `/setup` authenticated owner setup/status checklist
 - `/settings` authenticated account settings
+- `/reports` authenticated owner reporting
+- `/ops` authenticated operational webhook/debug page
+- `/ops/setup-requests` Relay NW operator-only assisted onboarding queue
+- `/ops/runbook` authenticated operational runbook
 - `/api/intake` intake form submission
 - `/api/leads/[id]` lead status update
 - `/api/twilio/voice` Twilio incoming call webhook

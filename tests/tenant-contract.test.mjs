@@ -35,9 +35,13 @@ const setupRequestDetailsTsx = await readFile(new URL("../app/leads/_components/
 const globalsCss = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 const opsPageTsx = await readFile(new URL("../app/ops/page.tsx", import.meta.url), "utf8");
 const opsRunbookPageTsx = await readFile(new URL("../app/ops/runbook/page.tsx", import.meta.url), "utf8");
+const opsSetupRequestsPageTsx = await readFile(new URL("../app/ops/setup-requests/page.tsx", import.meta.url), "utf8");
+const opsSetupRequestsRouteTs = await readFile(new URL("../app/api/ops/setup-requests/route.ts", import.meta.url), "utf8");
 const privacyPageTsx = await readFile(new URL("../app/privacy/page.tsx", import.meta.url), "utf8");
 const termsPageTsx = await readFile(new URL("../app/terms/page.tsx", import.meta.url), "utf8");
 const opsRunbookMd = await readFile(new URL("../docs/ops-runbook.md", import.meta.url), "utf8");
+const customerSetupMd = await readFile(new URL("../docs/customer-setup.md", import.meta.url), "utf8");
+const setupRequestsTs = await readFile(new URL("../lib/supabase/setup-requests.ts", import.meta.url), "utf8");
 const middlewareTs = await readFile(new URL("../middleware.ts", import.meta.url), "utf8");
 const envExample = await readFile(new URL("../.env.example", import.meta.url), "utf8");
 const packageJson = await readFile(new URL("../package.json", import.meta.url), "utf8");
@@ -109,6 +113,33 @@ test("ops runbook is authenticated and covers failure visibility plus retention"
   assert.match(opsRunbookMd, /Voicemail or Transcription Failed/);
   assert.match(opsRunbookMd, /Alert Email Not Received/);
   assert.match(opsRunbookMd, /Voicemail recordings, transcripts, and lead records are retained until manually deleted/);
+  assert.match(opsRunbookMd, /Backup, Restore, and Deletion/);
+});
+
+test("assisted onboarding setup requests are operator-only and status tracked", () => {
+  assert.match(authTs, /export function isRelayOperator/);
+  assert.match(authTs, /export async function requireRelayOperator\(\)/);
+  assert.match(opsPageTsx, /href="\/ops\/setup-requests"/);
+  assert.match(opsRunbookPageTsx, /href="\/ops\/setup-requests"/);
+  assert.match(opsSetupRequestsPageTsx, /requireRelayOperator\(\)/);
+  assert.match(opsSetupRequestsPageTsx, /listSetupRequests\(status\)/);
+  assert.match(opsSetupRequestsPageTsx, /New/);
+  assert.match(opsSetupRequestsPageTsx, /Contacted/);
+  assert.match(opsSetupRequestsPageTsx, /Onboarded/);
+  assert.match(opsSetupRequestsPageTsx, /Closed/);
+  assert.match(opsSetupRequestsRouteTs, /requireRelayOperator\(\)/);
+  assert.match(opsSetupRequestsRouteTs, /updateSetupRequestStatus\(id, status\)/);
+  assert.match(setupRequestsTs, /export type SetupRequestStatus = "new" \| "contacted" \| "onboarded" \| "closed"/);
+  assert.match(setupRequestsTs, /\.from\("setup_requests"\)[\s\S]*\.update\(\{ status \}\)/);
+});
+
+test("customer setup docs describe current assisted provisioning flow", () => {
+  assert.match(customerSetupMd, /\/ops\/setup-requests/);
+  assert.match(customerSetupMd, /npm run provision:account/);
+  assert.match(customerSetupMd, /npm run verify:account -- <slug>/);
+  assert.match(customerSetupMd, /Live · Auto-text paused/);
+  assert.match(customerSetupMd, /owner can sign in with email\/password/);
+  assert.doesNotMatch(customerSetupMd, /LEADS_PASSWORD|lead inbox password|Vercel production environment variables/);
 });
 
 test("missed-call owner notification only follows inserted leads", () => {
@@ -312,11 +343,15 @@ test("authenticated setup page exposes onboarding checks without creating a new 
 test("README documents Supabase Auth instead of legacy leads password auth", () => {
   assert.match(readme, /Email\/password is the primary owner sign-in path/);
   assert.match(readme, /magic links remain a fallback/);
+  assert.match(readme, /manually provisioned pilot accounts/);
+  assert.match(readme, /npm run provision:account/);
+  assert.match(readme, /\/ops\/setup-requests/);
   assert.match(readme, /NEXT_PUBLIC_SUPABASE_ANON_KEY/);
   assert.doesNotMatch(readme, /LEADS_PASSWORD/);
   assert.doesNotMatch(readme, /LEADS_COOKIE_SECRET/);
   assert.doesNotMatch(readme, /There is no auth system/);
   assert.doesNotMatch(readme, /password-protected|password gate|shared password/i);
+  assert.doesNotMatch(readme, /intentionally single-business/);
 });
 
 test("setup SMS consent is optional", () => {

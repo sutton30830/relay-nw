@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireAccountUser } from "@/lib/auth";
+import { isRelayOperator, requireAccountUser } from "@/lib/auth";
 import { getRecentWebhookEventsForAccount } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -25,10 +25,12 @@ export default async function OpsPage({
 }: {
   searchParams: Promise<{ q?: string }>;
 }) {
-  const { account, accountId } = await requireAccountUser();
+  const session = await requireAccountUser();
+  const { account, accountId } = session;
   const { q = "" } = await searchParams;
   const events = (await getRecentWebhookEventsForAccount(accountId, 50))
     .filter((event) => eventMatchesQuery(event, q));
+  const showSetupRequests = isRelayOperator(session);
 
   return (
     <main className="leads-view">
@@ -43,6 +45,9 @@ export default async function OpsPage({
             <form action="/api/email-test/start" method="post">
               <button className="btn btn-secondary" type="submit">Test owner email</button>
             </form>
+            {showSetupRequests ? (
+              <Link className="btn btn-secondary" href="/ops/setup-requests">Setup requests</Link>
+            ) : null}
             <Link className="btn btn-secondary" href="/ops/runbook">Runbook</Link>
             <Link className="btn btn-secondary" href="/leads">Back to leads</Link>
           </div>

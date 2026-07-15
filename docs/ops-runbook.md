@@ -26,6 +26,14 @@ Run `npm run test:activation` locally before high-risk releases. This is determi
 
 ## Failure Playbooks
 
+### Assisted Onboarding Queue
+
+- Open `/ops/setup-requests` from the Relay NW house account.
+- Move each request through `New`, `Contacted`, `Onboarded`, or `Closed`.
+- Provision real customer accounts with `npm run provision:account`; do not manually recreate the same rows from memory.
+- Verify every customer account with `npm run verify:account -- <slug>` before handing over access.
+- Use `/setup` with the owner for forwarding instructions, forwarding health checks, SMS test, and setup status.
+
 ### SMS Failed, Undelivered, or Not Sent
 
 - If `sms_status=failed` or `undelivered`, tell the owner to call the lead.
@@ -61,6 +69,26 @@ Run `npm run test:activation` locally before high-risk releases. This is determi
 - Inbound SMS bodies are pruned by `INBOUND_MESSAGE_RETENTION_DAYS`.
 - Voicemail recordings, transcripts, and lead records are retained until manually deleted or until automated recording retention is implemented.
 - For a deletion request, identify the account, lead, caller phone, recording SID, message SIDs, and any opt-out rows before deleting.
+
+## Backup, Restore, and Deletion
+
+Before destructive support work, export the affected account rows from Supabase:
+
+- `accounts`
+- `account_settings`
+- `account_phone_numbers`
+- `account_users`
+- `leads`
+- `messages`
+- `inbound_messages`
+- `opt_outs`
+- `calls`
+- `forwarding_health_checks`
+- relevant sanitized `webhook_events`
+
+For restore work, reinsert the smallest affected set of rows, then run `npm run verify:account -- <slug>` and inspect `/ops` for unresolved webhook or delivery failures.
+
+For deletion work, identify the account slug, lead id, caller phone, `RecordingSid`, `MessageSid` values, and opt-out rows before deleting. Record the support action with IDs and caller last 4; avoid storing full transcript/SMS content in notes unless it is necessary to resolve the incident.
 
 ## Release Checklist
 

@@ -175,3 +175,37 @@ export async function requireWriteAccessJson(viewerMessage = "Viewers have read-
 
   return auth;
 }
+
+export function isRelayOperator(session: AccountUserSession) {
+  return (
+    session.account.accountSlug === env.defaultAccountSlug &&
+    (session.role === "owner" || session.role === "admin")
+  );
+}
+
+export async function requireRelayOperator() {
+  const session = await requireAccountUser();
+
+  if (!isRelayOperator(session)) {
+    redirect("/ops");
+  }
+
+  return session;
+}
+
+export async function requireRelayOperatorJson() {
+  const auth = await requireAccountUserJson();
+
+  if (auth.response) {
+    return auth;
+  }
+
+  if (!isRelayOperator(auth.session)) {
+    return {
+      session: null,
+      response: Response.json({ error: "Forbidden" }, { status: 403 }),
+    };
+  }
+
+  return auth;
+}
