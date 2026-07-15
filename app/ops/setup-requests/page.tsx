@@ -108,15 +108,23 @@ export default async function SetupRequestsPage({
       <section className="leads-shell">
         <AppHeader businessName={account.businessName} />
 
+        <div className="ops-toolbar">
+          <div>
+            <p className="t-eyebrow">Ops tools</p>
+            <span>Assisted onboarding</span>
+          </div>
+          <div className="ops-toolbar__actions">
+            <Link className="btn btn-secondary btn-sm" href="/ops/runbook">Runbook</Link>
+            <Link className="btn btn-secondary btn-sm" href="/ops">Technical logs</Link>
+            <Link className="btn btn-secondary btn-sm" href="/leads">Back to leads</Link>
+          </div>
+        </div>
+
         <div className="leads-header">
           <div>
             <p className="t-eyebrow">Ops</p>
             <h1 className="t-display">Setup requests</h1>
             <p className="leads-subtitle">Track prospects from intake through white-glove onboarding.</p>
-          </div>
-          <div className="lead-actions">
-            <Link className="btn btn-secondary" href="/ops/runbook">Runbook</Link>
-            <Link className="btn btn-secondary" href="/ops">Webhook debug</Link>
           </div>
         </div>
 

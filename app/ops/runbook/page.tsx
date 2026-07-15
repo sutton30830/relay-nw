@@ -114,6 +114,20 @@ export default async function OpsRunbookPage() {
       <section className="leads-shell">
         <AppHeader businessName={account.businessName} />
 
+        <div className="ops-toolbar">
+          <div>
+            <p className="t-eyebrow">Ops tools</p>
+            <span>Internal checklist</span>
+          </div>
+          <div className="ops-toolbar__actions">
+            {showSetupRequests ? (
+              <Link className="btn btn-secondary btn-sm" href="/ops/setup-requests">Setup requests</Link>
+            ) : null}
+            <Link className="btn btn-secondary btn-sm" href="/ops">Technical logs</Link>
+            <Link className="btn btn-secondary btn-sm" href="/leads">Back to leads</Link>
+          </div>
+        </div>
+
         <div className="leads-header">
           <div>
             <p className="t-eyebrow">Internal ops</p>
@@ -121,13 +135,6 @@ export default async function OpsRunbookPage() {
             <p className="leads-subtitle">
               For Relay NW operators. Use this when onboarding a customer or checking whether the missed-call loop worked for {account.businessName}.
             </p>
-          </div>
-          <div className="lead-actions">
-            {showSetupRequests ? (
-              <Link className="btn btn-secondary" href="/ops/setup-requests">Setup requests</Link>
-            ) : null}
-            <Link className="btn btn-secondary" href="/ops">Technical logs</Link>
-            <Link className="btn btn-secondary" href="/leads">Back to leads</Link>
           </div>
         </div>
 

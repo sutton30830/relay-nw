@@ -1741,6 +1741,40 @@ code {
   gap: 10px;
 }
 
+.ops-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+  padding: 14px 0;
+}
+
+.ops-toolbar > div:first-child {
+  min-width: 0;
+}
+
+.ops-toolbar .t-eyebrow {
+  margin-bottom: 3px;
+}
+
+.ops-toolbar span {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+.ops-toolbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.ops-toolbar__actions form {
+  margin: 0;
+}
+
 .pulse-strip {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-bottom: 24px;
@@ -4139,6 +4173,21 @@ code {
      out of a sub-page, not something to bury in the overflow menu. */
   .leads-view .app-head__right > .app-head__back {
     display: inline-flex;
+  }
+
+  .ops-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 0;
+  }
+
+  .ops-toolbar__actions {
+    justify-content: flex-start;
+  }
+
+  .ops-toolbar__actions .btn {
+    min-height: 36px;
   }
 
   .home-view .app-head__right--primary {
