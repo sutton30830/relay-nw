@@ -182,6 +182,21 @@ test("single-account users still resolve directly", async () => {
   assert.equal(resolution.session.role, "admin");
 });
 
+test("single-account users are not blocked by a stale selected-account cookie", async () => {
+  const { mocks } = makeAuthMocks({
+    rows: [membership({ id: "au-a", account_id: "acct-a", role: "admin" })],
+  });
+  const auth = await loadTsModule("lib/auth.ts", mocks);
+
+  const resolution = await auth.resolveAccountUserSessionForUser(
+    { id: "user-1", email: "owner@example.com" },
+    "acct-stale",
+  );
+
+  assert.equal(resolution.status, "single_account");
+  assert.equal(resolution.session.accountId, "acct-a");
+});
+
 test("multi-account user without selected account is treated as ambiguous", async () => {
   const { mocks } = makeAuthMocks({
     rows: [
@@ -347,4 +362,39 @@ test("account selection route rejects stale selected accounts and clears the coo
 
   assert.equal(cleared[0][0], "relay_selected_account");
   assert.equal(cleared[0][2].maxAge, 0);
+});
+
+test("logout clears the selected account cookie before returning to login", async () => {
+  const cookieSets = [];
+  let signedOut = false;
+  const route = await loadTsModule("app/api/auth/logout/route.ts", {
+    "next/headers": {
+      cookies: async () => ({
+        set: (...args) => cookieSets.push(args),
+      }),
+    },
+    "next/navigation": {
+      redirect: (target) => {
+        throw new Error(`redirect:${target}`);
+      },
+    },
+    "@/lib/auth": {
+      createSupabaseAuthServerClient: async () => ({
+        auth: {
+          signOut: async () => {
+            signedOut = true;
+          },
+        },
+      }),
+      clearSelectedAccountCookie: (cookieStore) => {
+        cookieStore.set("relay_selected_account", "", { maxAge: 0 });
+      },
+    },
+  });
+
+  await assert.rejects(() => route.POST(), /redirect:\/login/);
+
+  assert.equal(signedOut, true);
+  assert.equal(cookieSets[0][0], "relay_selected_account");
+  assert.equal(cookieSets[0][2].maxAge, 0);
 });

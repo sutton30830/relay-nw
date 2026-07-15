@@ -14,6 +14,7 @@ const authLoginRouteTs = await readFile(new URL("../app/api/auth/login/route.ts"
 const authPasswordLoginRouteTs = await readFile(new URL("../app/api/auth/password-login/route.ts", import.meta.url), "utf8");
 const authPasswordResetRouteTs = await readFile(new URL("../app/api/auth/password-reset/route.ts", import.meta.url), "utf8");
 const authSelectAccountRouteTs = await readFile(new URL("../app/api/auth/select-account/route.ts", import.meta.url), "utf8");
+const authLogoutRouteTs = await readFile(new URL("../app/api/auth/logout/route.ts", import.meta.url), "utf8");
 const authUpdatePasswordRouteTs = await readFile(new URL("../app/api/auth/update-password/route.ts", import.meta.url), "utf8");
 const authCallbackRouteTs = await readFile(new URL("../app/auth/callback/route.ts", import.meta.url), "utf8");
 const inboundSmsRouteTs = await readFile(new URL("../app/api/twilio/sms/route.ts", import.meta.url), "utf8");
@@ -366,6 +367,12 @@ test("multi-account users can choose an account through a server-owned selector"
   assert.match(authSelectAccountRouteTs, /signOut\(\)/);
   assert.match(appHeaderTsx, /switchAccountHref/);
   assert.match(appHeaderTsx, /Switch business/);
+});
+
+test("selected account cookie cannot strand later sign-ins", () => {
+  assert.match(authTs, /memberships\.length === 1/);
+  assert.match(authLogoutRouteTs, /clearSelectedAccountCookie\(await cookies\(\)\)/);
+  assert.match(authLogoutRouteTs, /supabase\.auth\.signOut\(\)/);
 });
 
 test("authenticated setup page exposes onboarding checks without creating a new tenant path", () => {

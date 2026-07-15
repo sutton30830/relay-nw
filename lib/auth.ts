@@ -206,6 +206,10 @@ export async function resolveAccountUserSessionForUser(
     );
 
     if (!selected) {
+      if (memberships.length === 1) {
+        return { status: "single_account", session: memberships[0], memberships };
+      }
+
       return {
         status: "invalid_selection",
         userId: user.id,
