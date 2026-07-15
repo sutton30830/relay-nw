@@ -31,7 +31,7 @@ export default async function IntakePage({
             We&apos;ll review your setup and reach out shortly.
           </p>
 
-          <div className="mt-5 flex flex-wrap justify-center gap-3">
+          <div className="intake-done__actions">
             <Link className="btn btn-primary" href="/">
               Back to home
             </Link>
@@ -46,19 +46,14 @@ export default async function IntakePage({
 
   return (
     <main className="intake-view">
+      {/* Brand only — the page title lives in the intro below, so the header
+          doesn't repeat it. */}
       <header className="intake-top">
         <Link className="app-head__brand app-head__brand--link" href="/">
           <div className="brand-mark">
             <Icon name="relay" size={18} />
           </div>
-          <div>
-            <p className="t-eyebrow" style={{ fontSize: 10, margin: 0 }}>
-              Relay NW
-            </p>
-            <h1 className="t-display" style={{ fontSize: 22, margin: 0 }}>
-              Set up Relay NW
-            </h1>
-          </div>
+          <h1 className="t-display app-head__name">Relay NW</h1>
         </Link>
       </header>
 

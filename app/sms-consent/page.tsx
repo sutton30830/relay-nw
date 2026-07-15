@@ -27,14 +27,7 @@ export default function SmsConsentPage() {
           <div className="brand-mark">
             <Icon name="relay" size={18} />
           </div>
-          <div>
-            <p className="t-eyebrow" style={{ fontSize: 10, margin: 0 }}>
-              Relay NW
-            </p>
-            <h1 className="t-display" style={{ fontSize: 22, margin: 0 }}>
-              SMS Consent
-            </h1>
-          </div>
+          <h1 className="t-display app-head__name">Relay NW</h1>
         </Link>
       </header>
 

@@ -162,6 +162,8 @@ code {
 }
 
 .legal-card ul {
+  /* Tailwind's preflight strips list markers; restore them for legal copy. */
+  list-style: disc;
   margin: 8px 0 0;
   padding-left: 22px;
 }
@@ -1526,6 +1528,14 @@ code {
   line-height: 1.6;
 }
 
+.intake-done__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 20px;
+}
+
 .intake-done__next {
   border-radius: 14px;
   background: var(--panel-2);
@@ -1592,6 +1602,19 @@ code {
 
 .gate-form {
   text-align: left;
+}
+
+.gate-eyebrow {
+  margin-top: 14px;
+}
+
+.gate-submit {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.gate-submit-secondary {
+  width: 100%;
 }
 
 /* Secondary sign-in paths (recovery, magic link) live in disclosures so the

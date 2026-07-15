@@ -56,7 +56,7 @@ export default async function LoginPage({
   return (
     <main className="gate-view">
       <section className="gate-card">
-        <p className="t-eyebrow" style={{ marginTop: 14 }}>Relay NW · Protected</p>
+        <p className="t-eyebrow gate-eyebrow">Relay NW · Protected</p>
         <h1 className="t-display gate-title">Owner sign in</h1>
         <p className="gate-sub">Use the email and password connected to your Relay NW account.</p>
 
@@ -113,7 +113,7 @@ export default async function LoginPage({
             </div>
           </label>
 
-          <button className="btn btn-primary" type="submit" style={{ width: "100%", marginTop: 12 }}>
+          <button className="btn btn-primary gate-submit" type="submit">
             Sign in
           </button>
         </form>
@@ -138,7 +138,7 @@ export default async function LoginPage({
                 />
               </div>
             </label>
-            <button className="btn btn-secondary" type="submit" style={{ width: "100%" }}>
+            <button className="btn btn-secondary gate-submit-secondary" type="submit">
               Email setup link
             </button>
           </form>
@@ -163,14 +163,14 @@ export default async function LoginPage({
                 />
               </div>
             </label>
-            <button className="btn btn-secondary" type="submit" disabled={shouldPauseRequests} style={{ width: "100%" }}>
+            <button className="btn btn-secondary gate-submit-secondary" type="submit" disabled={shouldPauseRequests}>
               {shouldPauseRequests ? "Use the latest magic link" : "Email one-time magic link"}
             </button>
           </form>
         </details>
 
         <p className="gate-foot">
-          <Link href="/" style={{ textDecoration: "underline" }}>Back to setup</Link>
+          <Link className="text-link" href="/">Back to home</Link>
         </p>
       </section>
     </main>
