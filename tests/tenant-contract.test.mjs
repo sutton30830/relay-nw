@@ -36,6 +36,7 @@ const globalsCss = await readFile(new URL("../app/globals.css", import.meta.url)
 const opsPageTsx = await readFile(new URL("../app/ops/page.tsx", import.meta.url), "utf8");
 const opsRunbookPageTsx = await readFile(new URL("../app/ops/runbook/page.tsx", import.meta.url), "utf8");
 const opsSetupRequestsPageTsx = await readFile(new URL("../app/ops/setup-requests/page.tsx", import.meta.url), "utf8");
+const opsToolbarTsx = await readFile(new URL("../app/ops/_components/ops-toolbar.tsx", import.meta.url), "utf8");
 const opsSetupRequestsRouteTs = await readFile(new URL("../app/api/ops/setup-requests/route.ts", import.meta.url), "utf8");
 const privacyPageTsx = await readFile(new URL("../app/privacy/page.tsx", import.meta.url), "utf8");
 const termsPageTsx = await readFile(new URL("../app/terms/page.tsx", import.meta.url), "utf8");
@@ -101,7 +102,7 @@ test("privacy and terms disclose recording, transcription, AI processing, and re
 });
 
 test("ops runbook is authenticated and covers failure visibility plus retention", () => {
-  assert.match(opsPageTsx, /href="\/ops\/runbook"/);
+  assert.match(opsToolbarTsx, /href="\/ops\/runbook"/);
   assert.match(opsRunbookPageTsx, /requireAccountUser\(\)/);
   assert.match(opsRunbookPageTsx, /This page is for you, not the owner/);
   assert.match(opsRunbookPageTsx, /Search technical logs by caller last 4, call id, message id, recording id/);
@@ -120,8 +121,7 @@ test("ops runbook is authenticated and covers failure visibility plus retention"
 test("assisted onboarding setup requests are operator-only and status tracked", () => {
   assert.match(authTs, /export function isRelayOperator/);
   assert.match(authTs, /export async function requireRelayOperator\(\)/);
-  assert.match(opsPageTsx, /href="\/ops\/setup-requests"/);
-  assert.match(opsRunbookPageTsx, /href="\/ops\/setup-requests"/);
+  assert.match(opsToolbarTsx, /href="\/ops\/setup-requests"/);
   assert.match(opsSetupRequestsPageTsx, /requireRelayOperator\(\)/);
   assert.match(opsSetupRequestsPageTsx, /listSetupRequests\(status\)/);
   assert.match(opsSetupRequestsPageTsx, /New/);
@@ -132,6 +132,19 @@ test("assisted onboarding setup requests are operator-only and status tracked", 
   assert.match(opsSetupRequestsRouteTs, /updateSetupRequestStatus\(id, status\)/);
   assert.match(setupRequestsTs, /export type SetupRequestStatus = "new" \| "contacted" \| "onboarded" \| "closed"/);
   assert.match(setupRequestsTs, /\.from\("setup_requests"\)[\s\S]*\.update\(\{ status \}\)/);
+});
+
+test("ops pages share the same internal tool actions", () => {
+  assert.match(opsToolbarTsx, /export function OpsToolbar/);
+  assert.match(opsToolbarTsx, /href="\/ops"/);
+  assert.match(opsToolbarTsx, /href="\/ops\/setup-requests"/);
+  assert.match(opsToolbarTsx, /href="\/ops\/runbook"/);
+  assert.match(opsToolbarTsx, /action="\/api\/email-test\/start"/);
+  assert.match(opsToolbarTsx, /href="\/leads"/);
+
+  for (const source of [opsPageTsx, opsRunbookPageTsx, opsSetupRequestsPageTsx]) {
+    assert.match(source, /OpsToolbar/);
+  }
 });
 
 test("customer setup docs describe current assisted provisioning flow", () => {

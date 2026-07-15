@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
 import { AppHeader } from "@/app/leads/_components/app-header";
+import { OpsToolbar } from "@/app/ops/_components/ops-toolbar";
 import { isRelayOperator, requireAccountUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -114,19 +114,7 @@ export default async function OpsRunbookPage() {
       <section className="leads-shell">
         <AppHeader businessName={account.businessName} />
 
-        <div className="ops-toolbar">
-          <div>
-            <p className="t-eyebrow">Ops tools</p>
-            <span>Internal checklist</span>
-          </div>
-          <div className="ops-toolbar__actions">
-            {showSetupRequests ? (
-              <Link className="btn btn-secondary btn-sm" href="/ops/setup-requests">Setup requests</Link>
-            ) : null}
-            <Link className="btn btn-secondary btn-sm" href="/ops">Technical logs</Link>
-            <Link className="btn btn-secondary btn-sm" href="/leads">Back to leads</Link>
-          </div>
-        </div>
+        <OpsToolbar showSetupRequests={showSetupRequests} subtitle="Internal checklist" />
 
         <div className="leads-header">
           <div>

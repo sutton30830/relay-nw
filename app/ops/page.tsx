@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { AppHeader } from "@/app/leads/_components/app-header";
+import { OpsToolbar } from "@/app/ops/_components/ops-toolbar";
 import { isRelayOperator, requireAccountUser } from "@/lib/auth";
 import { getRecentWebhookEventsForAccount } from "@/lib/supabase";
 
@@ -38,22 +38,7 @@ export default async function OpsPage({
       <section className="leads-shell">
         <AppHeader businessName={account.businessName} />
 
-        <div className="ops-toolbar">
-          <div>
-            <p className="t-eyebrow">Ops tools</p>
-            <span>Internal diagnostics</span>
-          </div>
-          <div className="ops-toolbar__actions">
-            <form action="/api/email-test/start" method="post">
-              <button className="btn btn-secondary btn-sm" type="submit">Test owner email</button>
-            </form>
-            {showSetupRequests ? (
-              <Link className="btn btn-secondary btn-sm" href="/ops/setup-requests">Setup requests</Link>
-            ) : null}
-            <Link className="btn btn-secondary btn-sm" href="/ops/runbook">Runbook</Link>
-            <Link className="btn btn-secondary btn-sm" href="/leads">Back to leads</Link>
-          </div>
-        </div>
+        <OpsToolbar showSetupRequests={showSetupRequests} subtitle="Internal diagnostics" />
 
         <div className="leads-header">
           <div>

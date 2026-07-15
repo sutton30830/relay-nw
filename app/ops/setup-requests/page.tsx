@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { AppHeader } from "@/app/leads/_components/app-header";
+import { OpsToolbar } from "@/app/ops/_components/ops-toolbar";
 import { requireRelayOperator } from "@/lib/auth";
 import { listSetupRequests, type SetupRequest, type SetupRequestStatus } from "@/lib/supabase";
 
@@ -108,17 +108,7 @@ export default async function SetupRequestsPage({
       <section className="leads-shell">
         <AppHeader businessName={account.businessName} />
 
-        <div className="ops-toolbar">
-          <div>
-            <p className="t-eyebrow">Ops tools</p>
-            <span>Assisted onboarding</span>
-          </div>
-          <div className="ops-toolbar__actions">
-            <Link className="btn btn-secondary btn-sm" href="/ops/runbook">Runbook</Link>
-            <Link className="btn btn-secondary btn-sm" href="/ops">Technical logs</Link>
-            <Link className="btn btn-secondary btn-sm" href="/leads">Back to leads</Link>
-          </div>
-        </div>
+        <OpsToolbar showSetupRequests subtitle="Assisted onboarding" />
 
         <div className="leads-header">
           <div>
