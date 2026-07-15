@@ -103,7 +103,8 @@ test("privacy and terms disclose recording, transcription, AI processing, and re
 test("ops runbook is authenticated and covers failure visibility plus retention", () => {
   assert.match(opsPageTsx, /href="\/ops\/runbook"/);
   assert.match(opsRunbookPageTsx, /requireAccountUser\(\)/);
-  assert.match(opsRunbookPageTsx, /Search webhook debug by CallSid, MessageSid, RecordingSid/);
+  assert.match(opsRunbookPageTsx, /This page is for you, not the owner/);
+  assert.match(opsRunbookPageTsx, /Search technical logs by caller last 4, call id, message id, recording id/);
   assert.match(opsRunbookPageTsx, /Auto-text sends only when A2P is approved and texting is on/);
   assert.match(opsRunbookPageTsx, /WEBHOOK_EVENT_RETENTION_DAYS/);
   assert.match(opsRunbookPageTsx, /INBOUND_MESSAGE_RETENTION_DAYS/);
