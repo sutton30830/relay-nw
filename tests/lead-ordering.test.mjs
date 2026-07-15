@@ -60,7 +60,7 @@ function lead(overrides) {
   };
 }
 
-test("lead inbox sorting puts urgent work ahead of newer normal leads after the fresh-call window", async () => {
+test("lead inbox sorting puts urgent work ahead of newer normal leads inside the recent-work bucket", async () => {
   const { sortLeadsForWork } = await loadLeadUtils();
   const now = new Date("2026-07-03T12:00:00.000Z").getTime();
 
@@ -79,6 +79,28 @@ test("lead inbox sorting puts urgent work ahead of newer normal leads after the 
   assert.deepEqual(
     sortLeadsForWork([olderUrgent, newerNormal], now).map((item) => item.id),
     ["older-urgent", "newer-normal"],
+  );
+});
+
+test("recent active leads do not get buried under stale priority language", async () => {
+  const { sortLeadsForWork } = await loadLeadUtils();
+  const now = new Date("2026-07-03T12:00:00.000Z").getTime();
+
+  const staleToday = lead({
+    id: "stale-today",
+    status: "contacted",
+    message: "Can you come today?",
+    created_at: "2026-06-29T12:00:00.000Z",
+  });
+  const recentNew = lead({
+    id: "recent-new",
+    message: "Missed call, no voicemail",
+    created_at: "2026-07-03T05:00:00.000Z",
+  });
+
+  assert.deepEqual(
+    sortLeadsForWork([staleToday, recentNew], now).map((item) => item.id),
+    ["recent-new", "stale-today"],
   );
 });
 
@@ -133,6 +155,7 @@ test("closed leads do not outrank active callback work", async () => {
 
 test("lead inbox sorting stays chronological within each priority group", async () => {
   const { sortLeadsForWork } = await loadLeadUtils();
+  const now = new Date("2026-07-03T12:30:00.000Z").getTime();
 
   assert.deepEqual(
     sortLeadsForWork([
@@ -140,7 +163,7 @@ test("lead inbox sorting stays chronological within each priority group", async 
       lead({ id: "newer-urgent", message: "Need help ASAP", created_at: "2026-07-03T11:00:00.000Z" }),
       lead({ id: "older-normal", message: "Looking for a quote", created_at: "2026-07-03T09:00:00.000Z" }),
       lead({ id: "newer-normal", message: "Looking for a quote", created_at: "2026-07-03T12:00:00.000Z" }),
-    ]).map((item) => item.id),
+    ], now).map((item) => item.id),
     ["newer-urgent", "older-urgent", "newer-normal", "older-normal"],
   );
 });

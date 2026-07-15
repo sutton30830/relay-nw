@@ -416,6 +416,7 @@ export function prioritySortScore(lead: Lead) {
 }
 
 const FRESH_CALL_SORT_WINDOW_MS = 15 * 60_000;
+const RECENT_ACTIVE_SORT_WINDOW_MS = 24 * 60 * 60_000;
 
 function isFreshActiveLead(lead: Lead, now: number) {
   if (lead.deleted_at || lead.status === "dead") return false;
@@ -424,6 +425,16 @@ function isFreshActiveLead(lead: Lead, now: number) {
   if (!Number.isFinite(createdAt)) return false;
 
   return now - createdAt <= FRESH_CALL_SORT_WINDOW_MS;
+}
+
+function activeRecencySortScore(lead: Lead, now: number) {
+  if (lead.deleted_at) return 3;
+  if (lead.status === "dead") return 2;
+
+  const createdAt = Date.parse(lead.created_at);
+  if (!Number.isFinite(createdAt)) return 1;
+
+  return now - createdAt <= RECENT_ACTIVE_SORT_WINDOW_MS ? 0 : 1;
 }
 
 // One card per caller: repeat calls from the same number collapse into the most
@@ -468,6 +479,9 @@ export function sortLeadsForWork(leads: Lead[], now = Date.now()) {
 
     const timeDiff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     if (aIsFresh && bIsFresh && timeDiff !== 0) return timeDiff;
+
+    const recencyDiff = activeRecencySortScore(a, now) - activeRecencySortScore(b, now);
+    if (recencyDiff !== 0) return recencyDiff;
 
     const priorityDiff = prioritySortScore(a) - prioritySortScore(b);
     if (priorityDiff !== 0) return priorityDiff;
