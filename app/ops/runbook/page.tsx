@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { AppHeader } from "@/app/leads/_components/app-header";
 import { isRelayOperator, requireAccountUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -111,6 +112,8 @@ export default async function OpsRunbookPage() {
   return (
     <main className="leads-view">
       <section className="leads-shell">
+        <AppHeader businessName={account.businessName} />
+
         <div className="leads-header">
           <div>
             <p className="t-eyebrow">Internal ops</p>

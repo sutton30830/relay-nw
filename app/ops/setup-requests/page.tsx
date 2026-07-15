@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AppHeader } from "@/app/leads/_components/app-header";
 import { requireRelayOperator } from "@/lib/auth";
 import { listSetupRequests, type SetupRequest, type SetupRequestStatus } from "@/lib/supabase";
 
@@ -96,7 +97,7 @@ export default async function SetupRequestsPage({
 }: {
   searchParams: Promise<{ status?: string }>;
 }) {
-  await requireRelayOperator();
+  const { account } = await requireRelayOperator();
 
   const { status: rawStatus } = await searchParams;
   const status = validStatus(rawStatus);
@@ -105,6 +106,8 @@ export default async function SetupRequestsPage({
   return (
     <main className="leads-view">
       <section className="leads-shell">
+        <AppHeader businessName={account.businessName} />
+
         <div className="leads-header">
           <div>
             <p className="t-eyebrow">Ops</p>

@@ -246,7 +246,16 @@ test("authenticated app pages share the Relay brand header and owner menu", () =
   assert.match(appHeaderTsx, /\/settings/);
   assert.match(appHeaderTsx, /\/api\/leads-logout/);
 
-  for (const source of [leadsListTsx, setupPageTsx, settingsPageTsx, reportsPageTsx, leadConversationPageTsx]) {
+  for (const source of [
+    leadsListTsx,
+    setupPageTsx,
+    settingsPageTsx,
+    reportsPageTsx,
+    leadConversationPageTsx,
+    opsPageTsx,
+    opsRunbookPageTsx,
+    opsSetupRequestsPageTsx,
+  ]) {
     assert.match(source, /AppHeader/);
   }
 

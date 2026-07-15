@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AppHeader } from "@/app/leads/_components/app-header";
 import { isRelayOperator, requireAccountUser } from "@/lib/auth";
 import { getRecentWebhookEventsForAccount } from "@/lib/supabase";
 
@@ -35,6 +36,8 @@ export default async function OpsPage({
   return (
     <main className="leads-view">
       <section className="leads-shell">
+        <AppHeader businessName={account.businessName} />
+
         <div className="leads-header">
           <div>
             <p className="t-eyebrow">Ops</p>
