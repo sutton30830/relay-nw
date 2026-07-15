@@ -77,13 +77,13 @@ test("all inbox sorting is chronological even when an older lead has priority la
     created_at: "2026-07-03T05:00:00.000Z",
   });
 
-  assert.deepEqual(
-    sortLeadsForWork([olderPriority, newerNormal], now, { prioritizeWork: false }).map((item) => item.id),
-    ["newer-normal", "older-priority"],
-  );
+  assert.deepEqual(sortLeadsForWork([olderPriority, newerNormal], now).map((item) => item.id), [
+    "newer-normal",
+    "older-priority",
+  ]);
 });
 
-test("lead inbox sorting puts urgent work ahead of newer normal leads inside the recent-work bucket", async () => {
+test("lead inbox sorting keeps newer normal leads above older urgent leads", async () => {
   const { sortLeadsForWork } = await loadLeadUtils();
   const now = new Date("2026-07-03T12:00:00.000Z").getTime();
 
@@ -101,7 +101,7 @@ test("lead inbox sorting puts urgent work ahead of newer normal leads inside the
 
   assert.deepEqual(
     sortLeadsForWork([olderUrgent, newerNormal], now).map((item) => item.id),
-    ["older-urgent", "newer-normal"],
+    ["newer-normal", "older-urgent"],
   );
 });
 
@@ -172,11 +172,11 @@ test("closed leads do not outrank active callback work", async () => {
       lead({ id: "active-normal", status: "new", message: "Looking for a quote", created_at: "2026-07-03T11:00:00.000Z" }),
       lead({ id: "active-urgent", status: "contacted", message: "Need help ASAP", created_at: "2026-07-03T10:00:00.000Z" }),
     ], now).map((item) => item.id),
-    ["active-urgent", "active-normal", "closed-today"],
+    ["closed-today", "active-normal", "active-urgent"],
   );
 });
 
-test("lead inbox sorting stays chronological within each priority group", async () => {
+test("lead inbox sorting is chronological across priority groups", async () => {
   const { sortLeadsForWork } = await loadLeadUtils();
   const now = new Date("2026-07-03T12:30:00.000Z").getTime();
 
@@ -187,7 +187,7 @@ test("lead inbox sorting stays chronological within each priority group", async 
       lead({ id: "older-normal", message: "Looking for a quote", created_at: "2026-07-03T09:00:00.000Z" }),
       lead({ id: "newer-normal", message: "Looking for a quote", created_at: "2026-07-03T12:00:00.000Z" }),
     ], now).map((item) => item.id),
-    ["newer-urgent", "older-urgent", "newer-normal", "older-normal"],
+    ["newer-normal", "newer-urgent", "older-urgent", "older-normal"],
   );
 });
 

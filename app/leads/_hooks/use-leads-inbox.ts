@@ -294,8 +294,8 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
     [condensed, condensedTrash, filter, query],
   );
   const sortedItems = useMemo(
-    () => sortLeadsForWork(filteredItems, now, { prioritizeWork: filter !== "all" }),
-    [filter, filteredItems, now],
+    () => sortLeadsForWork(filteredItems),
+    [filteredItems],
   );
 
   const openLead = activeItems.find((lead) => lead.id === openId) ?? null;

@@ -406,37 +406,6 @@ export function getFollowUpReason(lead: Lead) {
   return "New missed call. Call back while the request is still fresh.";
 }
 
-export function prioritySortScore(lead: Lead) {
-  if (lead.status === "dead") return 3;
-
-  const priority = getLeadPriority(lead).level;
-  if (priority === "fast") return 0;
-  if (priority === "today") return 1;
-  return 2;
-}
-
-const FRESH_CALL_SORT_WINDOW_MS = 15 * 60_000;
-const RECENT_ACTIVE_SORT_WINDOW_MS = 24 * 60 * 60_000;
-
-function isFreshActiveLead(lead: Lead, now: number) {
-  if (lead.deleted_at || lead.status === "dead") return false;
-
-  const createdAt = Date.parse(lead.created_at);
-  if (!Number.isFinite(createdAt)) return false;
-
-  return now - createdAt <= FRESH_CALL_SORT_WINDOW_MS;
-}
-
-function activeRecencySortScore(lead: Lead, now: number) {
-  if (lead.deleted_at) return 3;
-  if (lead.status === "dead") return 2;
-
-  const createdAt = Date.parse(lead.created_at);
-  if (!Number.isFinite(createdAt)) return 1;
-
-  return now - createdAt <= RECENT_ACTIVE_SORT_WINDOW_MS ? 0 : 1;
-}
-
 // One card per caller: repeat calls from the same number collapse into the most
 // recent lead, with a count so the owner sees "Called 3×" instead of three cards.
 // The conversation thread is joined by phone, so nothing is hidden in the drawer.
@@ -470,30 +439,9 @@ export function countCallsByPhone(leads: Lead[]) {
   return counts;
 }
 
-export function sortLeadsForWork(leads: Lead[], now = Date.now(), options: { prioritizeWork?: boolean } = {}) {
-  const prioritizeWork = options.prioritizeWork ?? true;
-
+export function sortLeadsForWork(leads: Lead[]) {
   return [...leads].sort((a, b) => {
     const timeDiff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-
-    if (!prioritizeWork) {
-      if (timeDiff !== 0) return timeDiff;
-      return b.id.localeCompare(a.id);
-    }
-
-    const aIsFresh = isFreshActiveLead(a, now);
-    const bIsFresh = isFreshActiveLead(b, now);
-    const freshDiff = Number(bIsFresh) - Number(aIsFresh);
-    if (freshDiff !== 0) return freshDiff;
-
-    if (aIsFresh && bIsFresh && timeDiff !== 0) return timeDiff;
-
-    const recencyDiff = activeRecencySortScore(a, now) - activeRecencySortScore(b, now);
-    if (recencyDiff !== 0) return recencyDiff;
-
-    const priorityDiff = prioritySortScore(a) - prioritySortScore(b);
-    if (priorityDiff !== 0) return priorityDiff;
-
     if (timeDiff !== 0) return timeDiff;
 
     return b.id.localeCompare(a.id);
