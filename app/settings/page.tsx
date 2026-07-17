@@ -56,7 +56,10 @@ function billingStatusLabel(billing: AccountBillingRecord) {
   if (billing.billingStatus === "comped") return "Comped";
   if (billing.billingStatus === "past_due") return "Past due";
   if (billing.billingStatus === "canceled") return "Canceled";
-  if (billing.cancelAtPeriodEnd) return "Canceling";
+  if (billing.cancelAtPeriodEnd) {
+    const periodDate = formatBillingDate(billing.currentPeriodEnd);
+    return periodDate ? `Active until ${periodDate}` : "Active until period end";
+  }
   if (billing.billingStatus === "active") return "Subscription active";
   if (billing.billingStatus === "trialing") return "Trialing";
   return "Not started";
@@ -125,7 +128,7 @@ function BillingSection({
 }) {
   const periodDate = formatBillingDate(billing.currentPeriodEnd);
   const guaranteeDate = formatBillingDate(billing.guaranteeEndsAt);
-  const periodLabel = billing.cancelAtPeriodEnd ? "Cancels" : "Renews";
+  const periodLabel = billing.cancelAtPeriodEnd ? "Ends" : "Renews";
   const showPaymentWarning = billing.billingStatus === "past_due";
   const showCancelWarning = billing.cancelAtPeriodEnd && billing.billingStatus !== "canceled";
 
@@ -151,7 +154,7 @@ function BillingSection({
       {showCancelWarning ? (
         <div className="panel settings-notice settings-notice--ok" role="status">
           <Icon name="info" size={14} />
-          Your subscription is scheduled to end{periodDate ? ` on ${periodDate}` : ""}. Relay keeps working during the current billing period.
+          Your subscription has been canceled and will end{periodDate ? ` on ${periodDate}` : " at the end of this billing period"}. Relay keeps working until then.
         </div>
       ) : null}
 

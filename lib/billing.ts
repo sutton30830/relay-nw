@@ -397,14 +397,14 @@ export function computeBillingLifecycle(input: {
       ownerAction,
       customerDelay,
       carrierDelay,
-      label: scheduledToCancel ? "Canceling" : billingStatus === "comped" ? "Comped" : billingStatus === "trialing" ? "Trial" : "Active",
+      label: scheduledToCancel ? "Active until end date" : billingStatus === "comped" ? "Comped" : billingStatus === "trialing" ? "Trial" : "Active",
       headline: scheduledToCancel
         ? "Subscription is scheduled to end."
         : billingStatus === "comped"
           ? "Billing is comped."
           : "Billing is active.",
       summary: scheduledToCancel
-        ? "Relay keeps catching missed calls during the current billing period. Manage billing to reactivate before the subscription ends."
+        ? "Your subscription has been canceled. Relay keeps catching missed calls until the current billing period ends."
         : billingStatus === "comped"
           ? "Relay is intentionally not charging this account."
           : "Your subscription is active and will renew monthly unless canceled.",

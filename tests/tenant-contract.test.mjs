@@ -165,7 +165,7 @@ test("stripe checkout and webhooks update account billing without gating missed-
   assert.match(settingsPageTsx, /id="billing"/);
   assert.match(settingsPageTsx, /Your payment didn&apos;t go through/);
   assert.match(settingsPageTsx, /Relay is still catching missed calls/);
-  assert.match(settingsPageTsx, /scheduled to end/);
+  assert.match(settingsPageTsx, /canceled and will end/);
   assert.match(emailTs, /notifyOwnerBillingPaymentFailed/);
   assert.match(emailTs, /notifyOwnerSubscriptionScheduledToEnd/);
   assert.match(emailTs, /notifyOwnerBillingRecovered/);
