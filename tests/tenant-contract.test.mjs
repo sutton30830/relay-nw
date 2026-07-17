@@ -95,9 +95,17 @@ test("billing foundation is account-scoped and activation-based", () => {
   assert.match(sql, /create table if not exists public\.stripe_events/);
   assert.match(sql, /event_id text primary key/);
   assert.match(sql, /processing_status text not null default 'received'/);
+  assert.match(sql, /processing_started_at timestamptz/);
+  assert.match(sql, /ignore_reason text/);
+  assert.match(sql, /stripe_events_processing_status_idx/);
   assert.match(sql, /accounts_stripe_customer_id_unique_idx/);
   assert.match(sql, /accounts_stripe_subscription_id_unique_idx/);
   assert.match(accountStore, /getAccountBillingRecord/);
+  assert.match(accountStore, /claimStripeEvent/);
+  assert.match(accountStore, /markStripeEventProcessed/);
+  assert.match(accountStore, /markStripeEventIgnored/);
+  assert.match(accountStore, /markStripeEventFailed/);
+  assert.match(accountStore, /processing_started_at\.lt/);
   assert.match(accountStore, /Account billing lifecycle columns are missing/);
   assert.match(billingTs, /isBillingActivationReady/);
   assert.match(billingTs, /computeBillingLifecycle/);
@@ -119,6 +127,8 @@ test("stripe checkout and webhooks update account billing without gating missed-
   assert.match(stripeBillingTs, /timingSafeEqual/);
   assert.match(stripeBillingTs, /metadataAccountId/);
   assert.match(stripeBillingTs, /mapStripeSubscriptionStatus/);
+  assert.match(stripeBillingTs, /retrieveStripeSubscription/);
+  assert.match(stripeBillingTs, /billingUpdateFromSubscription/);
 
   assert.match(billingCheckoutRouteTs, /requireAccountUser\(\)/);
   assert.match(billingCheckoutRouteTs, /session\.role !== "owner"/);
@@ -142,7 +152,15 @@ test("stripe checkout and webhooks update account billing without gating missed-
     stripeWebhookRouteTs.indexOf("verifyStripeWebhookSignature") <
       stripeWebhookRouteTs.indexOf("JSON.parse(rawBody)"),
   );
+  assert.match(stripeWebhookRouteTs, /claimStripeEvent/);
+  assert.match(stripeWebhookRouteTs, /resolveAccountIdByStripeSubscriptionId/);
+  assert.match(stripeWebhookRouteTs, /resolveAccountIdByStripeCustomerId/);
+  assert.match(stripeWebhookRouteTs, /retrieveStripeSubscription/);
+  assert.match(stripeWebhookRouteTs, /markStripeEventProcessed/);
+  assert.match(stripeWebhookRouteTs, /markStripeEventIgnored/);
+  assert.match(stripeWebhookRouteTs, /markStripeEventFailed/);
   assert.match(stripeWebhookRouteTs, /updateAccountBillingRecord/);
+  assert.doesNotMatch(stripeWebhookRouteTs, /extractBillingUpdateFromStripeEvent/);
   assert.doesNotMatch(missedCallTs, /billingStatus|stripe/i);
 });
 

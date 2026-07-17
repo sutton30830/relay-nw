@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "@/lib/env";
-import type { AccountBillingStatus } from "@/lib/billing";
+import type { AccountBillingStatus, StripeSubscriptionStatus } from "@/lib/billing";
 
 export type StripeCheckoutSessionInput = {
   accountId: string;
@@ -31,15 +31,47 @@ export type StripeBillingUpdate = {
   stripeCustomerId?: string | null;
   stripeSubscriptionId?: string | null;
   stripePriceId?: string | null;
+  stripeSubscriptionStatus?: StripeSubscriptionStatus | null;
   trialEndsAt?: string | null;
+  currentPeriodEnd?: string | null;
+  cancelAtPeriodEnd?: boolean;
+  activatedAt?: string | null;
+  firstPaidAt?: string | null;
+  guaranteeEndsAt?: string | null;
+  billingAttentionSince?: string | null;
 };
 
 export type StripeEvent = {
   id?: string;
   type?: string;
+  created?: number;
+  livemode?: boolean;
   data?: {
     object?: Record<string, unknown>;
   };
+};
+
+export type StripeEventObject = Record<string, unknown>;
+
+export type StripeEventIdentity = {
+  eventId: string | null;
+  eventType: string | null;
+  eventCreatedAt: string | null;
+  livemode: boolean;
+  object: StripeEventObject | null;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  metadataAccountId: string | null;
+};
+
+export type StripeSubscriptionSnapshot = {
+  id: string;
+  customerId: string | null;
+  status: StripeSubscriptionStatus | null;
+  priceId: string | null;
+  trialEndsAt: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
 };
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -81,6 +113,34 @@ function firstSubscriptionPriceId(subscription: Record<string, unknown>) {
   }
 
   return stringValue((price as Record<string, unknown>).id);
+}
+
+function subscriptionIdFromInvoice(invoice: Record<string, unknown>) {
+  const parent = invoice.parent;
+  if (parent && typeof parent === "object") {
+    const subscriptionDetails = (parent as Record<string, unknown>).subscription_details;
+    if (subscriptionDetails && typeof subscriptionDetails === "object") {
+      const subscription = (subscriptionDetails as Record<string, unknown>).subscription;
+      if (typeof subscription === "string") {
+        return stringValue(subscription);
+      }
+
+      if (subscription && typeof subscription === "object") {
+        return stringValue((subscription as Record<string, unknown>).id);
+      }
+    }
+  }
+
+  const subscription = invoice.subscription;
+  if (typeof subscription === "string") {
+    return stringValue(subscription);
+  }
+
+  if (subscription && typeof subscription === "object") {
+    return stringValue((subscription as Record<string, unknown>).id);
+  }
+
+  return null;
 }
 
 function unixSecondsToIso(value: unknown) {
@@ -222,6 +282,38 @@ export async function createStripePortalSession(
   return { id, url };
 }
 
+export async function retrieveStripeSubscription(
+  stripeSubscriptionId: string,
+): Promise<StripeSubscriptionSnapshot> {
+  if (!env.stripeSecretKey) {
+    throw new Error("Stripe subscription retrieval is not configured. Set STRIPE_SECRET_KEY.");
+  }
+
+  const response = await fetch(`${STRIPE_API_BASE}/subscriptions/${encodeURIComponent(stripeSubscriptionId)}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${env.stripeSecretKey}`,
+    },
+  });
+
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+
+  if (!response.ok) {
+    const message =
+      typeof body.error === "object" && body.error
+        ? stringValue((body.error as Record<string, unknown>).message)
+        : null;
+    throw new Error(message ?? `Stripe subscription retrieval failed with status ${response.status}`);
+  }
+
+  const id = stringValue(body.id);
+  if (!id) {
+    throw new Error("Stripe subscription retrieval did not return a subscription id.");
+  }
+
+  return stripeSubscriptionSnapshot(body);
+}
+
 export function verifyStripeWebhookSignature(
   rawBody: string,
   signatureHeader: string | null | undefined,
@@ -253,6 +345,89 @@ export function verifyStripeWebhookSignature(
   return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
 }
 
+export function getStripeEventIdentity(event: StripeEvent): StripeEventIdentity {
+  const object = event.data?.object && typeof event.data.object === "object" ? event.data.object : null;
+  const eventCreatedAt = event.created ? unixSecondsToIso(event.created) : null;
+  const eventType = stringValue(event.type);
+  const isInvoice = eventType?.startsWith("invoice.") ?? false;
+
+  return {
+    eventId: stringValue(event.id),
+    eventType,
+    eventCreatedAt,
+    livemode: event.livemode === true,
+    object,
+    stripeCustomerId: object ? stringValue(object.customer) : null,
+    stripeSubscriptionId: object
+      ? isInvoice
+        ? subscriptionIdFromInvoice(object)
+        : stringValue(object.id) ?? stringValue(object.subscription)
+      : null,
+    metadataAccountId: object ? metadataAccountId(object) : null,
+  };
+}
+
+export function stripeSubscriptionSnapshot(subscription: Record<string, unknown>): StripeSubscriptionSnapshot {
+  const id = stringValue(subscription.id);
+
+  if (!id) {
+    throw new Error("Stripe subscription is missing an id.");
+  }
+
+  return {
+    id,
+    customerId: stringValue(subscription.customer),
+    status: normalizeStripeSubscriptionStatus(stringValue(subscription.status)),
+    priceId: firstSubscriptionPriceId(subscription),
+    trialEndsAt: unixSecondsToIso(subscription.trial_end),
+    currentPeriodEnd: unixSecondsToIso(subscription.current_period_end),
+    cancelAtPeriodEnd: subscription.cancel_at_period_end === true,
+  };
+}
+
+function normalizeStripeSubscriptionStatus(value: string | null | undefined): StripeSubscriptionStatus | null {
+  if (
+    value === "incomplete" ||
+    value === "incomplete_expired" ||
+    value === "trialing" ||
+    value === "active" ||
+    value === "past_due" ||
+    value === "canceled" ||
+    value === "unpaid" ||
+    value === "paused"
+  ) {
+    return value;
+  }
+
+  return null;
+}
+
+export function billingUpdateFromSubscription(
+  accountId: string,
+  subscription: StripeSubscriptionSnapshot,
+  options: { nowIso?: string; paid?: boolean } = {},
+): StripeBillingUpdate {
+  const nowIso = options.nowIso ?? new Date().toISOString();
+  const billingStatus = mapStripeSubscriptionStatus(subscription.status);
+  const isPaid = options.paid === true || billingStatus === "active" || billingStatus === "trialing";
+
+  return {
+    accountId,
+    billingStatus,
+    stripeCustomerId: subscription.customerId,
+    stripeSubscriptionId: subscription.id,
+    stripePriceId: subscription.priceId,
+    stripeSubscriptionStatus: subscription.status,
+    trialEndsAt: subscription.trialEndsAt,
+    currentPeriodEnd: subscription.currentPeriodEnd,
+    cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+    activatedAt: isPaid ? nowIso : undefined,
+    firstPaidAt: isPaid ? nowIso : undefined,
+    guaranteeEndsAt: isPaid ? new Date(Date.parse(nowIso) + 30 * 24 * 60 * 60 * 1000).toISOString() : undefined,
+    billingAttentionSince: billingStatus === "past_due" ? nowIso : null,
+  };
+}
+
 export function extractBillingUpdateFromStripeEvent(event: StripeEvent): StripeBillingUpdate | null {
   const object = event.data?.object;
 
@@ -270,7 +445,7 @@ export function extractBillingUpdateFromStripeEvent(event: StripeEvent): StripeB
 
     return {
       accountId,
-      billingStatus: "active",
+      billingStatus: "not_started",
       stripeCustomerId: stringValue(object.customer),
       stripeSubscriptionId: subscriptionId,
       stripePriceId: env.stripePriceId ?? null,

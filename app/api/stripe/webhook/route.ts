@@ -1,13 +1,100 @@
 import { env } from "@/lib/env";
+import { notifyAdminOperationalIssue } from "@/lib/email";
 import {
   assertStripeWebhookConfigured,
-  extractBillingUpdateFromStripeEvent,
+  billingUpdateFromSubscription,
+  getStripeEventIdentity,
+  mapStripeSubscriptionStatus,
+  retrieveStripeSubscription,
+  stripeSubscriptionSnapshot,
   type StripeEvent,
   verifyStripeWebhookSignature,
 } from "@/lib/stripe-billing";
-import { updateAccountBillingRecord } from "@/lib/supabase";
+import {
+  accountExists,
+  claimStripeEvent,
+  markStripeEventFailed,
+  markStripeEventIgnored,
+  markStripeEventProcessed,
+  resolveAccountIdByStripeCustomerId,
+  resolveAccountIdByStripeSubscriptionId,
+  updateAccountBillingRecord,
+} from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
+
+const SUPPORTED_STRIPE_EVENTS = new Set([
+  "checkout.session.completed",
+  "customer.subscription.created",
+  "customer.subscription.updated",
+  "customer.subscription.deleted",
+  "invoice.payment_failed",
+  "invoice.payment_action_required",
+  "invoice.paid",
+]);
+
+function sanitizedErrorCode(error: unknown) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return "stripe_webhook_processing_failed";
+}
+
+async function resolveStripeAccount(input: {
+  stripeSubscriptionId: string | null;
+  stripeCustomerId: string | null;
+  metadataAccountId: string | null;
+}) {
+  const bySubscription = await resolveAccountIdByStripeSubscriptionId(input.stripeSubscriptionId);
+  if (bySubscription) {
+    return { accountId: bySubscription, method: "stored_subscription" };
+  }
+
+  const byCustomer = await resolveAccountIdByStripeCustomerId(input.stripeCustomerId);
+  if (byCustomer) {
+    return { accountId: byCustomer, method: "stored_customer" };
+  }
+
+  if (input.metadataAccountId && await accountExists(input.metadataAccountId)) {
+    return { accountId: input.metadataAccountId, method: "metadata" };
+  }
+
+  return { accountId: null, method: "unresolved" };
+}
+
+async function currentSubscriptionFor(input: {
+  eventType: string;
+  object: Record<string, unknown>;
+  stripeSubscriptionId: string | null;
+}) {
+  if (input.stripeSubscriptionId) {
+    return retrieveStripeSubscription(input.stripeSubscriptionId);
+  }
+
+  if (input.eventType.startsWith("customer.subscription.")) {
+    return stripeSubscriptionSnapshot(input.object);
+  }
+
+  return null;
+}
+
+function isInvoicePaid(object: Record<string, unknown>) {
+  return object.paid === true || object.status === "paid";
+}
+
+function getCheckoutAssociation(object: Record<string, unknown>) {
+  const customerId = typeof object.customer === "string" ? object.customer : null;
+  const subscriptionId = typeof object.subscription === "string" ? object.subscription : null;
+
+  return { customerId, subscriptionId };
+}
+
+function expectedStripeLivemode() {
+  if (env.stripeSecretKey?.startsWith("sk_live_")) return true;
+  if (env.stripeSecretKey?.startsWith("sk_test_")) return false;
+  return null;
+}
 
 export async function POST(request: Request) {
   const rawBody = await request.text();
@@ -35,25 +122,136 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid Stripe payload" }, { status: 400 });
   }
 
-  const update = extractBillingUpdateFromStripeEvent(event as StripeEvent);
+  const stripeEvent = event as StripeEvent;
+  const identity = getStripeEventIdentity(stripeEvent);
 
-  if (!update) {
-    return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
+  if (!identity.eventId || !identity.eventType || !identity.object) {
+    return Response.json({ error: "Invalid Stripe event" }, { status: 400 });
   }
 
+  const claim = await claimStripeEvent({
+    eventId: identity.eventId,
+    eventType: identity.eventType,
+    eventCreatedAt: identity.eventCreatedAt,
+    livemode: identity.livemode,
+    stripeCustomerId: identity.stripeCustomerId,
+    stripeSubscriptionId: identity.stripeSubscriptionId,
+  });
+
+  if (claim.status === "duplicate" || claim.status === "already_processing") {
+    return Response.json(
+      { received: true, duplicate: true, processingStatus: claim.status },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
+  const markContext = {
+    eventId: identity.eventId,
+    stripeCustomerId: identity.stripeCustomerId,
+    stripeSubscriptionId: identity.stripeSubscriptionId,
+  };
+
   try {
-    await updateAccountBillingRecord(update.accountId, {
-      billingStatus: update.billingStatus,
-      stripeCustomerId: update.stripeCustomerId,
-      stripeSubscriptionId: update.stripeSubscriptionId,
-      stripePriceId: update.stripePriceId,
-      trialEndsAt: update.trialEndsAt,
+    const expectedLive = expectedStripeLivemode();
+    if (expectedLive !== null && identity.livemode !== expectedLive) {
+      await markStripeEventIgnored({ ...markContext, reason: "livemode_mismatch" });
+      return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    if (!SUPPORTED_STRIPE_EVENTS.has(identity.eventType)) {
+      await markStripeEventIgnored({ ...markContext, reason: "unsupported_event_type" });
+      return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    const resolution = await resolveStripeAccount(identity);
+    if (!resolution.accountId) {
+      await markStripeEventIgnored({ ...markContext, reason: "account_unresolved" });
+      return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    const accountContext = { ...markContext, accountId: resolution.accountId };
+
+    if (identity.eventType === "checkout.session.completed") {
+      const association = getCheckoutAssociation(identity.object);
+      if (!association.customerId || !association.subscriptionId) {
+        await markStripeEventIgnored({ ...accountContext, reason: "checkout_missing_customer_or_subscription" });
+        return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
+      }
+
+      await updateAccountBillingRecord(resolution.accountId, {
+        stripeCustomerId: association.customerId,
+        stripeSubscriptionId: association.subscriptionId,
+        stripePriceId: env.stripePriceId ?? null,
+      });
+      await markStripeEventProcessed({
+        ...accountContext,
+        stripeCustomerId: association.customerId,
+        stripeSubscriptionId: association.subscriptionId,
+      });
+      return Response.json({ received: true }, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    const subscription = await currentSubscriptionFor({
+      eventType: identity.eventType,
+      object: identity.object,
+      stripeSubscriptionId: identity.stripeSubscriptionId,
+    });
+
+    if (!subscription) {
+      await markStripeEventIgnored({ ...accountContext, reason: "subscription_unavailable" });
+      return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    const paid = identity.eventType === "invoice.paid" && isInvoicePaid(identity.object);
+    const update = billingUpdateFromSubscription(resolution.accountId, subscription, { paid });
+    const eventStatus = identity.eventType === "customer.subscription.deleted"
+      ? "canceled"
+      : identity.eventType === "invoice.payment_failed" || identity.eventType === "invoice.payment_action_required"
+        ? "past_due"
+        : mapStripeSubscriptionStatus(subscription.status);
+
+    await updateAccountBillingRecord(resolution.accountId, {
+      ...update,
+      billingStatus: eventStatus,
+      billingAttentionSince: eventStatus === "past_due" ? new Date().toISOString() : update.billingAttentionSince,
+    });
+
+    if (eventStatus === "past_due") {
+      try {
+        await notifyAdminOperationalIssue({
+          issue: "Stripe billing needs payment attention",
+          detail: `Stripe event ${identity.eventType} for subscription ${subscription.id}`,
+          correlationId: identity.eventId,
+        });
+      } catch (emailError) {
+        console.error("Stripe billing alert failed after billing state update", {
+          eventId: identity.eventId,
+          error: emailError instanceof Error ? emailError.message : emailError,
+        });
+      }
+    }
+
+    await markStripeEventProcessed({
+      eventId: identity.eventId,
+      accountId: resolution.accountId,
+      stripeCustomerId: subscription.customerId ?? identity.stripeCustomerId,
+      stripeSubscriptionId: subscription.id,
     });
   } catch (error) {
     console.error("Stripe webhook billing update failed", {
-      accountId: update.accountId,
+      eventId: identity.eventId,
+      eventType: identity.eventType,
       error: error instanceof Error ? error.message : error,
     });
+
+    try {
+      await markStripeEventFailed({ ...markContext, errorCode: sanitizedErrorCode(error) });
+    } catch (markError) {
+      console.error("Stripe webhook event failure marker failed", {
+        eventId: identity.eventId,
+        error: markError instanceof Error ? markError.message : markError,
+      });
+    }
 
     return Response.json({ error: "Billing update failed" }, { status: 500 });
   }

@@ -251,7 +251,7 @@ test("stripe webhook signatures must be valid and recent", () => {
   assert.equal(stripeBilling.verifyStripeWebhookSignature(rawBody, header, secret, (timestamp + 1_000) * 1000), false);
 });
 
-test("checkout session completed updates the selected account billing identifiers", () => {
+test("checkout session completed only associates billing identifiers", () => {
   const update = stripeBilling.extractBillingUpdateFromStripeEvent({
     type: "checkout.session.completed",
     data: {
@@ -266,7 +266,7 @@ test("checkout session completed updates the selected account billing identifier
 
   assert.deepEqual(update, {
     accountId: "acct_123",
-    billingStatus: "active",
+    billingStatus: "not_started",
     stripeCustomerId: "cus_123",
     stripeSubscriptionId: "sub_123",
     stripePriceId: "price_123",

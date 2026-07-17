@@ -114,8 +114,13 @@ create unique index if not exists accounts_stripe_subscription_id_unique_idx
 alter table public.accounts enable row level security;
 
 -- Phase 5C billing lifecycle migration.
--- Rollback, if ever needed before Phase 5C3 is live:
+-- Rollback, if ever needed before durable Stripe webhook processing is live:
 --   drop table public.stripe_events;
+-- If rolling back only the Phase 5C3 event-claim additions:
+--   drop index if exists public.stripe_events_processing_status_idx;
+--   alter table public.stripe_events drop column if exists processing_started_at;
+--   alter table public.stripe_events drop column if exists ignore_reason;
+-- Broader Phase 5C rollback:
 --   alter table public.accounts drop constraint if exists accounts_stripe_subscription_status_check;
 --   alter table public.accounts drop constraint if exists accounts_onboarding_status_check;
 --   alter table public.accounts drop column if exists billing_attention_since;
@@ -143,9 +148,13 @@ create table if not exists public.stripe_events (
   ),
   attempt_count integer not null default 0 check (attempt_count >= 0),
   error_code text,
+  ignore_reason text,
+  processing_started_at timestamptz,
   received_at timestamptz not null default now(),
   processed_at timestamptz
 );
+alter table public.stripe_events add column if not exists ignore_reason text;
+alter table public.stripe_events add column if not exists processing_started_at timestamptz;
 create index if not exists stripe_events_account_received_at_idx
   on public.stripe_events (account_id, received_at desc)
   where account_id is not null;
@@ -155,6 +164,8 @@ create index if not exists stripe_events_subscription_idx
 create index if not exists stripe_events_customer_idx
   on public.stripe_events (stripe_customer_id)
   where stripe_customer_id is not null;
+create index if not exists stripe_events_processing_status_idx
+  on public.stripe_events (processing_status, processing_started_at);
 alter table public.stripe_events enable row level security;
 
 create table if not exists public.account_settings (

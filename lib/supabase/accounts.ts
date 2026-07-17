@@ -109,6 +109,31 @@ type AccountDurableBillingDates = {
   guarantee_ends_at: string | null;
 };
 
+export type StripeEventProcessingStatus = "received" | "processing" | "processed" | "ignored" | "failed";
+
+export type StripeEventClaim =
+  | { status: "claimed"; attemptCount: number }
+  | { status: "duplicate"; processingStatus: "processed" | "ignored" }
+  | { status: "already_processing"; attemptCount: number };
+
+export type StripeEventClaimInput = {
+  eventId: string;
+  eventType: string;
+  eventCreatedAt: string | null;
+  livemode: boolean;
+  accountId?: string | null;
+  stripeCustomerId?: string | null;
+  stripeSubscriptionId?: string | null;
+  staleAfterMs?: number;
+};
+
+export type StripeEventMarkInput = {
+  eventId: string;
+  accountId?: string | null;
+  stripeCustomerId?: string | null;
+  stripeSubscriptionId?: string | null;
+};
+
 const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   billingStatus: "not_started",
   onboardingStatus: "requirements_needed",
@@ -446,6 +471,232 @@ export async function updateAccountBillingRecord(
     .from("accounts")
     .update(payload)
     .eq("id", accountId);
+
+  if (error) {
+    throwIfSupabaseError(error);
+  }
+}
+
+function sanitizeStripeEventText(value: string | null | undefined) {
+  return (value ?? "unknown")
+    .replace(/[^a-zA-Z0-9_.:-]/g, "_")
+    .slice(0, 120);
+}
+
+function stripeEventPayload(input: StripeEventClaimInput | StripeEventMarkInput) {
+  const payload: Record<string, string | boolean | number | null> = {};
+
+  if ("accountId" in input) payload.account_id = input.accountId ?? null;
+  if ("stripeCustomerId" in input) payload.stripe_customer_id = input.stripeCustomerId ?? null;
+  if ("stripeSubscriptionId" in input) payload.stripe_subscription_id = input.stripeSubscriptionId ?? null;
+
+  return payload;
+}
+
+export async function resolveAccountIdByStripeSubscriptionId(
+  stripeSubscriptionId: string | null | undefined,
+): Promise<string | null> {
+  if (!stripeSubscriptionId || isPlaceholderSupabaseConfig()) {
+    return null;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("accounts")
+    .select("id")
+    .eq("stripe_subscription_id", stripeSubscriptionId)
+    .maybeSingle();
+
+  if (error) {
+    throwIfSupabaseError(error);
+  }
+
+  return typeof data?.id === "string" ? data.id : null;
+}
+
+export async function resolveAccountIdByStripeCustomerId(
+  stripeCustomerId: string | null | undefined,
+): Promise<string | null> {
+  if (!stripeCustomerId || isPlaceholderSupabaseConfig()) {
+    return null;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("accounts")
+    .select("id")
+    .eq("stripe_customer_id", stripeCustomerId)
+    .maybeSingle();
+
+  if (error) {
+    throwIfSupabaseError(error);
+  }
+
+  return typeof data?.id === "string" ? data.id : null;
+}
+
+export async function accountExists(accountId: string | null | undefined): Promise<boolean> {
+  if (!accountId || isPlaceholderSupabaseConfig()) {
+    return false;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("accounts")
+    .select("id")
+    .eq("id", accountId)
+    .maybeSingle();
+
+  if (error) {
+    throwIfSupabaseError(error);
+  }
+
+  return data?.id === accountId;
+}
+
+export async function claimStripeEvent(input: StripeEventClaimInput): Promise<StripeEventClaim> {
+  if (isPlaceholderSupabaseConfig()) {
+    return { status: "claimed", attemptCount: 1 };
+  }
+
+  const nowIso = new Date().toISOString();
+  const staleAfterMs = input.staleAfterMs ?? 10 * 60 * 1000;
+  const staleBeforeIso = new Date(Date.now() - staleAfterMs).toISOString();
+  const basePayload = {
+    event_id: input.eventId,
+    event_type: input.eventType,
+    event_created_at: input.eventCreatedAt,
+    livemode: input.livemode,
+    processing_status: "processing",
+    processing_started_at: nowIso,
+    attempt_count: 1,
+    error_code: null,
+    ignore_reason: null,
+    ...stripeEventPayload(input),
+  };
+
+  const inserted = await supabaseAdmin
+    .from("stripe_events")
+    .insert(basePayload)
+    .select("event_id, attempt_count")
+    .single();
+
+  if (!inserted.error) {
+    return { status: "claimed", attemptCount: 1 };
+  }
+
+  const { data: existing, error: selectError } = await supabaseAdmin
+    .from("stripe_events")
+    .select("processing_status, attempt_count, processing_started_at")
+    .eq("event_id", input.eventId)
+    .maybeSingle();
+
+  if (selectError) {
+    throwIfSupabaseError(selectError);
+  }
+
+  const status = existing?.processing_status as StripeEventProcessingStatus | undefined;
+
+  if (status === "processed" || status === "ignored") {
+    return { status: "duplicate", processingStatus: status };
+  }
+
+  const attemptCount = typeof existing?.attempt_count === "number" ? existing.attempt_count : 0;
+  const processingStartedAt =
+    typeof existing?.processing_started_at === "string" ? existing.processing_started_at : null;
+  const isStaleProcessing =
+    status === "processing" && (!processingStartedAt || processingStartedAt < staleBeforeIso);
+
+  if (status === "processing" && !isStaleProcessing) {
+    return { status: "already_processing", attemptCount };
+  }
+
+  const reclaimed = await supabaseAdmin
+    .from("stripe_events")
+    .update({
+      event_type: input.eventType,
+      event_created_at: input.eventCreatedAt,
+      livemode: input.livemode,
+      processing_status: "processing",
+      processing_started_at: nowIso,
+      attempt_count: attemptCount + 1,
+      error_code: null,
+      ignore_reason: null,
+      processed_at: null,
+      ...stripeEventPayload(input),
+    })
+    .eq("event_id", input.eventId)
+    .or(`processing_status.in.(received,failed),and(processing_status.eq.processing,processing_started_at.lt.${staleBeforeIso})`)
+    .select("attempt_count")
+    .maybeSingle();
+
+  if (reclaimed.error) {
+    throwIfSupabaseError(reclaimed.error);
+  }
+
+  if (!reclaimed.data) {
+    return { status: "already_processing", attemptCount };
+  }
+
+  return {
+    status: "claimed",
+    attemptCount: typeof reclaimed.data.attempt_count === "number" ? reclaimed.data.attempt_count : attemptCount + 1,
+  };
+}
+
+export async function markStripeEventProcessed(input: StripeEventMarkInput) {
+  if (isPlaceholderSupabaseConfig()) {
+    return;
+  }
+
+  const { error } = await supabaseAdmin
+    .from("stripe_events")
+    .update({
+      processing_status: "processed",
+      processed_at: new Date().toISOString(),
+      error_code: null,
+      ignore_reason: null,
+      ...stripeEventPayload(input),
+    })
+    .eq("event_id", input.eventId);
+
+  if (error) {
+    throwIfSupabaseError(error);
+  }
+}
+
+export async function markStripeEventIgnored(input: StripeEventMarkInput & { reason: string }) {
+  if (isPlaceholderSupabaseConfig()) {
+    return;
+  }
+
+  const { error } = await supabaseAdmin
+    .from("stripe_events")
+    .update({
+      processing_status: "ignored",
+      processed_at: new Date().toISOString(),
+      error_code: null,
+      ignore_reason: sanitizeStripeEventText(input.reason),
+      ...stripeEventPayload(input),
+    })
+    .eq("event_id", input.eventId);
+
+  if (error) {
+    throwIfSupabaseError(error);
+  }
+}
+
+export async function markStripeEventFailed(input: StripeEventMarkInput & { errorCode: string }) {
+  if (isPlaceholderSupabaseConfig()) {
+    return;
+  }
+
+  const { error } = await supabaseAdmin
+    .from("stripe_events")
+    .update({
+      processing_status: "failed",
+      processed_at: null,
+      error_code: sanitizeStripeEventText(input.errorCode),
+      ...stripeEventPayload(input),
+    })
+    .eq("event_id", input.eventId);
 
   if (error) {
     throwIfSupabaseError(error);
