@@ -335,7 +335,7 @@ async function loadAccountFacts(supabase, slug) {
     selectRows(
       supabase
         .from("leads")
-        .select("id, created_at, caller_phone")
+        .select("id, created_at, phone")
         .eq("account_id", account.id)
         .order("created_at", { ascending: false })
         .limit(1),

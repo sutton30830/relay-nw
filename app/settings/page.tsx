@@ -57,7 +57,7 @@ function billingStatusLabel(billing: AccountBillingRecord) {
   if (billing.billingStatus === "past_due") return "Past due";
   if (billing.billingStatus === "canceled") return "Canceled";
   if (billing.cancelAtPeriodEnd) return "Canceling";
-  if (billing.billingStatus === "active") return "Active";
+  if (billing.billingStatus === "active") return "Subscription active";
   if (billing.billingStatus === "trialing") return "Trialing";
   return "Not started";
 }
@@ -168,8 +168,8 @@ function BillingSection({
         ) : null}
         {guaranteeDate ? (
           <div>
-            <dt>Guarantee</dt>
-            <dd>Through {guaranteeDate}</dd>
+            <dt>30-day guarantee</dt>
+            <dd>Eligible through {guaranteeDate}</dd>
           </div>
         ) : null}
       </dl>

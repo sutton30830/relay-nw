@@ -407,7 +407,7 @@ export function computeBillingLifecycle(input: {
         ? "Relay keeps catching missed calls during the current billing period. Manage billing to reactivate before the subscription ends."
         : billingStatus === "comped"
           ? "Relay is intentionally not charging this account."
-          : "This account has a paid billing path.",
+          : "Your subscription is active and will renew monthly unless canceled.",
       tone: scheduledToCancel ? "warn" : billingStatus === "comped" ? "neutral" : "good",
     };
   }
