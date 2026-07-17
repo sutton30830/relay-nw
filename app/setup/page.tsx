@@ -5,6 +5,7 @@ import { Icon } from "@/components/icon";
 import { requireAccountUser } from "@/lib/auth";
 import { computeBillingReadiness } from "@/lib/billing";
 import type { BillingReadiness } from "@/lib/billing";
+import { ownerOnboardingDelayMessage } from "@/lib/onboarding-deadlines";
 import {
   getA2pRegistrationStatus,
   getAccountBillingRecord,
@@ -162,6 +163,10 @@ export default async function SetupPage() {
     billing,
     setupReadiness: readiness,
   });
+  const onboardingDelayMessage = ownerOnboardingDelayMessage({
+    onboardingStatus: billing.onboardingStatus,
+    requirementsDueAt: billing.requirementsDueAt,
+  });
 
 
   return (
@@ -207,6 +212,13 @@ export default async function SetupPage() {
             </a>
           ) : null}
         </section>
+
+        {onboardingDelayMessage ? (
+          <div className="intake-error settings-notice" role="status">
+            <Icon name="info" size={14} />
+            {onboardingDelayMessage}
+          </div>
+        ) : null}
 
         <section className="setup-metrics" aria-label="Setup details">
           <MetricCard

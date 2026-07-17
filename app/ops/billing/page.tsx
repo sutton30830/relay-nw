@@ -1,7 +1,13 @@
 import { AppHeader } from "@/app/leads/_components/app-header";
 import { OpsToolbar } from "@/app/ops/_components/ops-toolbar";
 import { isRelayOperator, requireAccountUser } from "@/lib/auth";
-import { getAccountBillingRecord, getRecentStripeEventsForAccount } from "@/lib/supabase";
+import { daysUntil } from "@/lib/onboarding-deadlines";
+import {
+  getAccountBillingRecord,
+  getRecentStripeEventsForAccount,
+  listAccountsForOnboardingDeadlineMaintenance,
+  type OnboardingDeadlineAccount,
+} from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +42,45 @@ function statusTone(status: string) {
   return "neutral";
 }
 
+function OnboardingDeadlineCard({ account }: { account: OnboardingDeadlineAccount }) {
+  const days = account.requirementsDueAt ? daysUntil(account.requirementsDueAt) : null;
+  const dueCopy = days === null
+    ? "No due date"
+    : days > 0
+      ? `Due in ${days} day${days === 1 ? "" : "s"}`
+      : days === 0
+        ? "Due today"
+        : `${Math.abs(days)} day${Math.abs(days) === 1 ? "" : "s"} overdue`;
+
+  return (
+    <article className="webhook-event">
+      <div className="webhook-event__head">
+        <div>
+          <strong>{account.businessName}</strong>
+          <p className="empty-copy">{account.accountSlug}</p>
+        </div>
+        <span className={account.onboardingStatus === "paused_incomplete" ? "chip chip-danger" : "chip chip-muted"}>
+          {account.onboardingStatus.replaceAll("_", " ")}
+        </span>
+      </div>
+      <dl className="webhook-event__meta">
+        <div>
+          <dt>Requirements</dt>
+          <dd>{dueCopy}</dd>
+        </div>
+        <div>
+          <dt>Due date</dt>
+          <dd>{formatDate(account.requirementsDueAt)}</dd>
+        </div>
+        <div>
+          <dt>Owner email</dt>
+          <dd>{account.ownerEmail ?? "not set"}</dd>
+        </div>
+      </dl>
+    </article>
+  );
+}
+
 export default async function OpsBillingPage({
   searchParams,
 }: {
@@ -45,9 +90,10 @@ export default async function OpsBillingPage({
   const { account, accountId } = session;
   const { q = "" } = await searchParams;
   const showSetupRequests = isRelayOperator(session);
-  const [billing, allEvents] = await Promise.all([
+  const [billing, allEvents, onboardingDeadlines] = await Promise.all([
     getAccountBillingRecord(accountId),
     getRecentStripeEventsForAccount(accountId, 50),
+    showSetupRequests ? listAccountsForOnboardingDeadlineMaintenance() : Promise.resolve([]),
   ]);
   const events = allEvents.filter((event) => eventMatchesQuery(event, q));
   const failedCount = allEvents.filter((event) => event.processing_status === "failed").length;
@@ -128,6 +174,27 @@ export default async function OpsBillingPage({
             </div>
           </dl>
         </article>
+
+        {showSetupRequests ? (
+          <article className="panel setup-panel ops-billing-card">
+            <div className="setup-panel__head">
+              <p className="t-eyebrow">Assisted onboarding deadlines</p>
+              <h2>Customer-delay queue</h2>
+              <p className="setup-copy">
+                Accounts waiting on customer requirements. Carrier review accounts are intentionally excluded from this clock.
+              </p>
+            </div>
+            <div className="webhook-events">
+              {onboardingDeadlines.length === 0 ? (
+                <p className="empty-copy">No accounts are waiting on customer requirements.</p>
+              ) : (
+                onboardingDeadlines.map((deadline) => (
+                  <OnboardingDeadlineCard key={deadline.accountId} account={deadline} />
+                ))
+              )}
+            </div>
+          </article>
+        ) : null}
 
         <form className="lead-controls" action="/ops/billing">
           <input

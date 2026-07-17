@@ -33,6 +33,10 @@ Run `npm run test:activation` locally before high-risk releases. This is determi
 - Provision real customer accounts with `npm run provision:account`; do not manually recreate the same rows from memory.
 - Verify every customer account with `npm run verify:account -- <slug>` before handing over access.
 - Use `/setup` with the owner for forwarding instructions, forwarding health checks, SMS test, and setup status.
+- When customer requirements are requested, mark the account `waiting_on_customer` with a `requirements_due_at` 14 days out.
+- `/api/cron/onboarding-deadlines` handles day-3/day-7 reminders, pauses incomplete onboarding after day 14, and closes incomplete onboarding after day 30.
+- Carrier review and carrier attention are not customer-delay states; do not penalize the owner for carrier-caused delays.
+- Reopening a closed incomplete onboarding requires operator action, a new requirements deadline, and does not reset the original guarantee period.
 
 ### SMS Failed, Undelivered, or Not Sent
 

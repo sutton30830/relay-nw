@@ -5,6 +5,7 @@ import test from "node:test";
 const sql = await readFile(new URL("../supabase.sql", import.meta.url), "utf8");
 const envTs = await readFile(new URL("../lib/env.ts", import.meta.url), "utf8");
 const billingTs = await readFile(new URL("../lib/billing.ts", import.meta.url), "utf8");
+const onboardingDeadlinesTs = await readFile(new URL("../lib/onboarding-deadlines.ts", import.meta.url), "utf8");
 const stripeBillingTs = await readFile(new URL("../lib/stripe-billing.ts", import.meta.url), "utf8");
 const twilioTs = await readFile(new URL("../lib/twilio.ts", import.meta.url), "utf8");
 const twimlTs = await readFile(new URL("../lib/twiml.ts", import.meta.url), "utf8");
@@ -48,6 +49,7 @@ const opsRunbookPageTsx = await readFile(new URL("../app/ops/runbook/page.tsx", 
 const opsSetupRequestsPageTsx = await readFile(new URL("../app/ops/setup-requests/page.tsx", import.meta.url), "utf8");
 const opsToolbarTsx = await readFile(new URL("../app/ops/_components/ops-toolbar.tsx", import.meta.url), "utf8");
 const opsSetupRequestsRouteTs = await readFile(new URL("../app/api/ops/setup-requests/route.ts", import.meta.url), "utf8");
+const onboardingDeadlinesCronTs = await readFile(new URL("../app/api/cron/onboarding-deadlines/route.ts", import.meta.url), "utf8");
 const privacyPageTsx = await readFile(new URL("../app/privacy/page.tsx", import.meta.url), "utf8");
 const termsPageTsx = await readFile(new URL("../app/terms/page.tsx", import.meta.url), "utf8");
 const opsRunbookMd = await readFile(new URL("../docs/ops-runbook.md", import.meta.url), "utf8");
@@ -60,6 +62,7 @@ const verifyAccountScript = await readFile(new URL("../scripts/verify-account.mj
 const verifyBillingScript = await readFile(new URL("../scripts/verify-billing.mjs", import.meta.url), "utf8");
 const backfillAccountIdsScript = await readFile(new URL("../scripts/backfill-account-ids.mjs", import.meta.url), "utf8");
 const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
+const vercelJson = await readFile(new URL("../vercel.json", import.meta.url), "utf8");
 
 test("tenant core tables are present", () => {
   for (const table of [
@@ -103,6 +106,9 @@ test("billing foundation is account-scoped and activation-based", () => {
   assert.match(sql, /accounts_stripe_customer_id_unique_idx/);
   assert.match(sql, /accounts_stripe_subscription_id_unique_idx/);
   assert.match(accountStore, /getAccountBillingRecord/);
+  assert.match(accountStore, /listAccountsForOnboardingDeadlineMaintenance/);
+  assert.match(accountStore, /markAccountRequirementsRequested/);
+  assert.match(accountStore, /hasAccountAuditAction/);
   assert.match(accountStore, /claimStripeEvent/);
   assert.match(accountStore, /markStripeEventProcessed/);
   assert.match(accountStore, /markStripeEventIgnored/);
@@ -114,7 +120,13 @@ test("billing foundation is account-scoped and activation-based", () => {
   assert.match(billingTs, /computeBillingLifecycle/);
   assert.match(billingTs, /ownerAction/);
   assert.match(billingTs, /callCaptureReady && readiness\.smsRegistrationReady/);
+  assert.match(onboardingDeadlinesTs, /defaultRequirementsDueAt/);
+  assert.match(onboardingDeadlinesTs, /chooseOnboardingDeadlineAction/);
+  assert.match(onboardingDeadlinesTs, /ownerOnboardingDelayMessage/);
+  assert.match(onboardingDeadlinesTs, /remind_day_3/);
+  assert.match(onboardingDeadlinesTs, /paused_incomplete/);
   assert.match(setupPageTsx, /computeBillingReadiness/);
+  assert.match(setupPageTsx, /ownerOnboardingDelayMessage/);
   assert.match(setupPageTsx, /Billing activation/);
   assert.match(verifyAccountScript, /deriveBillingVerification/);
   assert.doesNotMatch(missedCallTs, /billingStatus|stripe/i);
@@ -249,6 +261,8 @@ test("ops runbook is authenticated and covers failure visibility plus retention"
   assert.match(opsRunbookMd, /Backup, Restore, and Deletion/);
   assert.match(opsRunbookMd, /npm run verify:billing/);
   assert.match(opsRunbookMd, /Stripe price is the \$99 monthly plan/);
+  assert.match(opsRunbookMd, /\/api\/cron\/onboarding-deadlines/);
+  assert.match(opsRunbookMd, /Carrier review and carrier attention are not customer-delay states/);
 });
 
 test("assisted onboarding setup requests are operator-only and status tracked", () => {
@@ -265,6 +279,15 @@ test("assisted onboarding setup requests are operator-only and status tracked", 
   assert.match(opsSetupRequestsRouteTs, /updateSetupRequestStatus\(id, status\)/);
   assert.match(setupRequestsTs, /export type SetupRequestStatus = "new" \| "contacted" \| "onboarded" \| "closed"/);
   assert.match(setupRequestsTs, /\.from\("setup_requests"\)[\s\S]*\.update\(\{ status \}\)/);
+  assert.match(opsBillingPageTsx, /Assisted onboarding deadlines/);
+  assert.match(opsBillingPageTsx, /listAccountsForOnboardingDeadlineMaintenance/);
+  assert.match(onboardingDeadlinesCronTs, /CRON_SECRET/);
+  assert.match(onboardingDeadlinesCronTs, /chooseOnboardingDeadlineAction/);
+  assert.match(onboardingDeadlinesCronTs, /notifyOwnerOnboardingRequirementsReminder/);
+  assert.match(onboardingDeadlinesCronTs, /notifyOwnerOnboardingPaused/);
+  assert.match(onboardingDeadlinesCronTs, /recordAccountAuditEvents/);
+  assert.match(onboardingDeadlinesCronTs, /continue|for \(const account of accounts\)/);
+  assert.match(vercelJson, /\/api\/cron\/onboarding-deadlines/);
 });
 
 test("ops pages share the same internal tool actions", () => {

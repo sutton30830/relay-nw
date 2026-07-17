@@ -421,6 +421,62 @@ export async function notifyOwnerBillingRecovered(input: {
   });
 }
 
+export async function notifyOwnerOnboardingRequirementsReminder(input: {
+  account: AccountRuntimeConfig;
+  requirementsDueAt: string;
+  reminder: "day_3" | "day_7";
+}) {
+  const recipient = await ownerEmail(input.account);
+  const dueDate = new Date(input.requirementsDueAt).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+  const lines = [
+    `We’re waiting for your business information for ${input.account.businessName}.`,
+    `Complete it by ${dueDate} to keep setup moving.`,
+    "Carrier review and monthly billing do not start until the required business details are complete.",
+  ];
+
+  return sendEmail({
+    to: recipient,
+    subject: `Relay NW setup info due ${dueDate}`,
+    html: emailHtml({
+      title: "Setup info needed",
+      preview: `Complete your setup info by ${dueDate}.`,
+      lines,
+      actionLabel: "Open setup",
+      actionUrl: `${env.appBaseUrl}/setup`,
+    }),
+    text: `${lines.join("\n")}\n\nOpen setup: ${env.appBaseUrl}/setup`,
+    tag: input.reminder === "day_3" ? "owner_onboarding_reminder_day_3" : "owner_onboarding_reminder_day_7",
+  });
+}
+
+export async function notifyOwnerOnboardingPaused(input: {
+  account: AccountRuntimeConfig;
+}) {
+  const recipient = await ownerEmail(input.account);
+  const lines = [
+    `Relay NW setup for ${input.account.businessName} is paused because the required business information was not completed by the deadline.`,
+    "Your account can be reopened, but Relay support needs to restart the setup timeline.",
+  ];
+
+  return sendEmail({
+    to: recipient,
+    subject: `Relay NW setup paused for ${input.account.businessName}`,
+    html: emailHtml({
+      title: "Setup paused",
+      preview: "Relay NW setup is paused until the required information is completed.",
+      lines,
+      actionLabel: "Open setup",
+      actionUrl: `${env.appBaseUrl}/setup`,
+    }),
+    text: `${lines.join("\n")}\n\nOpen setup: ${env.appBaseUrl}/setup`,
+    tag: "owner_onboarding_paused_incomplete",
+  });
+}
+
 export async function notifyAdminNewSetupRequest(input: {
   account: AccountRuntimeConfig;
   leadName: string;

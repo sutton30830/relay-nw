@@ -151,6 +151,16 @@ export type StripeEventRow = {
   processed_at: string | null;
 };
 
+export type OnboardingDeadlineAccount = {
+  accountId: string;
+  accountSlug: string;
+  businessName: string;
+  ownerEmail: string | null;
+  onboardingStatus: AccountOnboardingStatus;
+  requirementsDueAt: string | null;
+  onboardingStatusUpdatedAt: string | null;
+};
+
 const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   billingStatus: "not_started",
   onboardingStatus: "requirements_needed",
@@ -754,6 +764,118 @@ export async function getRecentStripeEventsForAccount(inputAccountId: string, li
   }
 
   return (data ?? []) as StripeEventRow[];
+}
+
+export async function listAccountsForOnboardingDeadlineMaintenance(): Promise<OnboardingDeadlineAccount[]> {
+  if (isPlaceholderSupabaseConfig()) {
+    return [];
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("accounts")
+    .select("id, slug, name, onboarding_status, requirements_due_at, onboarding_status_updated_at, account_settings(owner_email, business_name)")
+    .in("onboarding_status", ["waiting_on_customer", "paused_incomplete"])
+    .not("requirements_due_at", "is", null)
+    .order("requirements_due_at", { ascending: true })
+    .limit(250);
+
+  if (error) {
+    if (
+      error.message.includes("onboarding_status") ||
+      error.message.includes("requirements_due_at") ||
+      error.message.includes("account_settings")
+    ) {
+      console.warn("Account onboarding lifecycle columns are missing. Run supabase.sql before enabling deadline maintenance.");
+      return [];
+    }
+
+    throwIfSupabaseError(error);
+  }
+
+  return (data ?? []).map((row: Record<string, unknown>) => {
+    const settingsRaw = row.account_settings;
+    const settings = Array.isArray(settingsRaw) ? settingsRaw[0] : settingsRaw;
+    const settingsRecord = settings && typeof settings === "object" ? settings as Record<string, unknown> : null;
+
+    return {
+      accountId: String(row.id),
+      accountSlug: String(row.slug),
+      businessName:
+        typeof settingsRecord?.business_name === "string" && settingsRecord.business_name.trim()
+          ? settingsRecord.business_name
+          : String(row.name),
+      ownerEmail:
+        typeof settingsRecord?.owner_email === "string" && settingsRecord.owner_email.trim()
+          ? settingsRecord.owner_email
+          : null,
+      onboardingStatus: normalizeAccountOnboardingStatus(row.onboarding_status as string | null | undefined),
+      requirementsDueAt: typeof row.requirements_due_at === "string" ? row.requirements_due_at : null,
+      onboardingStatusUpdatedAt:
+        typeof row.onboarding_status_updated_at === "string" ? row.onboarding_status_updated_at : null,
+    };
+  });
+}
+
+export async function hasAccountAuditAction(accountId: string, action: string): Promise<boolean> {
+  const assertedAccountId = assertAccountIdForAccountStore(accountId, "hasAccountAuditAction");
+
+  if (isPlaceholderSupabaseConfig()) {
+    return false;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("account_audit_events")
+    .select("id")
+    .eq("account_id", assertedAccountId)
+    .eq("action", action)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    if (error.message.includes("account_audit_events")) {
+      console.warn("Account audit events table is missing. Onboarding deadline reminders may repeat until supabase.sql is applied.");
+      return false;
+    }
+
+    throwIfSupabaseError(error);
+  }
+
+  return Boolean(data?.id);
+}
+
+export async function markAccountRequirementsRequested(input: {
+  accountId: string;
+  nowIso?: string;
+  actorUserId?: string | null;
+  actorEmail?: string | null;
+}) {
+  const accountId = assertAccountIdForAccountStore(input.accountId, "markAccountRequirementsRequested");
+  const now = input.nowIso ? new Date(input.nowIso) : new Date();
+  const requirementsDueAt = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
+
+  await updateAccountBillingRecord(accountId, {
+    onboardingStatus: "waiting_on_customer",
+    requirementsDueAt,
+  });
+
+  if (!shouldSkipDatabaseWrite("account audit event", input)) {
+    const { error } = await supabaseAdmin.from("account_audit_events").insert({
+      account_id: accountId,
+      actor_user_id: input.actorUserId ?? null,
+      actor_email: input.actorEmail ?? null,
+      action: "onboarding.requirements_requested",
+      summary: `Requested customer requirements; due ${requirementsDueAt}.`,
+    });
+
+    if (error) {
+      console.warn("Could not record customer requirements audit event.", {
+        accountId,
+        error: error.message,
+      });
+    }
+  }
+
+  return { requirementsDueAt };
 }
 
 export async function resolveAccountByTwilioNumber(phoneNumber: string | null | undefined) {
