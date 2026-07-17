@@ -61,6 +61,17 @@ const RUNBOOK_SECTIONS: RunbookSection[] = [
     ],
   },
   {
+    eyebrow: "Billing",
+    title: "Trust Stripe, but inspect Relay's event ledger.",
+    summary: "Subscription state changes should be visible and retry-safe. Use Billing events when an owner cannot start, manage, update, cancel, or restart billing.",
+    steps: [
+      "Open Billing events and confirm recent Stripe events are processed, not failed or stuck processing.",
+      "For ignored invoice events, confirm the account already has the Stripe customer or subscription id recorded.",
+      "If payment is past due, confirm Relay updated the account to past_due and sent the admin attention alert.",
+      "Never manually mark an account active from Checkout alone; subscription or paid invoice state is authoritative.",
+    ],
+  },
+  {
     eyebrow: "Privacy",
     title: "Keep only what you need.",
     summary: "Treat recordings, transcripts, and SMS content like customer data, not debugging decoration.",

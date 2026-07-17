@@ -43,6 +43,7 @@ const leadDrawerTsx = await readFile(new URL("../app/leads/_components/lead-draw
 const setupRequestDetailsTsx = await readFile(new URL("../app/leads/_components/setup-request-details.tsx", import.meta.url), "utf8");
 const globalsCss = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 const opsPageTsx = await readFile(new URL("../app/ops/page.tsx", import.meta.url), "utf8");
+const opsBillingPageTsx = await readFile(new URL("../app/ops/billing/page.tsx", import.meta.url), "utf8");
 const opsRunbookPageTsx = await readFile(new URL("../app/ops/runbook/page.tsx", import.meta.url), "utf8");
 const opsSetupRequestsPageTsx = await readFile(new URL("../app/ops/setup-requests/page.tsx", import.meta.url), "utf8");
 const opsToolbarTsx = await readFile(new URL("../app/ops/_components/ops-toolbar.tsx", import.meta.url), "utf8");
@@ -105,6 +106,7 @@ test("billing foundation is account-scoped and activation-based", () => {
   assert.match(accountStore, /markStripeEventProcessed/);
   assert.match(accountStore, /markStripeEventIgnored/);
   assert.match(accountStore, /markStripeEventFailed/);
+  assert.match(accountStore, /getRecentStripeEventsForAccount/);
   assert.match(accountStore, /processing_started_at\.lt/);
   assert.match(accountStore, /Account billing lifecycle columns are missing/);
   assert.match(billingTs, /isBillingActivationReady/);
@@ -198,9 +200,16 @@ test("privacy and terms disclose recording, transcription, AI processing, and re
 
 test("ops runbook is authenticated and covers failure visibility plus retention", () => {
   assert.match(opsToolbarTsx, /href="\/ops\/runbook"/);
+  assert.match(opsToolbarTsx, /href="\/ops\/billing"/);
   assert.match(opsRunbookPageTsx, /requireAccountUser\(\)/);
   assert.match(opsRunbookPageTsx, /This page is for you, not the owner/);
   assert.match(opsRunbookPageTsx, /Search technical logs by caller last 4, call id, message id, recording id/);
+  assert.match(opsRunbookPageTsx, /Trust Stripe, but inspect Relay's event ledger/);
+  assert.match(opsRunbookPageTsx, /Never manually mark an account active from Checkout alone/);
+  assert.match(opsBillingPageTsx, /getRecentStripeEventsForAccount/);
+  assert.match(opsBillingPageTsx, /Stripe webhook processing/);
+  assert.match(opsBillingPageTsx, /failedCount/);
+  assert.match(verifyAccountScript, /Stripe event ledger healthy/);
   assert.match(opsRunbookPageTsx, /Auto-text sends only when A2P is approved and texting is on/);
   assert.match(opsRunbookPageTsx, /WEBHOOK_EVENT_RETENTION_DAYS/);
   assert.match(opsRunbookPageTsx, /INBOUND_MESSAGE_RETENTION_DAYS/);

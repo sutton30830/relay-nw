@@ -4828,6 +4828,54 @@ code {
   word-break: break-word;
 }
 
+.ops-billing-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 16px;
+}
+
+.ops-billing-card {
+  margin-bottom: 16px;
+}
+
+.ops-billing-meta {
+  margin-bottom: 0;
+}
+
+.ops-billing-status {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ops-billing-status--good {
+  border-color: color-mix(in oklab, var(--good) 24%, var(--line));
+  background: var(--good-soft);
+  color: var(--good);
+}
+
+.ops-billing-status--warn {
+  border-color: color-mix(in oklab, var(--warn) 26%, var(--line));
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.ops-billing-status--bad {
+  border-color: color-mix(in oklab, var(--danger) 30%, var(--line));
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.ops-billing-status--neutral {
+  background: var(--panel-2);
+  color: var(--ink-3);
+}
+
 /* --- Conversation page (/leads/[id]) --- */
 .convo-page {
   height: 100dvh;

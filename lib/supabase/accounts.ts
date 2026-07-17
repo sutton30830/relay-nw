@@ -134,6 +134,23 @@ export type StripeEventMarkInput = {
   stripeSubscriptionId?: string | null;
 };
 
+export type StripeEventRow = {
+  event_id: string;
+  event_type: string;
+  event_created_at: string | null;
+  livemode: boolean;
+  account_id: string | null;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  processing_status: StripeEventProcessingStatus;
+  attempt_count: number;
+  error_code: string | null;
+  ignore_reason: string | null;
+  processing_started_at: string | null;
+  received_at: string;
+  processed_at: string | null;
+};
+
 const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   billingStatus: "not_started",
   onboardingStatus: "requirements_needed",
@@ -155,6 +172,14 @@ const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
 
 function defaultAccountBillingRecord(): AccountBillingRecord {
   return { ...DEFAULT_BILLING_RECORD };
+}
+
+function assertAccountIdForAccountStore(accountId: string | null | undefined, context: string) {
+  if (!accountId) {
+    throw new Error(`${context} requires an account id`);
+  }
+
+  return accountId;
 }
 
 function normalizeAccountBillingStatus(value: string | null | undefined): AccountBillingStatus {
@@ -701,6 +726,34 @@ export async function markStripeEventFailed(input: StripeEventMarkInput & { erro
   if (error) {
     throwIfSupabaseError(error);
   }
+}
+
+export async function getRecentStripeEventsForAccount(inputAccountId: string, limit = 25): Promise<StripeEventRow[]> {
+  const accountId = assertAccountIdForAccountStore(inputAccountId, "getRecentStripeEventsForAccount");
+
+  if (isPlaceholderSupabaseConfig()) {
+    return [];
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("stripe_events")
+    .select(
+      "event_id, event_type, event_created_at, livemode, account_id, stripe_customer_id, stripe_subscription_id, processing_status, attempt_count, error_code, ignore_reason, processing_started_at, received_at, processed_at",
+    )
+    .eq("account_id", accountId)
+    .order("received_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    if (error.message.includes("stripe_events")) {
+      console.warn("Stripe events table is missing. Run supabase.sql before enabling billing ops.");
+      return [];
+    }
+
+    throwIfSupabaseError(error);
+  }
+
+  return (data ?? []) as StripeEventRow[];
 }
 
 export async function resolveAccountByTwilioNumber(phoneNumber: string | null | undefined) {

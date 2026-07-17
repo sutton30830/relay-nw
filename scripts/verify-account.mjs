@@ -180,6 +180,7 @@ async function main() {
   let settings = null;
   let primaryNumber = null;
   let adminUsers = [];
+  let recentStripeEvents = [];
 
   let accountSelect = await supabase
     .from("accounts")
@@ -276,6 +277,44 @@ async function main() {
         ? adminUsers.map((user) => `${user.role}:${user.email ?? "missing-email"}`).join(", ")
         : "No owner/admin account_users rows.",
     );
+
+    const stripeEventsSelect = await supabase
+      .from("stripe_events")
+      .select("event_id, event_type, processing_status, error_code, ignore_reason, processing_started_at, received_at")
+      .eq("account_id", account.id)
+      .order("received_at", { ascending: false })
+      .limit(10);
+
+    if (stripeEventsSelect.error) {
+      check(
+        results,
+        false,
+        "Stripe event ledger readable",
+        "Run supabase.sql to add Phase 5C3/5C4 stripe_events support.",
+        "warn",
+      );
+    } else {
+      recentStripeEvents = stripeEventsSelect.data ?? [];
+      const failedEvents = recentStripeEvents.filter((event) => event.processing_status === "failed");
+      const staleProcessingEvents = recentStripeEvents.filter((event) => {
+        if (event.processing_status !== "processing") return false;
+        if (!event.processing_started_at) return true;
+
+        return Date.now() - Date.parse(event.processing_started_at) > 10 * 60 * 1000;
+      });
+
+      check(
+        results,
+        failedEvents.length === 0 && staleProcessingEvents.length === 0,
+        "Stripe event ledger healthy",
+        failedEvents.length || staleProcessingEvents.length
+          ? `${failedEvents.length} failed and ${staleProcessingEvents.length} stale processing Stripe events in the last ${recentStripeEvents.length} recorded event(s).`
+          : recentStripeEvents.length
+            ? `${recentStripeEvents.length} recent Stripe event(s) recorded without failed/stale processing.`
+            : "No Stripe billing events recorded yet.",
+        failedEvents.length || staleProcessingEvents.length ? "warn" : "warn",
+      );
+    }
   }
 
   if (settings) {

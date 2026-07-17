@@ -15,6 +15,7 @@ export function OpsToolbar({
       </div>
       <div className="ops-toolbar__actions">
         <Link className="btn btn-secondary btn-sm" href="/ops">Technical logs</Link>
+        <Link className="btn btn-secondary btn-sm" href="/ops/billing">Billing events</Link>
         {showSetupRequests ? (
           <Link className="btn btn-secondary btn-sm" href="/ops/setup-requests">Setup requests</Link>
         ) : null}
