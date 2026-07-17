@@ -84,6 +84,18 @@ export type BillingLifecycleState = {
   tone: "good" | "warn" | "neutral";
 };
 
+export type BillingCheckoutEligibility =
+  | { ok: true }
+  | {
+      ok: false;
+      reason:
+        | "setup_incomplete"
+        | "already_active"
+        | "subscription_incomplete"
+        | "past_due"
+        | "contact_support";
+    };
+
 const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   billingStatus: "not_started",
   onboardingStatus: "requirements_needed",
@@ -289,8 +301,13 @@ function actionFor(input: {
   billingStatus: AccountBillingStatus;
   onboardingStatus: AccountOnboardingStatus;
   activationReady: boolean;
+  cancelAtPeriodEnd?: boolean;
 }): BillingOwnerAction {
-  if (input.billingStatus === "active" || input.billingStatus === "trialing" || input.billingStatus === "comped") {
+  if (input.billingStatus === "comped") {
+    return "none";
+  }
+
+  if (input.billingStatus === "active" || input.billingStatus === "trialing") {
     return "manage_billing";
   }
 
@@ -325,7 +342,12 @@ export function computeBillingLifecycle(input: {
   const activationReady = isBillingActivationReady(input.setupReadiness);
   const billingStatus = normalizeBillingStatus(billing.billingStatus);
   const onboardingStatus = deriveOnboardingStatus({ billing, activationReady });
-  const ownerAction = actionFor({ billingStatus, onboardingStatus, activationReady });
+  const ownerAction = actionFor({
+    billingStatus,
+    onboardingStatus,
+    activationReady,
+    cancelAtPeriodEnd: billing.cancelAtPeriodEnd,
+  });
   const customerDelay =
     onboardingStatus === "requirements_needed" ||
     onboardingStatus === "waiting_on_customer" ||
@@ -409,4 +431,44 @@ export function computeBillingLifecycle(input: {
       : "Finish setup before charging this account.",
     tone: "neutral",
   };
+}
+
+export function getBillingCheckoutEligibility(input: {
+  billing: AccountBillingRecord | null | undefined;
+  setupReadiness: Pick<SetupReadiness, "callCaptureReady" | "smsRegistrationReady">;
+}): BillingCheckoutEligibility {
+  const billing = input.billing ?? defaultBillingRecord();
+  const activationReady = isBillingActivationReady(input.setupReadiness);
+  const billingStatus = normalizeBillingStatus(billing.billingStatus);
+  const stripeStatus = normalizeStripeSubscriptionStatus(billing.stripeSubscriptionStatus);
+
+  if (!activationReady) {
+    return { ok: false, reason: "setup_incomplete" };
+  }
+
+  if (billingStatus === "active" || billingStatus === "trialing" || stripeStatus === "active" || stripeStatus === "trialing") {
+    return { ok: false, reason: "already_active" };
+  }
+
+  if (billingStatus === "past_due" || stripeStatus === "past_due" || stripeStatus === "unpaid") {
+    return { ok: false, reason: "past_due" };
+  }
+
+  if (stripeStatus === "incomplete") {
+    return { ok: false, reason: "subscription_incomplete" };
+  }
+
+  if (billingStatus === "not_started") {
+    return { ok: true };
+  }
+
+  if (billingStatus === "canceled") {
+    if (!stripeStatus || stripeStatus === "canceled" || stripeStatus === "incomplete_expired") {
+      return { ok: true };
+    }
+
+    return { ok: false, reason: "contact_support" };
+  }
+
+  return { ok: false, reason: "contact_support" };
 }

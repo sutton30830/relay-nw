@@ -140,7 +140,7 @@ test("every simplified billing status has one unambiguous owner action", () => {
     active: "manage_billing",
     past_due: "update_payment",
     canceled: "restart_subscription",
-    comped: "manage_billing",
+    comped: "none",
   };
 
   for (const [billingStatus, ownerAction] of Object.entries(expectations)) {
@@ -151,6 +151,36 @@ test("every simplified billing status has one unambiguous owner action", () => {
 
     assert.equal(state.ownerAction, ownerAction);
   }
+});
+
+test("checkout eligibility allows only not started or fully canceled accounts", () => {
+  const ready = setupReadiness({ callCaptureReady: true, smsRegistrationReady: true });
+
+  assert.deepEqual(
+    billing.getBillingCheckoutEligibility({ billing: billingRecord(), setupReadiness: ready }),
+    { ok: true },
+  );
+  assert.deepEqual(
+    billing.getBillingCheckoutEligibility({
+      billing: billingRecord({ billingStatus: "canceled", stripeSubscriptionStatus: "canceled" }),
+      setupReadiness: ready,
+    }),
+    { ok: true },
+  );
+  assert.deepEqual(
+    billing.getBillingCheckoutEligibility({
+      billing: billingRecord({ billingStatus: "not_started", stripeSubscriptionStatus: "incomplete" }),
+      setupReadiness: ready,
+    }),
+    { ok: false, reason: "subscription_incomplete" },
+  );
+  assert.deepEqual(
+    billing.getBillingCheckoutEligibility({
+      billing: billingRecord({ billingStatus: "past_due", stripeSubscriptionStatus: "past_due" }),
+      setupReadiness: ready,
+    }),
+    { ok: false, reason: "past_due" },
+  );
 });
 
 test("activation and first paid dates are durable lifecycle facts", () => {

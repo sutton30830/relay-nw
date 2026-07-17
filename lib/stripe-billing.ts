@@ -7,9 +7,20 @@ export type StripeCheckoutSessionInput = {
   accountSlug: string;
   ownerEmail: string | null;
   stripeCustomerId: string | null;
+  idempotencyKey: string;
 };
 
 export type StripeCheckoutSession = {
+  id: string;
+  url: string;
+};
+
+export type StripePortalSessionInput = {
+  stripeCustomerId: string;
+  returnUrl: string;
+};
+
+export type StripePortalSession = {
   id: string;
   url: string;
 };
@@ -88,6 +99,12 @@ export function assertStripeCheckoutConfigured() {
   }
 }
 
+export function assertStripePortalConfigured() {
+  if (!env.stripeSecretKey) {
+    throw new Error("Stripe portal is not configured. Set STRIPE_SECRET_KEY.");
+  }
+}
+
 export function assertStripeWebhookConfigured() {
   if (!env.stripeWebhookSecret) {
     throw new Error("Stripe webhook verification is not configured. Set STRIPE_WEBHOOK_SECRET.");
@@ -141,6 +158,7 @@ export async function createStripeCheckoutSession(
     headers: {
       Authorization: `Bearer ${env.stripeSecretKey}`,
       "Content-Type": "application/x-www-form-urlencoded",
+      "Idempotency-Key": input.idempotencyKey,
     },
     body: params,
   });
@@ -160,6 +178,45 @@ export async function createStripeCheckoutSession(
 
   if (!id || !url) {
     throw new Error("Stripe checkout did not return a redirect URL.");
+  }
+
+  return { id, url };
+}
+
+export async function createStripePortalSession(
+  input: StripePortalSessionInput,
+): Promise<StripePortalSession> {
+  assertStripePortalConfigured();
+
+  const params = new URLSearchParams({
+    customer: input.stripeCustomerId,
+    return_url: input.returnUrl,
+  });
+
+  const response = await fetch(`${STRIPE_API_BASE}/billing_portal/sessions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.stripeSecretKey}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: params,
+  });
+
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+
+  if (!response.ok) {
+    const message =
+      typeof body.error === "object" && body.error
+        ? stringValue((body.error as Record<string, unknown>).message)
+        : null;
+    throw new Error(message ?? `Stripe portal failed with status ${response.status}`);
+  }
+
+  const id = stringValue(body.id);
+  const url = stringValue(body.url);
+
+  if (!id || !url) {
+    throw new Error("Stripe portal did not return a redirect URL.");
   }
 
   return { id, url };

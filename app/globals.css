@@ -2883,6 +2883,49 @@ code {
   color: var(--ink-4);
   font-size: 13px;
 }
+.settings-billing {
+  scroll-margin-top: 24px;
+}
+.settings-billing__main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+.settings-billing__plan {
+  margin: 0 0 4px;
+  font-size: 22px;
+  line-height: 1.1;
+  letter-spacing: 0;
+}
+.settings-billing__action {
+  white-space: nowrap;
+}
+.settings-billing__facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0 0;
+}
+.settings-billing__facts div {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--panel-2);
+}
+.settings-billing__facts dt {
+  margin: 0 0 4px;
+  color: var(--ink-4);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.settings-billing__facts dd {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 800;
+}
 .settings-form {
   padding: 20px 18px;
 }
@@ -4542,6 +4585,19 @@ code {
 @media (max-width: 560px) {
   .intake-row,
   .home-settings {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-billing__main {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-billing__action {
+    width: 100%;
+  }
+
+  .settings-billing__facts {
     grid-template-columns: 1fr;
   }
 

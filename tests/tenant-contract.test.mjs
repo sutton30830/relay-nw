@@ -20,6 +20,7 @@ const authSelectAccountRouteTs = await readFile(new URL("../app/api/auth/select-
 const authLogoutRouteTs = await readFile(new URL("../app/api/auth/logout/route.ts", import.meta.url), "utf8");
 const authUpdatePasswordRouteTs = await readFile(new URL("../app/api/auth/update-password/route.ts", import.meta.url), "utf8");
 const billingCheckoutRouteTs = await readFile(new URL("../app/api/billing/checkout/route.ts", import.meta.url), "utf8");
+const billingPortalRouteTs = await readFile(new URL("../app/api/billing/portal/route.ts", import.meta.url), "utf8");
 const stripeWebhookRouteTs = await readFile(new URL("../app/api/stripe/webhook/route.ts", import.meta.url), "utf8");
 const authCallbackRouteTs = await readFile(new URL("../app/auth/callback/route.ts", import.meta.url), "utf8");
 const inboundSmsRouteTs = await readFile(new URL("../app/api/twilio/sms/route.ts", import.meta.url), "utf8");
@@ -123,6 +124,16 @@ test("stripe checkout and webhooks update account billing without gating missed-
   assert.match(billingCheckoutRouteTs, /session\.role !== "owner"/);
   assert.match(billingCheckoutRouteTs, /createStripeCheckoutSession/);
   assert.match(billingCheckoutRouteTs, /getAccountBillingRecord/);
+  assert.match(billingCheckoutRouteTs, /getBillingCheckoutEligibility/);
+  assert.match(billingCheckoutRouteTs, /computeSetupReadiness/);
+  assert.match(stripeBillingTs, /createStripePortalSession/);
+  assert.match(stripeBillingTs, /billing_portal\/sessions/);
+  assert.match(stripeBillingTs, /Idempotency-Key/);
+  assert.match(billingPortalRouteTs, /requireAccountUser\(\)/);
+  assert.match(billingPortalRouteTs, /session\.role !== "owner"/);
+  assert.match(billingPortalRouteTs, /getAccountBillingRecord/);
+  assert.match(billingPortalRouteTs, /createStripePortalSession/);
+  assert.match(settingsPageTsx, /id="billing"/);
 
   assert.match(stripeWebhookRouteTs, /request\.text\(\)/);
   assert.match(stripeWebhookRouteTs, /verifyStripeWebhookSignature/);

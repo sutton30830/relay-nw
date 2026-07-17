@@ -1,7 +1,16 @@
 import { Icon } from "@/components/icon";
 import { AppHeader } from "@/app/leads/_components/app-header";
 import { requireAccountUser } from "@/lib/auth";
-import { getA2pRegistrationStatus } from "@/lib/supabase";
+import { computeBillingLifecycle } from "@/lib/billing";
+import type { AccountBillingRecord, BillingLifecycleState } from "@/lib/billing";
+import { computeSetupReadiness, type A2pStatus } from "@/lib/readiness";
+import {
+  getA2pRegistrationStatus,
+  getAccountBillingRecord,
+  getAccountRecoveryStats,
+  getForwardingHealthSummary,
+  getLastRecoveredCallAt,
+} from "@/lib/supabase";
 import { QUICK_REPLIES } from "@/app/leads/_constants";
 import { SmsToggle } from "./sms-toggle";
 
@@ -33,15 +42,154 @@ function Field({
   );
 }
 
+function formatBillingDate(value: string | null) {
+  if (!value) return null;
+
+  return new Date(value).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function billingStatusLabel(billing: AccountBillingRecord) {
+  if (billing.billingStatus === "comped") return "Comped";
+  if (billing.billingStatus === "past_due") return "Past due";
+  if (billing.billingStatus === "canceled") return "Canceled";
+  if (billing.cancelAtPeriodEnd) return "Canceling";
+  if (billing.billingStatus === "active") return "Active";
+  if (billing.billingStatus === "trialing") return "Trialing";
+  return "Not started";
+}
+
+function BillingPrimaryAction({
+  billing,
+  lifecycle,
+  role,
+}: {
+  billing: AccountBillingRecord;
+  lifecycle: BillingLifecycleState;
+  role: string;
+}) {
+  if (lifecycle.ownerAction === "none") {
+    return null;
+  }
+
+  if (role !== "owner") {
+    return <p className="settings-section__meta">Ask the owner to manage billing.</p>;
+  }
+
+  if (lifecycle.ownerAction === "finish_setup") {
+    return (
+      <a className="btn btn-secondary settings-billing__action" href="/setup">
+        Finish setup
+      </a>
+    );
+  }
+
+  if (lifecycle.ownerAction === "start_billing" || lifecycle.ownerAction === "restart_subscription") {
+    return (
+      <form action="/api/billing/checkout" method="post">
+        <button className="btn btn-primary settings-billing__action" type="submit">
+          {lifecycle.ownerAction === "restart_subscription" ? "Restart subscription" : "Start billing"}
+        </button>
+      </form>
+    );
+  }
+
+  if (lifecycle.ownerAction === "manage_billing" || lifecycle.ownerAction === "update_payment") {
+    if (!billing.stripeCustomerId) {
+      return <p className="settings-section__meta">Billing needs support because no Stripe customer is attached.</p>;
+    }
+
+    return (
+      <form action="/api/billing/portal" method="post">
+        <button className="btn btn-primary settings-billing__action" type="submit">
+          {lifecycle.ownerAction === "update_payment" ? "Update payment" : "Manage billing"}
+        </button>
+      </form>
+    );
+  }
+
+  return <p className="settings-section__meta">Contact Relay support to resolve billing.</p>;
+}
+
+function BillingSection({
+  billing,
+  lifecycle,
+  role,
+}: {
+  billing: AccountBillingRecord;
+  lifecycle: BillingLifecycleState;
+  role: string;
+}) {
+  const periodDate = formatBillingDate(billing.currentPeriodEnd);
+  const guaranteeDate = formatBillingDate(billing.guaranteeEndsAt);
+  const periodLabel = billing.cancelAtPeriodEnd ? "Cancels" : "Renews";
+
+  return (
+    <section id="billing" className="panel settings-section settings-billing">
+      <div className="settings-billing__main">
+        <div>
+          <p className="t-eyebrow settings-section__title">Billing</p>
+          <h2 className="settings-billing__plan">Current plan: $99/month</h2>
+          <p className="settings-section__lead">{billingStatusLabel(billing)}</p>
+          <p className="settings-section__meta">{lifecycle.summary}</p>
+        </div>
+        <BillingPrimaryAction billing={billing} lifecycle={lifecycle} role={role} />
+      </div>
+
+      <dl className="settings-billing__facts">
+        <div>
+          <dt>Status</dt>
+          <dd>{billingStatusLabel(billing)}</dd>
+        </div>
+        {periodDate ? (
+          <div>
+            <dt>{periodLabel}</dt>
+            <dd>{periodDate}</dd>
+          </div>
+        ) : null}
+        {guaranteeDate ? (
+          <div>
+            <dt>Guarantee</dt>
+            <dd>Through {guaranteeDate}</dd>
+          </div>
+        ) : null}
+      </dl>
+    </section>
+  );
+}
+
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; error?: string }>;
+  searchParams: Promise<{ saved?: string; error?: string; billing?: string }>;
 }) {
   const session = await requireAccountUser();
   const { account, role } = session;
   const params = await searchParams;
-  const a2pStatus = await getA2pRegistrationStatus(session.accountId);
+  const [a2pStatus, billing, forwardingHealth, recovery, lastRecoveredCallAt] = await Promise.all([
+    getA2pRegistrationStatus(session.accountId),
+    getAccountBillingRecord(session.accountId),
+    getForwardingHealthSummary(session.accountId),
+    getAccountRecoveryStats(session.accountId, { since: null }),
+    getLastRecoveredCallAt(session.accountId),
+  ]);
+  const setupReadiness = computeSetupReadiness({
+    role,
+    hasProfile: Boolean(account.businessName && account.ownerPhoneNumber && account.twilioPhoneNumber),
+    callMode: account.callMode,
+    smsEnabled: account.smsEnabled,
+    a2pStatus: (["not_started", "in_progress", "approved", "rejected", "paused"].includes(a2pStatus ?? "")
+      ? a2pStatus
+      : "unknown") as A2pStatus,
+    forwardingStatus: forwardingHealth.displayStatus,
+    hasRecoveredCall: recovery.missedCalls > 0,
+    lastRecoveredCallAt,
+    forwardingLastPassedAt: forwardingHealth.lastPassedAt,
+  });
+  const billingLifecycle = computeBillingLifecycle({ billing, setupReadiness });
   const readOnly = role === "viewer";
 
   return (
@@ -80,6 +228,26 @@ export default async function SettingsPage({
                   : "Please check the highlighted values and try again."}
           </div>
         ) : null}
+        {params.billing ? (
+          <div className="intake-error settings-notice" role="alert">
+            <Icon name="info" size={14} />
+            {params.billing === "setup_incomplete"
+              ? "Finish call routing and carrier registration before starting billing."
+              : params.billing === "already_active"
+                ? "This account already has an active subscription. Manage it here instead."
+                : params.billing === "past_due" || params.billing === "subscription_incomplete"
+                  ? "Update payment in Stripe before changing this subscription."
+                  : params.billing === "no_customer"
+                    ? "No Stripe customer is attached to this account yet."
+                    : params.billing === "forbidden"
+                      ? "Only the owner can manage billing."
+                      : params.billing === "checkout_failed"
+                        ? "Stripe Checkout could not be started. Try again."
+                        : params.billing === "portal_failed"
+                          ? "Stripe Billing Portal could not be opened. Try again."
+                          : "Billing needs support before continuing."}
+          </div>
+        ) : null}
 
         <section className="panel settings-section">
           <p className="t-eyebrow settings-section__title">Your Relay line</p>
@@ -90,6 +258,8 @@ export default async function SettingsPage({
             Carrier registration: {A2P_LABELS[a2pStatus ?? ""] ?? "Unknown"}
           </p>
         </section>
+
+        <BillingSection billing={billing} lifecycle={billingLifecycle} role={role} />
 
         <form className="panel settings-form" action="/api/settings" method="POST">
           <fieldset disabled={readOnly} className="settings-fieldset">
