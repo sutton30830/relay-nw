@@ -60,7 +60,7 @@ export function ConversationView({
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [status, setStatus] = useState<LeadStatus>(lead.status);
   const [priorityOverride, setPriorityOverride] = useState<ReplyPriorityOverride>(lead.reply_priority_override);
-  const [booked, setBooked] = useState(() => isBookedLead(lead));
+  const [bookedAt, setBookedAt] = useState<string | null>(lead.booked_at);
   const [jobValueCents, setJobValueCents] = useState<number | null>(lead.job_value_cents);
   // On touch devices Enter should insert a newline (send is the button) — phones
   // have no Shift+Enter, so sending on Enter would strand multi-line messages.
@@ -68,12 +68,22 @@ export function ConversationView({
   const [isTouch, setIsTouch] = useState(false);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const threadEndRef = useRef<HTMLDivElement | null>(null);
+  const currentLead: Lead = {
+    ...lead,
+    name: name.trim() || null,
+    notes,
+    status,
+    reply_priority_override: priorityOverride,
+    booked_at: bookedAt,
+    job_value_cents: jobValueCents,
+  };
+  const booked = isBookedLead(currentLead);
 
   useEffect(() => {
     setIsTouch(window.matchMedia("(hover: none) and (pointer: coarse)").matches);
   }, []);
 
-  const priority = getLeadPriority(lead);
+  const priority = getLeadPriority(currentLead);
   const smsTrouble = lead.sms_status === "failed" || lead.sms_status === "undelivered";
 
   const thread = useMemo<ThreadItem[]>(() => {
@@ -95,7 +105,7 @@ export function ConversationView({
       }));
     const items: ThreadItem[] = [
       ...syntheticAutoTexts,
-      ...[lead, ...previousLeads].map((callLead) => ({
+      ...[currentLead, ...previousLeads].map((callLead) => ({
         kind: "call" as const,
         lead: callLead,
         created_at: callLead.created_at,
@@ -121,7 +131,7 @@ export function ConversationView({
     ];
 
     return items.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-  }, [lead, previousLeads, inbound, outbound, sentMessages]);
+  }, [currentLead, previousLeads, inbound, outbound, sentMessages]);
 
   // Start (and stay) at the newest message, like any messaging app.
   useEffect(() => {
@@ -133,17 +143,15 @@ export function ConversationView({
     setNotes(lead.notes ?? "");
     setStatus(lead.status);
     setPriorityOverride(lead.reply_priority_override);
-    setBooked(isBookedLead(lead));
+    setBookedAt(lead.booked_at);
     setJobValueCents(lead.job_value_cents);
     setSaveError(null);
   }, [lead.id, lead.name, lead.notes, lead.status, lead.reply_priority_override, lead.booked_at, lead.job_value_cents]);
 
-  async function patchAndRefresh(body: Parameters<typeof patchLead>[1]) {
+  async function saveLeadPatch(body: Parameters<typeof patchLead>[1]) {
     setSaveError(null);
     const ok = await patchLead(lead.id, body);
-    if (ok) {
-      router.refresh();
-    } else {
+    if (!ok) {
       setSaveError("Could not save that change. Try again.");
     }
     return ok;
@@ -184,8 +192,8 @@ export function ConversationView({
         </Link>
         <div className="lead-card__avatar">{initials(lead) ?? <Icon name="user" size={16} />}</div>
         <div className="convo__who">
-          <p className="convo__name">{lead.name || formatPhone(lead.phone)}</p>
-          {lead.name ? <p className="convo__number">{formatPhone(lead.phone)}</p> : null}
+          <p className="convo__name">{currentLead.name || formatPhone(lead.phone)}</p>
+          {currentLead.name ? <p className="convo__number">{formatPhone(lead.phone)}</p> : null}
         </div>
         <a className="btn btn-secondary btn-sm" href={`tel:${lead.phone}`}>
           <Icon name="phone" size={14} /> Call
@@ -232,7 +240,7 @@ export function ConversationView({
               onChange={(event) => setName(event.target.value)}
               onBlur={() => {
                 const nextName = name.trim() || null;
-                if ((lead.name ?? null) !== nextName) void patchAndRefresh({ name: nextName });
+                if ((lead.name ?? null) !== nextName) void saveLeadPatch({ name: nextName });
               }}
             />
           </label>
@@ -243,7 +251,7 @@ export function ConversationView({
               onChange={(nextStatus: LeadStatus) => {
                 const previousStatus = status;
                 setStatus(nextStatus);
-                void patchAndRefresh({ status: nextStatus }).then((ok) => {
+                void saveLeadPatch({ status: nextStatus }).then((ok) => {
                   if (!ok) setStatus(previousStatus);
                 });
               }}
@@ -257,7 +265,7 @@ export function ConversationView({
               onChange={(replyPriorityOverride: ReplyPriorityOverride) => {
                 const previousPriority = priorityOverride;
                 setPriorityOverride(replyPriorityOverride);
-                void patchAndRefresh({ replyPriorityOverride }).then((ok) => {
+                void saveLeadPatch({ replyPriorityOverride }).then((ok) => {
                   if (!ok) setPriorityOverride(previousPriority);
                 });
               }}
@@ -269,10 +277,10 @@ export function ConversationView({
               <BookedToggle
                 booked={booked}
                 onChange={(nextBooked) => {
-                  const previousBooked = booked;
-                  setBooked(nextBooked);
-                  void patchAndRefresh({ booked: nextBooked }).then((ok) => {
-                    if (!ok) setBooked(previousBooked);
+                  const previousBookedAt = bookedAt;
+                  setBookedAt(nextBooked ? previousBookedAt ?? new Date().toISOString() : null);
+                  void saveLeadPatch({ booked: nextBooked }).then((ok) => {
+                    if (!ok) setBookedAt(previousBookedAt);
                   });
                 }}
               />
@@ -280,17 +288,17 @@ export function ConversationView({
                 valueCents={jobValueCents}
                 onSave={(nextJobValueCents) => {
                   const previousJobValueCents = jobValueCents;
-                  const previousBooked = booked;
+                  const previousBookedAt = bookedAt;
                   const shouldMarkBooked = Boolean(nextJobValueCents && nextJobValueCents > 0 && !booked);
                   setJobValueCents(nextJobValueCents);
-                  if (shouldMarkBooked) setBooked(true);
-                  void patchAndRefresh({
+                  if (shouldMarkBooked) setBookedAt(new Date().toISOString());
+                  void saveLeadPatch({
                     ...(shouldMarkBooked ? { booked: true } : {}),
                     jobValueCents: nextJobValueCents,
                   }).then((ok) => {
                     if (!ok) {
                       setJobValueCents(previousJobValueCents);
-                      setBooked(previousBooked);
+                      setBookedAt(previousBookedAt);
                     }
                   });
                 }}
@@ -306,7 +314,7 @@ export function ConversationView({
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
               onBlur={() => {
-                if ((lead.notes ?? "") !== notes) void patchAndRefresh({ notes });
+                if ((lead.notes ?? "") !== notes) void saveLeadPatch({ notes });
               }}
             />
             {previousLeads.some((earlier) => earlier.notes) ? (
