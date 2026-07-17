@@ -211,6 +211,22 @@ test("active, trialing, and comped billing states are accepted without setup enf
   }
 });
 
+test("scheduled cancellation stays manageable and does not imply service shutdown", () => {
+  const state = billing.computeBillingLifecycle({
+    billing: billingRecord({
+      billingStatus: "active",
+      cancelAtPeriodEnd: true,
+      currentPeriodEnd: "2026-08-01T00:00:00.000Z",
+    }),
+    setupReadiness: setupReadiness({ callCaptureReady: true, smsRegistrationReady: true }),
+  });
+
+  assert.equal(state.label, "Canceling");
+  assert.equal(state.ownerAction, "manage_billing");
+  assert.equal(state.tone, "warn");
+  assert.match(state.summary, /Relay keeps catching missed calls/);
+});
+
 test("past due and canceled are visible attention states but do not disable Relay in Phase 5A", () => {
   for (const billingStatus of ["past_due", "canceled"]) {
     const state = billing.computeBillingReadiness({

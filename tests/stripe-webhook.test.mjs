@@ -87,6 +87,12 @@ async function runWebhook({
   metadataAccountExists = true,
   updateError = null,
   emailError = null,
+  ownerEmailError = null,
+  accountConfigError = null,
+  existingBilling = {
+    billingAttentionSince: null,
+    cancelAtPeriodEnd: false,
+  },
   stripeSecretKey = "sk_test_example",
 } = {}) {
   const calls = {
@@ -100,6 +106,9 @@ async function runWebhook({
     ignored: [],
     failed: [],
     emails: [],
+    ownerEmails: [],
+    accountConfigLookups: [],
+    billingLookups: [],
   };
 
   const { POST } = await loadTsModule("app/api/stripe/webhook/route.ts", {
@@ -115,6 +124,21 @@ async function runWebhook({
       notifyAdminOperationalIssue: async (input) => {
         calls.emails.push(input);
         if (emailError) throw emailError;
+        return { sent: true };
+      },
+      notifyOwnerBillingPaymentFailed: async (input) => {
+        calls.ownerEmails.push({ type: "payment_failed", input });
+        if (ownerEmailError) throw ownerEmailError;
+        return { sent: true };
+      },
+      notifyOwnerBillingRecovered: async (input) => {
+        calls.ownerEmails.push({ type: "billing_recovered", input });
+        if (ownerEmailError) throw ownerEmailError;
+        return { sent: true };
+      },
+      notifyOwnerSubscriptionScheduledToEnd: async (input) => {
+        calls.ownerEmails.push({ type: "subscription_scheduled_to_end", input });
+        if (ownerEmailError) throw ownerEmailError;
         return { sent: true };
       },
     },
@@ -144,6 +168,35 @@ async function runWebhook({
       accountExists: async (accountId) => {
         calls.accountExists.push(accountId);
         return metadataAccountExists;
+      },
+      getAccountBillingRecord: async (accountId) => {
+        calls.billingLookups.push(accountId);
+        return existingBilling;
+      },
+      getAccountConfigByAccountId: async (accountId) => {
+        calls.accountConfigLookups.push(accountId);
+        if (accountConfigError) throw accountConfigError;
+        return {
+          accountId,
+          accountSlug: "demo",
+          businessName: "Demo Plumbing",
+          ownerEmail: "owner@example.com",
+          callMode: "forwarding",
+          smsEnabled: true,
+          intakeUrl: "https://www.relay-nw.com/intake",
+          schedulingUrl: "",
+          smsTemplate: null,
+          quickReplyTemplates: null,
+          missedCallVoiceMessage: null,
+          missedCallVoiceName: "Polly.Joanna-Neural",
+          missedCallGreetingAudioUrl: null,
+          voicemailMaxSeconds: 60,
+          dialTimeoutSeconds: 18,
+          missedCallSmsCooldownHours: 24,
+          voicemailTranscriptionEnabled: true,
+          twilioPhoneNumber: "+15551234567",
+          ownerPhoneNumber: "+12065550123",
+        };
       },
       updateAccountBillingRecord: async (accountId, update) => {
         calls.updates.push({ accountId, update });
@@ -222,18 +275,80 @@ test("invoice.payment_failed before subscription update surfaces past-due attent
 
   assert.equal(response.status, 200);
   assert.equal(calls.updates[0].update.billingStatus, "past_due");
+  assert.equal(typeof calls.updates[0].update.billingAttentionSince, "string");
+  assert.equal(calls.ownerEmails.length, 1);
+  assert.equal(calls.ownerEmails[0].type, "payment_failed");
   assert.equal(calls.emails.length, 1);
+});
+
+test("invoice.payment_action_required notifies the owner to approve payment", async () => {
+  const { response, calls } = await runWebhook({
+    event: stripeEvent("invoice.payment_action_required", invoiceObject()),
+    subscriptionSnapshot: subscription({ status: "active" }),
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(calls.updates[0].update.billingStatus, "past_due");
+  assert.equal(calls.ownerEmails[0].type, "payment_failed");
+  assert.equal(calls.ownerEmails[0].input.eventType, "invoice.payment_action_required");
+});
+
+test("billing_attention_since is preserved across repeated failed-payment events", async () => {
+  const previousAttention = "2026-07-01T00:00:00.000Z";
+  const { response, calls } = await runWebhook({
+    event: stripeEvent("invoice.payment_failed", invoiceObject()),
+    subscriptionSnapshot: subscription({ status: "active" }),
+    existingBilling: {
+      billingAttentionSince: previousAttention,
+      cancelAtPeriodEnd: false,
+    },
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(calls.updates[0].update.billingAttentionSince, previousAttention);
 });
 
 test("invoice.paid after past due restores active state from current subscription", async () => {
   const { response, calls } = await runWebhook({
     event: stripeEvent("invoice.paid", invoiceObject({ paid: true, status: "paid" })),
     subscriptionSnapshot: subscription({ status: "active" }),
+    existingBilling: {
+      billingAttentionSince: "2026-07-01T00:00:00.000Z",
+      cancelAtPeriodEnd: false,
+    },
   });
 
   assert.equal(response.status, 200);
   assert.equal(calls.updates[0].update.billingStatus, "active");
   assert.equal(calls.updates[0].update.billingAttentionSince, null);
+  assert.equal(calls.ownerEmails.length, 1);
+  assert.equal(calls.ownerEmails[0].type, "billing_recovered");
+});
+
+test("subscription scheduled to cancel notifies the owner without canceling service early", async () => {
+  const { response, calls } = await runWebhook({
+    event: stripeEvent("customer.subscription.updated", {
+      id: "sub_1",
+      customer: "cus_1",
+      status: "active",
+      metadata: { account_id: "acct_1" },
+    }),
+    subscriptionSnapshot: subscription({
+      status: "active",
+      cancelAtPeriodEnd: true,
+      currentPeriodEnd: "2026-08-01T00:00:00.000Z",
+    }),
+    existingBilling: {
+      billingAttentionSince: null,
+      cancelAtPeriodEnd: false,
+    },
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(calls.updates[0].update.billingStatus, "active");
+  assert.equal(calls.updates[0].update.cancelAtPeriodEnd, true);
+  assert.equal(calls.ownerEmails.length, 1);
+  assert.equal(calls.ownerEmails[0].type, "subscription_scheduled_to_end");
 });
 
 test("unknown Stripe customer is recorded as ignored", async () => {
@@ -290,10 +405,24 @@ test("email failure after billing state succeeds does not fail the event", async
   const { response, calls } = await runWebhook({
     event: stripeEvent("invoice.payment_failed", invoiceObject()),
     emailError: new Error("resend down"),
+    ownerEmailError: new Error("owner email down"),
   });
 
   assert.equal(response.status, 200);
   assert.equal(calls.updates.length, 1);
   assert.equal(calls.processed.length, 1);
   assert.equal(calls.failed.length, 0);
+});
+
+test("account lookup failure for billing emails does not fail the Stripe event", async () => {
+  const { response, calls } = await runWebhook({
+    event: stripeEvent("invoice.payment_failed", invoiceObject()),
+    accountConfigError: new Error("account config unavailable"),
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(calls.updates.length, 1);
+  assert.equal(calls.processed.length, 1);
+  assert.deepEqual(calls.ownerEmails, []);
+  assert.equal(calls.emails.length, 1);
 });

@@ -126,6 +126,8 @@ function BillingSection({
   const periodDate = formatBillingDate(billing.currentPeriodEnd);
   const guaranteeDate = formatBillingDate(billing.guaranteeEndsAt);
   const periodLabel = billing.cancelAtPeriodEnd ? "Cancels" : "Renews";
+  const showPaymentWarning = billing.billingStatus === "past_due";
+  const showCancelWarning = billing.cancelAtPeriodEnd && billing.billingStatus !== "canceled";
 
   return (
     <section id="billing" className="panel settings-section settings-billing">
@@ -138,6 +140,20 @@ function BillingSection({
         </div>
         <BillingPrimaryAction billing={billing} lifecycle={lifecycle} role={role} />
       </div>
+
+      {showPaymentWarning ? (
+        <div className="intake-error settings-notice" role="alert">
+          <Icon name="alertTriangle" size={14} />
+          Your payment didn&apos;t go through. Relay is still catching missed calls while you update your payment method.
+        </div>
+      ) : null}
+
+      {showCancelWarning ? (
+        <div className="panel settings-notice settings-notice--ok" role="status">
+          <Icon name="info" size={14} />
+          Your subscription is scheduled to end{periodDate ? ` on ${periodDate}` : ""}. Relay keeps working during the current billing period.
+        </div>
+      ) : null}
 
       <dl className="settings-billing__facts">
         <div>

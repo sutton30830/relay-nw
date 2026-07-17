@@ -147,6 +147,14 @@ test("stripe checkout and webhooks update account billing without gating missed-
   assert.match(billingPortalRouteTs, /getAccountBillingRecord/);
   assert.match(billingPortalRouteTs, /createStripePortalSession/);
   assert.match(settingsPageTsx, /id="billing"/);
+  assert.match(settingsPageTsx, /Your payment didn&apos;t go through/);
+  assert.match(settingsPageTsx, /Relay is still catching missed calls/);
+  assert.match(settingsPageTsx, /scheduled to end/);
+  assert.match(emailTs, /notifyOwnerBillingPaymentFailed/);
+  assert.match(emailTs, /notifyOwnerSubscriptionScheduledToEnd/);
+  assert.match(emailTs, /notifyOwnerBillingRecovered/);
+  assert.match(emailTs, /Update payment/);
+  assert.match(emailTs, /settings#billing/);
 
   assert.match(stripeWebhookRouteTs, /request\.text\(\)/);
   assert.match(stripeWebhookRouteTs, /verifyStripeWebhookSignature/);
@@ -163,6 +171,10 @@ test("stripe checkout and webhooks update account billing without gating missed-
   assert.match(stripeWebhookRouteTs, /markStripeEventIgnored/);
   assert.match(stripeWebhookRouteTs, /markStripeEventFailed/);
   assert.match(stripeWebhookRouteTs, /updateAccountBillingRecord/);
+  assert.match(stripeWebhookRouteTs, /notifyOwnerBillingPaymentFailed/);
+  assert.match(stripeWebhookRouteTs, /notifyOwnerSubscriptionScheduledToEnd/);
+  assert.match(stripeWebhookRouteTs, /notifyOwnerBillingRecovered/);
+  assert.match(stripeWebhookRouteTs, /existingBilling\.billingAttentionSince \?\? new Date\(\)\.toISOString\(\)/);
   assert.doesNotMatch(stripeWebhookRouteTs, /extractBillingUpdateFromStripeEvent/);
   assert.doesNotMatch(missedCallTs, /billingStatus|stripe/i);
 

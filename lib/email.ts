@@ -332,6 +332,95 @@ export async function notifyOwnerOptOut(input: {
   });
 }
 
+export async function notifyOwnerBillingPaymentFailed(input: {
+  account: AccountRuntimeConfig;
+  eventType: "invoice.payment_failed" | "invoice.payment_action_required";
+}) {
+  const recipient = await ownerEmail(input.account);
+  const needsAction = input.eventType === "invoice.payment_action_required";
+  const title = needsAction ? "Payment needs approval" : "Payment did not go through";
+  const lines = [
+    needsAction
+      ? "Stripe needs you to approve or update the payment method for Relay NW."
+      : "Your payment didn’t go through.",
+    "Relay is still catching missed calls while you update your payment method.",
+    "Open Settings and use Update payment to fix billing securely in Stripe.",
+  ];
+
+  return sendEmail({
+    to: recipient,
+    subject: `${title} for ${input.account.businessName}`,
+    html: emailHtml({
+      title,
+      preview: "Relay is still catching missed calls while payment is fixed.",
+      lines,
+      actionLabel: "Update payment",
+      actionUrl: `${env.appBaseUrl}/settings#billing`,
+    }),
+    text: `${lines.join("\n")}\n\nUpdate payment: ${env.appBaseUrl}/settings#billing`,
+    tag: needsAction ? "owner_billing_payment_action_required" : "owner_billing_payment_failed",
+  });
+}
+
+export async function notifyOwnerSubscriptionScheduledToEnd(input: {
+  account: AccountRuntimeConfig;
+  currentPeriodEnd: string | null;
+}) {
+  const recipient = await ownerEmail(input.account);
+  const endDate = input.currentPeriodEnd
+    ? new Date(input.currentPeriodEnd).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : null;
+  const lines = [
+    endDate
+      ? `Your Relay NW subscription is scheduled to end on ${endDate}.`
+      : "Your Relay NW subscription is scheduled to end.",
+    "Relay is still catching missed calls during the current billing period.",
+    "Open Settings to manage or reactivate the subscription in Stripe.",
+  ];
+
+  return sendEmail({
+    to: recipient,
+    subject: `Relay NW subscription scheduled to end for ${input.account.businessName}`,
+    html: emailHtml({
+      title: "Subscription scheduled to end",
+      preview: "Relay is still catching missed calls during the current billing period.",
+      lines,
+      actionLabel: "Manage billing",
+      actionUrl: `${env.appBaseUrl}/settings#billing`,
+    }),
+    text: `${lines.join("\n")}\n\nManage billing: ${env.appBaseUrl}/settings#billing`,
+    tag: "owner_subscription_scheduled_to_end",
+  });
+}
+
+export async function notifyOwnerBillingRecovered(input: {
+  account: AccountRuntimeConfig;
+}) {
+  const recipient = await ownerEmail(input.account);
+  const lines = [
+    "Your Relay NW billing is back in good standing.",
+    "Relay kept catching missed calls while payment was being resolved.",
+  ];
+
+  return sendEmail({
+    to: recipient,
+    subject: `Relay NW billing recovered for ${input.account.businessName}`,
+    html: emailHtml({
+      title: "Billing recovered",
+      preview: "Relay NW billing is back in good standing.",
+      lines,
+      actionLabel: "Open Settings",
+      actionUrl: `${env.appBaseUrl}/settings#billing`,
+    }),
+    text: `${lines.join("\n")}\n\nOpen Settings: ${env.appBaseUrl}/settings#billing`,
+    tag: "owner_billing_recovered",
+  });
+}
+
 export async function notifyAdminNewSetupRequest(input: {
   account: AccountRuntimeConfig;
   leadName: string;

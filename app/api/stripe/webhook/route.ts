@@ -1,5 +1,10 @@
 import { env } from "@/lib/env";
-import { notifyAdminOperationalIssue } from "@/lib/email";
+import {
+  notifyAdminOperationalIssue,
+  notifyOwnerBillingPaymentFailed,
+  notifyOwnerBillingRecovered,
+  notifyOwnerSubscriptionScheduledToEnd,
+} from "@/lib/email";
 import {
   assertStripeWebhookConfigured,
   billingUpdateFromSubscription,
@@ -16,6 +21,8 @@ import {
   markStripeEventFailed,
   markStripeEventIgnored,
   markStripeEventProcessed,
+  getAccountBillingRecord,
+  getAccountConfigByAccountId,
   resolveAccountIdByStripeCustomerId,
   resolveAccountIdByStripeSubscriptionId,
   updateAccountBillingRecord,
@@ -94,6 +101,88 @@ function expectedStripeLivemode() {
   if (env.stripeSecretKey?.startsWith("sk_live_")) return true;
   if (env.stripeSecretKey?.startsWith("sk_test_")) return false;
   return null;
+}
+
+async function notifyBillingAttention(input: {
+  accountId: string;
+  eventId: string;
+  eventType: string;
+  subscriptionId: string;
+  previousAttentionSince: string | null;
+  recovered: boolean;
+  scheduledToCancel: boolean;
+  currentPeriodEnd: string | null;
+}) {
+  let account = null;
+
+  try {
+    account = await getAccountConfigByAccountId(input.accountId);
+  } catch (error) {
+    console.error("Stripe billing notification account lookup failed after billing state update", {
+      eventId: input.eventId,
+      accountId: input.accountId,
+      error: error instanceof Error ? error.message : error,
+    });
+  }
+
+  if (input.recovered && input.previousAttentionSince && account) {
+    try {
+      await notifyOwnerBillingRecovered({ account });
+    } catch (emailError) {
+      console.error("Stripe billing recovery owner email failed after billing state update", {
+        eventId: input.eventId,
+        error: emailError instanceof Error ? emailError.message : emailError,
+      });
+    }
+  }
+
+  if (
+    input.scheduledToCancel &&
+    input.eventType === "customer.subscription.updated" &&
+    account
+  ) {
+    try {
+      await notifyOwnerSubscriptionScheduledToEnd({
+        account,
+        currentPeriodEnd: input.currentPeriodEnd,
+      });
+    } catch (emailError) {
+      console.error("Stripe cancel-scheduled owner email failed after billing state update", {
+        eventId: input.eventId,
+        error: emailError instanceof Error ? emailError.message : emailError,
+      });
+    }
+  }
+
+  if (input.eventType === "invoice.payment_failed" || input.eventType === "invoice.payment_action_required") {
+    if (account) {
+      try {
+        await notifyOwnerBillingPaymentFailed({
+          account,
+          eventType: input.eventType,
+        });
+      } catch (emailError) {
+        console.error("Stripe payment-attention owner email failed after billing state update", {
+          eventId: input.eventId,
+          error: emailError instanceof Error ? emailError.message : emailError,
+        });
+      }
+    }
+
+    try {
+      await notifyAdminOperationalIssue({
+        account,
+        issue: "Stripe billing needs payment attention",
+        detail: `Stripe event ${input.eventType} for subscription ${input.subscriptionId}`,
+        correlationId: input.eventId,
+      });
+    } catch (emailError) {
+      console.error("Stripe billing alert failed after billing state update", {
+        eventId: input.eventId,
+        error: emailError instanceof Error ? emailError.message : emailError,
+      });
+    }
+  }
 }
 
 export async function POST(request: Request) {
@@ -202,6 +291,7 @@ export async function POST(request: Request) {
       return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
     }
 
+    const existingBilling = await getAccountBillingRecord(resolution.accountId);
     const paid = identity.eventType === "invoice.paid" && isInvoicePaid(identity.object);
     const update = billingUpdateFromSubscription(resolution.accountId, subscription, { paid });
     const eventStatus = identity.eventType === "customer.subscription.deleted"
@@ -213,23 +303,21 @@ export async function POST(request: Request) {
     await updateAccountBillingRecord(resolution.accountId, {
       ...update,
       billingStatus: eventStatus,
-      billingAttentionSince: eventStatus === "past_due" ? new Date().toISOString() : update.billingAttentionSince,
+      billingAttentionSince: eventStatus === "past_due"
+        ? existingBilling.billingAttentionSince ?? new Date().toISOString()
+        : update.billingAttentionSince,
     });
 
-    if (eventStatus === "past_due") {
-      try {
-        await notifyAdminOperationalIssue({
-          issue: "Stripe billing needs payment attention",
-          detail: `Stripe event ${identity.eventType} for subscription ${subscription.id}`,
-          correlationId: identity.eventId,
-        });
-      } catch (emailError) {
-        console.error("Stripe billing alert failed after billing state update", {
-          eventId: identity.eventId,
-          error: emailError instanceof Error ? emailError.message : emailError,
-        });
-      }
-    }
+    await notifyBillingAttention({
+      accountId: resolution.accountId,
+      eventId: identity.eventId,
+      eventType: identity.eventType,
+      subscriptionId: subscription.id,
+      previousAttentionSince: existingBilling.billingAttentionSince,
+      recovered: eventStatus !== "past_due" && update.billingAttentionSince === null,
+      scheduledToCancel: subscription.cancelAtPeriodEnd && !existingBilling.cancelAtPeriodEnd,
+      currentPeriodEnd: subscription.currentPeriodEnd,
+    });
 
     await markStripeEventProcessed({
       eventId: identity.eventId,
