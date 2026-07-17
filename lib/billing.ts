@@ -2,13 +2,53 @@ import type { SetupReadiness } from "@/lib/readiness";
 
 export type AccountBillingStatus = "not_started" | "trialing" | "active" | "past_due" | "canceled" | "comped";
 
+export type AccountOnboardingStatus =
+  | "requirements_needed"
+  | "waiting_on_customer"
+  | "carrier_review"
+  | "carrier_attention"
+  | "ready_for_live_test"
+  | "ready_to_activate"
+  | "activated"
+  | "paused_incomplete"
+  | "closed_incomplete";
+
+export type StripeSubscriptionStatus =
+  | "incomplete"
+  | "incomplete_expired"
+  | "trialing"
+  | "active"
+  | "past_due"
+  | "canceled"
+  | "unpaid"
+  | "paused";
+
+export type BillingOwnerAction =
+  | "none"
+  | "finish_setup"
+  | "start_billing"
+  | "manage_billing"
+  | "update_payment"
+  | "restart_subscription"
+  | "contact_support";
+
 export type AccountBillingRecord = {
   billingStatus: AccountBillingStatus;
+  onboardingStatus: AccountOnboardingStatus;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
   stripePriceId: string | null;
+  stripeSubscriptionStatus: StripeSubscriptionStatus | null;
   trialEndsAt: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  requirementsDueAt: string | null;
+  activatedAt: string | null;
+  firstPaidAt: string | null;
+  guaranteeEndsAt: string | null;
+  billingAttentionSince: string | null;
   billingUpdatedAt: string | null;
+  onboardingStatusUpdatedAt: string | null;
 };
 
 export type BillingOperatingState =
@@ -23,6 +63,21 @@ export type BillingReadiness = {
   state: BillingOperatingState;
   activationReady: boolean;
   billingStatus: AccountBillingStatus;
+  onboardingStatus: AccountOnboardingStatus;
+  ownerAction: BillingOwnerAction;
+  label: string;
+  headline: string;
+  summary: string;
+  tone: "good" | "warn" | "neutral";
+};
+
+export type BillingLifecycleState = {
+  activationReady: boolean;
+  billingStatus: AccountBillingStatus;
+  onboardingStatus: AccountOnboardingStatus;
+  ownerAction: BillingOwnerAction;
+  customerDelay: boolean;
+  carrierDelay: boolean;
   label: string;
   headline: string;
   summary: string;
@@ -31,11 +86,21 @@ export type BillingReadiness = {
 
 const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   billingStatus: "not_started",
+  onboardingStatus: "requirements_needed",
   stripeCustomerId: null,
   stripeSubscriptionId: null,
   stripePriceId: null,
+  stripeSubscriptionStatus: null,
   trialEndsAt: null,
+  currentPeriodEnd: null,
+  cancelAtPeriodEnd: false,
+  requirementsDueAt: null,
+  activatedAt: null,
+  firstPaidAt: null,
+  guaranteeEndsAt: null,
+  billingAttentionSince: null,
   billingUpdatedAt: null,
+  onboardingStatusUpdatedAt: null,
 };
 
 export function defaultBillingRecord(): AccountBillingRecord {
@@ -55,6 +120,41 @@ export function normalizeBillingStatus(value: string | null | undefined): Accoun
   }
 
   return "not_started";
+}
+
+export function normalizeOnboardingStatus(value: string | null | undefined): AccountOnboardingStatus {
+  if (
+    value === "requirements_needed" ||
+    value === "waiting_on_customer" ||
+    value === "carrier_review" ||
+    value === "carrier_attention" ||
+    value === "ready_for_live_test" ||
+    value === "ready_to_activate" ||
+    value === "activated" ||
+    value === "paused_incomplete" ||
+    value === "closed_incomplete"
+  ) {
+    return value;
+  }
+
+  return "requirements_needed";
+}
+
+export function normalizeStripeSubscriptionStatus(value: string | null | undefined): StripeSubscriptionStatus | null {
+  if (
+    value === "incomplete" ||
+    value === "incomplete_expired" ||
+    value === "trialing" ||
+    value === "active" ||
+    value === "past_due" ||
+    value === "canceled" ||
+    value === "unpaid" ||
+    value === "paused"
+  ) {
+    return value;
+  }
+
+  return null;
 }
 
 export function isBillingActivationReady(readiness: Pick<SetupReadiness, "callCaptureReady" | "smsRegistrationReady">) {
@@ -77,15 +177,17 @@ export function computeBillingReadiness(input: {
   billing: AccountBillingRecord | null | undefined;
   setupReadiness: Pick<SetupReadiness, "callCaptureReady" | "smsRegistrationReady">;
 }): BillingReadiness {
+  const lifecycle = computeBillingLifecycle(input);
   const billing = input.billing ?? defaultBillingRecord();
   const billingStatus = normalizeBillingStatus(billing.billingStatus);
-  const activationReady = isBillingActivationReady(input.setupReadiness);
 
   if (billingStatus === "active") {
     return {
       state: "active",
-      activationReady,
+      activationReady: lifecycle.activationReady,
       billingStatus,
+      onboardingStatus: lifecycle.onboardingStatus,
+      ownerAction: lifecycle.ownerAction,
       label: "Billing active",
       headline: "Subscription is active.",
       summary: "This account has an active billing record.",
@@ -96,8 +198,10 @@ export function computeBillingReadiness(input: {
   if (billingStatus === "comped") {
     return {
       state: "comped",
-      activationReady,
+      activationReady: lifecycle.activationReady,
       billingStatus,
+      onboardingStatus: lifecycle.onboardingStatus,
+      ownerAction: lifecycle.ownerAction,
       label: "Comped",
       headline: "Billing is comped.",
       summary: "Relay is intentionally not charging this account.",
@@ -108,8 +212,10 @@ export function computeBillingReadiness(input: {
   if (billingStatus === "trialing") {
     return {
       state: "trialing",
-      activationReady,
+      activationReady: lifecycle.activationReady,
       billingStatus,
+      onboardingStatus: lifecycle.onboardingStatus,
+      ownerAction: lifecycle.ownerAction,
       label: "Trial",
       headline: "Trial is active.",
       summary: trialSummary(billing.trialEndsAt),
@@ -120,8 +226,10 @@ export function computeBillingReadiness(input: {
   if (billingStatus === "past_due" || billingStatus === "canceled") {
     return {
       state: "billing_attention",
-      activationReady,
+      activationReady: lifecycle.activationReady,
       billingStatus,
+      onboardingStatus: lifecycle.onboardingStatus,
+      ownerAction: lifecycle.ownerAction,
       label: billingStatus === "past_due" ? "Past due" : "Canceled",
       headline: billingStatus === "past_due" ? "Billing needs attention." : "Subscription is canceled.",
       summary: "Do not automatically disable missed-call capture in Phase 5A; resolve billing before scaling enforcement.",
@@ -129,11 +237,13 @@ export function computeBillingReadiness(input: {
     };
   }
 
-  if (activationReady) {
+  if (lifecycle.activationReady) {
     return {
       state: "ready_to_start_billing",
-      activationReady,
+      activationReady: lifecycle.activationReady,
       billingStatus,
+      onboardingStatus: lifecycle.onboardingStatus,
+      ownerAction: lifecycle.ownerAction,
       label: "Ready to bill",
       headline: "Relay is ready for activation billing.",
       summary: "Call capture and carrier texting are ready. Start billing when the customer is handed off.",
@@ -143,11 +253,160 @@ export function computeBillingReadiness(input: {
 
   return {
     state: "setup_not_billable",
-    activationReady,
+    activationReady: lifecycle.activationReady,
     billingStatus,
+    onboardingStatus: lifecycle.onboardingStatus,
+    ownerAction: lifecycle.ownerAction,
     label: "Setup first",
     headline: "Billing should wait.",
     summary: "Finish call capture and carrier texting approval before charging this account.",
+    tone: "neutral",
+  };
+}
+
+function deriveOnboardingStatus(input: {
+  billing: AccountBillingRecord;
+  activationReady: boolean;
+}): AccountOnboardingStatus {
+  const current = normalizeOnboardingStatus(input.billing.onboardingStatus);
+
+  if (current === "activated" || current === "paused_incomplete" || current === "closed_incomplete") {
+    return current;
+  }
+
+  if (input.billing.activatedAt) {
+    return "activated";
+  }
+
+  if (input.activationReady) {
+    return "ready_to_activate";
+  }
+
+  return current;
+}
+
+function actionFor(input: {
+  billingStatus: AccountBillingStatus;
+  onboardingStatus: AccountOnboardingStatus;
+  activationReady: boolean;
+}): BillingOwnerAction {
+  if (input.billingStatus === "active" || input.billingStatus === "trialing" || input.billingStatus === "comped") {
+    return "manage_billing";
+  }
+
+  if (input.billingStatus === "past_due") {
+    return "update_payment";
+  }
+
+  if (input.billingStatus === "canceled") {
+    return input.activationReady ? "restart_subscription" : "finish_setup";
+  }
+
+  if (input.onboardingStatus === "carrier_attention") {
+    return "contact_support";
+  }
+
+  if (input.onboardingStatus === "closed_incomplete") {
+    return "contact_support";
+  }
+
+  if (!input.activationReady) {
+    return "finish_setup";
+  }
+
+  return "start_billing";
+}
+
+export function computeBillingLifecycle(input: {
+  billing: AccountBillingRecord | null | undefined;
+  setupReadiness: Pick<SetupReadiness, "callCaptureReady" | "smsRegistrationReady">;
+}): BillingLifecycleState {
+  const billing = input.billing ?? defaultBillingRecord();
+  const activationReady = isBillingActivationReady(input.setupReadiness);
+  const billingStatus = normalizeBillingStatus(billing.billingStatus);
+  const onboardingStatus = deriveOnboardingStatus({ billing, activationReady });
+  const ownerAction = actionFor({ billingStatus, onboardingStatus, activationReady });
+  const customerDelay =
+    onboardingStatus === "requirements_needed" ||
+    onboardingStatus === "waiting_on_customer" ||
+    onboardingStatus === "paused_incomplete" ||
+    onboardingStatus === "closed_incomplete";
+  const carrierDelay = onboardingStatus === "carrier_review" || onboardingStatus === "carrier_attention";
+
+  if (billingStatus === "past_due") {
+    return {
+      activationReady,
+      billingStatus,
+      onboardingStatus,
+      ownerAction,
+      customerDelay,
+      carrierDelay,
+      label: "Payment needs attention",
+      headline: "Billing needs attention.",
+      summary: "Update payment so the subscription stays in good standing. Missed-call capture should keep working while billing is resolved.",
+      tone: "warn",
+    };
+  }
+
+  if (billingStatus === "canceled") {
+    return {
+      activationReady,
+      billingStatus,
+      onboardingStatus,
+      ownerAction,
+      customerDelay,
+      carrierDelay,
+      label: "Canceled",
+      headline: "Subscription is canceled.",
+      summary: activationReady
+        ? "Relay is still configured. Restart the subscription before treating this account as paid."
+        : "Finish setup before restarting billing.",
+      tone: "warn",
+    };
+  }
+
+  if (billingStatus === "active" || billingStatus === "trialing" || billingStatus === "comped") {
+    return {
+      activationReady,
+      billingStatus,
+      onboardingStatus,
+      ownerAction,
+      customerDelay,
+      carrierDelay,
+      label: billingStatus === "comped" ? "Comped" : billingStatus === "trialing" ? "Trial" : "Active",
+      headline: billingStatus === "comped" ? "Billing is comped." : "Billing is active.",
+      summary: billingStatus === "comped" ? "Relay is intentionally not charging this account." : "This account has a paid billing path.",
+      tone: billingStatus === "comped" ? "neutral" : "good",
+    };
+  }
+
+  if (activationReady) {
+    return {
+      activationReady,
+      billingStatus,
+      onboardingStatus,
+      ownerAction,
+      customerDelay,
+      carrierDelay,
+      label: "Ready to bill",
+      headline: "Ready for activation billing.",
+      summary: "Call capture and carrier texting are ready. Start billing when the customer is handed off.",
+      tone: "warn",
+    };
+  }
+
+  return {
+    activationReady,
+    billingStatus,
+    onboardingStatus,
+    ownerAction,
+    customerDelay,
+    carrierDelay,
+    label: customerDelay ? "Waiting on customer" : carrierDelay ? "Carrier review" : "Setup first",
+    headline: "Billing should wait.",
+    summary: carrierDelay
+      ? "Carrier registration is still moving. Do not start monthly billing until activation is ready."
+      : "Finish setup before charging this account.",
     tone: "neutral",
   };
 }

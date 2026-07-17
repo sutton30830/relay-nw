@@ -1,5 +1,10 @@
 import { env } from "@/lib/env";
-import type { AccountBillingRecord, AccountBillingStatus } from "@/lib/billing";
+import type {
+  AccountBillingRecord,
+  AccountBillingStatus,
+  AccountOnboardingStatus,
+  StripeSubscriptionStatus,
+} from "@/lib/billing";
 import { normalizePhoneNumber } from "@/lib/phone";
 import { isPlaceholderSupabaseConfig, shouldSkipDatabaseWrite, supabaseAdmin, throwIfSupabaseError } from "./client";
 
@@ -81,20 +86,46 @@ type AccountSettingsRow = {
 
 type AccountBillingRow = {
   billing_status: string | null;
+  onboarding_status: string | null;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   stripe_price_id: string | null;
+  stripe_subscription_status: string | null;
   trial_ends_at: string | null;
+  current_period_end: string | null;
+  cancel_at_period_end: boolean | null;
+  requirements_due_at: string | null;
+  activated_at: string | null;
+  first_paid_at: string | null;
+  guarantee_ends_at: string | null;
+  billing_attention_since: string | null;
   billing_updated_at: string | null;
+  onboarding_status_updated_at: string | null;
+};
+
+type AccountDurableBillingDates = {
+  activated_at: string | null;
+  first_paid_at: string | null;
+  guarantee_ends_at: string | null;
 };
 
 const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   billingStatus: "not_started",
+  onboardingStatus: "requirements_needed",
   stripeCustomerId: null,
   stripeSubscriptionId: null,
   stripePriceId: null,
+  stripeSubscriptionStatus: null,
   trialEndsAt: null,
+  currentPeriodEnd: null,
+  cancelAtPeriodEnd: false,
+  requirementsDueAt: null,
+  activatedAt: null,
+  firstPaidAt: null,
+  guaranteeEndsAt: null,
+  billingAttentionSince: null,
   billingUpdatedAt: null,
+  onboardingStatusUpdatedAt: null,
 };
 
 function defaultAccountBillingRecord(): AccountBillingRecord {
@@ -114,6 +145,41 @@ function normalizeAccountBillingStatus(value: string | null | undefined): Accoun
   }
 
   return "not_started";
+}
+
+function normalizeAccountOnboardingStatus(value: string | null | undefined): AccountOnboardingStatus {
+  if (
+    value === "requirements_needed" ||
+    value === "waiting_on_customer" ||
+    value === "carrier_review" ||
+    value === "carrier_attention" ||
+    value === "ready_for_live_test" ||
+    value === "ready_to_activate" ||
+    value === "activated" ||
+    value === "paused_incomplete" ||
+    value === "closed_incomplete"
+  ) {
+    return value;
+  }
+
+  return "requirements_needed";
+}
+
+function normalizeAccountStripeSubscriptionStatus(value: string | null | undefined): StripeSubscriptionStatus | null {
+  if (
+    value === "incomplete" ||
+    value === "incomplete_expired" ||
+    value === "trialing" ||
+    value === "active" ||
+    value === "past_due" ||
+    value === "canceled" ||
+    value === "unpaid" ||
+    value === "paused"
+  ) {
+    return value;
+  }
+
+  return null;
 }
 
 const ACCOUNT_SETTINGS_SELECT =
@@ -261,17 +327,23 @@ export async function getAccountBillingRecord(accountId: string | null | undefin
 
   const { data, error } = await supabaseAdmin
     .from("accounts")
-    .select("billing_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, trial_ends_at, billing_updated_at")
+    .select(
+      "billing_status, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, requirements_due_at, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, onboarding_status_updated_at",
+    )
     .eq("id", accountId)
     .maybeSingle();
 
   if (error) {
     if (
       error.message.includes("billing_status") ||
+      error.message.includes("onboarding_status") ||
       error.message.includes("stripe_customer_id") ||
-      error.message.includes("stripe_subscription_id")
+      error.message.includes("stripe_subscription_id") ||
+      error.message.includes("stripe_subscription_status") ||
+      error.message.includes("current_period_end") ||
+      error.message.includes("activated_at")
     ) {
-      console.warn("Account billing columns are missing. Run supabase.sql before enabling billing.");
+      console.warn("Account billing lifecycle columns are missing. Run supabase.sql before enabling billing.");
       return defaultAccountBillingRecord();
     }
 
@@ -285,11 +357,21 @@ export async function getAccountBillingRecord(accountId: string | null | undefin
 
   return {
     billingStatus: normalizeAccountBillingStatus(row.billing_status),
+    onboardingStatus: normalizeAccountOnboardingStatus(row.onboarding_status),
     stripeCustomerId: row.stripe_customer_id,
     stripeSubscriptionId: row.stripe_subscription_id,
     stripePriceId: row.stripe_price_id,
+    stripeSubscriptionStatus: normalizeAccountStripeSubscriptionStatus(row.stripe_subscription_status),
     trialEndsAt: row.trial_ends_at,
+    currentPeriodEnd: row.current_period_end,
+    cancelAtPeriodEnd: Boolean(row.cancel_at_period_end),
+    requirementsDueAt: row.requirements_due_at,
+    activatedAt: row.activated_at,
+    firstPaidAt: row.first_paid_at,
+    guaranteeEndsAt: row.guarantee_ends_at,
+    billingAttentionSince: row.billing_attention_since,
     billingUpdatedAt: row.billing_updated_at,
+    onboardingStatusUpdatedAt: row.onboarding_status_updated_at,
   };
 }
 
@@ -301,15 +383,64 @@ export async function updateAccountBillingRecord(
     return;
   }
 
-  const payload: Record<string, string | null> = {
+  const payload: Record<string, string | boolean | null> = {
     billing_updated_at: new Date().toISOString(),
   };
+  const writesDurableDates =
+    update.activatedAt !== undefined ||
+    update.firstPaidAt !== undefined ||
+    update.guaranteeEndsAt !== undefined;
+  let durableDates:
+    | AccountDurableBillingDates
+    | null = null;
+
+  if (writesDurableDates) {
+    const { data, error } = await supabaseAdmin
+      .from("accounts")
+      .select("activated_at, first_paid_at, guarantee_ends_at")
+      .eq("id", accountId)
+      .maybeSingle();
+
+    if (error) {
+      if (
+        error.message.includes("activated_at") ||
+        error.message.includes("first_paid_at") ||
+        error.message.includes("guarantee_ends_at")
+      ) {
+        console.warn("Account billing lifecycle columns are missing. Skipping durable lifecycle date updates.");
+      } else {
+        throwIfSupabaseError(error);
+      }
+    } else {
+      durableDates = data as AccountDurableBillingDates | null;
+    }
+  }
 
   if (update.billingStatus !== undefined) payload.billing_status = update.billingStatus;
+  if (update.onboardingStatus !== undefined) {
+    payload.onboarding_status = update.onboardingStatus;
+    payload.onboarding_status_updated_at = new Date().toISOString();
+  }
   if (update.stripeCustomerId !== undefined) payload.stripe_customer_id = update.stripeCustomerId;
   if (update.stripeSubscriptionId !== undefined) payload.stripe_subscription_id = update.stripeSubscriptionId;
   if (update.stripePriceId !== undefined) payload.stripe_price_id = update.stripePriceId;
+  if (update.stripeSubscriptionStatus !== undefined) payload.stripe_subscription_status = update.stripeSubscriptionStatus;
   if (update.trialEndsAt !== undefined) payload.trial_ends_at = update.trialEndsAt;
+  if (update.currentPeriodEnd !== undefined) payload.current_period_end = update.currentPeriodEnd;
+  if (update.cancelAtPeriodEnd !== undefined) payload.cancel_at_period_end = update.cancelAtPeriodEnd;
+  if (update.requirementsDueAt !== undefined) payload.requirements_due_at = update.requirementsDueAt;
+  // These dates are lifecycle facts, not current subscription settings. Once
+  // written, cancellation, restart, or SMS pause must not reset them.
+  if (update.activatedAt !== undefined && !durableDates?.activated_at && update.activatedAt) {
+    payload.activated_at = update.activatedAt;
+  }
+  if (update.firstPaidAt !== undefined && !durableDates?.first_paid_at && update.firstPaidAt) {
+    payload.first_paid_at = update.firstPaidAt;
+  }
+  if (update.guaranteeEndsAt !== undefined && !durableDates?.guarantee_ends_at && update.guaranteeEndsAt) {
+    payload.guarantee_ends_at = update.guaranteeEndsAt;
+  }
+  if (update.billingAttentionSince !== undefined) payload.billing_attention_since = update.billingAttentionSince;
 
   const { error } = await supabaseAdmin
     .from("accounts")

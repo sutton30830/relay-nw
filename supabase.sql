@@ -12,7 +12,29 @@ create table if not exists public.accounts (
   stripe_customer_id text,
   stripe_subscription_id text,
   stripe_price_id text,
+  stripe_subscription_status text,
   trial_ends_at timestamptz,
+  current_period_end timestamptz,
+  cancel_at_period_end boolean not null default false,
+  onboarding_status text not null default 'requirements_needed' check (
+    onboarding_status in (
+      'requirements_needed',
+      'waiting_on_customer',
+      'carrier_review',
+      'carrier_attention',
+      'ready_for_live_test',
+      'ready_to_activate',
+      'activated',
+      'paused_incomplete',
+      'closed_incomplete'
+    )
+  ),
+  onboarding_status_updated_at timestamptz,
+  requirements_due_at timestamptz,
+  activated_at timestamptz,
+  first_paid_at timestamptz,
+  guarantee_ends_at timestamptz,
+  billing_attention_since timestamptz,
   billing_updated_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -22,13 +44,63 @@ alter table public.accounts add column if not exists billing_status text not nul
 alter table public.accounts add column if not exists stripe_customer_id text;
 alter table public.accounts add column if not exists stripe_subscription_id text;
 alter table public.accounts add column if not exists stripe_price_id text;
+alter table public.accounts add column if not exists stripe_subscription_status text;
 alter table public.accounts add column if not exists trial_ends_at timestamptz;
+alter table public.accounts add column if not exists current_period_end timestamptz;
+alter table public.accounts add column if not exists cancel_at_period_end boolean not null default false;
+alter table public.accounts add column if not exists onboarding_status text not null default 'requirements_needed';
+alter table public.accounts add column if not exists onboarding_status_updated_at timestamptz;
+alter table public.accounts add column if not exists requirements_due_at timestamptz;
+alter table public.accounts add column if not exists activated_at timestamptz;
+alter table public.accounts add column if not exists first_paid_at timestamptz;
+alter table public.accounts add column if not exists guarantee_ends_at timestamptz;
+alter table public.accounts add column if not exists billing_attention_since timestamptz;
 alter table public.accounts add column if not exists billing_updated_at timestamptz;
 do $$
 begin
   alter table public.accounts
     add constraint accounts_billing_status_check
     check (billing_status in ('not_started', 'trialing', 'active', 'past_due', 'canceled', 'comped'));
+exception
+  when duplicate_object then null;
+end $$;
+do $$
+begin
+  alter table public.accounts
+    add constraint accounts_onboarding_status_check
+    check (
+      onboarding_status in (
+        'requirements_needed',
+        'waiting_on_customer',
+        'carrier_review',
+        'carrier_attention',
+        'ready_for_live_test',
+        'ready_to_activate',
+        'activated',
+        'paused_incomplete',
+        'closed_incomplete'
+      )
+    );
+exception
+  when duplicate_object then null;
+end $$;
+do $$
+begin
+  alter table public.accounts
+    add constraint accounts_stripe_subscription_status_check
+    check (
+      stripe_subscription_status is null or
+      stripe_subscription_status in (
+        'incomplete',
+        'incomplete_expired',
+        'trialing',
+        'active',
+        'past_due',
+        'canceled',
+        'unpaid',
+        'paused'
+      )
+    );
 exception
   when duplicate_object then null;
 end $$;
@@ -40,6 +112,50 @@ create unique index if not exists accounts_stripe_subscription_id_unique_idx
   where stripe_subscription_id is not null;
 
 alter table public.accounts enable row level security;
+
+-- Phase 5C billing lifecycle migration.
+-- Rollback, if ever needed before Phase 5C3 is live:
+--   drop table public.stripe_events;
+--   alter table public.accounts drop constraint if exists accounts_stripe_subscription_status_check;
+--   alter table public.accounts drop constraint if exists accounts_onboarding_status_check;
+--   alter table public.accounts drop column if exists billing_attention_since;
+--   alter table public.accounts drop column if exists guarantee_ends_at;
+--   alter table public.accounts drop column if exists first_paid_at;
+--   alter table public.accounts drop column if exists activated_at;
+--   alter table public.accounts drop column if exists requirements_due_at;
+--   alter table public.accounts drop column if exists onboarding_status_updated_at;
+--   alter table public.accounts drop column if exists onboarding_status;
+--   alter table public.accounts drop column if exists cancel_at_period_end;
+--   alter table public.accounts drop column if exists current_period_end;
+--   alter table public.accounts drop column if exists stripe_subscription_status;
+-- Keep billing_status/customer/subscription/price/trial/billing_updated_at because
+-- those are already used by the existing checkout and webhook paths.
+create table if not exists public.stripe_events (
+  event_id text primary key,
+  event_type text not null,
+  event_created_at timestamptz,
+  livemode boolean not null default false,
+  account_id uuid references public.accounts(id) on delete set null,
+  stripe_customer_id text,
+  stripe_subscription_id text,
+  processing_status text not null default 'received' check (
+    processing_status in ('received', 'processing', 'processed', 'ignored', 'failed')
+  ),
+  attempt_count integer not null default 0 check (attempt_count >= 0),
+  error_code text,
+  received_at timestamptz not null default now(),
+  processed_at timestamptz
+);
+create index if not exists stripe_events_account_received_at_idx
+  on public.stripe_events (account_id, received_at desc)
+  where account_id is not null;
+create index if not exists stripe_events_subscription_idx
+  on public.stripe_events (stripe_subscription_id)
+  where stripe_subscription_id is not null;
+create index if not exists stripe_events_customer_idx
+  on public.stripe_events (stripe_customer_id)
+  where stripe_customer_id is not null;
+alter table public.stripe_events enable row level security;
 
 create table if not exists public.account_settings (
   account_id uuid primary key references public.accounts(id) on delete cascade,
@@ -441,6 +557,11 @@ alter table public.setup_requests enable row level security;
 -- policy or flips RLS off in the dashboard, drift is visible right here in SQL.
 drop policy if exists deny_client_access on public.accounts;
 create policy deny_client_access on public.accounts
+  as restrictive for all to anon, authenticated
+  using (false) with check (false);
+
+drop policy if exists deny_client_access on public.stripe_events;
+create policy deny_client_access on public.stripe_events
   as restrictive for all to anon, authenticated
   using (false) with check (false);
 

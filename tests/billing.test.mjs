@@ -85,6 +85,90 @@ test("account becomes ready to bill only after call capture and texting registra
   assert.equal(state.label, "Ready to bill");
 });
 
+test("billing lifecycle derives ready_to_activate when calls and carrier registration are ready", () => {
+  const state = billing.computeBillingLifecycle({
+    billing: billingRecord({ onboardingStatus: "carrier_review" }),
+    setupReadiness: setupReadiness({ callCaptureReady: true, smsRegistrationReady: true }),
+  });
+
+  assert.equal(state.activationReady, true);
+  assert.equal(state.onboardingStatus, "ready_to_activate");
+  assert.equal(state.ownerAction, "start_billing");
+  assert.equal(state.customerDelay, false);
+  assert.equal(state.carrierDelay, false);
+});
+
+test("sms pause does not change billing eligibility once infrastructure is ready", () => {
+  const smsPausedButReady = { callCaptureReady: true, smsRegistrationReady: true, smsEnabled: false };
+  const state = billing.computeBillingLifecycle({
+    billing: billingRecord(),
+    setupReadiness: smsPausedButReady,
+  });
+
+  assert.equal(state.activationReady, true);
+  assert.equal(state.ownerAction, "start_billing");
+});
+
+test("customer delay and carrier delay are distinct billing lifecycle states", () => {
+  const waitingOnCustomer = billing.computeBillingLifecycle({
+    billing: billingRecord({ onboardingStatus: "waiting_on_customer" }),
+    setupReadiness: setupReadiness({ callCaptureReady: false, smsRegistrationReady: false }),
+  });
+  const carrierReview = billing.computeBillingLifecycle({
+    billing: billingRecord({ onboardingStatus: "carrier_review" }),
+    setupReadiness: setupReadiness({ callCaptureReady: true, smsRegistrationReady: false }),
+  });
+  const carrierAttention = billing.computeBillingLifecycle({
+    billing: billingRecord({ onboardingStatus: "carrier_attention" }),
+    setupReadiness: setupReadiness({ callCaptureReady: true, smsRegistrationReady: false }),
+  });
+
+  assert.equal(waitingOnCustomer.customerDelay, true);
+  assert.equal(waitingOnCustomer.carrierDelay, false);
+  assert.equal(waitingOnCustomer.ownerAction, "finish_setup");
+  assert.equal(carrierReview.customerDelay, false);
+  assert.equal(carrierReview.carrierDelay, true);
+  assert.equal(carrierReview.ownerAction, "finish_setup");
+  assert.equal(carrierAttention.carrierDelay, true);
+  assert.equal(carrierAttention.ownerAction, "contact_support");
+});
+
+test("every simplified billing status has one unambiguous owner action", () => {
+  const expectations = {
+    not_started: "start_billing",
+    trialing: "manage_billing",
+    active: "manage_billing",
+    past_due: "update_payment",
+    canceled: "restart_subscription",
+    comped: "manage_billing",
+  };
+
+  for (const [billingStatus, ownerAction] of Object.entries(expectations)) {
+    const state = billing.computeBillingLifecycle({
+      billing: billingRecord({ billingStatus }),
+      setupReadiness: setupReadiness({ callCaptureReady: true, smsRegistrationReady: true }),
+    });
+
+    assert.equal(state.ownerAction, ownerAction);
+  }
+});
+
+test("activation and first paid dates are durable lifecycle facts", () => {
+  const state = billing.computeBillingLifecycle({
+    billing: billingRecord({
+      billingStatus: "canceled",
+      onboardingStatus: "waiting_on_customer",
+      activatedAt: "2026-07-01T00:00:00.000Z",
+      firstPaidAt: "2026-07-02T00:00:00.000Z",
+      guaranteeEndsAt: "2026-08-01T00:00:00.000Z",
+    }),
+    setupReadiness: setupReadiness({ callCaptureReady: false, smsRegistrationReady: false }),
+  });
+
+  assert.equal(state.onboardingStatus, "activated");
+  assert.equal(state.ownerAction, "finish_setup");
+});
+
 test("active, trialing, and comped billing states are accepted without setup enforcement", () => {
   for (const billingStatus of ["active", "trialing", "comped"]) {
     const state = billing.computeBillingReadiness({
