@@ -57,6 +57,7 @@ const middlewareTs = await readFile(new URL("../middleware.ts", import.meta.url)
 const envExample = await readFile(new URL("../.env.example", import.meta.url), "utf8");
 const packageJson = await readFile(new URL("../package.json", import.meta.url), "utf8");
 const verifyAccountScript = await readFile(new URL("../scripts/verify-account.mjs", import.meta.url), "utf8");
+const verifyBillingScript = await readFile(new URL("../scripts/verify-billing.mjs", import.meta.url), "utf8");
 const backfillAccountIdsScript = await readFile(new URL("../scripts/backfill-account-ids.mjs", import.meta.url), "utf8");
 const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
 
@@ -164,6 +165,18 @@ test("stripe checkout and webhooks update account billing without gating missed-
   assert.match(stripeWebhookRouteTs, /updateAccountBillingRecord/);
   assert.doesNotMatch(stripeWebhookRouteTs, /extractBillingUpdateFromStripeEvent/);
   assert.doesNotMatch(missedCallTs, /billingStatus|stripe/i);
+
+  assert.match(packageJson, /"verify:billing": "node scripts\/verify-billing\.mjs"/);
+  assert.match(verifyBillingScript, /requiredStripeWebhookEvents/);
+  assert.match(verifyBillingScript, /checkout\.session\.completed/);
+  assert.match(verifyBillingScript, /customer\.subscription\.updated/);
+  assert.match(verifyBillingScript, /invoice\.payment_failed/);
+  assert.match(verifyBillingScript, /invoice\.payment_action_required/);
+  assert.match(verifyBillingScript, /invoice\.paid/);
+  assert.match(verifyBillingScript, /billing_portal\/configurations\?active=true&limit=10/);
+  assert.match(verifyBillingScript, /webhook_endpoints\?limit=100/);
+  assert.match(verifyBillingScript, /EXPECTED_PRICE_CENTS = 9900/);
+  assert.match(verifyBillingScript, /expectedWebhookUrl: `\$\{appBaseUrl\}\/api\/stripe\/webhook`/);
 });
 
 test("account verifier checks pilot provisioning prerequisites", () => {
@@ -205,6 +218,8 @@ test("ops runbook is authenticated and covers failure visibility plus retention"
   assert.match(opsRunbookPageTsx, /This page is for you, not the owner/);
   assert.match(opsRunbookPageTsx, /Search technical logs by caller last 4, call id, message id, recording id/);
   assert.match(opsRunbookPageTsx, /Trust Stripe, but inspect Relay's event ledger/);
+  assert.match(opsRunbookPageTsx, /npm run verify:billing/);
+  assert.match(opsRunbookPageTsx, /Stripe price is the \$99 monthly plan/);
   assert.match(opsRunbookPageTsx, /Never manually mark an account active from Checkout alone/);
   assert.match(opsBillingPageTsx, /getRecentStripeEventsForAccount/);
   assert.match(opsBillingPageTsx, /Stripe webhook processing/);
@@ -220,6 +235,8 @@ test("ops runbook is authenticated and covers failure visibility plus retention"
   assert.match(opsRunbookMd, /Alert Email Not Received/);
   assert.match(opsRunbookMd, /Voicemail recordings, transcripts, and lead records are retained until manually deleted/);
   assert.match(opsRunbookMd, /Backup, Restore, and Deletion/);
+  assert.match(opsRunbookMd, /npm run verify:billing/);
+  assert.match(opsRunbookMd, /Stripe price is the \$99 monthly plan/);
 });
 
 test("assisted onboarding setup requests are operator-only and status tracked", () => {

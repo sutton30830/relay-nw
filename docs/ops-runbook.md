@@ -95,7 +95,10 @@ For deletion work, identify the account slug, lead id, caller phone, `RecordingS
 Before handing a business live access:
 
 1. `npm run verify:account -- <slug>`
-2. `npm run test:activation`
-3. One real missed-call test through Twilio.
-4. Confirm `/ops` shows the voice/dial-status, SMS status, inbound reply, and recording events.
-5. Confirm privacy and terms links are visible from intake/setup flows.
+2. `npm run verify:billing`
+3. `npm run test:activation`
+4. One real missed-call test through Twilio.
+5. Confirm `/ops` shows the voice/dial-status, SMS status, inbound reply, and recording events.
+6. Confirm privacy and terms links are visible from intake/setup flows.
+
+`verify:billing` is read-only. It confirms the Stripe price is the $99 monthly plan, Customer Portal is active, and the production webhook endpoint is enabled for every billing event Relay NW processes.

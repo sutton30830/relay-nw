@@ -55,6 +55,7 @@ const RUNBOOK_SECTIONS: RunbookSection[] = [
     summary: "This is the minimum proof that the customer can actually recover a missed call.",
     steps: [
       <>Run <code>npm run verify:account -- &lt;slug&gt;</code>.</>,
+      <>Run <code>npm run verify:billing</code>.</>,
       <>Run <code>npm run test:activation</code>.</>,
       "Complete one real missed-call test through Twilio.",
       "Confirm technical logs show voice, SMS status, inbound reply, and recording events.",
@@ -65,6 +66,8 @@ const RUNBOOK_SECTIONS: RunbookSection[] = [
     title: "Trust Stripe, but inspect Relay's event ledger.",
     summary: "Subscription state changes should be visible and retry-safe. Use Billing events when an owner cannot start, manage, update, cancel, or restart billing.",
     steps: [
+      <>Run <code>npm run verify:billing</code> before charging a production owner.</>,
+      "Confirm the Stripe price is the $99 monthly plan, Customer Portal is active, and the production webhook has every Relay billing event enabled.",
       "Open Billing events and confirm recent Stripe events are processed, not failed or stuck processing.",
       "For ignored invoice events, confirm the account already has the Stripe customer or subscription id recorded.",
       "If payment is past due, confirm Relay updated the account to past_due and sent the admin attention alert.",
