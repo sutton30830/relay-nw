@@ -3,6 +3,7 @@ import { OpsToolbar } from "@/app/ops/_components/ops-toolbar";
 import { isRelayOperator, requireAccountUser } from "@/lib/auth";
 import { daysUntil } from "@/lib/onboarding-deadlines";
 import {
+  canMoveAccountToCustomerDelay,
   getAccountBillingRecord,
   getRecentStripeEventsForAccount,
   listAccountsForOnboardingDeadlineMaintenance,
@@ -42,6 +43,32 @@ function statusTone(status: string) {
   return "neutral";
 }
 
+function onboardingStatusCopy(status: string) {
+  if (status === "requirements_needed") return "Requirements needed";
+  if (status === "waiting_on_customer") return "Waiting on customer";
+  if (status === "carrier_review") return "Waiting on carrier/A2P";
+  if (status === "carrier_attention") return "Carrier/A2P needs attention";
+  if (status === "ready_for_live_test") return "Ready for live test";
+  if (status === "ready_to_activate") return "Ready to activate";
+  if (status === "activated") return "Activated";
+  if (status === "paused_incomplete") return "Paused incomplete";
+  if (status === "closed_incomplete") return "Closed incomplete";
+  return status.replaceAll("_", " ");
+}
+
+function onboardingNotice(status: string | undefined, accountSlug: string | undefined) {
+  if (!status) return null;
+
+  const prefix = accountSlug ? `${accountSlug}: ` : "";
+  if (status === "requested") return `${prefix}customer requirements deadline started.`;
+  if (status === "reopened") return `${prefix}customer requirements deadline reopened with a new 14-day due date.`;
+  if (status === "not_customer_delay") return `${prefix}not changed. This account is not in a customer-delay state.`;
+  if (status === "account_not_found") return `${prefix}account not found.`;
+  if (status === "missing_account") return "Enter an account slug.";
+  if (status === "save_failed") return `${prefix}deadline update failed. Check logs before trying again.`;
+  return null;
+}
+
 function OnboardingDeadlineCard({ account }: { account: OnboardingDeadlineAccount }) {
   const days = account.requirementsDueAt ? daysUntil(account.requirementsDueAt) : null;
   const dueCopy = days === null
@@ -60,7 +87,7 @@ function OnboardingDeadlineCard({ account }: { account: OnboardingDeadlineAccoun
           <p className="empty-copy">{account.accountSlug}</p>
         </div>
         <span className={account.onboardingStatus === "paused_incomplete" ? "chip chip-danger" : "chip chip-muted"}>
-          {account.onboardingStatus.replaceAll("_", " ")}
+          {onboardingStatusCopy(account.onboardingStatus)}
         </span>
       </div>
       <dl className="webhook-event__meta">
@@ -84,11 +111,11 @@ function OnboardingDeadlineCard({ account }: { account: OnboardingDeadlineAccoun
 export default async function OpsBillingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; onboarding?: string; account?: string }>;
 }) {
   const session = await requireAccountUser();
   const { account, accountId } = session;
-  const { q = "" } = await searchParams;
+  const { q = "", onboarding, account: onboardingAccountSlug } = await searchParams;
   const showSetupRequests = isRelayOperator(session);
   const [billing, allEvents, onboardingDeadlines] = await Promise.all([
     getAccountBillingRecord(accountId),
@@ -99,6 +126,8 @@ export default async function OpsBillingPage({
   const failedCount = allEvents.filter((event) => event.processing_status === "failed").length;
   const ignoredCount = allEvents.filter((event) => event.processing_status === "ignored").length;
   const processingCount = allEvents.filter((event) => event.processing_status === "processing").length;
+  const notice = onboardingNotice(onboarding, onboardingAccountSlug);
+  const canStartCustomerDelay = canMoveAccountToCustomerDelay(billing.onboardingStatus);
 
   return (
     <main className="leads-view">
@@ -184,6 +213,33 @@ export default async function OpsBillingPage({
                 Accounts waiting on customer requirements. Carrier review accounts are intentionally excluded from this clock.
               </p>
             </div>
+            {notice ? (
+              <div className={onboarding === "requested" || onboarding === "reopened" ? "settings-notice" : "intake-error settings-notice"} role="status">
+                {notice}
+              </div>
+            ) : null}
+            <form action="/api/ops/onboarding-deadlines" method="post" className="setup-panel__action">
+              <label className="field-label" htmlFor="customer-delay-account">
+                Account slug waiting on customer
+              </label>
+              <div className="lead-controls" style={{ margin: 0 }}>
+                <input
+                  id="customer-delay-account"
+                  className="field"
+                  name="account_slug"
+                  defaultValue={account.accountSlug}
+                  placeholder="relay-nw"
+                />
+                <button className="btn btn-primary" type="submit">
+                  Start / reopen 14-day clock
+                </button>
+              </div>
+              <p className="setup-panel__note">
+                Use only when Relay is waiting on the customer for business requirements. Do not use this for carrier/A2P review.
+                Current selected account: {onboardingStatusCopy(billing.onboardingStatus)}
+                {canStartCustomerDelay ? "." : " — not eligible for the customer-delay clock."}
+              </p>
+            </form>
             <div className="webhook-events">
               {onboardingDeadlines.length === 0 ? (
                 <p className="empty-copy">No accounts are waiting on customer requirements.</p>

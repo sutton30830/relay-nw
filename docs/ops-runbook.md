@@ -33,7 +33,7 @@ Run `npm run test:activation` locally before high-risk releases. This is determi
 - Provision real customer accounts with `npm run provision:account`; do not manually recreate the same rows from memory.
 - Verify every customer account with `npm run verify:account -- <slug>` before handing over access.
 - Use `/setup` with the owner for forwarding instructions, forwarding health checks, SMS test, and setup status.
-- When customer requirements are requested, mark the account `waiting_on_customer` with a `requirements_due_at` 14 days out.
+- When customer requirements are requested, use `/ops/billing` to start or reopen the customer-delay clock. This marks the account `waiting_on_customer` with a `requirements_due_at` 14 days out and records an audit event.
 - `/api/cron/onboarding-deadlines` handles day-3/day-7 reminders, pauses incomplete onboarding after day 14, and closes incomplete onboarding after day 30.
 - Carrier review and carrier attention are not customer-delay states; do not penalize the owner for carrier-caused delays.
 - Reopening a closed incomplete onboarding requires operator action, a new requirements deadline, and does not reset the original guarantee period.
@@ -100,9 +100,12 @@ Before handing a business live access:
 
 1. `npm run verify:account -- <slug>`
 2. `npm run verify:billing`
-3. `npm run test:activation`
-4. One real missed-call test through Twilio.
-5. Confirm `/ops` shows the voice/dial-status, SMS status, inbound reply, and recording events.
-6. Confirm privacy and terms links are visible from intake/setup flows.
+3. `npm run verify:launch -- <slug>`
+4. `npm run test:activation`
+5. One real missed-call test through Twilio.
+6. Confirm `/ops` shows the voice/dial-status, SMS status, inbound reply, and recording events.
+7. Confirm privacy and terms links are visible from intake/setup flows.
 
 `verify:billing` is read-only. It confirms the Stripe price is the $99 monthly plan, Customer Portal is active, and the production webhook endpoint is enabled for every billing event Relay NW processes.
+
+`verify:launch` is also read-only. It ties the account, setup readiness, SMS mode, billing state, Stripe config, Checkout eligibility, and Portal availability into one launch decision. Treat a paused SMS warning as an operating choice, not a setup failure, but make sure the owner understands callers are not getting automatic replies.

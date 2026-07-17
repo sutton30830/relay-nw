@@ -161,6 +161,17 @@ export type OnboardingDeadlineAccount = {
   onboardingStatusUpdatedAt: string | null;
 };
 
+export type OpsOnboardingAccount = {
+  accountId: string;
+  accountSlug: string;
+  businessName: string;
+  onboardingStatus: AccountOnboardingStatus;
+  requirementsDueAt: string | null;
+  activatedAt: string | null;
+  firstPaidAt: string | null;
+  guaranteeEndsAt: string | null;
+};
+
 const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   billingStatus: "not_started",
   onboardingStatus: "requirements_needed",
@@ -843,15 +854,64 @@ export async function hasAccountAuditAction(accountId: string, action: string): 
   return Boolean(data?.id);
 }
 
+export async function getOpsOnboardingAccountBySlug(slug: string): Promise<OpsOnboardingAccount | null> {
+  const normalizedSlug = slug.trim();
+  if (!normalizedSlug || isPlaceholderSupabaseConfig()) {
+    return null;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("accounts")
+    .select("id, slug, name, onboarding_status, requirements_due_at, activated_at, first_paid_at, guarantee_ends_at")
+    .eq("slug", normalizedSlug)
+    .maybeSingle();
+
+  if (error) {
+    if (
+      error.message.includes("onboarding_status") ||
+      error.message.includes("requirements_due_at")
+    ) {
+      console.warn("Account onboarding lifecycle columns are missing. Run supabase.sql before using operator onboarding controls.");
+      return null;
+    }
+
+    throwIfSupabaseError(error);
+  }
+
+  if (!data) return null;
+
+  return {
+    accountId: String(data.id),
+    accountSlug: String(data.slug),
+    businessName: String(data.name),
+    onboardingStatus: normalizeAccountOnboardingStatus(data.onboarding_status as string | null | undefined),
+    requirementsDueAt: typeof data.requirements_due_at === "string" ? data.requirements_due_at : null,
+    activatedAt: typeof data.activated_at === "string" ? data.activated_at : null,
+    firstPaidAt: typeof data.first_paid_at === "string" ? data.first_paid_at : null,
+    guaranteeEndsAt: typeof data.guarantee_ends_at === "string" ? data.guarantee_ends_at : null,
+  };
+}
+
+export function canMoveAccountToCustomerDelay(status: AccountOnboardingStatus) {
+  return (
+    status === "requirements_needed" ||
+    status === "waiting_on_customer" ||
+    status === "paused_incomplete" ||
+    status === "closed_incomplete"
+  );
+}
+
 export async function markAccountRequirementsRequested(input: {
   accountId: string;
   nowIso?: string;
   actorUserId?: string | null;
   actorEmail?: string | null;
+  previousOnboardingStatus?: AccountOnboardingStatus | null;
 }) {
   const accountId = assertAccountIdForAccountStore(input.accountId, "markAccountRequirementsRequested");
   const now = input.nowIso ? new Date(input.nowIso) : new Date();
   const requirementsDueAt = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
+  const previousStatus = input.previousOnboardingStatus ?? null;
 
   await updateAccountBillingRecord(accountId, {
     onboardingStatus: "waiting_on_customer",
@@ -863,8 +923,12 @@ export async function markAccountRequirementsRequested(input: {
       account_id: accountId,
       actor_user_id: input.actorUserId ?? null,
       actor_email: input.actorEmail ?? null,
-      action: "onboarding.requirements_requested",
-      summary: `Requested customer requirements; due ${requirementsDueAt}.`,
+      action: previousStatus === "paused_incomplete" || previousStatus === "closed_incomplete"
+        ? "onboarding.requirements_reopened"
+        : "onboarding.requirements_requested",
+      summary: previousStatus === "paused_incomplete" || previousStatus === "closed_incomplete"
+        ? `Reopened customer requirements from ${previousStatus}; due ${requirementsDueAt}. Durable activation and guarantee dates were not reset.`
+        : `Requested customer requirements; due ${requirementsDueAt}.`,
     });
 
     if (error) {
