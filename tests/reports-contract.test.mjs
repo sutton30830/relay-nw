@@ -4,6 +4,7 @@ import test from "node:test";
 
 const reportsPage = await readFile(new URL("../app/reports/page.tsx", import.meta.url), "utf8");
 const reportsData = await readFile(new URL("../lib/supabase/reports.ts", import.meta.url), "utf8");
+const globalsCss = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
 test("reports page stays focused on owner-useful recovery metrics", () => {
   assert.match(reportsPage, /What Relay recovered/);
@@ -31,6 +32,20 @@ test("reports page exposes a small action strip instead of a raw analytics grid"
   assert.match(reportsPage, /inboxCounts\.smsIssues/);
   assert.match(reportsPage, /Nothing needs your attention/);
   assert.match(reportsPage, /activeAttentionItems/);
+});
+
+test("reports presentation uses the statement ledger system", () => {
+  assert.match(reportsPage, /className="ledger"/);
+  assert.match(reportsPage, /className="report-footer"/);
+  assert.match(globalsCss, /\.ledger__row/);
+  assert.match(globalsCss, /\.attention__row/);
+  assert.match(globalsCss, /\.report-footer__compare/);
+  assert.doesNotMatch(reportsPage, /report-metric/);
+  assert.doesNotMatch(reportsPage, /report-action/);
+  assert.doesNotMatch(reportsPage, /report-compare/);
+  assert.doesNotMatch(globalsCss, /\.report-metric/);
+  assert.doesNotMatch(globalsCss, /\.report-action/);
+  assert.doesNotMatch(globalsCss, /\.report-compare/);
 });
 
 test("reports stats distinguish reply leads and booked jobs missing value", () => {

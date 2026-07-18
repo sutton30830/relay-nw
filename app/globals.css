@@ -3052,6 +3052,7 @@ code {
 
 /* --- Reports --- */
 .report-statement {
+  width: 100%;
   max-width: 720px;
 }
 .report-hero {
@@ -3261,11 +3262,30 @@ code {
   color: var(--ink);
 }
 
+@media (max-width: 430px) {
+  .ledger__row {
+    gap: 12px;
+  }
+  .ledger__value {
+    font-size: clamp(26px, 7vw, 34px);
+  }
+  .ledger__row--total .ledger__value {
+    font-size: clamp(30px, 8vw, 40px);
+  }
+  .attention__row {
+    align-items: flex-start;
+  }
+  .attention__open {
+    align-self: center;
+  }
+}
+
 @media (min-width: 860px) {
   .report-hero__note {
     text-align: right;
   }
   .report-footer__compare {
+    flex-wrap: nowrap;
     justify-content: space-between;
   }
 }
