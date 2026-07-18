@@ -35,9 +35,10 @@ function readAction(formData: FormData): OperatorBillingOverrideAction | null {
 }
 
 function redirectWith(status: string, accountSlug?: string) {
-  const params = new URLSearchParams({ billing_action: status });
-  if (accountSlug) params.set("account", accountSlug);
-  redirect(`/ops/billing?${params.toString()}`);
+  if (accountSlug) {
+    redirect(`/ops/accounts/${encodeURIComponent(accountSlug)}?billing_action=${encodeURIComponent(status)}`);
+  }
+  redirect(`/ops?billing_action=${encodeURIComponent(status)}`);
 }
 
 function actionSummary(action: OperatorBillingOverrideAction, days?: number) {

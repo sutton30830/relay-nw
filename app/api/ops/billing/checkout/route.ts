@@ -17,7 +17,7 @@ import {
 export const dynamic = "force-dynamic";
 
 function redirectWith(accountSlug: string, status: string): never {
-  redirect(`/ops/billing?account=${encodeURIComponent(accountSlug)}&billing_action=${status}`);
+  redirect(`/ops/accounts/${encodeURIComponent(accountSlug)}?billing_action=${status}`);
 }
 
 export async function POST(request: Request) {

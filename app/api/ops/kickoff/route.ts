@@ -10,7 +10,7 @@ import {
 } from "@/lib/supabase";
 
 function go(slug: string, result: string): never {
-  redirect(`/ops?account=${encodeURIComponent(slug)}&kickoff=${result}`);
+  redirect(`/ops/accounts/${encodeURIComponent(slug)}?kickoff=${result}`);
 }
 
 export async function POST(request: Request) {

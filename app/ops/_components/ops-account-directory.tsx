@@ -61,7 +61,7 @@ export function OpsAccountDirectory({
 
       <section className="ops-attention-grid" aria-label="Needs attention">
         {accounts.filter((account) => account.billingStatus === "past_due").map((account) => (
-          <Link className="ops-attention-row" key={account.accountId} href={`/ops?account=${encodeURIComponent(account.accountSlug)}`}>
+          <Link className="ops-attention-row" key={account.accountId} href={`/ops/accounts/${encodeURIComponent(account.accountSlug)}`}>
             <span className="ops-attention-row__dot" />
             <span><strong>Payment failed</strong><small>{account.businessName} needs a billing check</small></span>
             <span className="ops-attention-row__arrow">→</span>
@@ -92,12 +92,12 @@ export function OpsAccountDirectory({
             </section>
             <div className="lead-card__actions">
               <div className="lead-card__primary-actions">
-                <Link className="btn btn-primary btn-sm" href={`/ops?account=${encodeURIComponent(account.accountSlug)}`}>
+                <Link className="btn btn-primary btn-sm" href={`/ops/accounts/${encodeURIComponent(account.accountSlug)}`}>
                   {account.billingStatus === "past_due" ? "Resolve payment" : lifecycle.primaryAction}
                 </Link>
               </div>
               <div className="lead-card__utility-actions">
-                <Link className="btn btn-ghost btn-sm" href={`/ops?account=${encodeURIComponent(account.accountSlug)}&view=logs`}>Diagnostics</Link>
+                <Link className="btn btn-ghost btn-sm" href={`/ops/accounts/${encodeURIComponent(account.accountSlug)}#diagnostics`}>Diagnostics</Link>
               </div>
             </div>
           </article>

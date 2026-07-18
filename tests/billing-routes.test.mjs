@@ -393,7 +393,7 @@ test("operator can manually comp an account without a live Stripe subscription",
   assert.equal(calls.audits.length, 1);
   assert.equal(calls.audits[0].accountId, "acct-1");
   assert.equal(calls.audits[0].events[0].action, "billing.operator.comp");
-  assert.equal(calls.redirects.at(-1), "/ops/billing?billing_action=comp&account=demo");
+  assert.equal(calls.redirects.at(-1), "/ops/accounts/demo?billing_action=comp");
 });
 
 test("operator can waive a setup fee for a selected pilot account and audit the reason", async () => {
@@ -410,7 +410,7 @@ test("operator can waive a setup fee for a selected pilot account and audit the 
   assert.equal(calls.updates[0].update.setupFeeStatus, "waived");
   assert.equal(calls.updates[0].update.setupFeeWaiverReason, "Pilot customer");
   assert.equal(calls.audits[0].events[0].action, "billing.operator.waive_setup_fee");
-  assert.equal(calls.redirects.at(-1), "/ops/billing?billing_action=waive_setup_fee&account=demo");
+  assert.equal(calls.redirects.at(-1), "/ops/accounts/demo?billing_action=waive_setup_fee");
 });
 
 test("operator cannot overwrite a paid setup fee", async () => {
@@ -426,7 +426,7 @@ test("operator cannot overwrite a paid setup fee", async () => {
 
   assert.deepEqual(calls.updates, []);
   assert.deepEqual(calls.audits, []);
-  assert.equal(calls.redirects.at(-1), "/ops/billing?billing_action=setup_fee_already_paid&account=demo");
+  assert.equal(calls.redirects.at(-1), "/ops/accounts/demo?billing_action=setup_fee_already_paid");
 });
 
 test("operator can grant a bounded manual trial", async () => {
@@ -439,7 +439,7 @@ test("operator can grant a bounded manual trial", async () => {
   assert.match(calls.updates[0].update.trialEndsAt, /^\d{4}-\d{2}-\d{2}T/);
   assert.equal(calls.updates[0].update.cancelAtPeriodEnd, false);
   assert.equal(calls.audits[0].events[0].summary, "Granted 90-day trial");
-  assert.equal(calls.redirects.at(-1), "/ops/billing?billing_action=grant_trial&account=demo");
+  assert.equal(calls.redirects.at(-1), "/ops/accounts/demo?billing_action=grant_trial");
 });
 
 test("operator can end a manual trial without mutating durable lifecycle dates", async () => {
@@ -485,5 +485,5 @@ test("operator billing override refuses active Stripe subscriptions", async () =
 
   assert.deepEqual(calls.updates, []);
   assert.deepEqual(calls.audits, []);
-  assert.equal(calls.redirects.at(-1), "/ops/billing?billing_action=override_blocked&account=demo");
+  assert.equal(calls.redirects.at(-1), "/ops/accounts/demo?billing_action=override_blocked");
 });

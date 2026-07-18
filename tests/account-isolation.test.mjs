@@ -14,6 +14,7 @@ const files = {
   leadsPage: await source("app/leads/page.tsx"),
   setupPage: await source("app/setup/page.tsx"),
   opsPage: await source("app/ops/page.tsx"),
+  opsAccountPage: await source("app/ops/accounts/[id]/page.tsx"),
   leadApi: await source("app/api/leads/[id]/route.ts"),
   transcribeApi: await source("app/api/leads/[id]/transcribe/route.ts"),
   recordingApi: await source("app/api/recordings/[recordingSid]/route.ts"),
@@ -44,9 +45,12 @@ test("authenticated lead, ops, recording, and transcription routes use session a
   assert.match(files.setupPage, /getForwardingHealthSummary\(accountId\)/);
   assert.match(files.setupPage, /getA2pRegistrationStatus\(accountId\)/);
 
+  // Ops pages authorize via the platform-operator gate and look accounts up by
+  // explicit slug — never by the operator's own session account.
   assert.match(files.opsPage, /const operator = await requirePlatformOperator\(\)/);
-  assert.match(files.opsPage, /getOpsAccountBySlug\(accountSlug\)/);
-  assert.match(files.opsPage, /getRecentWebhookEventsForAccount\(account\.accountId,\s*50\)/);
+  assert.match(files.opsAccountPage, /await requirePlatformOperator\(\)/);
+  assert.match(files.opsAccountPage, /getOpsAccountBySlug\(id\)/);
+  assert.match(files.opsAccountPage, /getRecentWebhookEventsForAccount\(billing\.accountId,\s*25\)/);
 
   assert.match(files.leadApi, /const auth = await requireWriteAccessJson\(\)/);
   assert.match(compact(files.leadApi), /updateLead\(\{ accountId: auth\.session\.accountId, id, \.\.\.update \}\)/);

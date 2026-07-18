@@ -60,7 +60,10 @@ export function AppHeader({
   const menuItems = [
     ...navItems,
     ...(isOperations
-      ? [{ key: "back-to-inbox", href: "/leads", icon: "arrowLeft" as const, label: "Back to my inbox" }]
+      ? [
+          { key: "runbook", href: "/ops/runbook", icon: "info" as const, label: "Runbook" },
+          { key: "back-to-inbox", href: "/leads", icon: "arrowLeft" as const, label: "Back to my inbox" },
+        ]
       : []),
     ...(!isOperations && showOperations
       ? [{ key: "operations", href: "/ops", icon: "shield" as const, label: "Operations" }]

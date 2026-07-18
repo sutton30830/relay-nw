@@ -1,5 +1,4 @@
 import { OpsHeader } from "@/app/ops/_components/ops-header";
-import { OpsToolbar } from "@/app/ops/_components/ops-toolbar";
 import { requirePlatformOperator } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -14,5 +13,5 @@ const JOBS = [
 
 export default async function OpsRunbookPage() {
   await requirePlatformOperator();
-  return <main className="leads-view"><section className="leads-shell"><OpsHeader operatorEmail={null} /><OpsToolbar showSetupRequests subtitle="Five jobs, one shared language" /><div className="leads-header"><div><p className="t-eyebrow">Runbook</p><h1 className="t-display">Run the customer journey.</h1><p className="leads-subtitle">Relay Operations is an action inbox. Use the next step on the screen before reaching for diagnostics.</p></div></div><section className="setup-grid">{JOBS.map(([title, summary], index) => <article className="panel setup-panel" key={title}><div className="setup-panel__head"><p className="t-eyebrow">0{index + 1}</p><h2>{title}</h2><p className="setup-copy">{summary}</p></div></article>)}</section></section></main>;
+  return <main className="leads-view"><section className="leads-shell"><OpsHeader operatorEmail={null} /><div className="leads-header"><div><p className="t-eyebrow">Runbook</p><h1 className="t-display">Run the customer journey.</h1><p className="leads-subtitle">Five jobs, one shared language. Relay Operations is an action inbox. Use the next step on the screen before reaching for diagnostics.</p></div></div><section className="setup-grid">{JOBS.map(([title, summary], index) => <article className="panel setup-panel" key={title}><div className="setup-panel__head"><p className="t-eyebrow">0{index + 1}</p><h2>{title}</h2><p className="setup-copy">{summary}</p></div></article>)}</section></section></main>;
 }

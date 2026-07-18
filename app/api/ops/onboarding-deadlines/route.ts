@@ -12,9 +12,10 @@ function readString(formData: FormData, key: string, maxLength = 120) {
 }
 
 function redirectWith(status: string, accountSlug?: string) {
-  const params = new URLSearchParams({ onboarding: status });
-  if (accountSlug) params.set("account", accountSlug);
-  redirect(`/ops/billing?${params.toString()}`);
+  if (accountSlug) {
+    redirect(`/ops/accounts/${encodeURIComponent(accountSlug)}?onboarding=${encodeURIComponent(status)}`);
+  }
+  redirect(`/ops?onboarding=${encodeURIComponent(status)}`);
 }
 
 export async function POST(request: Request) {

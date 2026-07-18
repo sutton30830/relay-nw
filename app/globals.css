@@ -1906,38 +1906,40 @@ code {
   gap: 10px;
 }
 
-.ops-toolbar {
+/* Manual/diagnostic sections on the ops account page stay collapsed so the
+   decisions read first and the machinery stays out of the way. */
+.ops-manual,
+.ops-diagnostics {
+  margin-top: 4px;
+}
+.ops-manual > summary,
+.ops-diagnostics > summary {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  border-bottom: 1px solid var(--line);
-  padding: 14px 0;
-}
-
-.ops-toolbar > div:first-child {
-  min-width: 0;
-}
-
-.ops-toolbar .t-eyebrow {
-  margin-bottom: 3px;
-}
-
-.ops-toolbar span {
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
   color: var(--ink-3);
   font-size: 13px;
+  font-weight: 650;
+  padding: 12px 18px;
 }
-
-.ops-toolbar__actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
+.ops-manual > summary::-webkit-details-marker,
+.ops-diagnostics > summary::-webkit-details-marker {
+  display: none;
 }
-
-.ops-toolbar__actions form {
+.ops-manual[open] > summary,
+.ops-diagnostics[open] > summary {
+  border-bottom: 1px solid var(--line-soft);
+}
+.ops-diagnostics__body {
+  padding: 4px 18px 18px;
+}
+.ops-trial-controls {
   margin: 0;
+}
+.ops-money-warn {
+  color: var(--warn);
 }
 
 .ops-account-search {

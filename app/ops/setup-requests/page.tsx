@@ -1,5 +1,4 @@
 import { OpsHeader } from "@/app/ops/_components/ops-header";
-import { OpsToolbar } from "@/app/ops/_components/ops-toolbar";
 import { requirePlatformOperator } from "@/lib/auth";
 import { listSetupRequests, type SetupRequest, type SetupRequestStatus } from "@/lib/supabase";
 
@@ -108,7 +107,7 @@ export default async function SetupRequestsPage({
       <section className="leads-shell">
         <OpsHeader currentPage="requests" operatorEmail={operator.email} />
 
-        <OpsToolbar showSetupRequests subtitle="Assisted onboarding" />
+        
 
         <div className="leads-header">
           <div>
