@@ -212,6 +212,8 @@ export type OpsAccountSummary = {
   activatedAt: string | null;
   firstPaidAt: string | null;
   cancelAtPeriodEnd: boolean;
+  currentPeriodEnd: string | null;
+  billingUpdatedAt: string | null;
   updatedAt: string | null;
   canceledAt: string | null;
 };
@@ -1027,6 +1029,8 @@ function mapOpsAccountSummary(row: Record<string, unknown>): OpsAccountSummary {
     activatedAt: typeof row.activated_at === "string" ? row.activated_at : null,
     firstPaidAt: typeof row.first_paid_at === "string" ? row.first_paid_at : null,
     cancelAtPeriodEnd: Boolean(row.cancel_at_period_end),
+    currentPeriodEnd: typeof row.current_period_end === "string" ? row.current_period_end : null,
+    billingUpdatedAt: typeof row.billing_updated_at === "string" ? row.billing_updated_at : null,
     updatedAt: typeof row.updated_at === "string" ? row.updated_at : null,
     canceledAt: typeof row.canceled_at === "string" ? row.canceled_at : null,
   };
@@ -1039,7 +1043,7 @@ export async function listOpsAccounts(query = ""): Promise<OpsAccountSummary[]> 
   let request = supabaseAdmin
     .from("accounts")
     .select(
-      "id, slug, name, status, billing_status, onboarding_status, stripe_subscription_status, requirements_due_at, activated_at, first_paid_at, cancel_at_period_end, updated_at, canceled_at, account_settings(owner_email, business_name)",
+      "id, slug, name, status, billing_status, onboarding_status, stripe_subscription_status, requirements_due_at, activated_at, first_paid_at, cancel_at_period_end, current_period_end, billing_updated_at, updated_at, canceled_at, account_settings(owner_email, business_name)",
     )
     .order("updated_at", { ascending: false })
     .limit(250);
@@ -1069,7 +1073,7 @@ export async function getOpsAccountBySlug(slug: string): Promise<OpsAccountSumma
   const { data, error } = await supabaseAdmin
     .from("accounts")
     .select(
-      "id, slug, name, status, billing_status, onboarding_status, stripe_subscription_status, requirements_due_at, activated_at, first_paid_at, cancel_at_period_end, updated_at, canceled_at, account_settings(owner_email, business_name)",
+      "id, slug, name, status, billing_status, onboarding_status, stripe_subscription_status, requirements_due_at, activated_at, first_paid_at, cancel_at_period_end, current_period_end, billing_updated_at, updated_at, canceled_at, account_settings(owner_email, business_name)",
     )
     .eq("slug", normalizedSlug)
     .maybeSingle();

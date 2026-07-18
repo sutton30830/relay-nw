@@ -19,3 +19,18 @@ test("ops lifecycle uses plain-language stages", () => {
   assert.equal(getOpsLifecycle({ onboardingStatus: "activated", billingStatus: "active" }).stage, "active");
   assert.equal(getOpsLifecycle({ onboardingStatus: "activated", billingStatus: "canceled" }).stage, "canceled");
 });
+
+test("scheduled cancellation is visible even while Stripe still reports active", () => {
+  const lifecycle = getOpsLifecycle({
+    onboardingStatus: "activated",
+    billingStatus: "active",
+    activatedAt: "2026-07-17T23:32:45.050Z",
+    cancelAtPeriodEnd: true,
+    currentPeriodEnd: "2026-08-18T23:49:50.000Z",
+  });
+
+  assert.equal(lifecycle.stage, "canceled");
+  assert.equal(lifecycle.label, "Canceling");
+  assert.equal(lifecycle.blockedOn, "Subscription ends Aug 18, 2026");
+  assert.equal(lifecycle.primaryAction, "Review cancellation");
+});

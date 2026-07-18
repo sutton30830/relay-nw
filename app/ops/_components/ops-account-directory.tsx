@@ -36,11 +36,20 @@ export function OpsAccountDirectory({
     onboardingStatus: account.onboardingStatus,
     billingStatus: account.billingStatus,
     activatedAt: account.activatedAt,
-    updatedAt: account.updatedAt,
+    cancelAtPeriodEnd: account.cancelAtPeriodEnd,
+    currentPeriodEnd: account.currentPeriodEnd,
+    updatedAt: account.billingUpdatedAt ?? account.updatedAt,
   }) })).filter(({ lifecycle }) => stage === "all" || lifecycle.stage === stage);
   const counts = new Map<string, number>();
   for (const account of accounts) {
-    const lifecycle = getOpsLifecycle({ onboardingStatus: account.onboardingStatus, billingStatus: account.billingStatus, activatedAt: account.activatedAt, updatedAt: account.updatedAt });
+    const lifecycle = getOpsLifecycle({
+      onboardingStatus: account.onboardingStatus,
+      billingStatus: account.billingStatus,
+      activatedAt: account.activatedAt,
+      cancelAtPeriodEnd: account.cancelAtPeriodEnd,
+      currentPeriodEnd: account.currentPeriodEnd,
+      updatedAt: account.billingUpdatedAt ?? account.updatedAt,
+    });
     counts.set(lifecycle.stage, (counts.get(lifecycle.stage) ?? 0) + 1);
   }
 
