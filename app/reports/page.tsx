@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { AppHeader } from "@/app/leads/_components/app-header";
+import { PageHead } from "@/app/leads/_components/page-head";
 import { isRelayOperator, requireAccountUser } from "@/lib/auth";
 import { computeReportHero } from "@/lib/report-hero";
 import { getLeadInboxCountsForAccount } from "@/lib/supabase";
@@ -132,13 +133,11 @@ export default async function ReportsPage() {
         />
 
         <div className="report-statement">
-          <div className="leads-header">
-            <div>
-              <p className="t-eyebrow">Reports</p>
-              <h1 className="t-display">What Relay recovered</h1>
-              <p className="leads-subtitle">{account.businessName}</p>
-            </div>
-          </div>
+          <PageHead
+            eyebrow="Reports"
+            title="What Relay recovered"
+            subtitle={account.businessName}
+          />
 
           <section
             className={`report-hero report-hero--${hero.scale}`}

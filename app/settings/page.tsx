@@ -1,5 +1,6 @@
 import { Icon } from "@/components/icon";
 import { AppHeader } from "@/app/leads/_components/app-header";
+import { PageHead } from "@/app/leads/_components/page-head";
 import { isRelayOperator, requireAccountUser } from "@/lib/auth";
 import { computeBillingLifecycle } from "@/lib/billing";
 import type { AccountBillingRecord, BillingLifecycleState } from "@/lib/billing";
@@ -328,15 +329,11 @@ export default async function SettingsPage({
           switchAccountHref={session.membershipCount > 1 ? "/account/select?next=/settings" : undefined}
         />
 
-        <div className="leads-header">
-          <div>
-            <p className="t-eyebrow">Settings</p>
-            <h1 className="t-display">{account.businessName}</h1>
-            <p className="leads-subtitle">
-              {readOnly ? "View-only access" : "Changes apply to the next call that comes in."}
-            </p>
-          </div>
-        </div>
+        <PageHead
+          eyebrow="Settings"
+          title={account.businessName}
+          subtitle={readOnly ? "View-only access" : "Changes apply to the next call that comes in."}
+        />
 
         {params.saved ? (
           <div className="panel settings-notice settings-notice--ok" role="status">

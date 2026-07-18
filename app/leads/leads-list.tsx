@@ -7,6 +7,7 @@ import { FILTERS } from "./_constants";
 import { AppHeader } from "./_components/app-header";
 import { LeadCard } from "./_components/lead-card";
 import { LeadDrawer } from "./_components/lead-drawer";
+import { PageHead } from "./_components/page-head";
 import { useLeadsInbox } from "./_hooks/use-leads-inbox";
 
 export function LeadsList({
@@ -110,6 +111,12 @@ export function LeadsList({
           />
         </div>
       </div>
+
+      <PageHead
+        eyebrow="Inbox"
+        title="Inbox"
+        subtitle="Newest missed calls first. Call back, text, or update the status from each card."
+      />
 
       <nav className="filters clean-scroll" aria-label="Filter leads">
         {FILTERS.map((item) => {

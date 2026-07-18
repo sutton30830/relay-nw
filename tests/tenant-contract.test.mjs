@@ -37,6 +37,7 @@ const settingsPageTsx = await readFile(new URL("../app/settings/page.tsx", impor
 const reportsPageTsx = await readFile(new URL("../app/reports/page.tsx", import.meta.url), "utf8");
 const leadConversationPageTsx = await readFile(new URL("../app/leads/[id]/page.tsx", import.meta.url), "utf8");
 const appHeaderTsx = await readFile(new URL("../app/leads/_components/app-header.tsx", import.meta.url), "utf8");
+const pageHeadTsx = await readFile(new URL("../app/leads/_components/page-head.tsx", import.meta.url), "utf8");
 const leadUtilsTs = await readFile(new URL("../app/leads/_utils.ts", import.meta.url), "utf8");
 const leadConstantsTs = await readFile(new URL("../app/leads/_constants.ts", import.meta.url), "utf8");
 const leadCardTsx = await readFile(new URL("../app/leads/_components/lead-card.tsx", import.meta.url), "utf8");
@@ -535,6 +536,10 @@ test("authenticated app pages share the Relay brand header and owner menu", () =
   assert.match(appHeaderTsx, /\/ops/);
   assert.match(appHeaderTsx, /Operations/);
   assert.match(appHeaderTsx, /\/api\/leads-logout/);
+  assert.match(pageHeadTsx, /export function PageHead/);
+  assert.match(pageHeadTsx, /className="page-head"/);
+  assert.match(pageHeadTsx, /className="t-eyebrow"/);
+  assert.match(pageHeadTsx, /className="t-display page-head__title"/);
 
   for (const source of [
     leadsListTsx,
@@ -545,6 +550,12 @@ test("authenticated app pages share the Relay brand header and owner menu", () =
   ]) {
     assert.match(source, /AppHeader/);
   }
+
+  for (const source of [leadsListTsx, setupPageTsx, settingsPageTsx, reportsPageTsx]) {
+    assert.match(source, /PageHead/);
+  }
+
+  assert.match(reportsPageTsx, /title="What Relay recovered"/);
 
   for (const source of [opsPageTsx, opsRunbookPageTsx, opsSetupRequestsPageTsx, opsBillingPageTsx]) {
     assert.doesNotMatch(source, /AppHeader/);

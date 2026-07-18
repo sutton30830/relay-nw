@@ -1,4 +1,5 @@
 import { AppHeader } from "@/app/leads/_components/app-header";
+import { PageHead } from "@/app/leads/_components/page-head";
 import { CarrierForwarding } from "./carrier-forwarding";
 import { FullTestPanel } from "@/app/leads/_components/full-test-panel";
 import { Icon } from "@/components/icon";
@@ -180,15 +181,11 @@ export default async function SetupPage() {
           switchAccountHref={membershipCount > 1 ? "/account/select?next=/setup" : undefined}
         />
 
-        <header className="leads-header">
-          <div>
-            <p className="t-eyebrow">Setup</p>
-            <h1 className="t-display">{account.businessName}</h1>
-            <p className="leads-subtitle">
-              Connect your phone line, test missed-call forwarding, and make sure Relay can text from your number.
-            </p>
-          </div>
-        </header>
+        <PageHead
+          eyebrow="Setup"
+          title={account.businessName}
+          subtitle="Connect your phone line, test missed-call forwarding, and make sure Relay can text from your number."
+        />
 
         <section className={`readiness readiness--${readiness.state}`} aria-label="Relay status">
           <div className="readiness__main">
