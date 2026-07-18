@@ -49,6 +49,7 @@ export type AccountBillingRecord = {
   guaranteeEndsAt: string | null;
   billingAttentionSince: string | null;
   billingUpdatedAt: string | null;
+  canceledAt: string | null;
   onboardingStatusUpdatedAt: string | null;
   setupFeeCents: number;
   setupFeeStatus: "due" | "paid" | "waived" | "refunded";
@@ -133,6 +134,7 @@ const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   guaranteeEndsAt: null,
   billingAttentionSince: null,
   billingUpdatedAt: null,
+  canceledAt: null,
   onboardingStatusUpdatedAt: null,
   setupFeeCents: 15000,
   // Missing commercial columns degrade to the pre-commercial pilot behavior.

@@ -54,7 +54,7 @@ function SetupRequestCard({ request }: { request: SetupRequest }) {
   const fields = setupRequestFields(request.message);
 
   return (
-    <article className="webhook-event">
+    <article className="lead-card setup-request-card">
       <div className="webhook-event__head">
         <div>
           <strong>{request.name ?? "Unknown setup request"}</strong>
@@ -63,7 +63,7 @@ function SetupRequestCard({ request }: { request: SetupRequest }) {
         <span>{new Date(request.created_at).toLocaleString()}</span>
       </div>
 
-      <div className="lead-actions" style={{ justifyContent: "space-between", marginTop: "var(--space-3)" }}>
+      <div className="lead-card__actions" style={{ justifyContent: "space-between", marginTop: "var(--space-3)" }}>
         <span className={statusClass(request.status)}>{statusLabel(request.status)}</span>
         <form action="/api/ops/setup-requests" method="post" className="lead-controls" style={{ margin: 0 }}>
           <input type="hidden" name="id" value={request.id} />
@@ -106,17 +106,15 @@ export default async function SetupRequestsPage({
   return (
     <main className="leads-view">
       <section className="leads-shell">
-        <OpsHeader
-          operatorEmail={operator.email}
-        />
+        <OpsHeader currentPage="requests" operatorEmail={operator.email} />
 
         <OpsToolbar showSetupRequests subtitle="Assisted onboarding" />
 
         <div className="leads-header">
           <div>
-            <p className="t-eyebrow">Ops</p>
-            <h1 className="t-display">Setup requests</h1>
-            <p className="leads-subtitle">Track prospects from intake through white-glove onboarding.</p>
+            <p className="t-eyebrow">Requests</p>
+            <h1 className="t-display">New customers start here.</h1>
+            <p className="leads-subtitle">Review the request, then move it into kickoff with one clear next step.</p>
           </div>
         </div>
 

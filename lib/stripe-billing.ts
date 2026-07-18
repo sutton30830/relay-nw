@@ -59,6 +59,7 @@ export type StripeBillingUpdate = {
   firstPaidAt?: string | null;
   guaranteeEndsAt?: string | null;
   billingAttentionSince?: string | null;
+  canceledAt?: string | null;
 };
 
 export type StripeEvent = {

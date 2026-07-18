@@ -5,6 +5,7 @@ import { env } from "@/lib/env";
 import {
   getAccountConfigByAccountId,
   getPlatformOperatorByUserId,
+  claimPlatformOperatorInvite,
   supabaseAdmin,
   type AccountRuntimeConfig,
   type PlatformOperatorRole,
@@ -163,6 +164,9 @@ async function findAccountUserRows(userId: string, email: string | null) {
 export async function getAccountMembershipsForUser(user: { id: string; email?: string | null }) {
   const email = user.email ?? null;
   const rows = await findAccountUserRows(user.id, email);
+  if (typeof claimPlatformOperatorInvite === "function") {
+    await claimPlatformOperatorInvite({ userId: user.id, email });
+  }
   const platformOperator = await getPlatformOperatorByUserId(user.id);
   const memberships: AccountMembership[] = [];
 
@@ -373,6 +377,9 @@ export async function getPlatformOperatorSession(): Promise<PlatformOperatorSess
   const user = await getAuthenticatedUser();
   if (!user) return null;
 
+  if (typeof claimPlatformOperatorInvite === "function") {
+    await claimPlatformOperatorInvite({ userId: user.id, email: user.email ?? null });
+  }
   const operator = await getPlatformOperatorByUserId(user.id);
   if (!operator) return null;
 

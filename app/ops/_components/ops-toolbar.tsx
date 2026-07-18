@@ -33,7 +33,7 @@ export function OpsToolbar({
         ) : null}
         <Link className="btn btn-secondary btn-sm" href="/ops/runbook">Runbook</Link>
         {accountSlug ? <Link className={`btn btn-sm ${view === "logs" ? "btn-primary" : "btn-secondary"}`} href={logsHref}>Troubleshoot</Link> : null}
-        <Link className="btn btn-secondary btn-sm" href="/leads">Back to leads</Link>
+        <Link className="btn btn-secondary btn-sm" href="/leads">Back to inbox</Link>
       </div>
     </div>
   );

@@ -65,6 +65,7 @@ alter table public.accounts add column if not exists guarantee_ends_at timestamp
 alter table public.accounts add column if not exists billing_attention_since timestamptz;
 alter table public.accounts add column if not exists billing_updated_at timestamptz;
 alter table public.accounts add column if not exists setup_fee_cents integer not null default 15000;
+alter table public.accounts add column if not exists canceled_at timestamptz;
 alter table public.accounts add column if not exists setup_fee_status text not null default 'due';
 alter table public.accounts add column if not exists setup_fee_checkout_session_id text;
 alter table public.accounts add column if not exists setup_fee_payment_intent_id text;
@@ -369,6 +370,16 @@ alter table public.platform_operators
   add constraint platform_operators_status_check check (status in ('active', 'revoked'));
 create unique index if not exists platform_operators_email_unique_idx
   on public.platform_operators (lower(email));
+
+create table if not exists public.platform_operator_invites (
+  email text primary key,
+  role text not null default 'operator' check (role in ('super_admin', 'operator', 'support')),
+  status text not null default 'pending' check (status in ('pending', 'claimed', 'revoked')),
+  created_by uuid,
+  created_at timestamptz not null default now(),
+  claimed_at timestamptz
+);
+alter table public.platform_operator_invites enable row level security;
 alter table public.platform_operators enable row level security;
 
 create table if not exists public.platform_audit_events (
@@ -784,6 +795,11 @@ create policy deny_client_access on public.setup_requests
 
 drop policy if exists deny_client_access on public.platform_operators;
 create policy deny_client_access on public.platform_operators
+  as restrictive for all to anon, authenticated
+  using (false) with check (false);
+
+drop policy if exists deny_client_access on public.platform_operator_invites;
+create policy deny_client_access on public.platform_operator_invites
   as restrictive for all to anon, authenticated
   using (false) with check (false);
 

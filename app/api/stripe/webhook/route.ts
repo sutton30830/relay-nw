@@ -349,6 +349,7 @@ export async function POST(request: Request) {
       billingAttentionSince: eventStatus === "past_due"
         ? existingBilling.billingAttentionSince ?? new Date().toISOString()
         : update.billingAttentionSince,
+      canceledAt: eventStatus === "canceled" ? new Date().toISOString() : undefined,
     });
 
     await notifyBillingAttention({

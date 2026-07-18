@@ -2007,6 +2007,18 @@ code {
 .ops-attention-row__arrow { color: var(--ink-3); font-size: 18px; }
 .ops-account-card.lead-card--good { border-color: color-mix(in srgb, var(--success, #3b8067) 35%, var(--line)); }
 
+.ops-ledger { padding: 0; overflow: hidden; }
+.ops-ledger__table-wrap { overflow-x: auto; }
+.ops-ledger table { width: 100%; border-collapse: collapse; min-width: 780px; }
+.ops-ledger th, .ops-ledger td { padding: 14px 16px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+.ops-ledger th { color: var(--ink-3); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.ops-ledger td:first-child { white-space: normal; min-width: 190px; }
+.ops-ledger td strong, .ops-ledger td small { display: block; }
+.ops-ledger td small, .ops-team-row small { margin-top: 3px; color: var(--ink-3); }
+.ops-team-list { display: grid; gap: 12px; margin-top: 16px; }
+.ops-team-row { display: flex; align-items: center; gap: 16px; }
+.ops-team-row > div { display: grid; flex: 1; }
+
 .ops-account-card {
   display: grid;
   gap: 18px;

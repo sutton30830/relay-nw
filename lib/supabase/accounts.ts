@@ -102,6 +102,7 @@ type AccountBillingRow = {
   guarantee_ends_at: string | null;
   billing_attention_since: string | null;
   billing_updated_at: string | null;
+  canceled_at: string | null;
   onboarding_status_updated_at: string | null;
   setup_fee_cents: number | null;
   setup_fee_status: string | null;
@@ -212,6 +213,7 @@ export type OpsAccountSummary = {
   firstPaidAt: string | null;
   cancelAtPeriodEnd: boolean;
   updatedAt: string | null;
+  canceledAt: string | null;
 };
 
 const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
@@ -224,6 +226,7 @@ const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   trialEndsAt: null,
   currentPeriodEnd: null,
   cancelAtPeriodEnd: false,
+  canceledAt: null,
   requirementsDueAt: null,
   activatedAt: null,
   firstPaidAt: null,
@@ -467,7 +470,7 @@ export async function getAccountBillingRecord(accountId: string | null | undefin
   const { data, error } = await supabaseAdmin
     .from("accounts")
     .select(
-      "billing_status, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, requirements_due_at, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, onboarding_status_updated_at, setup_fee_cents, setup_fee_status, setup_fee_checkout_session_id, setup_fee_payment_intent_id, setup_fee_paid_at, setup_fee_waived_at, setup_fee_waiver_reason, monthly_price_cents",
+      "billing_status, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, requirements_due_at, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, canceled_at, onboarding_status_updated_at, setup_fee_cents, setup_fee_status, setup_fee_checkout_session_id, setup_fee_payment_intent_id, setup_fee_paid_at, setup_fee_waived_at, setup_fee_waiver_reason, monthly_price_cents",
     )
     .eq("id", accountId)
     .maybeSingle();
@@ -511,6 +514,7 @@ export async function getAccountBillingRecord(accountId: string | null | undefin
     guaranteeEndsAt: row.guarantee_ends_at,
     billingAttentionSince: row.billing_attention_since,
     billingUpdatedAt: row.billing_updated_at,
+    canceledAt: row.canceled_at,
     onboardingStatusUpdatedAt: row.onboarding_status_updated_at,
     setupFeeCents: Number(row.setup_fee_cents ?? 15000),
     setupFeeStatus: normalizeSetupFeeStatus(row.setup_fee_status),
@@ -589,6 +593,7 @@ export async function updateAccountBillingRecord(
     payload.guarantee_ends_at = update.guaranteeEndsAt;
   }
   if (update.billingAttentionSince !== undefined) payload.billing_attention_since = update.billingAttentionSince;
+  if (update.canceledAt !== undefined) payload.canceled_at = update.canceledAt;
   if (update.setupFeeCents !== undefined) payload.setup_fee_cents = update.setupFeeCents;
   if (update.setupFeeStatus !== undefined) payload.setup_fee_status = update.setupFeeStatus;
   if (update.setupFeeCheckoutSessionId !== undefined) payload.setup_fee_checkout_session_id = update.setupFeeCheckoutSessionId;
@@ -1023,6 +1028,7 @@ function mapOpsAccountSummary(row: Record<string, unknown>): OpsAccountSummary {
     firstPaidAt: typeof row.first_paid_at === "string" ? row.first_paid_at : null,
     cancelAtPeriodEnd: Boolean(row.cancel_at_period_end),
     updatedAt: typeof row.updated_at === "string" ? row.updated_at : null,
+    canceledAt: typeof row.canceled_at === "string" ? row.canceled_at : null,
   };
 }
 
@@ -1033,7 +1039,7 @@ export async function listOpsAccounts(query = ""): Promise<OpsAccountSummary[]> 
   let request = supabaseAdmin
     .from("accounts")
     .select(
-      "id, slug, name, status, billing_status, onboarding_status, stripe_subscription_status, requirements_due_at, activated_at, first_paid_at, cancel_at_period_end, updated_at, account_settings(owner_email, business_name)",
+      "id, slug, name, status, billing_status, onboarding_status, stripe_subscription_status, requirements_due_at, activated_at, first_paid_at, cancel_at_period_end, updated_at, canceled_at, account_settings(owner_email, business_name)",
     )
     .order("updated_at", { ascending: false })
     .limit(250);
@@ -1063,7 +1069,7 @@ export async function getOpsAccountBySlug(slug: string): Promise<OpsAccountSumma
   const { data, error } = await supabaseAdmin
     .from("accounts")
     .select(
-      "id, slug, name, status, billing_status, onboarding_status, stripe_subscription_status, requirements_due_at, activated_at, first_paid_at, cancel_at_period_end, updated_at, account_settings(owner_email, business_name)",
+      "id, slug, name, status, billing_status, onboarding_status, stripe_subscription_status, requirements_due_at, activated_at, first_paid_at, cancel_at_period_end, updated_at, canceled_at, account_settings(owner_email, business_name)",
     )
     .eq("slug", normalizedSlug)
     .maybeSingle();
@@ -1127,7 +1133,7 @@ export async function getOpsBillingAccountBySlug(slug: string): Promise<OpsBilli
   const { data, error } = await supabaseAdmin
     .from("accounts")
     .select(
-      "id, slug, name, billing_status, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, requirements_due_at, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, onboarding_status_updated_at, setup_fee_cents, setup_fee_status, setup_fee_checkout_session_id, setup_fee_payment_intent_id, setup_fee_paid_at, setup_fee_waived_at, setup_fee_waiver_reason, monthly_price_cents",
+      "id, slug, name, billing_status, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, requirements_due_at, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, canceled_at, onboarding_status_updated_at, setup_fee_cents, setup_fee_status, setup_fee_checkout_session_id, setup_fee_payment_intent_id, setup_fee_paid_at, setup_fee_waived_at, setup_fee_waiver_reason, monthly_price_cents",
     )
     .eq("slug", normalizedSlug)
     .maybeSingle();
@@ -1167,6 +1173,7 @@ export async function getOpsBillingAccountBySlug(slug: string): Promise<OpsBilli
     guaranteeEndsAt: typeof data.guarantee_ends_at === "string" ? data.guarantee_ends_at : null,
     billingAttentionSince: typeof data.billing_attention_since === "string" ? data.billing_attention_since : null,
     billingUpdatedAt: typeof data.billing_updated_at === "string" ? data.billing_updated_at : null,
+    canceledAt: typeof data.canceled_at === "string" ? data.canceled_at : null,
     onboardingStatusUpdatedAt:
       typeof data.onboarding_status_updated_at === "string" ? data.onboarding_status_updated_at : null,
     setupFeeCents: Number(data.setup_fee_cents ?? 15000),

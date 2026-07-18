@@ -8,6 +8,7 @@ export type PlatformOperator = {
   email: string;
   role: PlatformOperatorRole;
   status: PlatformOperatorStatus;
+  createdAt?: string | null;
 };
 
 function normalizeRole(value: unknown): PlatformOperatorRole | null {
@@ -23,7 +24,7 @@ export async function getPlatformOperatorByUserId(userId: string): Promise<Platf
 
   const { data, error } = await supabaseAdmin
     .from("platform_operators")
-    .select("user_id, email, role, status")
+    .select("user_id, email, role, status, created_at")
     .eq("user_id", userId)
     .maybeSingle();
 
@@ -47,7 +48,57 @@ export async function getPlatformOperatorByUserId(userId: string): Promise<Platf
     email: String(data.email ?? ""),
     role,
     status,
+    ...(typeof data.created_at === "string" ? { createdAt: data.created_at } : {}),
   };
+}
+
+export async function claimPlatformOperatorInvite(input: { userId: string; email: string | null }) {
+  const email = input.email?.trim().toLowerCase();
+  if (!email) return;
+  const { data, error } = await supabaseAdmin.from("platform_operator_invites").select("email, role, status").eq("email", email).eq("status", "pending").maybeSingle();
+  if (error || !data) return;
+  const role = normalizeRole(data.role);
+  if (!role) return;
+  await supabaseAdmin.from("platform_operators").upsert({ user_id: input.userId, email, role, status: "active" }, { onConflict: "user_id" });
+  await supabaseAdmin.from("platform_operator_invites").update({ status: "claimed", claimed_at: new Date().toISOString() }).eq("email", email).eq("status", "pending");
+}
+
+export async function listPlatformOperators(): Promise<PlatformOperator[]> {
+  const { data, error } = await supabaseAdmin
+    .from("platform_operators")
+    .select("user_id, email, role, status, created_at")
+    .order("created_at", { ascending: true });
+  if (error) {
+    if (error.message.includes("platform_operators")) return [];
+    throw error;
+  }
+  return (data ?? []).flatMap((row) => {
+    const role = normalizeRole(row.role);
+    const status = normalizeStatus(row.status);
+    if (!role || !status) return [];
+    return [{ userId: String(row.user_id), email: String(row.email ?? ""), role, status, createdAt: typeof row.created_at === "string" ? row.created_at : null }];
+  });
+}
+
+export async function invitePlatformOperator(input: { email: string; role: PlatformOperatorRole; actorUserId: string }) {
+  const { error } = await supabaseAdmin.from("platform_operator_invites").upsert({
+    email: input.email.trim().toLowerCase(), role: input.role, status: "pending", created_by: input.actorUserId,
+  }, { onConflict: "email" });
+  if (error) throw error;
+}
+
+export async function updatePlatformOperator(input: { userId: string; role?: PlatformOperatorRole; status?: PlatformOperatorStatus }) {
+  const payload: Record<string, string> = {};
+  if (input.role) payload.role = input.role;
+  if (input.status) payload.status = input.status;
+  const { error } = await supabaseAdmin.from("platform_operators").update(payload).eq("user_id", input.userId);
+  if (error) throw error;
+}
+
+export async function countActiveSuperAdmins() {
+  const { count, error } = await supabaseAdmin.from("platform_operators").select("user_id", { count: "exact", head: true }).eq("role", "super_admin").eq("status", "active");
+  if (error) throw error;
+  return count ?? 0;
 }
 
 export async function recordPlatformAuditEvent(input: {
