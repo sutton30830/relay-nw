@@ -27,6 +27,7 @@ export type AccountRuntimeConfig = {
   voicemailMaxSeconds: number;
   dialTimeoutSeconds: number;
   missedCallSmsCooldownHours: number;
+  typicalJobValueCents: number | null;
   voicemailTranscriptionEnabled: boolean;
   twilioPhoneNumber: string;
   ownerPhoneNumber: string;
@@ -80,6 +81,7 @@ type AccountSettingsRow = {
   voicemail_max_seconds: number | null;
   dial_timeout_seconds: number | null;
   missed_call_sms_cooldown_hours: number | null;
+  typical_job_value_cents?: number | null;
   voicemail_transcription_enabled: boolean | null;
   accounts?: { slug: string } | Array<{ slug: string }> | null;
 };
@@ -254,12 +256,14 @@ function normalizeAccountStripeSubscriptionStatus(value: string | null | undefin
 }
 
 const ACCOUNT_SETTINGS_SELECT =
-  "account_id, business_name, owner_email, owner_phone_number, intake_url, scheduling_url, call_mode, sms_enabled, sms_template, quick_reply_templates, missed_call_voice_message, missed_call_voice_name, missed_call_greeting_audio_url, voicemail_max_seconds, dial_timeout_seconds, missed_call_sms_cooldown_hours, voicemail_transcription_enabled, accounts(slug)";
+  "account_id, business_name, owner_email, owner_phone_number, intake_url, scheduling_url, call_mode, sms_enabled, sms_template, quick_reply_templates, missed_call_voice_message, missed_call_voice_name, missed_call_greeting_audio_url, voicemail_max_seconds, dial_timeout_seconds, missed_call_sms_cooldown_hours, typical_job_value_cents, voicemail_transcription_enabled, accounts(slug)";
 // Same columns minus quick_reply_templates, for a deploy that lands before the
 // supabase.sql migration adds the column. Account config is on every request's
 // critical path, so a missing optional column must degrade, not throw.
 const ACCOUNT_SETTINGS_SELECT_LEGACY =
   "account_id, business_name, owner_email, owner_phone_number, intake_url, scheduling_url, call_mode, sms_enabled, sms_template, missed_call_voice_message, missed_call_voice_name, missed_call_greeting_audio_url, voicemail_max_seconds, dial_timeout_seconds, missed_call_sms_cooldown_hours, voicemail_transcription_enabled, accounts(slug)";
+const ACCOUNT_SETTINGS_SELECT_PRE_TYPICAL_VALUE =
+  "account_id, business_name, owner_email, owner_phone_number, intake_url, scheduling_url, call_mode, sms_enabled, sms_template, quick_reply_templates, missed_call_voice_message, missed_call_voice_name, missed_call_greeting_audio_url, voicemail_max_seconds, dial_timeout_seconds, missed_call_sms_cooldown_hours, voicemail_transcription_enabled, accounts(slug)";
 
 export function envAccountConfig(): AccountRuntimeConfig {
   return {
@@ -279,6 +283,7 @@ export function envAccountConfig(): AccountRuntimeConfig {
     voicemailMaxSeconds: env.voicemailMaxSeconds,
     dialTimeoutSeconds: env.dialTimeoutSeconds,
     missedCallSmsCooldownHours: env.missedCallSmsCooldownHours,
+    typicalJobValueCents: null,
     voicemailTranscriptionEnabled: true,
     twilioPhoneNumber: normalizePhoneNumber(env.twilioPhoneNumber),
     ownerPhoneNumber: normalizePhoneNumber(env.ownerPhoneNumber),
@@ -305,6 +310,7 @@ function configFromSettings(row: AccountSettingsRow, primaryNumber: string): Acc
     voicemailMaxSeconds: row.voicemail_max_seconds ?? 60,
     dialTimeoutSeconds: row.dial_timeout_seconds ?? 18,
     missedCallSmsCooldownHours: row.missed_call_sms_cooldown_hours ?? 24,
+    typicalJobValueCents: row.typical_job_value_cents ?? null,
     voicemailTranscriptionEnabled: row.voicemail_transcription_enabled ?? true,
     twilioPhoneNumber: normalizePhoneNumber(primaryNumber),
     ownerPhoneNumber: normalizePhoneNumber(row.owner_phone_number),
@@ -352,6 +358,15 @@ export async function getAccountConfigByAccountId(accountId: string | null | und
     ({ data, error } = await supabaseAdmin
       .from("account_settings")
       .select(ACCOUNT_SETTINGS_SELECT_LEGACY)
+      .eq("account_id", accountId)
+      .maybeSingle());
+  }
+
+  if (error?.message.includes("typical_job_value_cents")) {
+    console.warn("account_settings.typical_job_value_cents is missing. Run supabase.sql to enable report estimates.");
+    ({ data, error } = await supabaseAdmin
+      .from("account_settings")
+      .select(ACCOUNT_SETTINGS_SELECT_PRE_TYPICAL_VALUE)
       .eq("account_id", accountId)
       .maybeSingle());
   }
@@ -1166,6 +1181,7 @@ export type AccountSettingsUpdate = Partial<{
   dial_timeout_seconds: number;
   voicemail_max_seconds: number;
   missed_call_sms_cooldown_hours: number;
+  typical_job_value_cents: number | null;
 }>;
 
 export async function updateAccountSettings(accountId: string, update: AccountSettingsUpdate) {

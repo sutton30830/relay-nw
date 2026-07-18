@@ -102,7 +102,7 @@ export default async function ReportsPage() {
     bookedMissingValue: thisMonth.bookedMissingValue,
     recoveredCents: thisMonth.recoveredCents,
     missedCalls: thisMonth.missedCalls,
-    typicalJobValueCents: null,
+    typicalJobValueCents: account.typicalJobValueCents,
   });
   const attentionItems: Array<{
     label: string;

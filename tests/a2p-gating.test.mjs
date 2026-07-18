@@ -48,6 +48,7 @@ function settingsForm(overrides = {}) {
     dial_timeout_seconds: "18",
     voicemail_max_seconds: "60",
     missed_call_sms_cooldown_hours: "24",
+    typical_job_value_dollars: "250",
     ...overrides,
   });
 }
@@ -114,7 +115,27 @@ test("owner enabling SMS with approved A2P persists sms_enabled true", async () 
   assert.deepEqual(calls.a2pLookups, ["acct-1"]);
   assert.equal(calls.updates.length, 1);
   assert.equal(calls.updates[0].update.sms_enabled, true);
+  assert.equal(calls.updates[0].update.typical_job_value_cents, 25000);
   assert.deepEqual(calls.redirects, ["/settings?saved=1"]);
+});
+
+test("blank typical job value clears report estimates", async () => {
+  const calls = await runSettingsPost({
+    form: settingsForm({ typical_job_value_dollars: "" }),
+  });
+
+  assert.equal(calls.updates.length, 1);
+  assert.equal(calls.updates[0].update.typical_job_value_cents, null);
+  assert.deepEqual(calls.redirects, ["/settings?saved=1"]);
+});
+
+test("invalid typical job value is refused", async () => {
+  const calls = await runSettingsPost({
+    form: settingsForm({ typical_job_value_dollars: "-1" }),
+  });
+
+  assert.equal(calls.updates.length, 0);
+  assert.deepEqual(calls.redirects, ["/settings?error=invalid"]);
 });
 
 test("owner enabling SMS with in-progress A2P is refused", async () => {

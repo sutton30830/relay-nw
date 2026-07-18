@@ -222,6 +222,7 @@ create table if not exists public.account_settings (
   voicemail_max_seconds integer not null default 60 check (voicemail_max_seconds > 0),
   dial_timeout_seconds integer not null default 18 check (dial_timeout_seconds > 0),
   missed_call_sms_cooldown_hours integer not null default 24 check (missed_call_sms_cooldown_hours > 0),
+  typical_job_value_cents integer check (typical_job_value_cents is null or typical_job_value_cents >= 0),
   voicemail_transcription_enabled boolean not null default true,
   a2p_registration_status text not null default 'not_started' check (
     a2p_registration_status in ('not_started', 'in_progress', 'approved', 'rejected', 'paused')
@@ -232,6 +233,11 @@ create table if not exists public.account_settings (
 
 alter table public.account_settings add column if not exists owner_email text;
 alter table public.account_settings add column if not exists quick_reply_templates text[];
+alter table public.account_settings add column if not exists typical_job_value_cents integer;
+alter table public.account_settings drop constraint if exists account_settings_typical_job_value_cents_nonnegative;
+alter table public.account_settings
+  add constraint account_settings_typical_job_value_cents_nonnegative
+  check (typical_job_value_cents is null or typical_job_value_cents >= 0);
 
 alter table public.account_settings enable row level security;
 

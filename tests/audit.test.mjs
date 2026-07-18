@@ -68,3 +68,12 @@ test("quick reply arrays compared by content", () => {
   assert.equal(changed.length, 1);
   assert.match(changed[0].summary, /quick replies/);
 });
+
+test("typical job value changes are included in the settings summary", () => {
+  const events = diffSettingsForAudit(
+    { typicalJobValueCents: null },
+    { typicalJobValueCents: 25000 },
+  );
+  assert.equal(events.length, 1);
+  assert.match(events[0].summary, /typical job value/);
+});

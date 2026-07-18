@@ -14,6 +14,7 @@ test("reports page stays focused on owner-useful recovery metrics", () => {
   assert.match(reportsPage, /Jobs booked/);
   assert.match(reportsPage, /Booked value/);
   assert.match(reportsPage, /Based on job values you entered/);
+  assert.match(reportsPage, /typicalJobValueCents: account\.typicalJobValueCents/);
 });
 
 test("reports page keeps operational noise out of the owner surface", () => {

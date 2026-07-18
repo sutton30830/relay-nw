@@ -8,6 +8,7 @@ const LIMITS = {
   dialTimeoutSeconds: { min: 5, max: 60 },
   voicemailMaxSeconds: { min: 10, max: 300 },
   cooldownHours: { min: 1, max: 168 },
+  typicalJobValueDollars: { min: 0, max: 1000000 },
 };
 
 function readString(formData: FormData, key: string, maxLength = 500) {
@@ -22,6 +23,22 @@ function readNumber(formData: FormData, key: string, bounds: { min: number; max:
   }
 
   return value;
+}
+
+function readOptionalDollarCents(formData: FormData, key: string, bounds: { min: number; max: number }) {
+  const raw = readString(formData, key, 20);
+
+  if (!raw) {
+    return null;
+  }
+
+  const value = Number(raw);
+
+  if (!Number.isFinite(value) || value < bounds.min || value > bounds.max) {
+    return undefined;
+  }
+
+  return Math.round(value * 100);
 }
 
 export async function POST(request: Request) {
@@ -51,8 +68,20 @@ export async function POST(request: Request) {
   const dialTimeout = readNumber(formData, "dial_timeout_seconds", LIMITS.dialTimeoutSeconds);
   const voicemailMax = readNumber(formData, "voicemail_max_seconds", LIMITS.voicemailMaxSeconds);
   const cooldownHours = readNumber(formData, "missed_call_sms_cooldown_hours", LIMITS.cooldownHours);
+  const typicalJobValueCents = readOptionalDollarCents(
+    formData,
+    "typical_job_value_dollars",
+    LIMITS.typicalJobValueDollars,
+  );
 
-  if (!businessName || !ownerPhone || dialTimeout === null || voicemailMax === null || cooldownHours === null) {
+  if (
+    !businessName ||
+    !ownerPhone ||
+    dialTimeout === null ||
+    voicemailMax === null ||
+    cooldownHours === null ||
+    typeof typicalJobValueCents === "undefined"
+  ) {
     redirect("/settings?error=invalid");
   }
 
@@ -80,6 +109,7 @@ export async function POST(request: Request) {
     dial_timeout_seconds: dialTimeout,
     voicemail_max_seconds: voicemailMax,
     missed_call_sms_cooldown_hours: cooldownHours,
+    typical_job_value_cents: typicalJobValueCents,
   };
 
   // Only the owner can flip texting on/off — it is the compliance-sensitive switch.
@@ -124,6 +154,7 @@ export async function POST(request: Request) {
     dialTimeoutSeconds: session.account.dialTimeoutSeconds,
     voicemailMaxSeconds: session.account.voicemailMaxSeconds,
     missedCallSmsCooldownHours: session.account.missedCallSmsCooldownHours,
+    typicalJobValueCents: session.account.typicalJobValueCents,
   };
   const after: AuditableSettings = {
     businessName,
@@ -137,6 +168,7 @@ export async function POST(request: Request) {
     dialTimeoutSeconds: dialTimeout,
     voicemailMaxSeconds: voicemailMax,
     missedCallSmsCooldownHours: cooldownHours,
+    typicalJobValueCents,
     // Only owners submit the switch; leaving it undefined keeps it out of the diff.
     ...(session.role === "owner" ? { smsEnabled: update.sms_enabled } : {}),
   };

@@ -20,6 +20,7 @@ export type AuditableSettings = {
   dialTimeoutSeconds?: number;
   voicemailMaxSeconds?: number;
   missedCallSmsCooldownHours?: number;
+  typicalJobValueCents?: number | null;
 };
 
 // Order here is the order changes are listed in the summary.
@@ -35,6 +36,7 @@ const FIELD_LABELS: Array<[keyof AuditableSettings, string]> = [
   ["dialTimeoutSeconds", "ring time"],
   ["voicemailMaxSeconds", "max voicemail length"],
   ["missedCallSmsCooldownHours", "text cooldown"],
+  ["typicalJobValueCents", "typical job value"],
 ];
 
 function valuesEqual(a: unknown, b: unknown): boolean {

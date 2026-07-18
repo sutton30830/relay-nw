@@ -52,6 +52,10 @@ function formatBillingDate(value: string | null) {
   });
 }
 
+function centsToDollarInput(value: number | null) {
+  return value != null && value > 0 ? String(Math.round(value / 100)) : "";
+}
+
 function billingStatusLabel(billing: AccountBillingRecord) {
   if (billing.billingStatus === "comped") return "Comped";
   if (billing.billingStatus === "past_due") return "Past due";
@@ -294,6 +298,24 @@ export default async function SettingsPage({
             </Field>
             <Field label="Scheduling link" hint="Optional. Included in texts when set (https://...).">
               <input className="field" name="scheduling_url" defaultValue={account.schedulingUrl ?? ""} />
+            </Field>
+            <Field
+              label="Typical booked job value"
+              hint="Optional. Used only to estimate reports when a booked lead is missing a value."
+            >
+              <div className="money-field">
+                <span>$</span>
+                <input
+                  name="typical_job_value_dollars"
+                  type="number"
+                  min={0}
+                  max={1000000}
+                  step={1}
+                  inputMode="numeric"
+                  defaultValue={centsToDollarInput(account.typicalJobValueCents)}
+                  placeholder="250"
+                />
+              </div>
             </Field>
 
             <p className="t-eyebrow settings-group-title">Messaging</p>
