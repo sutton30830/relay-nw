@@ -5,6 +5,8 @@ import type { LeadStatus, ReplyPriorityOverride } from "@/lib/supabase";
 import { STATUS_LABELS, STATUS_OPTIONS } from "../_constants";
 import { centsToInputValue, dollarsToCents } from "../_utils";
 
+const BOOKED_VALUE_PRESETS_CENTS = [25000, 50000, 100000];
+
 export function PriorityControl({
   value,
   onChange,
@@ -92,10 +94,12 @@ export function BookedValueInput({
   valueCents,
   onSave,
   compact = false,
+  showPresets = !compact,
 }: {
   valueCents: number | null;
   onSave: (jobValueCents: number | null) => void;
   compact?: boolean;
+  showPresets?: boolean;
 }) {
   const [value, setValue] = useState(centsToInputValue(valueCents));
 
@@ -107,22 +111,43 @@ export function BookedValueInput({
     onSave(dollarsToCents(value));
   }
 
+  function savePreset(presetCents: number) {
+    setValue(centsToInputValue(presetCents));
+    onSave(presetCents);
+  }
+
   return (
-    <label className={`money-field ${compact ? "money-field--compact" : ""}`}>
-      <span>$</span>
-      <input
-        inputMode="numeric"
-        placeholder="0"
-        value={value}
-        onChange={(event) => setValue(event.target.value)}
-        onBlur={saveValue}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            event.currentTarget.blur();
-          }
-        }}
-        aria-label="Estimated booked job value"
-      />
-    </label>
+    <div className="money-field-stack">
+      <label className={`money-field ${compact ? "money-field--compact" : ""}`}>
+        <span>$</span>
+        <input
+          inputMode="numeric"
+          placeholder="0"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          onBlur={saveValue}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.currentTarget.blur();
+            }
+          }}
+          aria-label="Estimated booked job value"
+        />
+      </label>
+      {showPresets ? (
+        <div className="money-presets" aria-label="Common booked values">
+          {BOOKED_VALUE_PRESETS_CENTS.map((presetCents) => (
+            <button
+              key={presetCents}
+              type="button"
+              className="money-presets__chip"
+              onClick={() => savePreset(presetCents)}
+            >
+              {presetCents >= 100000 ? `$${presetCents / 100000}k` : `$${presetCents / 100}`}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }

@@ -41,6 +41,7 @@ const leadUtilsTs = await readFile(new URL("../app/leads/_utils.ts", import.meta
 const leadConstantsTs = await readFile(new URL("../app/leads/_constants.ts", import.meta.url), "utf8");
 const leadCardTsx = await readFile(new URL("../app/leads/_components/lead-card.tsx", import.meta.url), "utf8");
 const leadDrawerTsx = await readFile(new URL("../app/leads/_components/lead-drawer.tsx", import.meta.url), "utf8");
+const leadControlsTsx = await readFile(new URL("../app/leads/_components/controls.tsx", import.meta.url), "utf8");
 const setupRequestDetailsTsx = await readFile(new URL("../app/leads/_components/setup-request-details.tsx", import.meta.url), "utf8");
 const globalsCss = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 const opsPageTsx = await readFile(new URL("../app/ops/page.tsx", import.meta.url), "utf8");
@@ -403,11 +404,20 @@ test("mobile lead cards prioritize category and actionable facts", () => {
 
 test("mobile booked value control stays compact and polished", () => {
   assert.match(leadCardTsx, /<Icon name="star" size=\{13\} \/>/);
+  assert.match(leadCardTsx, /compact\s+valueCents=\{lead\.job_value_cents\}/);
+  assert.match(leadControlsTsx, /showPresets = !compact/);
   assert.match(globalsCss, /@media \(max-width: 560px\)[\s\S]*\.lead-card__value\s*\{[\s\S]*display:\s*grid/);
   assert.match(globalsCss, /@media \(max-width: 720px\)[\s\S]*\.lead-card__status-pill\s*\{[\s\S]*min-height:\s*32px/);
   assert.match(globalsCss, /@media \(max-width: 560px\)[\s\S]*\.lead-card__value\s*\{[\s\S]*grid-template-columns:\s*auto minmax\(0, 1fr\)/);
   assert.match(globalsCss, /@media \(max-width: 560px\)[\s\S]*\.lead-card__value \.money-field--compact\s*\{[\s\S]*min-height:\s*40px/);
   assert.match(globalsCss, /@media \(max-width: 560px\)[\s\S]*\.lead-card__value \.money-field--compact input\s*\{[\s\S]*font-size:\s*18px/);
+});
+
+test("lead outcome editing offers quick booked-value presets off the compact cards", () => {
+  assert.match(leadControlsTsx, /BOOKED_VALUE_PRESETS_CENTS = \[25000, 50000, 100000\]/);
+  assert.match(leadControlsTsx, /aria-label="Common booked values"/);
+  assert.match(leadControlsTsx, /onClick=\{\(\) => savePreset\(presetCents\)\}/);
+  assert.match(globalsCss, /\.money-presets__chip/);
 });
 
 test("lead inbox empty states distinguish search misses from no leads", () => {
