@@ -1,163 +1,18 @@
-import type { ReactNode } from "react";
 import { OpsHeader } from "@/app/ops/_components/ops-header";
 import { OpsToolbar } from "@/app/ops/_components/ops-toolbar";
 import { requirePlatformOperator } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-type RunbookSection = {
-  eyebrow: string;
-  title: string;
-  summary: string;
-  steps: ReactNode[];
-};
-
-const RUNBOOK_SECTIONS: RunbookSection[] = [
-  {
-    eyebrow: "When something looks wrong",
-    title: "Protect the callback first.",
-    summary: "If Relay may have missed a text, summary, or save, the safest move is simple: make sure the owner calls the lead.",
-    steps: [
-      "Search technical logs by caller last 4, call id, message id, recording id, or event type.",
-      "Open the lead and check whether SMS, voicemail, transcript, and reply status look complete.",
-      "If SMS or transcription may have failed, tell the owner to call the lead manually.",
-      "Use caller last 4 and system IDs in support notes instead of full message or transcript text.",
-    ],
-  },
-  {
-    eyebrow: "Normal recovery loop",
-    title: "What should happen.",
-    summary: "This is the core promise: missed call in, lead captured, caller texted, owner able to follow up.",
-    steps: [
-      "Twilio sends the missed call to the right Relay NW account.",
-      "One missed-call lead is created in the owner inbox.",
-      "Auto-text sends only when A2P is approved and texting is on.",
-      "Delivery updates are saved on the lead and message row.",
-      "Caller replies are saved and forwarded to the owner.",
-      "Voicemail attaches to the lead, then transcription completes or fails visibly.",
-    ],
-  },
-  {
-    eyebrow: "Customer onboarding",
-    title: "Move a setup request to a live account.",
-    summary: "This is for you as the Relay NW operator. It is not something a contractor customer needs to understand.",
-    steps: [
-      "Open setup requests as a platform operator and mark each request Contacted, Onboarded, or Closed.",
-      <>Create the account with <code>npm run provision:account</code>.</>,
-      <>Verify it with <code>npm run verify:account -- &lt;slug&gt;</code>.</>,
-      "Confirm Twilio webhooks, A2P status, owner email, and owner phone before giving access.",
-      "Use the owner setup page for forwarding codes, the listening test, and the SMS test.",
-    ],
-  },
-  {
-    eyebrow: "Before handoff",
-    title: "Do not call it live until this passes.",
-    summary: "This is the minimum proof that the customer can actually recover a missed call.",
-    steps: [
-      <>Run <code>npm run verify:account -- &lt;slug&gt;</code>.</>,
-      <>Run <code>npm run verify:billing</code>.</>,
-      <>Run <code>npm run verify:launch -- &lt;slug&gt;</code>.</>,
-      <>On a scratch account, run <code>npm run verify:billing-controls -- &lt;scratch-slug&gt;</code> after operator billing changes.</>,
-      <>Run <code>npm run test:activation</code>.</>,
-      "Complete one real missed-call test through Twilio.",
-      "Complete one Stripe test-mode Checkout for the launch account or a matching sandbox account.",
-      "Confirm technical logs show voice, SMS status, inbound reply, recording, and Stripe events.",
-    ],
-  },
-  {
-    eyebrow: "Billing",
-    title: "Trust Stripe, but inspect Relay's event ledger.",
-    summary: "Subscription state changes should be visible and retry-safe. Use Billing events when an owner cannot start, manage, update, cancel, or restart billing.",
-    steps: [
-      <>Run <code>npm run verify:billing</code> before charging a production owner.</>,
-      "Confirm the Stripe price is the $99 monthly plan, Customer Portal is active, and the production webhook has every Relay billing event enabled.",
-      "Open Billing events and confirm recent Stripe events are processed, not failed or stuck processing.",
-      "For ignored invoice events, confirm the account already has the Stripe customer or subscription id recorded.",
-      "If payment is past due, confirm Relay updated the account to past_due and sent the admin attention alert.",
-      "Never manually mark an account active from Checkout alone; subscription or paid invoice state is authoritative.",
-    ],
-  },
-  {
-    eyebrow: "Privacy",
-    title: "Keep only what you need.",
-    summary: "Treat recordings, transcripts, and SMS content like customer data, not debugging decoration.",
-    steps: [
-      <>Technical webhook logs are sanitized and pruned by <code>WEBHOOK_EVENT_RETENTION_DAYS</code>.</>,
-      <>Inbound SMS bodies are pruned by <code>INBOUND_MESSAGE_RETENTION_DAYS</code>.</>,
-      "Voicemail recordings, transcripts, and lead records stay until manual deletion or automated recording retention ships.",
-      "For support notes, prefer caller last 4 and IDs over full transcript or SMS content.",
-    ],
-  },
-  {
-    eyebrow: "Deletion or restore",
-    title: "Handle data changes deliberately.",
-    summary: "Before deleting or restoring anything, collect enough IDs to prove you are touching the right account.",
-    steps: [
-      "Before destructive support work, export the affected account, leads, messages, recording metadata, opt-outs, and audit rows.",
-      "For deletion requests, identify account slug, lead id, caller phone, recording id, message ids, and opt-out rows.",
-      <>After deletion or restore, run <code>npm run verify:account -- &lt;slug&gt;</code> and inspect technical logs.</>,
-      "Record what changed using IDs and caller last 4, not full private content unless absolutely needed.",
-    ],
-  },
+const JOBS = [
+  ["Move a customer forward", "Start at Pipeline. Each card has one next step: kickoff, setup, carrier review, ready, or active. The day count is for operator context, not a promise to the customer."],
+  ["Handle money", "Collect the $150 kickoff fee, waive it with intent, then activate the $99 only when the customer is ready. Stripe is the source of truth for subscriptions; Relay records the decision and audit trail."],
+  ["Track the customer", "Use Customers for the commercial ledger and open an account from any card. Keep diagnostics collapsed until a normal-language state points you there."],
+  ["Manage requests", "Requests are prospects, not leads. Review the intake, contact the owner, and move it through its small status set. Do not put prospect data in a customer inbox."],
+  ["Manage operators", "Team access is explicit. Super admins can invite, change roles, and revoke. Never revoke yourself, and never remove the last active super admin."],
 ];
 
-function RunbookCard({ section }: { section: RunbookSection }) {
-  return (
-    <article className="panel setup-panel">
-      <div className="setup-panel__head">
-        <p className="t-eyebrow">{section.eyebrow}</p>
-        <h2>{section.title}</h2>
-        <p className="setup-copy">{section.summary}</p>
-      </div>
-      <ol className="setup-status__steps">
-        {section.steps.map((step, index) => (
-          <li className="setup-status__step" key={index}>
-            <span className="setup-status__dot">{index + 1}</span>
-            <span>{step}</span>
-          </li>
-        ))}
-      </ol>
-    </article>
-  );
-}
-
 export default async function OpsRunbookPage() {
-  const operator = await requirePlatformOperator();
-
-  return (
-    <main className="leads-view">
-      <section className="leads-shell">
-        <OpsHeader
-          operatorEmail={operator.email}
-        />
-
-        <OpsToolbar showSetupRequests subtitle="Internal checklist" />
-
-        <div className="leads-header">
-          <div>
-            <p className="t-eyebrow">Internal ops</p>
-            <h1 className="t-display">Support checklist</h1>
-            <p className="leads-subtitle">
-              For Relay NW operators. Use this when onboarding a customer or checking whether the missed-call loop worked for a customer account.
-            </p>
-          </div>
-        </div>
-
-        <div className="panel setup-panel setup-panel__head">
-          <p className="t-eyebrow">Plain English</p>
-          <h2>This page is for you, not the owner.</h2>
-          <p className="setup-copy">
-            Owners should mostly live in Leads, Setup, Settings, and Reports. This page is the internal checklist for debugging,
-            onboarding, privacy, and handoff.
-          </p>
-        </div>
-
-        <section className="setup-grid">
-          {RUNBOOK_SECTIONS.map((section) => (
-            <RunbookCard key={section.title} section={section} />
-          ))}
-        </section>
-      </section>
-    </main>
-  );
+  await requirePlatformOperator();
+  return <main className="leads-view"><section className="leads-shell"><OpsHeader operatorEmail={null} /><OpsToolbar showSetupRequests subtitle="Five jobs, one shared language" /><div className="leads-header"><div><p className="t-eyebrow">Runbook</p><h1 className="t-display">Run the customer journey.</h1><p className="leads-subtitle">Relay Operations is an action inbox. Use the next step on the screen before reaching for diagnostics.</p></div></div><section className="setup-grid">{JOBS.map(([title, summary], index) => <article className="panel setup-panel" key={title}><div className="setup-panel__head"><p className="t-eyebrow">0{index + 1}</p><h2>{title}</h2><p className="setup-copy">{summary}</p></div></article>)}</section></section></main>;
 }

@@ -48,10 +48,10 @@ function formatDate(value: string | null | undefined) {
 export default async function OpsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; account?: string; view?: string; stage?: "all" | "kickoff" | "setting_up" | "carrier_review" | "ready_to_activate" | "active" | "canceled"; kickoff?: string }>;
+  searchParams: Promise<{ q?: string; account?: string; view?: string; stage?: "all" | "kickoff" | "setting_up" | "carrier_review" | "ready_to_activate" | "active" | "canceled"; kickoff?: string; activation?: string }>;
 }) {
   const operator = await requirePlatformOperator();
-  const { q = "", account: accountSlug = "", view = "overview", stage = "all", kickoff } = await searchParams;
+  const { q = "", account: accountSlug = "", view = "overview", stage = "all", kickoff, activation } = await searchParams;
 
   if (!accountSlug) {
     const accounts = await listOpsAccounts(q);
@@ -157,6 +157,12 @@ export default async function OpsPage({
               <form action="/api/ops/kickoff" method="post"><input type="hidden" name="account_slug" value={account.accountSlug} /><button className="btn btn-secondary" name="action" value="waive_save_card">Waive + save card</button></form>
               <form action="/api/ops/kickoff" method="post"><input type="hidden" name="account_slug" value={account.accountSlug} /><button className="btn btn-secondary" name="action" value="waive_entirely">Waive entirely</button></form>
             </div>
+          </section>
+
+          {activation ? <div className={activation === "account_not_found" || activation === "invalid_action" || activation === "blocked" ? "intake-error settings-notice" : "settings-notice"} role="status">{activation === "comp" ? "Account activated as a comped pilot." : activation === "trial" ? "Account activated with a trial." : activation === "account_not_found" ? "Account not found." : activation === "invalid_action" ? "Choose a valid activation path." : activation === "blocked" ? "Activation is blocked until the account is ready." : "Activation is ready."}</div> : null}
+          <section className="panel setup-panel">
+            <div className="setup-panel__head"><p className="t-eyebrow">Activation</p><h2>Start the $99 only when the customer is ready.</h2><p className="setup-copy">Carrier approval and readiness are the gates. A delay does not start a billing clock.</p></div>
+            {account.onboardingStatus === "ready_to_activate" ? <div className="ops-billing-actions"><form action="/api/ops/activate" method="post"><input type="hidden" name="account_slug" value={account.accountSlug} /><button className="btn btn-primary" name="action" value="start_billing">Start $99 billing</button></form><form action="/api/ops/activate" method="post"><input type="hidden" name="account_slug" value={account.accountSlug} /><button className="btn btn-secondary" name="action" value="comp">Comp pilot</button></form><form action="/api/ops/activate" method="post"><input type="hidden" name="account_slug" value={account.accountSlug} /><input type="hidden" name="trial_days" value="30" /><button className="btn btn-secondary" name="action" value="trial">30-day trial</button></form></div> : <p className="setup-copy">Not ready yet. Current state: {account.onboardingStatus.replaceAll("_", " ")}. Open setup details when the card says Ready.</p>}
           </section>
 
           <section className="ops-account-facts panel setup-panel">

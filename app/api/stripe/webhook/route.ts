@@ -363,6 +363,15 @@ export async function POST(request: Request) {
       currentPeriodEnd: subscription.currentPeriodEnd,
     });
 
+    if (eventStatus === "canceled") {
+      await notifyAdminOperationalIssue({
+        account: await getAccountConfigByAccountId(resolution.accountId),
+        issue: "Subscription canceled",
+        detail: "Stripe reported that this customer's subscription was canceled.",
+        correlationId: identity.eventId,
+      });
+    }
+
     await markStripeEventProcessed({
       eventId: identity.eventId,
       accountId: resolution.accountId,

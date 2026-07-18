@@ -267,15 +267,10 @@ test("ops runbook is authenticated and covers failure visibility plus retention"
   assert.match(opsToolbarTsx, /Billing & setup/);
   assert.match(opsRunbookPageTsx, /requirePlatformOperator\(\)/);
   assert.match(opsRunbookPageTsx, /OpsHeader/);
-  assert.match(opsRunbookPageTsx, /This page is for you, not the owner/);
-  assert.match(opsRunbookPageTsx, /Search technical logs by caller last 4, call id, message id, recording id/);
-  assert.match(opsRunbookPageTsx, /Trust Stripe, but inspect Relay's event ledger/);
-  assert.match(opsRunbookPageTsx, /npm run verify:billing/);
-  assert.match(opsRunbookPageTsx, /npm run verify:launch --/);
-  assert.match(opsRunbookPageTsx, /npm run verify:billing-controls --/);
-  assert.match(opsRunbookPageTsx, /Stripe test-mode Checkout/);
-  assert.match(opsRunbookPageTsx, /Stripe price is the \$99 monthly plan/);
-  assert.match(opsRunbookPageTsx, /Never manually mark an account active from Checkout alone/);
+  assert.match(opsRunbookPageTsx, /Five jobs, one shared language/);
+  assert.match(opsRunbookPageTsx, /Move a customer forward/);
+  assert.match(opsRunbookPageTsx, /Handle money/);
+  assert.match(opsRunbookPageTsx, /Manage operators/);
   assert.match(opsBillingPageTsx, /getRecentStripeEventsForAccount/);
   assert.match(opsBillingPageTsx, /Stripe webhook processing/);
   assert.match(opsBillingPageTsx, /failedCount/);
@@ -289,10 +284,9 @@ test("ops runbook is authenticated and covers failure visibility plus retention"
   assert.match(opsBillingRouteTs, /updateAccountBillingRecord/);
   assert.match(opsBillingRouteTs, /recordAccountAuditEvents/);
   assert.match(verifyAccountScript, /Stripe event ledger healthy/);
-  assert.match(opsRunbookPageTsx, /Auto-text sends only when A2P is approved and texting is on/);
-  assert.match(opsRunbookPageTsx, /WEBHOOK_EVENT_RETENTION_DAYS/);
-  assert.match(opsRunbookPageTsx, /INBOUND_MESSAGE_RETENTION_DAYS/);
-  assert.match(opsRunbookPageTsx, /manual deletion or automated recording retention ships/);
+  assert.match(opsRunbookPageTsx, /Requests are prospects, not leads/);
+  assert.match(opsRunbookPageTsx, /Stripe is the source of truth/);
+  assert.match(opsRunbookPageTsx, /Never revoke yourself/);
 
   assert.match(opsRunbookMd, /SMS Failed, Undelivered, or Not Sent/);
   assert.match(opsRunbookMd, /Voicemail or Transcription Failed/);
