@@ -302,7 +302,7 @@ The simplest deployment path is Vercel:
 7. Set Twilio's Voice webhook to `https://relay-nw.vercel.app/api/twilio/voice`.
 8. Set Twilio's Messaging webhook to `https://relay-nw.vercel.app/api/twilio/sms`.
 9. Set Stripe's webhook endpoint to `https://relay-nw.vercel.app/api/stripe/webhook`.
-10. Set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `STRIPE_PRICE_ID` before using Checkout.
+10. Set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `STRIPE_PRICE_ID` before using Checkout. `STRIPE_TRIAL_DAYS` defaults to `30`.
 11. Keep `ALLOW_UNSIGNED_TWILIO_WEBHOOKS` unset or `false` in production.
 
 ## Security Notes

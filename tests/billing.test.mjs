@@ -194,6 +194,13 @@ test("checkout eligibility allows only not started or fully canceled accounts", 
   );
   assert.deepEqual(
     billing.getBillingCheckoutEligibility({
+      billing: billingRecord({ billingStatus: "trialing", stripeSubscriptionId: null }),
+      setupReadiness: ready,
+    }),
+    { ok: true },
+  );
+  assert.deepEqual(
+    billing.getBillingCheckoutEligibility({
       billing: billingRecord({ billingStatus: "not_started", stripeSubscriptionStatus: "incomplete" }),
       setupReadiness: ready,
     }),
@@ -497,4 +504,71 @@ test("trial extension starts from current future trial end instead of now", () =
     }),
     "2026-07-25T00:00:00.000Z",
   );
+});
+
+test("checkout trial days default to the configured Stripe trial for fresh billing", () => {
+  assert.equal(
+    stripeBilling.checkoutTrialPeriodDays({
+      billingStatus: "not_started",
+      trialEndsAt: null,
+      defaultTrialDays: 30,
+      now: new Date("2026-07-18T00:00:00.000Z"),
+    }),
+    30,
+  );
+});
+
+test("checkout trial days honor remaining operator-granted trial time", () => {
+  assert.equal(
+    stripeBilling.checkoutTrialPeriodDays({
+      billingStatus: "trialing",
+      trialEndsAt: "2026-07-28T12:00:00.000Z",
+      defaultTrialDays: 30,
+      now: new Date("2026-07-18T00:00:00.000Z"),
+    }),
+    11,
+  );
+});
+
+test("checkout trial days do not restart an expired app-level trial", () => {
+  assert.equal(
+    stripeBilling.checkoutTrialPeriodDays({
+      billingStatus: "trialing",
+      trialEndsAt: "2026-07-01T00:00:00.000Z",
+      defaultTrialDays: 30,
+      now: new Date("2026-07-18T00:00:00.000Z"),
+    }),
+    0,
+  );
+});
+
+test("stripe Checkout session includes trial_period_days when available", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestBody = "";
+
+  globalThis.fetch = async (_url, init) => {
+    requestBody = String(init.body);
+    return {
+      ok: true,
+      json: async () => ({ id: "cs_123", url: "https://checkout.stripe.test/session" }),
+    };
+  };
+
+  try {
+    await stripeBilling.createStripeCheckoutSession({
+      accountId: "acct_123",
+      accountSlug: "demo",
+      ownerEmail: "owner@example.com",
+      stripeCustomerId: null,
+      idempotencyKey: "checkout-key",
+      trialPeriodDays: 30,
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  const params = new URLSearchParams(requestBody);
+  assert.equal(params.get("subscription_data[trial_period_days]"), "30");
+  assert.equal(params.get("metadata[account_id]"), "acct_123");
+  assert.equal(params.get("customer_email"), "owner@example.com");
 });

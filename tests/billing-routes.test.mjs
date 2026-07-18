@@ -78,6 +78,7 @@ async function runCheckout({
   const calls = {
     billingLookups: [],
     checkoutInputs: [],
+    trialInputs: [],
     redirects: [],
   };
 
@@ -96,6 +97,10 @@ async function runCheckout({
       computeSetupReadiness: () => ({ callCaptureReady, smsRegistrationReady }),
     },
     "@/lib/stripe-billing": {
+      checkoutTrialPeriodDays: (input) => {
+        calls.trialInputs.push(input);
+        return input.billingStatus === "trialing" ? 12 : 30;
+      },
       createStripeCheckoutSession: async (input) => {
         calls.checkoutInputs.push(input);
         return { id: "cs_test_123", url: "https://checkout.stripe.test/session" };
@@ -258,6 +263,7 @@ test("selected account determines the Stripe customer used for Checkout", async 
   assert.equal(calls.checkoutInputs.length, 1);
   assert.equal(calls.checkoutInputs[0].accountId, "acct-b");
   assert.equal(calls.checkoutInputs[0].stripeCustomerId, "cus_tenant_b");
+  assert.equal(calls.checkoutInputs[0].trialPeriodDays, 30);
 });
 
 test("active subscription cannot create duplicate Checkout", async () => {
@@ -332,6 +338,23 @@ test("double Checkout submission uses the same deterministic Stripe idempotency 
   assert.equal(first.checkoutInputs.length, 1);
   assert.equal(second.checkoutInputs.length, 1);
   assert.equal(first.checkoutInputs[0].idempotencyKey, second.checkoutInputs[0].idempotencyKey);
+});
+
+test("Checkout honors the selected account's remaining app-level trial", async () => {
+  const calls = await runCheckout({
+    accountBilling: billingRecord({
+      billingStatus: "trialing",
+      trialEndsAt: "2026-08-01T00:00:00.000Z",
+    }),
+  });
+
+  assert.deepEqual(calls.trialInputs, [
+    {
+      billingStatus: "trialing",
+      trialEndsAt: "2026-08-01T00:00:00.000Z",
+    },
+  ]);
+  assert.equal(calls.checkoutInputs[0].trialPeriodDays, 12);
 });
 
 test("operator can manually comp an account without a live Stripe subscription", async () => {

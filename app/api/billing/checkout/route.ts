@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { requireAccountUser } from "@/lib/auth";
 import { getBillingCheckoutEligibility } from "@/lib/billing";
 import { computeSetupReadiness, type A2pStatus } from "@/lib/readiness";
-import { createStripeCheckoutSession } from "@/lib/stripe-billing";
+import { checkoutTrialPeriodDays, createStripeCheckoutSession } from "@/lib/stripe-billing";
 import {
   getA2pRegistrationStatus,
   getAccountBillingRecord,
@@ -77,6 +77,10 @@ export async function POST() {
       accountSlug: session.account.accountSlug,
       ownerEmail: session.account.ownerEmail ?? session.email,
       stripeCustomerId: billing.stripeCustomerId,
+      trialPeriodDays: checkoutTrialPeriodDays({
+        billingStatus: billing.billingStatus,
+        trialEndsAt: billing.trialEndsAt,
+      }),
       idempotencyKey: checkoutIdempotencyKey({
         accountId: session.accountId,
         billingStatus: billing.billingStatus,

@@ -8,6 +8,7 @@ export type StripeCheckoutSessionInput = {
   ownerEmail: string | null;
   stripeCustomerId: string | null;
   idempotencyKey: string;
+  trialPeriodDays?: number;
 };
 
 export type StripeCheckoutSession = {
@@ -78,6 +79,7 @@ export type StripeSubscriptionSnapshot = {
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 const WEBHOOK_TOLERANCE_SECONDS = 60 * 5;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 function stringValue(value: unknown) {
   return typeof value === "string" && value.trim() ? value : null;
@@ -223,6 +225,33 @@ export function mapStripeSubscriptionStatus(status: string | null | undefined): 
   return "not_started";
 }
 
+export function checkoutTrialPeriodDays(input: {
+  billingStatus: AccountBillingStatus;
+  trialEndsAt?: string | null;
+  defaultTrialDays?: number;
+  now?: Date;
+}) {
+  const now = input.now ?? new Date();
+  const defaultTrialDays = Math.max(1, Math.round(input.defaultTrialDays ?? env.stripeTrialDays ?? 30));
+
+  if (input.billingStatus !== "trialing") {
+    return defaultTrialDays;
+  }
+
+  if (!input.trialEndsAt) {
+    return defaultTrialDays;
+  }
+
+  const trialEndsAt = new Date(input.trialEndsAt);
+  if (!Number.isFinite(trialEndsAt.getTime())) {
+    return defaultTrialDays;
+  }
+
+  const remainingDays = Math.ceil((trialEndsAt.getTime() - now.getTime()) / DAY_MS);
+
+  return Math.max(0, remainingDays);
+}
+
 export async function createStripeCheckoutSession(
   input: StripeCheckoutSessionInput,
 ): Promise<StripeCheckoutSession> {
@@ -242,6 +271,10 @@ export async function createStripeCheckoutSession(
     "subscription_data[metadata][account_id]": input.accountId,
     "subscription_data[metadata][account_slug]": input.accountSlug,
   });
+
+  if (input.trialPeriodDays && input.trialPeriodDays > 0) {
+    params.set("subscription_data[trial_period_days]", String(Math.round(input.trialPeriodDays)));
+  }
 
   if (input.stripeCustomerId) {
     params.set("customer", input.stripeCustomerId);

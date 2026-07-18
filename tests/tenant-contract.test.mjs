@@ -145,12 +145,15 @@ test("stripe checkout and webhooks update account billing without gating missed-
   assert.match(envTs, /STRIPE_SECRET_KEY/);
   assert.match(envTs, /STRIPE_WEBHOOK_SECRET/);
   assert.match(envTs, /STRIPE_PRICE_ID/);
+  assert.match(envTs, /STRIPE_TRIAL_DAYS/);
   assert.match(accountStore, /updateAccountBillingRecord/);
 
   assert.match(stripeBillingTs, /verifyStripeWebhookSignature/);
   assert.match(stripeBillingTs, /timingSafeEqual/);
   assert.match(stripeBillingTs, /metadataAccountId/);
   assert.match(stripeBillingTs, /mapStripeSubscriptionStatus/);
+  assert.match(stripeBillingTs, /checkoutTrialPeriodDays/);
+  assert.match(stripeBillingTs, /subscription_data\[trial_period_days\]/);
   assert.match(stripeBillingTs, /retrieveStripeSubscription/);
   assert.match(stripeBillingTs, /billingUpdateFromSubscription/);
 
@@ -159,6 +162,7 @@ test("stripe checkout and webhooks update account billing without gating missed-
   assert.match(billingCheckoutRouteTs, /createStripeCheckoutSession/);
   assert.match(billingCheckoutRouteTs, /getAccountBillingRecord/);
   assert.match(billingCheckoutRouteTs, /getBillingCheckoutEligibility/);
+  assert.match(billingCheckoutRouteTs, /checkoutTrialPeriodDays/);
   assert.match(billingCheckoutRouteTs, /computeSetupReadiness/);
   assert.match(stripeBillingTs, /createStripePortalSession/);
   assert.match(stripeBillingTs, /billing_portal\/sessions/);

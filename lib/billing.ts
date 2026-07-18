@@ -495,7 +495,7 @@ export function getBillingCheckoutEligibility(input: {
     return { ok: false, reason: "setup_incomplete" };
   }
 
-  if (billingStatus === "active" || billingStatus === "trialing" || stripeStatus === "active" || stripeStatus === "trialing") {
+  if (billingStatus === "active" || stripeStatus === "active" || stripeStatus === "trialing") {
     return { ok: false, reason: "already_active" };
   }
 
@@ -508,6 +508,10 @@ export function getBillingCheckoutEligibility(input: {
   }
 
   if (billingStatus === "not_started") {
+    return { ok: true };
+  }
+
+  if (billingStatus === "trialing" && !billing.stripeSubscriptionId) {
     return { ok: true };
   }
 

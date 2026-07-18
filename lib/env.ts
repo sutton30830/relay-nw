@@ -101,6 +101,7 @@ export const env = {
   stripeSecretKey: getOptionalEnv("STRIPE_SECRET_KEY"),
   stripeWebhookSecret: getOptionalEnv("STRIPE_WEBHOOK_SECRET"),
   stripePriceId: getOptionalEnv("STRIPE_PRICE_ID"),
+  stripeTrialDays: getOptionalNumberEnv("STRIPE_TRIAL_DAYS", 30),
   defaultAccountSlug: getOptionalEnv("RELAY_DEFAULT_ACCOUNT_SLUG") ?? "relay-nw",
   appBaseUrl: normalizeBaseUrl(getRequiredEnv("APP_BASE_URL")),
   allowUnsignedTwilioWebhooks: getAllowUnsignedTwilioWebhooks(),
