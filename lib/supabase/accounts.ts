@@ -163,6 +163,16 @@ export type OnboardingDeadlineAccount = {
   onboardingStatusUpdatedAt: string | null;
 };
 
+export type BillingTrialExpiryAccount = {
+  accountId: string;
+  accountSlug: string;
+  businessName: string;
+  ownerEmail: string | null;
+  billingStatus: AccountBillingStatus;
+  stripeSubscriptionId: string | null;
+  trialEndsAt: string | null;
+};
+
 export type OpsOnboardingAccount = {
   accountId: string;
   accountSlug: string;
@@ -844,6 +854,61 @@ export async function listAccountsForOnboardingDeadlineMaintenance(): Promise<On
       requirementsDueAt: typeof row.requirements_due_at === "string" ? row.requirements_due_at : null,
       onboardingStatusUpdatedAt:
         typeof row.onboarding_status_updated_at === "string" ? row.onboarding_status_updated_at : null,
+    };
+  });
+}
+
+export async function listAccountsForBillingTrialExpiry(nowIso = new Date().toISOString()): Promise<BillingTrialExpiryAccount[]> {
+  if (isPlaceholderSupabaseConfig()) {
+    return [];
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("accounts")
+    .select("id, slug, name, billing_status, stripe_subscription_id, trial_ends_at, account_settings(owner_email, business_name)")
+    .eq("billing_status", "trialing")
+    .is("stripe_subscription_id", null)
+    .not("trial_ends_at", "is", null)
+    .lte("trial_ends_at", nowIso)
+    .order("trial_ends_at", { ascending: true })
+    .limit(250);
+
+  if (error) {
+    if (
+      error.message.includes("billing_status") ||
+      error.message.includes("stripe_subscription_id") ||
+      error.message.includes("trial_ends_at") ||
+      error.message.includes("account_settings")
+    ) {
+      console.warn("Account billing lifecycle columns are missing. Run supabase.sql before enabling trial expiry maintenance.");
+      return [];
+    }
+
+    throwIfSupabaseError(error);
+  }
+
+  return (data ?? []).map((row: Record<string, unknown>) => {
+    const settingsRaw = row.account_settings;
+    const settings = Array.isArray(settingsRaw) ? settingsRaw[0] : settingsRaw;
+    const settingsRecord = settings && typeof settings === "object" ? settings as Record<string, unknown> : null;
+
+    return {
+      accountId: String(row.id),
+      accountSlug: String(row.slug),
+      businessName:
+        typeof settingsRecord?.business_name === "string" && settingsRecord.business_name.trim()
+          ? settingsRecord.business_name
+          : String(row.name),
+      ownerEmail:
+        typeof settingsRecord?.owner_email === "string" && settingsRecord.owner_email.trim()
+          ? settingsRecord.owner_email
+          : null,
+      billingStatus: normalizeAccountBillingStatus(row.billing_status as string | null | undefined),
+      stripeSubscriptionId:
+        typeof row.stripe_subscription_id === "string" && row.stripe_subscription_id.trim()
+          ? row.stripe_subscription_id
+          : null,
+      trialEndsAt: typeof row.trial_ends_at === "string" ? row.trial_ends_at : null,
     };
   });
 }

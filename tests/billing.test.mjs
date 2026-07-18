@@ -521,6 +521,54 @@ test("trial extension starts from current future trial end instead of now", () =
   );
 });
 
+test("expired app-level trials require billing without touching Stripe-backed trials", () => {
+  const now = new Date("2026-08-01T00:00:00.000Z");
+
+  assert.equal(billing.chooseBillingTrialExpiryAction({
+    billingStatus: "trialing",
+    stripeSubscriptionId: null,
+    trialEndsAt: "2026-07-31T00:00:00.000Z",
+    now,
+  }), "expire_app_trial");
+
+  assert.equal(billing.chooseBillingTrialExpiryAction({
+    billingStatus: "trialing",
+    stripeSubscriptionId: "sub_live",
+    trialEndsAt: "2026-07-31T00:00:00.000Z",
+    now,
+  }), "none");
+
+  assert.equal(billing.chooseBillingTrialExpiryAction({
+    billingStatus: "trialing",
+    stripeSubscriptionId: null,
+    trialEndsAt: "2026-08-02T00:00:00.000Z",
+    now,
+  }), "none");
+
+  assert.equal(billing.chooseBillingTrialExpiryAction({
+    billingStatus: "trialing",
+    stripeSubscriptionId: null,
+    trialEndsAt: "2026-07-31T00:00:00.000Z",
+    completedActions: new Set([billing.BILLING_TRIAL_EXPIRY_ACTION]),
+    now,
+  }), "none");
+});
+
+test("expired app trial maps to start billing instead of update payment", () => {
+  const state = billing.computeBillingLifecycle({
+    billing: billingRecord({
+      billingStatus: "past_due",
+      stripeSubscriptionId: null,
+      trialEndsAt: "2026-07-31T00:00:00.000Z",
+    }),
+    setupReadiness: setupReadiness({ callCaptureReady: true, smsRegistrationReady: true }),
+  });
+
+  assert.equal(state.ownerAction, "start_billing");
+  assert.equal(state.label, "Trial ended");
+  assert.match(state.summary, /Start billing/);
+});
+
 test("checkout trial days default to the configured Stripe trial for fresh billing", () => {
   assert.equal(
     stripeBilling.checkoutTrialPeriodDays({

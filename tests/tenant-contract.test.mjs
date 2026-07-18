@@ -54,6 +54,7 @@ const opsSetupRequestsRouteTs = await readFile(new URL("../app/api/ops/setup-req
 const opsOnboardingDeadlinesRouteTs = await readFile(new URL("../app/api/ops/onboarding-deadlines/route.ts", import.meta.url), "utf8");
 const opsBillingRouteTs = await readFile(new URL("../app/api/ops/billing/route.ts", import.meta.url), "utf8");
 const onboardingDeadlinesCronTs = await readFile(new URL("../app/api/cron/onboarding-deadlines/route.ts", import.meta.url), "utf8");
+const billingTrialsCronTs = await readFile(new URL("../app/api/cron/billing-trials/route.ts", import.meta.url), "utf8");
 const privacyPageTsx = await readFile(new URL("../app/privacy/page.tsx", import.meta.url), "utf8");
 const termsPageTsx = await readFile(new URL("../app/terms/page.tsx", import.meta.url), "utf8");
 const opsRunbookMd = await readFile(new URL("../docs/ops-runbook.md", import.meta.url), "utf8");
@@ -295,6 +296,22 @@ test("ops runbook is authenticated and covers failure visibility plus retention"
   assert.match(opsRunbookMd, /Carrier review and carrier attention are not customer-delay states/);
   assert.match(opsRunbookMd, /Relay Operations surface/);
   assert.match(opsRunbookMd, /Relay NW house account/);
+});
+
+test("app-level trials expire through a secured billing cron without disabling capture", () => {
+  assert.match(billingTs, /BILLING_TRIAL_EXPIRY_ACTION/);
+  assert.match(billingTs, /chooseBillingTrialExpiryAction/);
+  assert.match(accountStore, /listAccountsForBillingTrialExpiry/);
+  assert.match(emailTs, /notifyOwnerBillingTrialExpired/);
+  assert.match(billingTrialsCronTs, /CRON_SECRET/);
+  assert.match(billingTrialsCronTs, /listAccountsForBillingTrialExpiry/);
+  assert.match(billingTrialsCronTs, /chooseBillingTrialExpiryAction/);
+  assert.match(billingTrialsCronTs, /billingStatus: "past_due"/);
+  assert.match(billingTrialsCronTs, /notifyOwnerBillingTrialExpired/);
+  assert.match(billingTrialsCronTs, /notifyAdminOperationalIssue/);
+  assert.match(billingTrialsCronTs, /recordAccountAuditEvents/);
+  assert.doesNotMatch(billingTrialsCronTs, /missed-call|missedCall|createLead|deleteLead/);
+  assert.match(vercelJson, /\/api\/cron\/billing-trials/);
 });
 
 test("assisted onboarding setup requests are operator-only and status tracked", () => {

@@ -103,6 +103,8 @@ export type OperatorBillingOverrideAction =
   | "extend_trial"
   | "end_trial_now";
 
+export const BILLING_TRIAL_EXPIRY_ACTION = "billing.trial.expired";
+
 const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   billingStatus: "not_started",
   onboardingStatus: "requirements_needed",
@@ -340,6 +342,8 @@ function actionFor(input: {
   billingStatus: AccountBillingStatus;
   onboardingStatus: AccountOnboardingStatus;
   activationReady: boolean;
+  stripeSubscriptionId?: string | null;
+  trialEndsAt?: string | null;
   cancelAtPeriodEnd?: boolean;
 }): BillingOwnerAction {
   if (input.billingStatus === "comped") {
@@ -351,6 +355,10 @@ function actionFor(input: {
   }
 
   if (input.billingStatus === "past_due") {
+    if (!input.stripeSubscriptionId && input.trialEndsAt) {
+      return input.activationReady ? "start_billing" : "finish_setup";
+    }
+
     return "update_payment";
   }
 
@@ -385,6 +393,8 @@ export function computeBillingLifecycle(input: {
     billingStatus,
     onboardingStatus,
     activationReady,
+    stripeSubscriptionId: billing.stripeSubscriptionId,
+    trialEndsAt: billing.trialEndsAt,
     cancelAtPeriodEnd: billing.cancelAtPeriodEnd,
   });
   const customerDelay =
@@ -395,6 +405,8 @@ export function computeBillingLifecycle(input: {
   const carrierDelay = onboardingStatus === "carrier_review" || onboardingStatus === "carrier_attention";
 
   if (billingStatus === "past_due") {
+    const expiredAppTrial = !billing.stripeSubscriptionId && billing.trialEndsAt;
+
     return {
       activationReady,
       billingStatus,
@@ -402,9 +414,11 @@ export function computeBillingLifecycle(input: {
       ownerAction,
       customerDelay,
       carrierDelay,
-      label: "Payment needs attention",
-      headline: "Billing needs attention.",
-      summary: "Update payment so the subscription stays in good standing. Missed-call capture should keep working while billing is resolved.",
+      label: expiredAppTrial ? "Trial ended" : "Payment needs attention",
+      headline: expiredAppTrial ? "Trial ended." : "Billing needs attention.",
+      summary: expiredAppTrial
+        ? "Start billing to move this account onto a paid subscription. Missed-call capture keeps working while billing is resolved."
+        : "Update payment so the subscription stays in good standing. Missed-call capture should keep working while billing is resolved.",
       tone: "warn",
     };
   }
@@ -561,4 +575,34 @@ export function addTrialDays(input: {
   const base = existing && Number.isFinite(existing.getTime()) && existing > now ? existing : now;
 
   return new Date(base.getTime() + input.days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+export function chooseBillingTrialExpiryAction(input: {
+  billingStatus: string | null | undefined;
+  stripeSubscriptionId?: string | null;
+  trialEndsAt?: string | null;
+  completedActions?: Set<string>;
+  now?: Date;
+}) {
+  const billingStatus = normalizeBillingStatus(input.billingStatus);
+
+  if (billingStatus !== "trialing" || input.stripeSubscriptionId) {
+    return "none" as const;
+  }
+
+  if (input.completedActions?.has(BILLING_TRIAL_EXPIRY_ACTION)) {
+    return "none" as const;
+  }
+
+  if (!input.trialEndsAt) {
+    return "none" as const;
+  }
+
+  const trialEnd = new Date(input.trialEndsAt);
+  if (!Number.isFinite(trialEnd.getTime())) {
+    return "none" as const;
+  }
+
+  const now = input.now ?? new Date();
+  return trialEnd <= now ? "expire_app_trial" as const : "none" as const;
 }

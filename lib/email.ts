@@ -421,6 +421,41 @@ export async function notifyOwnerBillingRecovered(input: {
   });
 }
 
+export async function notifyOwnerBillingTrialExpired(input: {
+  account: AccountRuntimeConfig;
+  trialEndsAt: string | null;
+}) {
+  const recipient = await ownerEmail(input.account);
+  const trialEnd = input.trialEndsAt
+    ? new Date(input.trialEndsAt).toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      })
+    : null;
+  const lines = [
+    trialEnd
+      ? `Your Relay NW trial for ${input.account.businessName} ended on ${trialEnd}.`
+      : `Your Relay NW trial for ${input.account.businessName} has ended.`,
+    "Start billing to continue on a paid subscription.",
+    "Relay is still catching missed calls while billing is resolved.",
+  ];
+
+  return sendEmail({
+    to: recipient,
+    subject: `Relay NW trial ended for ${input.account.businessName}`,
+    html: emailHtml({
+      title: "Trial ended",
+      preview: "Start billing to continue on a paid subscription.",
+      lines,
+      actionLabel: "Start billing",
+      actionUrl: `${env.appBaseUrl}/settings#billing`,
+    }),
+    text: `${lines.join("\n")}\n\nStart billing: ${env.appBaseUrl}/settings#billing`,
+    tag: "owner_billing_trial_expired",
+  });
+}
+
 export async function notifyOwnerOnboardingRequirementsReminder(input: {
   account: AccountRuntimeConfig;
   requirementsDueAt: string;

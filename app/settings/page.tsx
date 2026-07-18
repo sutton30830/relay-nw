@@ -58,6 +58,7 @@ function centsToDollarInput(value: number | null) {
 
 function billingStatusLabel(billing: AccountBillingRecord) {
   if (billing.billingStatus === "comped") return "Comped";
+  if (billing.billingStatus === "past_due" && !billing.stripeSubscriptionId && billing.trialEndsAt) return "Trial ended";
   if (billing.billingStatus === "past_due") return "Past due";
   if (billing.billingStatus === "canceled") return "Canceled";
   if (billing.cancelAtPeriodEnd) {
@@ -91,6 +92,7 @@ function billingHeadline(billing: AccountBillingRecord, lifecycle: BillingLifecy
   }
 
   if (billing.billingStatus === "comped") return "Free account";
+  if (billing.billingStatus === "past_due" && !billing.stripeSubscriptionId && billing.trialEndsAt) return "Trial ended";
   if (billing.billingStatus === "past_due") return "Payment needs attention";
   if (billing.billingStatus === "canceled") return "Subscription canceled";
   if (billing.billingStatus === "active") return "Subscription active";
@@ -126,6 +128,12 @@ function billingSummary(billing: AccountBillingRecord, lifecycle: BillingLifecyc
   }
 
   if (billing.billingStatus === "past_due") {
+    if (!billing.stripeSubscriptionId && billing.trialEndsAt) {
+      return trialDate
+        ? `Your trial ended ${trialDate}. Start billing to move this account onto a paid subscription.`
+        : "Your trial ended. Start billing to move this account onto a paid subscription.";
+    }
+
     return "Update payment so the subscription stays in good standing.";
   }
 
