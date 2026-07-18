@@ -115,6 +115,21 @@ function firstSubscriptionPriceId(subscription: Record<string, unknown>) {
   return stringValue((price as Record<string, unknown>).id);
 }
 
+function firstSubscriptionItemValue(subscription: Record<string, unknown>, key: string) {
+  const items = subscription.items;
+
+  if (!items || typeof items !== "object") {
+    return null;
+  }
+
+  const data = (items as Record<string, unknown>).data;
+  if (!Array.isArray(data) || !data[0] || typeof data[0] !== "object") {
+    return null;
+  }
+
+  return (data[0] as Record<string, unknown>)[key] ?? null;
+}
+
 function subscriptionIdFromInvoice(invoice: Record<string, unknown>) {
   const parent = invoice.parent;
   if (parent && typeof parent === "object") {
@@ -151,6 +166,25 @@ function unixSecondsToIso(value: unknown) {
   }
 
   return new Date(seconds * 1000).toISOString();
+}
+
+function subscriptionPeriodEnd(subscription: Record<string, unknown>) {
+  return (
+    unixSecondsToIso(subscription.current_period_end) ??
+    unixSecondsToIso(firstSubscriptionItemValue(subscription, "current_period_end")) ??
+    unixSecondsToIso(subscription.cancel_at)
+  );
+}
+
+function subscriptionCancelAtPeriodEnd(subscription: Record<string, unknown>) {
+  if (subscription.cancel_at_period_end === true) {
+    return true;
+  }
+
+  const status = stringValue(subscription.status);
+  const cancelAt = numberValue(subscription.cancel_at);
+
+  return Boolean(cancelAt && status !== "canceled");
 }
 
 export function assertStripeCheckoutConfigured() {
@@ -380,8 +414,8 @@ export function stripeSubscriptionSnapshot(subscription: Record<string, unknown>
     status: normalizeStripeSubscriptionStatus(stringValue(subscription.status)),
     priceId: firstSubscriptionPriceId(subscription),
     trialEndsAt: unixSecondsToIso(subscription.trial_end),
-    currentPeriodEnd: unixSecondsToIso(subscription.current_period_end),
-    cancelAtPeriodEnd: subscription.cancel_at_period_end === true,
+    currentPeriodEnd: subscriptionPeriodEnd(subscription),
+    cancelAtPeriodEnd: subscriptionCancelAtPeriodEnd(subscription),
   };
 }
 

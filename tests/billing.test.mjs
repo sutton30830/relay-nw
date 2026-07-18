@@ -333,6 +333,41 @@ test("subscription updates use metadata account id and preserve trial end", () =
   assert.equal(update.trialEndsAt, "2027-01-15T08:00:00.000Z");
 });
 
+test("stripe subscription snapshots preserve scheduled cancellation from cancel_at", () => {
+  const snapshot = stripeBilling.stripeSubscriptionSnapshot({
+    id: "sub_123",
+    customer: "cus_123",
+    status: "active",
+    cancel_at: 1_786_924_800,
+    items: {
+      data: [{ price: { id: "price_123" } }],
+    },
+  });
+
+  assert.equal(snapshot.cancelAtPeriodEnd, true);
+  assert.equal(snapshot.currentPeriodEnd, "2026-08-17T00:00:00.000Z");
+});
+
+test("stripe subscription snapshots read period end from subscription items", () => {
+  const snapshot = stripeBilling.stripeSubscriptionSnapshot({
+    id: "sub_123",
+    customer: "cus_123",
+    status: "active",
+    cancel_at_period_end: true,
+    items: {
+      data: [
+        {
+          current_period_end: 1_786_924_800,
+          price: { id: "price_123" },
+        },
+      ],
+    },
+  });
+
+  assert.equal(snapshot.cancelAtPeriodEnd, true);
+  assert.equal(snapshot.currentPeriodEnd, "2026-08-17T00:00:00.000Z");
+});
+
 test("subscription deleted marks the account canceled", () => {
   const update = stripeBilling.extractBillingUpdateFromStripeEvent({
     type: "customer.subscription.deleted",
