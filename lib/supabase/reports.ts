@@ -37,6 +37,65 @@ export type ResponseStats = {
 
 export const EMPTY_RESPONSE_STATS: ResponseStats = { medianSeconds: null, sampleSize: 0 };
 
+type SupabaseReportError = { message: string; code?: string } | null;
+
+function isMissingReplyLeadIdError(error: SupabaseReportError) {
+  if (!error) return false;
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("lead_id") &&
+    (error.code === "42703" ||
+      error.code === "PGRST204" ||
+      message.includes("column") ||
+      message.includes("schema cache"))
+  );
+}
+
+async function getReplyStats(accountId: string, since: string | null, until: string | null) {
+  let richQuery = supabaseAdmin
+    .from("inbound_messages")
+    .select("id, lead_id")
+    .eq("account_id", accountId);
+  if (since) richQuery = richQuery.gte("created_at", since);
+  if (until) richQuery = richQuery.lt("created_at", until);
+
+  const { data, error } = await richQuery.limit(5000);
+
+  if (!error) {
+    return {
+      replies: data?.length ?? 0,
+      uniqueReplyLeads: new Set(
+        (data ?? []).map((row) => row.lead_id as string | null).filter(Boolean),
+      ).size,
+    };
+  }
+
+  if (!isMissingReplyLeadIdError(error)) {
+    throwIfSupabaseError(error);
+  }
+
+  console.warn("inbound_messages.lead_id is unavailable. Reports are falling back to raw reply count.");
+
+  let fallbackQuery = supabaseAdmin
+    .from("inbound_messages")
+    .select("id", { count: "exact", head: true })
+    .eq("account_id", accountId);
+  if (since) fallbackQuery = fallbackQuery.gte("created_at", since);
+  if (until) fallbackQuery = fallbackQuery.lt("created_at", until);
+
+  const { count, error: fallbackError } = await fallbackQuery;
+  throwIfSupabaseError(fallbackError);
+
+  const replies = count ?? 0;
+  return {
+    replies,
+    // Compatibility fallback: if the richer lead_id column is not deployed yet,
+    // avoid taking the Reports page down. This may over-count when one lead
+    // sends multiple replies, but it keeps the owner-facing page available.
+    uniqueReplyLeads: replies,
+  };
+}
+
 async function countLeadsWhere(
   accountId: string,
   since: string | null,
@@ -77,13 +136,6 @@ export async function getAccountRecoveryStats(
   const since = period.since;
   const until = period.until ?? null;
 
-  let repliesQuery = supabaseAdmin
-    .from("inbound_messages")
-    .select("id, lead_id")
-    .eq("account_id", accountId);
-  if (since) repliesQuery = repliesQuery.gte("created_at", since);
-  if (until) repliesQuery = repliesQuery.lt("created_at", until);
-
   // Booked jobs are attributed to when they were booked, not when the call came in.
   let bookedQuery = supabaseAdmin
     .from("leads")
@@ -99,18 +151,17 @@ export async function getAccountRecoveryStats(
     textedBack,
     smsFailed,
     urgent,
-    { data: replyRows, error: repliesError },
+    replyStats,
     { data: bookedRows, error: bookedError },
   ] = await Promise.all([
     countLeadsWhere(accountId, since, until, (query) => query.eq("source", "missed_call")),
     countLeadsWhere(accountId, since, until, (query) => query.in("sms_status", ["sent", "delivered"])),
     countLeadsWhere(accountId, since, until, (query) => query.in("sms_status", ["failed", "undelivered"])),
     countLeadsWhere(accountId, since, until, (query) => query.eq("priority", "fast")),
-    repliesQuery.limit(5000),
+    getReplyStats(accountId, since, until),
     bookedQuery.limit(2000),
   ]);
 
-  throwIfSupabaseError(repliesError);
   throwIfSupabaseError(bookedError);
 
   const booked = bookedRows?.length ?? 0;
@@ -119,16 +170,13 @@ export async function getAccountRecoveryStats(
     (total, row) => total + (row.job_value_cents ?? 0),
     0,
   );
-  const uniqueReplyLeads = new Set(
-    (replyRows ?? []).map((row) => row.lead_id as string | null).filter(Boolean),
-  ).size;
 
   return {
     missedCalls,
     textedBack,
     urgent,
-    replies: replyRows?.length ?? 0,
-    uniqueReplyLeads,
+    replies: replyStats.replies,
+    uniqueReplyLeads: replyStats.uniqueReplyLeads,
     booked,
     bookedMissingValue,
     recoveredCents,

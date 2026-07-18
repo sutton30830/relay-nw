@@ -37,3 +37,9 @@ test("reports stats distinguish reply leads and booked jobs missing value", () =
   assert.match(reportsData, /new Set/);
   assert.match(reportsData, /job_value_cents/);
 });
+
+test("reports stats degrade safely when unique reply lead data is unavailable", () => {
+  assert.match(reportsData, /isMissingReplyLeadIdError/);
+  assert.match(reportsData, /falling back to raw reply count/);
+  assert.match(reportsData, /uniqueReplyLeads: replies/);
+});
