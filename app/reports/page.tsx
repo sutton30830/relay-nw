@@ -27,20 +27,24 @@ function pluralize(count: number, singular: string, plural = `${singular}s`) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-function ReportMetric({
+function LedgerRow({
   label,
   value,
   hint,
+  emphasis = false,
 }: {
   label: string;
   value: string;
   hint: string;
+  emphasis?: boolean;
 }) {
   return (
-    <div className="panel report-metric">
-      <p className="t-eyebrow report-metric__label">{label}</p>
-      <p className="report-metric__value">{value}</p>
-      <p className="report-metric__hint">{hint}</p>
+    <div className={`ledger__row${emphasis ? " ledger__row--total" : ""}`}>
+      <div>
+        <p className="t-eyebrow ledger__label">{label}</p>
+        <p className="ledger__hint">{hint}</p>
+      </div>
+      <p className="ledger__value">{value}</p>
     </div>
   );
 }
@@ -147,26 +151,27 @@ export default async function ReportsPage() {
             <div className="drawer__section-head report-period__head">
               <p className="t-eyebrow">This month</p>
             </div>
-            <div className="report-metric-grid">
-              <ReportMetric
+            <div className="ledger">
+              <LedgerRow
                 label="Missed calls captured"
                 value={String(thisMonth.missedCalls)}
                 hint="Calls Relay saved in your inbox."
               />
-              <ReportMetric
+              <LedgerRow
                 label="Leads that replied"
                 value={String(thisMonth.uniqueReplyLeads)}
                 hint="People who texted back after Relay followed up."
               />
-              <ReportMetric
+              <LedgerRow
                 label="Jobs booked"
                 value={String(thisMonth.booked)}
                 hint="Leads you marked as booked this month."
               />
-              <ReportMetric
+              <LedgerRow
                 label="Booked value"
                 value={formatDollars(thisMonth.recoveredCents)}
                 hint="Only counts values you entered."
+                emphasis
               />
             </div>
           </section>
