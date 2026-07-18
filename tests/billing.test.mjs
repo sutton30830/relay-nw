@@ -228,6 +228,23 @@ test("scheduled cancellation stays manageable and does not imply service shutdow
   assert.match(state.summary, /keeps catching missed calls/);
 });
 
+test("scheduled cancellation is visible in billing readiness cards", () => {
+  const state = billing.computeBillingReadiness({
+    billing: billingRecord({
+      billingStatus: "active",
+      cancelAtPeriodEnd: true,
+      currentPeriodEnd: "2026-08-16T12:00:00.000Z",
+    }),
+    setupReadiness: setupReadiness({ callCaptureReady: true, smsRegistrationReady: true }),
+  });
+
+  assert.equal(state.state, "active");
+  assert.equal(state.label, "Active until Aug 16, 2026");
+  assert.equal(state.headline, "Subscription has been canceled.");
+  assert.match(state.summary, /Relay keeps working until Aug 16, 2026/);
+  assert.equal(state.tone, "warn");
+});
+
 test("past due and canceled are visible attention states but do not disable Relay in Phase 5A", () => {
   for (const billingStatus of ["past_due", "canceled"]) {
     const state = billing.computeBillingReadiness({

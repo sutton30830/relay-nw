@@ -173,16 +173,22 @@ export function isBillingActivationReady(readiness: Pick<SetupReadiness, "callCa
   return readiness.callCaptureReady && readiness.smsRegistrationReady;
 }
 
+function formatBillingLifecycleDate(value: string | null) {
+  if (!value) return null;
+
+  return new Date(value).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 function trialSummary(trialEndsAt: string | null) {
   if (!trialEndsAt) {
     return "Billing is in trial mode. Relay should keep working while the subscription is checked.";
   }
 
-  return `Trial is active until ${new Date(trialEndsAt).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  })}.`;
+  return `Trial is active until ${formatBillingLifecycleDate(trialEndsAt)}.`;
 }
 
 export function computeBillingReadiness(input: {
@@ -194,6 +200,24 @@ export function computeBillingReadiness(input: {
   const billingStatus = normalizeBillingStatus(billing.billingStatus);
 
   if (billingStatus === "active") {
+    if (billing.cancelAtPeriodEnd) {
+      const periodEnd = formatBillingLifecycleDate(billing.currentPeriodEnd);
+
+      return {
+        state: "active",
+        activationReady: lifecycle.activationReady,
+        billingStatus,
+        onboardingStatus: lifecycle.onboardingStatus,
+        ownerAction: lifecycle.ownerAction,
+        label: periodEnd ? `Active until ${periodEnd}` : "Active until period end",
+        headline: "Subscription has been canceled.",
+        summary: periodEnd
+          ? `Relay keeps working until ${periodEnd}.`
+          : "Relay keeps working until the current billing period ends.",
+        tone: "warn",
+      };
+    }
+
     return {
       state: "active",
       activationReady: lifecycle.activationReady,
