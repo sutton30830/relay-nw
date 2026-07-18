@@ -102,11 +102,16 @@ async function postOperatorDeadline({
       },
     },
     "@/lib/supabase": {
-      canMoveAccountToCustomerDelay: (status) => (
-        status === "requirements_needed" ||
-        status === "waiting_on_customer" ||
-        status === "paused_incomplete" ||
-        status === "closed_incomplete"
+      canMoveAccountToCustomerDelay: (status, lifecycleDates) => (
+        !lifecycleDates?.activatedAt &&
+        !lifecycleDates?.firstPaidAt &&
+        !lifecycleDates?.guaranteeEndsAt &&
+        (
+          status === "requirements_needed" ||
+          status === "waiting_on_customer" ||
+          status === "paused_incomplete" ||
+          status === "closed_incomplete"
+        )
       ),
       getOpsOnboardingAccountBySlug: async () => account,
       markAccountRequirementsRequested: async (input) => {
@@ -171,6 +176,19 @@ test("carrier_review is not treated as customer delay", async () => {
   assert.equal(result.calls.marks.length, 0);
 });
 
+test("activated account is not moved back into customer delay", async () => {
+  const result = await postOperatorDeadline({
+    account: {
+      accountId: "acct_1",
+      accountSlug: "demo",
+      onboardingStatus: "waiting_on_customer",
+      activatedAt: "2026-07-01T00:00:00.000Z",
+    },
+  });
+  assert.match(result.redirect, /onboarding=not_customer_delay/);
+  assert.equal(result.calls.marks.length, 0);
+});
+
 test("reopening code does not reset durable activation, first-paid, or guarantee dates", async () => {
   const accountStore = await readFile(new URL("../lib/supabase/accounts.ts", import.meta.url), "utf8");
   const helperBody = accountStore.slice(accountStore.indexOf("export async function markAccountRequirementsRequested"));
@@ -219,12 +237,42 @@ test("launch verifier reports paused SMS as operational choice, not setup failur
   assert.equal(result.ok, true);
 });
 
+test("launch verifier reconciles stale customer-delay status for active accounts", () => {
+  const result = analyzeLaunchCertification(readyFacts({
+    account: {
+      onboarding_status: "waiting_on_customer",
+      requirements_due_at: "2026-07-31T00:00:00.000Z",
+      activated_at: "2026-07-17T00:00:00.000Z",
+    },
+  }));
+  const lifecycle = result.checks.find((check) => check.label === "onboarding lifecycle");
+  const blocker = result.checks.find((check) => check.label === "onboarding blocker");
+
+  assert.equal(result.ok, true);
+  assert.match(lifecycle.detail, /effective=activated/);
+  assert.equal(blocker.level, "pass");
+});
+
 test("launch verifier distinguishes customer delay from carrier delay", () => {
   const customer = analyzeLaunchCertification(readyFacts({
-    account: { onboarding_status: "waiting_on_customer" },
+    account: {
+      billing_status: "not_started",
+      stripe_subscription_status: null,
+      onboarding_status: "waiting_on_customer",
+      activated_at: null,
+      first_paid_at: null,
+    },
+    lastPassedForwarding: null,
   }));
   const carrier = analyzeLaunchCertification(readyFacts({
-    account: { onboarding_status: "carrier_review" },
+    account: {
+      billing_status: "not_started",
+      stripe_subscription_status: null,
+      onboarding_status: "carrier_review",
+      activated_at: null,
+      first_paid_at: null,
+    },
+    settings: { a2p_registration_status: "in_progress" },
   }));
 
   assert.equal(customer.blocker, "customer_delay");

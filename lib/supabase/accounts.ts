@@ -892,7 +892,18 @@ export async function getOpsOnboardingAccountBySlug(slug: string): Promise<OpsOn
   };
 }
 
-export function canMoveAccountToCustomerDelay(status: AccountOnboardingStatus) {
+export function canMoveAccountToCustomerDelay(
+  status: AccountOnboardingStatus,
+  lifecycleDates?: {
+    activatedAt?: string | null;
+    firstPaidAt?: string | null;
+    guaranteeEndsAt?: string | null;
+  },
+) {
+  if (lifecycleDates?.activatedAt || lifecycleDates?.firstPaidAt || lifecycleDates?.guaranteeEndsAt) {
+    return false;
+  }
+
   return (
     status === "requirements_needed" ||
     status === "waiting_on_customer" ||

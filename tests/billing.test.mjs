@@ -98,6 +98,31 @@ test("billing lifecycle derives ready_to_activate when calls and carrier registr
   assert.equal(state.carrierDelay, false);
 });
 
+test("effective onboarding treats paid or activated accounts as activated", () => {
+  const activatedDate = billing.computeBillingLifecycle({
+    billing: billingRecord({
+      billingStatus: "canceled",
+      onboardingStatus: "waiting_on_customer",
+      requirementsDueAt: "2026-08-01T00:00:00.000Z",
+      activatedAt: "2026-07-01T00:00:00.000Z",
+    }),
+    setupReadiness: setupReadiness({ callCaptureReady: false, smsRegistrationReady: false }),
+  });
+  const activeBilling = billing.computeBillingLifecycle({
+    billing: billingRecord({
+      billingStatus: "active",
+      onboardingStatus: "waiting_on_customer",
+      requirementsDueAt: "2026-08-01T00:00:00.000Z",
+    }),
+    setupReadiness: setupReadiness({ callCaptureReady: false, smsRegistrationReady: false }),
+  });
+
+  assert.equal(activatedDate.onboardingStatus, "activated");
+  assert.equal(activatedDate.customerDelay, false);
+  assert.equal(activeBilling.onboardingStatus, "activated");
+  assert.equal(activeBilling.customerDelay, false);
+});
+
 test("sms pause does not change billing eligibility once infrastructure is ready", () => {
   const smsPausedButReady = { callCaptureReady: true, smsRegistrationReady: true, smsEnabled: false };
   const state = billing.computeBillingLifecycle({
@@ -366,6 +391,29 @@ test("stripe subscription snapshots read period end from subscription items", ()
 
   assert.equal(snapshot.cancelAtPeriodEnd, true);
   assert.equal(snapshot.currentPeriodEnd, "2026-08-17T00:00:00.000Z");
+});
+
+test("paid stripe subscription update activates onboarding and clears stale customer deadline", () => {
+  const update = stripeBilling.billingUpdateFromSubscription(
+    "acct_123",
+    {
+      id: "sub_123",
+      customerId: "cus_123",
+      priceId: "price_123",
+      status: "active",
+      trialEndsAt: null,
+      currentPeriodEnd: "2026-08-17T00:00:00.000Z",
+      cancelAtPeriodEnd: false,
+    },
+    { nowIso: "2026-07-17T00:00:00.000Z" },
+  );
+
+  assert.equal(update.billingStatus, "active");
+  assert.equal(update.onboardingStatus, "activated");
+  assert.equal(update.requirementsDueAt, null);
+  assert.equal(update.activatedAt, "2026-07-17T00:00:00.000Z");
+  assert.equal(update.firstPaidAt, "2026-07-17T00:00:00.000Z");
+  assert.equal(update.guaranteeEndsAt, "2026-08-16T00:00:00.000Z");
 });
 
 test("subscription deleted marks the account canceled", () => {

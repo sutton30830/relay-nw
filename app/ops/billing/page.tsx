@@ -127,7 +127,7 @@ export default async function OpsBillingPage({
   const ignoredCount = allEvents.filter((event) => event.processing_status === "ignored").length;
   const processingCount = allEvents.filter((event) => event.processing_status === "processing").length;
   const notice = onboardingNotice(onboarding, onboardingAccountSlug);
-  const canStartCustomerDelay = canMoveAccountToCustomerDelay(billing.onboardingStatus);
+  const canStartCustomerDelay = canMoveAccountToCustomerDelay(billing.onboardingStatus, billing);
 
   return (
     <main className="leads-view">

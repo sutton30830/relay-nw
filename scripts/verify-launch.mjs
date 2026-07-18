@@ -120,8 +120,28 @@ function deriveCheckoutAllowed({ account, activationReady }) {
   return { ok: false, detail: `Checkout should be blocked for billing_status=${billingStatus}, stripe_subscription_status=${stripeStatus ?? "none"}.` };
 }
 
-function onboardingBlocker(account) {
+function deriveEffectiveOnboardingStatus(account, activationReady) {
   const status = account?.onboarding_status ?? "requirements_needed";
+  const billingStatus = account?.billing_status ?? "not_started";
+
+  if (
+    status === "activated" ||
+    account?.activated_at ||
+    account?.first_paid_at ||
+    billingStatus === "active" ||
+    billingStatus === "trialing" ||
+    billingStatus === "comped"
+  ) {
+    return "activated";
+  }
+
+  if (status === "paused_incomplete" || status === "closed_incomplete") return status;
+  if (activationReady) return "ready_to_activate";
+  return status;
+}
+
+function onboardingBlocker(account, activationReady) {
+  const status = deriveEffectiveOnboardingStatus(account, activationReady);
   if (CUSTOMER_DELAY_STATUSES.has(status)) return "customer_delay";
   if (CARRIER_DELAY_STATUSES.has(status)) return "carrier_delay";
   if (status === "ready_for_live_test") return "setup";
@@ -145,12 +165,6 @@ export function analyzeLaunchCertification(input) {
   if (!account) return { ok: false, checks };
 
   addCheck(checks, account.status === "active", "account active", account.status === "active" ? "Account row is active." : `Current status is ${account.status}.`);
-  addCheck(
-    checks,
-    true,
-    "onboarding lifecycle",
-    `onboarding_status=${account.onboarding_status ?? "requirements_needed"}, requirements_due_at=${account.requirements_due_at ?? "none"}, activated_at=${account.activated_at ?? "none"}, first_paid_at=${account.first_paid_at ?? "none"}, guarantee_ends_at=${account.guarantee_ends_at ?? "none"}.`,
-  );
   addCheck(
     checks,
     true,
@@ -188,8 +202,16 @@ export function analyzeLaunchCertification(input) {
   const callCapture = deriveCallCaptureReady({ settings, latestLead, lastPassedForwarding });
   const smsRegistrationReady = READY_A2P_STATUSES.has(settings?.a2p_registration_status ?? "not_started");
   const activationReady = callCapture.ready && smsRegistrationReady;
+  const effectiveOnboardingStatus = deriveEffectiveOnboardingStatus(account, activationReady);
   const checkoutAllowed = deriveCheckoutAllowed({ account, activationReady });
-  const blocker = onboardingBlocker(account);
+  const blocker = onboardingBlocker(account, activationReady);
+
+  addCheck(
+    checks,
+    true,
+    "onboarding lifecycle",
+    `onboarding_status=${account.onboarding_status ?? "requirements_needed"}, effective=${effectiveOnboardingStatus}, requirements_due_at=${account.requirements_due_at ?? "none"}, activated_at=${account.activated_at ?? "none"}, first_paid_at=${account.first_paid_at ?? "none"}, guarantee_ends_at=${account.guarantee_ends_at ?? "none"}.`,
+  );
 
   addCheck(checks, callCapture.ready, "call capture readiness", callCapture.detail);
   addCheck(
@@ -220,12 +242,12 @@ export function analyzeLaunchCertification(input) {
     blocker === "none",
     "onboarding blocker",
     blocker === "none"
-      ? `onboarding_status=${account.onboarding_status}.`
+      ? `effective_onboarding_status=${effectiveOnboardingStatus}.`
       : blocker === "customer_delay"
-        ? `Blocked by customer delay: onboarding_status=${account.onboarding_status}.`
+        ? `Blocked by customer delay: effective_onboarding_status=${effectiveOnboardingStatus}.`
         : blocker === "carrier_delay"
-          ? `Blocked by carrier/A2P delay: onboarding_status=${account.onboarding_status}.`
-          : `Blocked by setup: onboarding_status=${account.onboarding_status}.`,
+          ? `Blocked by carrier/A2P delay: effective_onboarding_status=${effectiveOnboardingStatus}.`
+          : `Blocked by setup: effective_onboarding_status=${effectiveOnboardingStatus}.`,
     blocker === "none" ? "pass" : "warn",
   );
   addCheck(

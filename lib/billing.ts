@@ -300,18 +300,26 @@ export function computeBillingReadiness(input: {
   };
 }
 
-function deriveOnboardingStatus(input: {
-  billing: AccountBillingRecord;
+export function deriveEffectiveOnboardingStatus(input: {
+  billing: Pick<AccountBillingRecord, "onboardingStatus" | "billingStatus" | "activatedAt" | "firstPaidAt">;
   activationReady: boolean;
 }): AccountOnboardingStatus {
   const current = normalizeOnboardingStatus(input.billing.onboardingStatus);
+  const billingStatus = normalizeBillingStatus(input.billing.billingStatus);
 
-  if (current === "activated" || current === "paused_incomplete" || current === "closed_incomplete") {
-    return current;
+  if (
+    current === "activated" ||
+    input.billing.activatedAt ||
+    input.billing.firstPaidAt ||
+    billingStatus === "active" ||
+    billingStatus === "trialing" ||
+    billingStatus === "comped"
+  ) {
+    return "activated";
   }
 
-  if (input.billing.activatedAt) {
-    return "activated";
+  if (current === "paused_incomplete" || current === "closed_incomplete") {
+    return current;
   }
 
   if (input.activationReady) {
@@ -365,7 +373,7 @@ export function computeBillingLifecycle(input: {
   const billing = input.billing ?? defaultBillingRecord();
   const activationReady = isBillingActivationReady(input.setupReadiness);
   const billingStatus = normalizeBillingStatus(billing.billingStatus);
-  const onboardingStatus = deriveOnboardingStatus({ billing, activationReady });
+  const onboardingStatus = deriveEffectiveOnboardingStatus({ billing, activationReady });
   const ownerAction = actionFor({
     billingStatus,
     onboardingStatus,

@@ -111,6 +111,43 @@ create unique index if not exists accounts_stripe_subscription_id_unique_idx
   on public.accounts (stripe_subscription_id)
   where stripe_subscription_id is not null;
 
+-- Phase 6A lifecycle coherence backfill.
+-- Paid or previously activated accounts should not remain in customer-delay
+-- onboarding states. This correction is idempotent and only fills missing
+-- durable dates; it never overwrites existing activation, first-paid, or
+-- guarantee dates.
+-- Rollback note: this is a semantic data correction. To roll back, restore the
+-- affected account row values from a pre-migration export or database backup.
+update public.accounts
+set
+  onboarding_status = 'activated',
+  onboarding_status_updated_at = coalesce(onboarding_status_updated_at, billing_updated_at, now()),
+  requirements_due_at = null,
+  activated_at = coalesce(activated_at, first_paid_at, billing_updated_at, now()),
+  first_paid_at = case
+    when billing_status in ('active', 'trialing') then coalesce(first_paid_at, activated_at, billing_updated_at, now())
+    else first_paid_at
+  end,
+  guarantee_ends_at = case
+    when billing_status in ('active', 'trialing') and guarantee_ends_at is null then
+      coalesce(first_paid_at, activated_at, billing_updated_at, now()) + interval '30 days'
+    else guarantee_ends_at
+  end
+where
+  (
+    onboarding_status = 'activated' or
+    activated_at is not null or
+    first_paid_at is not null or
+    billing_status in ('active', 'trialing', 'comped')
+  )
+  and (
+    onboarding_status is distinct from 'activated' or
+    requirements_due_at is not null or
+    activated_at is null or
+    (billing_status in ('active', 'trialing') and first_paid_at is null) or
+    (billing_status in ('active', 'trialing') and guarantee_ends_at is null)
+  );
+
 alter table public.accounts enable row level security;
 
 -- Phase 5C billing lifecycle migration.

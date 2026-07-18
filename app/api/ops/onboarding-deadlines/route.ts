@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     return redirectWith("account_not_found", accountSlug);
   }
 
-  if (!canMoveAccountToCustomerDelay(account.onboardingStatus)) {
+  if (!canMoveAccountToCustomerDelay(account.onboardingStatus, account)) {
     return redirectWith("not_customer_delay", account.accountSlug);
   }
 
