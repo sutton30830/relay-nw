@@ -7,7 +7,9 @@ export type RecoveryStats = {
   textedBack: number;
   urgent: number;
   replies: number;
+  uniqueReplyLeads: number;
   booked: number;
+  bookedMissingValue: number;
   recoveredCents: number;
   // Auto-texts that failed to reach the caller (failed/undelivered). Paired with
   // textedBack this gives a text success rate.
@@ -19,7 +21,9 @@ export const EMPTY_RECOVERY_STATS: RecoveryStats = {
   textedBack: 0,
   urgent: 0,
   replies: 0,
+  uniqueReplyLeads: 0,
   booked: 0,
+  bookedMissingValue: 0,
   recoveredCents: 0,
   smsFailed: 0,
 };
@@ -75,7 +79,7 @@ export async function getAccountRecoveryStats(
 
   let repliesQuery = supabaseAdmin
     .from("inbound_messages")
-    .select("id", { count: "exact", head: true })
+    .select("id, lead_id")
     .eq("account_id", accountId);
   if (since) repliesQuery = repliesQuery.gte("created_at", since);
   if (until) repliesQuery = repliesQuery.lt("created_at", until);
@@ -95,14 +99,14 @@ export async function getAccountRecoveryStats(
     textedBack,
     smsFailed,
     urgent,
-    { count: replies, error: repliesError },
+    { data: replyRows, error: repliesError },
     { data: bookedRows, error: bookedError },
   ] = await Promise.all([
     countLeadsWhere(accountId, since, until, (query) => query.eq("source", "missed_call")),
     countLeadsWhere(accountId, since, until, (query) => query.in("sms_status", ["sent", "delivered"])),
     countLeadsWhere(accountId, since, until, (query) => query.in("sms_status", ["failed", "undelivered"])),
     countLeadsWhere(accountId, since, until, (query) => query.eq("priority", "fast")),
-    repliesQuery,
+    repliesQuery.limit(5000),
     bookedQuery.limit(2000),
   ]);
 
@@ -110,17 +114,23 @@ export async function getAccountRecoveryStats(
   throwIfSupabaseError(bookedError);
 
   const booked = bookedRows?.length ?? 0;
+  const bookedMissingValue = (bookedRows ?? []).filter((row) => (row.job_value_cents ?? 0) <= 0).length;
   const recoveredCents = (bookedRows ?? []).reduce(
     (total, row) => total + (row.job_value_cents ?? 0),
     0,
   );
+  const uniqueReplyLeads = new Set(
+    (replyRows ?? []).map((row) => row.lead_id as string | null).filter(Boolean),
+  ).size;
 
   return {
     missedCalls,
     textedBack,
     urgent,
-    replies: replies ?? 0,
+    replies: replyRows?.length ?? 0,
+    uniqueReplyLeads,
     booked,
+    bookedMissingValue,
     recoveredCents,
     smsFailed,
   };

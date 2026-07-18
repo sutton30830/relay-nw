@@ -4,11 +4,9 @@ import { AppHeader } from "@/app/leads/_components/app-header";
 import { requireAccountUser } from "@/lib/auth";
 import {
   getAccountRecoveryStats,
-  getAccountResponseStats,
   getLeadInboxCountsForAccount,
   type RecoveryStats,
 } from "@/lib/supabase";
-import { formatPercent, formatResponseTime, rate } from "@/lib/report-metrics";
 
 export const dynamic = "force-dynamic";
 
@@ -24,70 +22,67 @@ function monthLabel(date: Date) {
   return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 
-function StatTile({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function pluralize(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function ReportMetric({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+}) {
   return (
-    <div className="panel report-tile">
-      <p className="t-eyebrow report-tile__label">{label}</p>
-      <p className="report-tile__value">{value}</p>
-      {hint ? <p className="report-tile__hint">{hint}</p> : null}
+    <div className="panel report-metric">
+      <p className="t-eyebrow report-metric__label">{label}</p>
+      <p className="report-metric__value">{value}</p>
+      <p className="report-metric__hint">{hint}</p>
     </div>
   );
 }
 
-// A headline metric. When href is set it's a clickable path into the relevant
-// filtered inbox, so a number turns into the next action.
-function MetricTile({
+function ActionCard({
   label,
   value,
   hint,
   href,
+  tone = "default",
 }: {
   label: string;
   value: string;
-  hint?: string;
-  href?: string;
+  hint: string;
+  href: string;
+  tone?: "default" | "warning";
 }) {
-  const body = (
-    <>
-      <p className="t-eyebrow report-tile__label">{label}</p>
-      <p className="report-tile__value">{value}</p>
-      {hint ? <p className="report-tile__hint">{hint}</p> : null}
-      {href ? (
-        <span className="report-tile__link">
-          Open <Icon name="arrowRight" size={12} />
-        </span>
-      ) : null}
-    </>
-  );
-  return href ? (
-    <Link className="panel report-tile report-tile--link" href={href}>
-      {body}
+  return (
+    <Link className={`panel report-action report-action--${tone}`} href={href}>
+      <div>
+        <p className="t-eyebrow report-action__label">{label}</p>
+        <p className="report-action__value">{value}</p>
+        <p className="report-action__hint">{hint}</p>
+      </div>
+      <span className="report-action__open">
+        Open <Icon name="arrowRight" size={13} />
+      </span>
     </Link>
-  ) : (
-    <div className="panel report-tile">{body}</div>
   );
 }
 
-function PeriodSection({ title, stats }: { title: string; stats: RecoveryStats }) {
+function CompareItem({ label, current, previous }: { label: string; current: string; previous: string }) {
   return (
-    <section className="report-period">
-      <div className="drawer__section-head report-period__head">
-        <p className="t-eyebrow">{title}</p>
-      </div>
-      <div className="report-tile-grid">
-        <StatTile label="Missed calls caught" value={String(stats.missedCalls)} />
-        <StatTile label="Texted back" value={String(stats.textedBack)} />
-        <StatTile label="Urgent calls" value={String(stats.urgent)} />
-        <StatTile label="Customer replies" value={String(stats.replies)} />
-        <StatTile
-          label="Jobs booked"
-          value={String(stats.booked)}
-          hint={stats.booked === 0 ? "Mark leads booked with a value" : undefined}
-        />
-        <StatTile label="Recovered" value={formatDollars(stats.recoveredCents)} />
-      </div>
-    </section>
+    <div className="report-compare__item">
+      <p className="t-eyebrow">{label}</p>
+      <p>{current}</p>
+      <span>Last month: {previous}</span>
+    </div>
   );
+}
+
+function hasUsefulPriorMonth(stats: RecoveryStats) {
+  return stats.missedCalls > 0 || stats.booked > 0 || stats.recoveredCents > 0;
 }
 
 export default async function ReportsPage() {
@@ -97,24 +92,22 @@ export default async function ReportsPage() {
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
-  const [thisMonth, lastMonth, allTime, responseThisMonth, inboxCounts] = await Promise.all([
+  const [thisMonth, lastMonth, allTime, inboxCounts] = await Promise.all([
     getAccountRecoveryStats(accountId, { since: thisMonthStart.toISOString() }),
     getAccountRecoveryStats(accountId, {
       since: lastMonthStart.toISOString(),
       until: thisMonthStart.toISOString(),
     }),
     getAccountRecoveryStats(accountId, { since: null }),
-    getAccountResponseStats(accountId, { since: thisMonthStart.toISOString() }),
     getLeadInboxCountsForAccount(accountId),
   ]);
 
-  const heroCents = thisMonth.recoveredCents;
-
-  // Action-oriented headline metrics for this month.
-  const bookingRate = rate(thisMonth.booked, thisMonth.missedCalls);
-  const textAttempts = thisMonth.textedBack + thisMonth.smsFailed;
-  const textSuccessRate = rate(thisMonth.textedBack, textAttempts);
-  const awaitingAction = inboxCounts.new;
+  const heroSub =
+    thisMonth.booked > 0
+      ? `${pluralize(thisMonth.booked, "job")} marked booked this month from Relay leads.`
+      : thisMonth.missedCalls > 0
+        ? `${pluralize(thisMonth.missedCalls, "missed call")} captured this month. Mark booked jobs to track recovery.`
+        : "Once Relay catches missed calls and you mark booked jobs, the value will show here.";
 
   return (
     <main className="leads-view">
@@ -128,69 +121,118 @@ export default async function ReportsPage() {
         <div className="leads-header">
           <div>
             <p className="t-eyebrow">Reports</p>
-            <h1 className="t-display">Recovered revenue</h1>
+            <h1 className="t-display">What Relay recovered</h1>
             <p className="leads-subtitle">{account.businessName}</p>
           </div>
         </div>
 
         <section className="panel report-hero">
-          <p className="t-eyebrow report-hero__label">
-            Recovered so far in {monthLabel(now)}
-          </p>
-          <p className="report-hero__value">
-            {formatDollars(heroCents)}
-          </p>
-          <p className="report-hero__sub">
-            from {thisMonth.booked} booked {thisMonth.booked === 1 ? "job" : "jobs"} out of{" "}
-            {thisMonth.missedCalls} missed {thisMonth.missedCalls === 1 ? "call" : "calls"} caught
-          </p>
+          <div>
+            <p className="t-eyebrow report-hero__label">{monthLabel(now)}</p>
+            <h2 className="report-hero__title">
+              {formatDollars(thisMonth.recoveredCents)} booked from Relay leads
+            </h2>
+            <p className="report-hero__sub">{heroSub}</p>
+          </div>
+          <p className="report-hero__note">Based on job values you entered.</p>
         </section>
 
-        <section className="report-period" aria-label="This month at a glance">
+        <section className="report-period" aria-label="This month">
           <div className="drawer__section-head report-period__head">
-            <p className="t-eyebrow">This month at a glance</p>
+            <p className="t-eyebrow">This month</p>
           </div>
-          <div className="report-tile-grid">
-            <MetricTile
-              label="Booking rate"
-              value={formatPercent(bookingRate)}
-              hint={`${thisMonth.booked} of ${thisMonth.missedCalls} caught`}
+          <div className="report-metric-grid">
+            <ReportMetric
+              label="Missed calls captured"
+              value={String(thisMonth.missedCalls)}
+              hint="Calls Relay saved in your inbox."
             />
-            <MetricTile
-              label="Median response"
-              value={formatResponseTime(responseThisMonth.medianSeconds)}
-              hint={
-                responseThisMonth.sampleSize > 0
-                  ? "Missed call to first text back"
-                  : "No responses yet this month"
-              }
+            <ReportMetric
+              label="Leads that replied"
+              value={String(thisMonth.uniqueReplyLeads)}
+              hint="People who texted back after Relay followed up."
             />
-            <MetricTile
-              label="Leads awaiting action"
-              value={String(awaitingAction)}
-              hint={awaitingAction > 0 ? "New leads to work now" : "You're all caught up"}
-              href={awaitingAction > 0 ? "/leads?filter=new" : undefined}
+            <ReportMetric
+              label="Jobs booked"
+              value={String(thisMonth.booked)}
+              hint="Leads you marked as booked this month."
             />
-            <MetricTile
-              label="Text success rate"
-              value={formatPercent(textSuccessRate)}
-              hint={
-                textAttempts > 0
-                  ? `${thisMonth.textedBack} of ${textAttempts} delivered`
-                  : "No auto-texts sent yet"
-              }
+            <ReportMetric
+              label="Booked value"
+              value={formatDollars(thisMonth.recoveredCents)}
+              hint="Only counts values you entered."
             />
           </div>
         </section>
 
-        <PeriodSection title={monthLabel(now)} stats={thisMonth} />
-        <PeriodSection title={monthLabel(lastMonthStart)} stats={lastMonth} />
-        <PeriodSection title="All time" stats={allTime} />
+        <section className="report-period" aria-label="Needs attention">
+          <div className="drawer__section-head report-period__head">
+            <p className="t-eyebrow">Needs attention</p>
+          </div>
+          <div className="report-action-grid">
+            <ActionCard
+              label="New leads"
+              value={String(inboxCounts.new)}
+              hint={inboxCounts.new > 0 ? "Call or text these next." : "No fresh leads waiting."}
+              href="/leads?filter=new"
+            />
+            <ActionCard
+              label="Failed texts"
+              value={String(inboxCounts.smsIssues)}
+              hint={
+                inboxCounts.smsIssues > 0
+                  ? "Open the inbox and call these directly."
+                  : "No known delivery issues."
+              }
+              href="/leads"
+              tone={inboxCounts.smsIssues > 0 ? "warning" : "default"}
+            />
+            <ActionCard
+              label="Booked missing value"
+              value={String(thisMonth.bookedMissingValue)}
+              hint={
+                thisMonth.bookedMissingValue > 0
+                  ? "Add values so reports tell the truth."
+                  : "Booked jobs have values entered."
+              }
+              href="/leads?filter=booked"
+            />
+          </div>
+        </section>
 
-        <p className="report-note">
-          Recovered revenue counts the booked value you enter on leads, attributed to the
-          month the job was booked.
-        </p>
+        {hasUsefulPriorMonth(lastMonth) ? (
+          <section className="panel report-compare" aria-label="Prior month comparison">
+            <div>
+              <p className="t-eyebrow">Compared with {monthLabel(lastMonthStart)}</p>
+              <h2>Month over month</h2>
+            </div>
+            <div className="report-compare__grid">
+              <CompareItem
+                label="Booked value"
+                current={formatDollars(thisMonth.recoveredCents)}
+                previous={formatDollars(lastMonth.recoveredCents)}
+              />
+              <CompareItem
+                label="Jobs booked"
+                current={String(thisMonth.booked)}
+                previous={String(lastMonth.booked)}
+              />
+              <CompareItem
+                label="Missed calls captured"
+                current={String(thisMonth.missedCalls)}
+                previous={String(lastMonth.missedCalls)}
+              />
+            </div>
+          </section>
+        ) : null}
+
+        <section className="report-lifetime" aria-label="Lifetime totals">
+          <span>All time</span>
+          <strong>{formatDollars(allTime.recoveredCents)} booked</strong>
+          <span>
+            {pluralize(allTime.booked, "job")} · {pluralize(allTime.missedCalls, "missed call")} captured
+          </span>
+        </section>
       </section>
     </main>
   );

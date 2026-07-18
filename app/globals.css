@@ -3053,21 +3053,47 @@ code {
 /* --- Reports --- */
 .report-hero {
   margin-bottom: 28px;
-  padding: 24px 22px;
-  text-align: center;
+  padding: clamp(22px, 4vw, 34px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 22px;
+  background:
+    radial-gradient(circle at 85% 10%, color-mix(in oklab, var(--good-soft) 62%, transparent), transparent 38%),
+    var(--panel);
 }
-.report-hero__label {
+.report-hero__label,
+.report-metric__label,
+.report-action__label {
   margin: 0;
 }
-.report-hero__value {
-  margin: 8px 0 4px;
-  font-size: 44px;
-  font-weight: 800;
+.report-hero__title {
+  max-width: 760px;
+  margin: 10px 0 8px;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: clamp(36px, 7vw, 72px);
+  font-weight: 500;
+  letter-spacing: -0.055em;
+  line-height: 0.95;
 }
 .report-hero__sub {
   margin: 0;
   color: var(--ink-4);
-  font-size: 14px;
+  font-size: clamp(16px, 2vw, 20px);
+  line-height: 1.45;
+}
+.report-hero__note {
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-2);
+  padding: 10px 13px;
+  color: var(--ink-4);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 .report-period {
   margin-bottom: 28px;
@@ -3075,51 +3101,131 @@ code {
 .report-period__head {
   margin-bottom: 12px;
 }
-.report-tile-grid {
+.report-metric-grid,
+.report-action-grid,
+.report-compare__grid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
-.report-tile {
+.report-metric-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.report-metric {
   padding: 16px 18px;
 }
-.report-tile__label {
-  margin: 0;
-}
-.report-tile__value {
+.report-metric__value {
   margin: 6px 0 0;
   color: var(--ink);
   font-size: 28px;
   font-weight: 700;
 }
-.report-tile__hint {
+.report-metric__hint {
   margin: 4px 0 0;
   color: var(--ink-4);
   font-size: 12.5px;
 }
-/* A metric tile that is itself a link into the filtered inbox. */
-.report-tile--link {
-  display: block;
+.report-action-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.report-action {
+  display: flex;
+  min-height: 126px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
   text-decoration: none;
   color: inherit;
-  transition: border-color 140ms ease, box-shadow 140ms ease;
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
 }
-.report-tile--link:hover {
+.report-action:hover {
   border-color: var(--brand);
   box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
 }
-.report-tile__link {
+.report-action--warning {
+  border-color: color-mix(in oklab, var(--danger) 50%, var(--line));
+  background: color-mix(in oklab, var(--danger-soft) 38%, var(--panel));
+}
+.report-action__value {
+  margin: 8px 0 2px;
+  color: var(--ink);
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+.report-action__hint {
+  margin: 0;
+  color: var(--ink-4);
+  font-size: 13px;
+  line-height: 1.35;
+}
+.report-action__open {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-top: 8px;
   color: var(--brand);
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 650;
+  white-space: nowrap;
 }
-.report-note {
+.report-compare {
+  margin-bottom: 18px;
+  padding: 20px;
+}
+.report-compare h2 {
+  margin: 6px 0 16px;
+  color: var(--ink);
+  font-size: 24px;
+  letter-spacing: -0.04em;
+}
+.report-compare__grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.report-compare__item {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+.report-compare__item p {
+  margin: 4px 0 2px;
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 750;
+}
+.report-compare__item span,
+.report-lifetime {
   color: var(--ink-4);
   font-size: 12.5px;
+}
+.report-lifetime {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  padding: 16px 0 0;
+}
+.report-lifetime strong {
+  color: var(--ink);
+}
+
+@media (max-width: 820px) {
+  .report-hero {
+    display: block;
+  }
+  .report-hero__note {
+    display: inline-flex;
+    margin-top: 16px;
+    white-space: normal;
+  }
+  .report-metric-grid,
+  .report-action-grid,
+  .report-compare__grid {
+    grid-template-columns: 1fr;
+  }
+  .report-action {
+    min-height: 0;
+  }
 }
 
 .setup-panel__head {
