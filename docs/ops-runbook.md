@@ -2,6 +2,16 @@
 
 Use this when Relay NW is live for a business and something important may have failed. The goal is simple: protect the missed-call recovery loop, notify the right person, and avoid silently losing caller data.
 
+## Operator Boundary
+
+`/ops/*` is an internal Relay Operations surface. A Relay operator is an `owner` or `admin` user on the Relay NW house account, not a customer owner on a customer account.
+
+- Customer owners should use `/leads`, `/setup`, `/settings`, and `/reports`.
+- Operators can open `/ops` from the account menu when signed into the Relay NW house account.
+- Add an operator deliberately by inserting or inviting an `account_users` row for the Relay NW house account with role `owner` or `admin`.
+- Do not add customer users to the Relay NW house account unless they should have internal operational access.
+- If an operator belongs to multiple accounts, select the Relay NW house account before using `/ops/*`.
+
 ## First Response
 
 1. Open `/ops` for the affected account.

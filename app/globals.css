@@ -676,6 +676,102 @@ code {
   color: var(--ink-3);
 }
 
+.ops-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border: 1px solid color-mix(in oklab, var(--navy-soft) 72%, var(--ink));
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 92% 0%, color-mix(in oklab, var(--brand-2) 34%, transparent), transparent 30%),
+    linear-gradient(135deg, var(--navy) 0%, var(--ink) 62%, color-mix(in oklab, var(--navy-2) 82%, black) 100%);
+  color: var(--paper);
+  padding: 16px 18px;
+  box-shadow: var(--shadow-md);
+}
+
+.ops-header__brand {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.ops-header__mark {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--brand) 76%, black);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.ops-header__brand-copy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.ops-header__brand-copy .t-eyebrow {
+  color: color-mix(in oklab, var(--paper) 68%, transparent);
+  font-size: 10px;
+}
+
+.ops-header__brand-copy strong {
+  overflow: hidden;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ops-header__brand-copy span:last-child {
+  overflow: hidden;
+  color: color-mix(in oklab, var(--paper) 72%, transparent);
+  font-size: 13px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ops-header__right {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.ops-header__operator {
+  max-width: 260px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: color-mix(in oklab, var(--paper) 82%, transparent);
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ops-header .btn {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.ops-header .btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
 .account-select-card {
   max-width: 560px;
 }
@@ -4478,6 +4574,28 @@ code {
 
   .ops-toolbar__actions .btn {
     min-height: 36px;
+  }
+
+  .ops-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+    border-radius: 16px;
+    padding: 14px;
+  }
+
+  .ops-header__brand-copy strong {
+    font-size: 16px;
+  }
+
+  .ops-header__right {
+    align-items: stretch;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .ops-header__operator {
+    max-width: 100%;
   }
 
   .home-view .app-head__right--primary {

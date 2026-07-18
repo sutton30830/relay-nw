@@ -1,6 +1,6 @@
 import { LeadsList } from "@/app/leads/leads-list";
 import { publicBusinessName } from "@/lib/display-name";
-import { requireAccountUser } from "@/lib/auth";
+import { isRelayOperator, requireAccountUser } from "@/lib/auth";
 import {
   DEFAULT_LEADS_PAGE_LIMIT,
   getLeadInboxCountsForAccount,
@@ -33,7 +33,8 @@ export default async function LeadsPage({
 }: {
   searchParams: Promise<{ page?: string | string[]; filter?: string | string[]; q?: string | string[] }>;
 }) {
-  const { account, accountId, membershipCount } = await requireAccountUser();
+  const session = await requireAccountUser();
+  const { account, accountId, membershipCount } = session;
   const businessName = publicBusinessName(account.businessName);
   const params = await searchParams;
   const page = readPage(params.page);
@@ -58,6 +59,7 @@ export default async function LeadsPage({
       <LeadsList
         businessName={businessName}
         switchAccountHref={membershipCount > 1 ? "/account/select?next=/leads" : undefined}
+        showOperations={isRelayOperator(session)}
         leads={leadPage.leads}
         counts={counts}
         callCounts={leadPage.callCounts ?? {}}

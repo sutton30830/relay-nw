@@ -1,6 +1,6 @@
 import { Icon } from "@/components/icon";
 import { AppHeader } from "@/app/leads/_components/app-header";
-import { requireAccountUser } from "@/lib/auth";
+import { isRelayOperator, requireAccountUser } from "@/lib/auth";
 import { computeBillingLifecycle } from "@/lib/billing";
 import type { AccountBillingRecord, BillingLifecycleState } from "@/lib/billing";
 import { computeSetupReadiness, type A2pStatus } from "@/lib/readiness";
@@ -316,6 +316,7 @@ export default async function SettingsPage({
         <AppHeader
           businessName={account.businessName}
           currentPage="settings"
+          showOperations={isRelayOperator(session)}
           switchAccountHref={session.membershipCount > 1 ? "/account/select?next=/settings" : undefined}
         />
 

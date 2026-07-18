@@ -48,6 +48,7 @@ const opsPageTsx = await readFile(new URL("../app/ops/page.tsx", import.meta.url
 const opsBillingPageTsx = await readFile(new URL("../app/ops/billing/page.tsx", import.meta.url), "utf8");
 const opsRunbookPageTsx = await readFile(new URL("../app/ops/runbook/page.tsx", import.meta.url), "utf8");
 const opsSetupRequestsPageTsx = await readFile(new URL("../app/ops/setup-requests/page.tsx", import.meta.url), "utf8");
+const opsHeaderTsx = await readFile(new URL("../app/ops/_components/ops-header.tsx", import.meta.url), "utf8");
 const opsToolbarTsx = await readFile(new URL("../app/ops/_components/ops-toolbar.tsx", import.meta.url), "utf8");
 const opsSetupRequestsRouteTs = await readFile(new URL("../app/api/ops/setup-requests/route.ts", import.meta.url), "utf8");
 const opsOnboardingDeadlinesRouteTs = await readFile(new URL("../app/api/ops/onboarding-deadlines/route.ts", import.meta.url), "utf8");
@@ -255,7 +256,8 @@ test("privacy and terms disclose recording, transcription, AI processing, and re
 test("ops runbook is authenticated and covers failure visibility plus retention", () => {
   assert.match(opsToolbarTsx, /href="\/ops\/runbook"/);
   assert.match(opsToolbarTsx, /href="\/ops\/billing"/);
-  assert.match(opsRunbookPageTsx, /requireAccountUser\(\)/);
+  assert.match(opsRunbookPageTsx, /requireRelayOperator\(\)/);
+  assert.match(opsRunbookPageTsx, /OpsHeader/);
   assert.match(opsRunbookPageTsx, /This page is for you, not the owner/);
   assert.match(opsRunbookPageTsx, /Search technical logs by caller last 4, call id, message id, recording id/);
   assert.match(opsRunbookPageTsx, /Trust Stripe, but inspect Relay's event ledger/);
@@ -291,6 +293,8 @@ test("ops runbook is authenticated and covers failure visibility plus retention"
   assert.match(opsRunbookMd, /\/api\/cron\/onboarding-deadlines/);
   assert.match(opsRunbookMd, /\/ops\/billing.*customer-delay clock/);
   assert.match(opsRunbookMd, /Carrier review and carrier attention are not customer-delay states/);
+  assert.match(opsRunbookMd, /Relay Operations surface/);
+  assert.match(opsRunbookMd, /Relay NW house account/);
 });
 
 test("assisted onboarding setup requests are operator-only and status tracked", () => {
@@ -343,6 +347,11 @@ test("launch certification verifies account readiness without mutating state", (
 });
 
 test("ops pages share the same internal tool actions", () => {
+  assert.match(opsHeaderTsx, /export function OpsHeader/);
+  assert.match(opsHeaderTsx, /Relay Operations/);
+  assert.match(opsHeaderTsx, /operatorEmail/);
+  assert.match(opsHeaderTsx, /Owner app/);
+  assert.match(globalsCss, /\.ops-header/);
   assert.match(opsToolbarTsx, /export function OpsToolbar/);
   assert.match(opsToolbarTsx, /href="\/ops"/);
   assert.match(opsToolbarTsx, /href="\/ops\/setup-requests"/);
@@ -350,7 +359,9 @@ test("ops pages share the same internal tool actions", () => {
   assert.match(opsToolbarTsx, /action="\/api\/email-test\/start"/);
   assert.match(opsToolbarTsx, /href="\/leads"/);
 
-  for (const source of [opsPageTsx, opsRunbookPageTsx, opsSetupRequestsPageTsx]) {
+  for (const source of [opsPageTsx, opsRunbookPageTsx, opsSetupRequestsPageTsx, opsBillingPageTsx]) {
+    assert.match(source, /requireRelayOperator\(\)/);
+    assert.match(source, /OpsHeader/);
     assert.match(source, /OpsToolbar/);
   }
 });
@@ -479,7 +490,7 @@ test("human-facing pages require authenticated account context", () => {
   assert.match(settingsPageTsx, /requireAccountUser\(\)/);
   assert.match(reportsPageTsx, /requireAccountUser\(\)/);
   assert.match(leadConversationPageTsx, /requireAccountUser\(\)/);
-  assert.match(opsPageTsx, /requireAccountUser\(\)/);
+  assert.match(opsPageTsx, /requireRelayOperator\(\)/);
   assert.doesNotMatch(leadsPageTsx, /getDefaultAccountConfig/);
   assert.doesNotMatch(setupPageTsx, /getDefaultAccountConfig/);
   assert.doesNotMatch(settingsPageTsx, /getDefaultAccountConfig/);
@@ -496,6 +507,9 @@ test("authenticated app pages share the Relay brand header and owner menu", () =
   assert.match(appHeaderTsx, /\/setup/);
   assert.match(appHeaderTsx, /\/reports/);
   assert.match(appHeaderTsx, /\/settings/);
+  assert.match(appHeaderTsx, /showOperations/);
+  assert.match(appHeaderTsx, /\/ops/);
+  assert.match(appHeaderTsx, /Operations/);
   assert.match(appHeaderTsx, /\/api\/leads-logout/);
 
   for (const source of [
@@ -504,11 +518,12 @@ test("authenticated app pages share the Relay brand header and owner menu", () =
     settingsPageTsx,
     reportsPageTsx,
     leadConversationPageTsx,
-    opsPageTsx,
-    opsRunbookPageTsx,
-    opsSetupRequestsPageTsx,
   ]) {
     assert.match(source, /AppHeader/);
+  }
+
+  for (const source of [opsPageTsx, opsRunbookPageTsx, opsSetupRequestsPageTsx, opsBillingPageTsx]) {
+    assert.doesNotMatch(source, /AppHeader/);
   }
 
   assert.doesNotMatch(globalsCss, /\.mobile-owner-menu,\s*\.mobile-inbox-search\s*\{\s*display:\s*none/);

@@ -2,7 +2,7 @@ import { AppHeader } from "@/app/leads/_components/app-header";
 import { CarrierForwarding } from "./carrier-forwarding";
 import { FullTestPanel } from "@/app/leads/_components/full-test-panel";
 import { Icon } from "@/components/icon";
-import { requireAccountUser } from "@/lib/auth";
+import { isRelayOperator, requireAccountUser } from "@/lib/auth";
 import { computeBillingReadiness } from "@/lib/billing";
 import type { BillingReadiness } from "@/lib/billing";
 import { ownerOnboardingDelayMessage } from "@/lib/onboarding-deadlines";
@@ -122,7 +122,8 @@ function BillingAction({ billingReadiness, role }: { billingReadiness: BillingRe
 }
 
 export default async function SetupPage() {
-  const { account, accountId, role, membershipCount } = await requireAccountUser();
+  const session = await requireAccountUser();
+  const { account, accountId, role, membershipCount } = session;
   const [forwardingHealth, a2pStatus, recovery, lastRecoveredCallAt, billing] = await Promise.all([
     getForwardingHealthSummary(accountId),
     getA2pRegistrationStatus(accountId),
@@ -175,6 +176,7 @@ export default async function SetupPage() {
         <AppHeader
           businessName={account.businessName}
           currentPage="setup"
+          showOperations={isRelayOperator(session)}
           switchAccountHref={membershipCount > 1 ? "/account/select?next=/setup" : undefined}
         />
 

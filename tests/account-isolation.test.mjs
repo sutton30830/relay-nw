@@ -34,15 +34,17 @@ const files = {
 };
 
 test("authenticated lead, ops, recording, and transcription routes use session account scope", () => {
-  assert.match(files.leadsPage, /const \{ account, accountId, membershipCount \} = await requireAccountUser\(\)/);
+  assert.match(files.leadsPage, /const session = await requireAccountUser\(\)/);
+  assert.match(files.leadsPage, /const \{ account, accountId, membershipCount \} = session/);
   assert.match(files.leadsPage, /getLeadInboxPageForAccount\(accountId/);
   assert.doesNotMatch(files.leadsPage, /getForwardingHealthSummary\(accountId\)/);
 
-  assert.match(files.setupPage, /const \{ account, accountId, role, membershipCount \} = await requireAccountUser\(\)/);
+  assert.match(files.setupPage, /const session = await requireAccountUser\(\)/);
+  assert.match(files.setupPage, /const \{ account, accountId, role, membershipCount \} = session/);
   assert.match(files.setupPage, /getForwardingHealthSummary\(accountId\)/);
   assert.match(files.setupPage, /getA2pRegistrationStatus\(accountId\)/);
 
-  assert.match(files.opsPage, /const session = await requireAccountUser\(\)/);
+  assert.match(files.opsPage, /const session = await requireRelayOperator\(\)/);
   assert.match(files.opsPage, /const \{ account, accountId \} = session/);
   assert.match(files.opsPage, /getRecentWebhookEventsForAccount\(accountId,\s*50\)/);
 

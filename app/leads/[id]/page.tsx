@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { AppHeader } from "@/app/leads/_components/app-header";
-import { requireAccountUser } from "@/lib/auth";
+import { isRelayOperator, requireAccountUser } from "@/lib/auth";
 import { getLeadConversation } from "@/lib/supabase";
 import { QUICK_REPLIES } from "../_constants";
 import { ConversationView } from "./conversation-view";
@@ -12,7 +12,8 @@ export default async function LeadConversationPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { account, accountId, role, membershipCount } = await requireAccountUser();
+  const session = await requireAccountUser();
+  const { account, accountId, role, membershipCount } = session;
   const { id } = await params;
 
   const quickReplies = account.quickReplyTemplates?.length ? account.quickReplyTemplates : QUICK_REPLIES;
@@ -41,6 +42,7 @@ export default async function LeadConversationPage({
         <AppHeader
           businessName={account.businessName}
           currentPage="conversation"
+          showOperations={isRelayOperator(session)}
           switchAccountHref={membershipCount > 1 ? `/account/select?next=/leads/${id}` : undefined}
         />
       </div>

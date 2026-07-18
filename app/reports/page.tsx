@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { AppHeader } from "@/app/leads/_components/app-header";
-import { requireAccountUser } from "@/lib/auth";
+import { isRelayOperator, requireAccountUser } from "@/lib/auth";
 import { computeReportHero } from "@/lib/report-hero";
 import { getLeadInboxCountsForAccount } from "@/lib/supabase";
 
@@ -75,7 +75,8 @@ function AttentionRow({
 }
 
 export default async function ReportsPage() {
-  const { account, accountId, membershipCount } = await requireAccountUser();
+  const session = await requireAccountUser();
+  const { account, accountId, membershipCount } = session;
 
   const inboxCounts = await getLeadInboxCountsForAccount(accountId);
   const bookedMissingValue = Math.max(0, inboxCounts.booked - inboxCounts.bookedWithValue);
@@ -126,6 +127,7 @@ export default async function ReportsPage() {
         <AppHeader
           businessName={account.businessName}
           currentPage="reports"
+          showOperations={isRelayOperator(session)}
           switchAccountHref={membershipCount > 1 ? "/account/select?next=/reports" : undefined}
         />
 

@@ -1,6 +1,6 @@
-import { AppHeader } from "@/app/leads/_components/app-header";
+import { OpsHeader } from "@/app/ops/_components/ops-header";
 import { OpsToolbar } from "@/app/ops/_components/ops-toolbar";
-import { isRelayOperator, requireAccountUser } from "@/lib/auth";
+import { requireRelayOperator } from "@/lib/auth";
 import { getRecentWebhookEventsForAccount } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -26,22 +26,22 @@ export default async function OpsPage({
 }: {
   searchParams: Promise<{ q?: string }>;
 }) {
-  const session = await requireAccountUser();
+  const session = await requireRelayOperator();
   const { account, accountId } = session;
   const { q = "" } = await searchParams;
   const events = (await getRecentWebhookEventsForAccount(accountId, 50))
     .filter((event) => eventMatchesQuery(event, q));
-  const showSetupRequests = isRelayOperator(session);
 
   return (
     <main className="leads-view">
       <section className="leads-shell">
-        <AppHeader
+        <OpsHeader
           businessName={account.businessName}
+          operatorEmail={session.email}
           switchAccountHref={session.membershipCount > 1 ? "/account/select?next=/ops" : undefined}
         />
 
-        <OpsToolbar showSetupRequests={showSetupRequests} subtitle="Internal diagnostics" />
+        <OpsToolbar showSetupRequests subtitle="Internal diagnostics" />
 
         <div className="leads-header">
           <div>

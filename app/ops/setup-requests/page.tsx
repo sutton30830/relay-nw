@@ -1,4 +1,4 @@
-import { AppHeader } from "@/app/leads/_components/app-header";
+import { OpsHeader } from "@/app/ops/_components/ops-header";
 import { OpsToolbar } from "@/app/ops/_components/ops-toolbar";
 import { requireRelayOperator } from "@/lib/auth";
 import { listSetupRequests, type SetupRequest, type SetupRequestStatus } from "@/lib/supabase";
@@ -107,8 +107,9 @@ export default async function SetupRequestsPage({
   return (
     <main className="leads-view">
       <section className="leads-shell">
-        <AppHeader
+        <OpsHeader
           businessName={account.businessName}
+          operatorEmail={session.email}
           switchAccountHref={session.membershipCount > 1 ? "/account/select?next=/ops/setup-requests" : undefined}
         />
 

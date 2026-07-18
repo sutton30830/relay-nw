@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
-import { AppHeader } from "@/app/leads/_components/app-header";
+import { OpsHeader } from "@/app/ops/_components/ops-header";
 import { OpsToolbar } from "@/app/ops/_components/ops-toolbar";
-import { isRelayOperator, requireAccountUser } from "@/lib/auth";
+import { requireRelayOperator } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -119,19 +119,19 @@ function RunbookCard({ section }: { section: RunbookSection }) {
 }
 
 export default async function OpsRunbookPage() {
-  const session = await requireAccountUser();
+  const session = await requireRelayOperator();
   const { account } = session;
-  const showSetupRequests = isRelayOperator(session);
 
   return (
     <main className="leads-view">
       <section className="leads-shell">
-        <AppHeader
+        <OpsHeader
           businessName={account.businessName}
+          operatorEmail={session.email}
           switchAccountHref={session.membershipCount > 1 ? "/account/select?next=/ops/runbook" : undefined}
         />
 
-        <OpsToolbar showSetupRequests={showSetupRequests} subtitle="Internal checklist" />
+        <OpsToolbar showSetupRequests subtitle="Internal checklist" />
 
         <div className="leads-header">
           <div>

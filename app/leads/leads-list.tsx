@@ -13,6 +13,7 @@ export function LeadsList({
   leads,
   businessName,
   switchAccountHref,
+  showOperations,
   counts,
   callCounts,
   pagination,
@@ -20,6 +21,7 @@ export function LeadsList({
   leads: Lead[];
   businessName: string;
   switchAccountHref?: string;
+  showOperations?: boolean;
   counts: LeadInboxCounts;
   callCounts: Record<string, number>;
   pagination: {
@@ -81,6 +83,7 @@ export function LeadsList({
       <AppHeader
         businessName={businessName}
         currentPage="inbox"
+        showOperations={showOperations}
         switchAccountHref={switchAccountHref}
         search={{
           inputRef: inbox.searchRef,

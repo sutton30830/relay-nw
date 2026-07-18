@@ -25,12 +25,14 @@ export function AppHeader({
   currentPage,
   sample,
   search,
+  showOperations = false,
   switchAccountHref,
 }: {
   businessName: string;
   currentPage?: HeaderPage;
   sample?: HeaderSample;
   search?: HeaderSearch;
+  showOperations?: boolean;
   switchAccountHref?: string;
 }) {
   const businessInitial = businessName.trim().charAt(0).toUpperCase() || "R";
@@ -43,6 +45,9 @@ export function AppHeader({
     { key: "setup", href: "/setup", icon: "settings" as const, label: "Setup" },
     { key: "reports", href: "/reports", icon: "inbox" as const, label: "Reports" },
     { key: "settings", href: "/settings", icon: "user" as const, label: "Settings" },
+    ...(showOperations
+      ? [{ key: "operations", href: "/ops", icon: "shield" as const, label: "Operations" }]
+      : []),
   ].filter((item) => item.key !== currentPage);
 
   return (
