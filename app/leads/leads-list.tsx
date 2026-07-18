@@ -92,7 +92,7 @@ export function LeadsList({
           active: inbox.sampleMode,
           label: "Sample data",
           onToggle: inbox.toggleSampleMode,
-          visible: inbox.sampleMode || inbox.activeItems.length === 0,
+          visible: inbox.sampleMode || !accountHasAnyLeads,
         }}
       />
 

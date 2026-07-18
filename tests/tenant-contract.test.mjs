@@ -377,6 +377,14 @@ test("booked is an outcome flag, never a workflow status button", () => {
   assert.match(leadCardTsx, /onBooked\(lead\.id, !booked\)/);
 });
 
+test("server booked inbox count and filter include booked rows hidden by caller condensing", () => {
+  assert.match(sql, /booked_rows as \(/);
+  assert.match(sql, /select count\(\*\) from booked_rows\) as booked_count/);
+  assert.match(sql, /coalesce\(\(select sum\(job_value_cents\) from booked_rows\), 0\) as booked_value_cents/);
+  assert.match(sql, /coalesce\(p_filter, 'all'\) = 'booked'[\s\S]*from public\.leads/);
+  assert.match(sql, /from public\.lead_inbox_condensed\(p_account\)[\s\S]*coalesce\(p_filter, 'all'\) <> 'booked'/);
+});
+
 test("lead card actions keep workflow controls explicit and avoid duplicate details", () => {
   assert.match(leadCardTsx, /const statusLabel = trashed \? "Trash" : STATUS_LABELS\[lead\.status\]/);
   assert.match(leadCardTsx, /lead-card__status-pill lead-card__status-pill--\$\{statusTone\}/);
@@ -423,6 +431,7 @@ test("lead outcome editing offers quick booked-value presets off the compact car
 test("lead inbox empty states distinguish search misses from no leads", () => {
   assert.match(leadsListTsx, /const hasSearch = trimmedQuery\.length > 0/);
   assert.match(leadsListTsx, /accountHasAnyLeads = inbox\.counts\.all \+ inbox\.counts\.trash > 0/);
+  assert.match(leadsListTsx, /visible: inbox\.sampleMode \|\| !accountHasAnyLeads/);
   assert.match(leadsListTsx, /No leads match/);
   assert.match(leadsListTsx, /this keyword just does not match them/);
   assert.match(leadsListTsx, /No missed calls yet/);

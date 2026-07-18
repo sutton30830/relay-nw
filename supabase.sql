@@ -734,31 +734,33 @@ stable
 as $$
   with rollup as (
     select * from public.lead_inbox_condensed(p_account)
+  ),
+  booked_rows as (
+    select *
+    from public.leads
+    where account_id = p_account
+      and deleted_at is null
+      and (booked_at is not null or status = 'booked')
   )
   select
-    count(*) filter (where deleted_at is null) as all_count,
-    count(*) filter (where deleted_at is null and status = 'new') as new_count,
-    count(*) filter (where deleted_at is null and status in ('new', 'contacted')) as actionable_count,
-    count(*) filter (where deleted_at is null and status = 'contacted') as contacted_count,
-    count(*) filter (where deleted_at is null and (booked_at is not null or status = 'booked')) as booked_count,
-    count(*) filter (where deleted_at is null and status = 'dead') as dead_count,
-    count(*) filter (where deleted_at is not null) as trash_count,
-    count(*) filter (
+    (select count(*) from rollup where deleted_at is null) as all_count,
+    (select count(*) from rollup where deleted_at is null and status = 'new') as new_count,
+    (select count(*) from rollup where deleted_at is null and status in ('new', 'contacted')) as actionable_count,
+    (select count(*) from rollup where deleted_at is null and status = 'contacted') as contacted_count,
+    (select count(*) from booked_rows) as booked_count,
+    (select count(*) from rollup where deleted_at is null and status = 'dead') as dead_count,
+    (select count(*) from rollup where deleted_at is not null) as trash_count,
+    (
+      select count(*)
+      from rollup
       where deleted_at is null and status = 'new' and sms_status in ('failed', 'undelivered')
     ) as sms_issues_count,
-    coalesce(
-      sum(job_value_cents) filter (
-        where deleted_at is null and (booked_at is not null or status = 'booked')
-      ),
-      0
-    ) as booked_value_cents,
-    count(*) filter (
-      where deleted_at is null
-        and (booked_at is not null or status = 'booked')
-        and job_value_cents is not null
-        and job_value_cents <> 0
-    ) as booked_with_value_count
-  from rollup;
+    coalesce((select sum(job_value_cents) from booked_rows), 0) as booked_value_cents,
+    (
+      select count(*)
+      from booked_rows
+      where job_value_cents is not null and job_value_cents <> 0
+    ) as booked_with_value_count;
 $$;
 
 revoke all on function public.lead_inbox_counts(uuid) from public, anon, authenticated;
@@ -818,8 +820,17 @@ returns table (
 language sql
 stable
 as $$
-  with rollup as (
-    select * from public.lead_inbox_condensed(p_account)
+  with source_rows as (
+    select *
+    from public.leads
+    where account_id = p_account
+      and coalesce(p_filter, 'all') = 'booked'
+
+    union all
+
+    select *
+    from public.lead_inbox_condensed(p_account)
+    where coalesce(p_filter, 'all') <> 'booked'
   ),
   phone_calls as (
     select phone, count(*) as call_count
@@ -831,8 +842,8 @@ as $$
     select replace(replace(replace(coalesce(p_query, ''), '\', '\\'), '%', '\%'), '_', '\_') as q
   ),
   filtered as (
-    select rollup.*
-    from rollup, escaped
+    select source_rows.*
+    from source_rows, escaped
     where
       (case when coalesce(p_filter, 'all') = 'trash' then deleted_at is not null else deleted_at is null end)
       and (
