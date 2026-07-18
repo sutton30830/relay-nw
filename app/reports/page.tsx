@@ -76,16 +76,6 @@ function AttentionRow({
   );
 }
 
-function CompareItem({ label, current, previous }: { label: string; current: string; previous: string }) {
-  return (
-    <div className="report-compare__item">
-      <p className="t-eyebrow">{label}</p>
-      <p>{current}</p>
-      <span>Last month: {previous}</span>
-    </div>
-  );
-}
-
 function hasUsefulPriorMonth(stats: RecoveryStats) {
   return stats.missedCalls > 0 || stats.booked > 0 || stats.recoveredCents > 0;
 }
@@ -232,39 +222,31 @@ export default async function ReportsPage() {
             )}
           </section>
 
-          {hasUsefulPriorMonth(lastMonth) ? (
-            <section className="panel report-compare" aria-label="Prior month comparison">
-              <div>
-                <p className="t-eyebrow">Compared with {monthLabel(lastMonthStart)}</p>
-                <h2>Month over month</h2>
+          <footer className="report-footer" aria-label="Statement totals">
+            {hasUsefulPriorMonth(lastMonth) ? (
+              <div className="report-footer__compare" aria-label={`Compared with ${monthLabel(lastMonthStart)}`}>
+                <span>
+                  {formatDollars(thisMonth.recoveredCents)} booked
+                  <small>{monthLabel(lastMonthStart)}: {formatDollars(lastMonth.recoveredCents)}</small>
+                </span>
+                <span>
+                  {pluralize(thisMonth.booked, "job")}
+                  <small>{monthLabel(lastMonthStart)}: {lastMonth.booked}</small>
+                </span>
+                <span>
+                  {pluralize(thisMonth.missedCalls, "missed call")} captured
+                  <small>{monthLabel(lastMonthStart)}: {lastMonth.missedCalls}</small>
+                </span>
               </div>
-              <div className="report-compare__grid">
-                <CompareItem
-                  label="Booked value"
-                  current={formatDollars(thisMonth.recoveredCents)}
-                  previous={formatDollars(lastMonth.recoveredCents)}
-                />
-                <CompareItem
-                  label="Jobs booked"
-                  current={String(thisMonth.booked)}
-                  previous={String(lastMonth.booked)}
-                />
-                <CompareItem
-                  label="Missed calls captured"
-                  current={String(thisMonth.missedCalls)}
-                  previous={String(lastMonth.missedCalls)}
-                />
-              </div>
-            </section>
-          ) : null}
-
-          <section className="report-lifetime" aria-label="Lifetime totals">
-            <span>All time</span>
-            <strong>{formatDollars(allTime.recoveredCents)} booked</strong>
-            <span>
-              {pluralize(allTime.booked, "job")} · {pluralize(allTime.missedCalls, "missed call")} captured
-            </span>
-          </section>
+            ) : null}
+            <div className="report-footer__lifetime" aria-label="Lifetime totals">
+              <span>All time</span>
+              <strong>{formatDollars(allTime.recoveredCents)} booked</strong>
+              <span>
+                {pluralize(allTime.booked, "job")} · {pluralize(allTime.missedCalls, "missed call")} captured
+              </span>
+            </div>
+          </footer>
         </div>
       </section>
     </main>
