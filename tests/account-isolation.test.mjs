@@ -44,9 +44,9 @@ test("authenticated lead, ops, recording, and transcription routes use session a
   assert.match(files.setupPage, /getForwardingHealthSummary\(accountId\)/);
   assert.match(files.setupPage, /getA2pRegistrationStatus\(accountId\)/);
 
-  assert.match(files.opsPage, /const session = await requireRelayOperator\(\)/);
-  assert.match(files.opsPage, /const \{ account, accountId \} = session/);
-  assert.match(files.opsPage, /getRecentWebhookEventsForAccount\(accountId,\s*50\)/);
+  assert.match(files.opsPage, /const operator = await requirePlatformOperator\(\)/);
+  assert.match(files.opsPage, /getOpsAccountBySlug\(accountSlug\)/);
+  assert.match(files.opsPage, /getRecentWebhookEventsForAccount\(account\.accountId,\s*50\)/);
 
   assert.match(files.leadApi, /const auth = await requireWriteAccessJson\(\)/);
   assert.match(compact(files.leadApi), /updateLead\(\{ accountId: auth\.session\.accountId, id, \.\.\.update \}\)/);

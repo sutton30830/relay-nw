@@ -52,9 +52,11 @@ const opsRunbookPageTsx = await readFile(new URL("../app/ops/runbook/page.tsx", 
 const opsSetupRequestsPageTsx = await readFile(new URL("../app/ops/setup-requests/page.tsx", import.meta.url), "utf8");
 const opsHeaderTsx = await readFile(new URL("../app/ops/_components/ops-header.tsx", import.meta.url), "utf8");
 const opsToolbarTsx = await readFile(new URL("../app/ops/_components/ops-toolbar.tsx", import.meta.url), "utf8");
+const opsAccountDirectoryTsx = await readFile(new URL("../app/ops/_components/ops-account-directory.tsx", import.meta.url), "utf8");
 const opsSetupRequestsRouteTs = await readFile(new URL("../app/api/ops/setup-requests/route.ts", import.meta.url), "utf8");
 const opsOnboardingDeadlinesRouteTs = await readFile(new URL("../app/api/ops/onboarding-deadlines/route.ts", import.meta.url), "utf8");
 const opsBillingRouteTs = await readFile(new URL("../app/api/ops/billing/route.ts", import.meta.url), "utf8");
+const emailTestRouteTs = await readFile(new URL("../app/api/email-test/start/route.ts", import.meta.url), "utf8");
 const onboardingDeadlinesCronTs = await readFile(new URL("../app/api/cron/onboarding-deadlines/route.ts", import.meta.url), "utf8");
 const billingTrialsCronTs = await readFile(new URL("../app/api/cron/billing-trials/route.ts", import.meta.url), "utf8");
 const privacyPageTsx = await readFile(new URL("../app/privacy/page.tsx", import.meta.url), "utf8");
@@ -259,8 +261,8 @@ test("privacy and terms disclose recording, transcription, AI processing, and re
 
 test("ops runbook is authenticated and covers failure visibility plus retention", () => {
   assert.match(opsToolbarTsx, /href="\/ops\/runbook"/);
-  assert.match(opsToolbarTsx, /href="\/ops\/billing"/);
-  assert.match(opsRunbookPageTsx, /requireRelayOperator\(\)/);
+  assert.match(opsToolbarTsx, /Billing & setup/);
+  assert.match(opsRunbookPageTsx, /requirePlatformOperator\(\)/);
   assert.match(opsRunbookPageTsx, /OpsHeader/);
   assert.match(opsRunbookPageTsx, /This page is for you, not the owner/);
   assert.match(opsRunbookPageTsx, /Search technical logs by caller last 4, call id, message id, recording id/);
@@ -278,7 +280,7 @@ test("ops runbook is authenticated and covers failure visibility plus retention"
   assert.match(opsBillingPageTsx, /Comp account/);
   assert.match(opsBillingPageTsx, /Grant trial/);
   assert.match(opsBillingPageTsx, /canApplyOperatorBillingOverride/);
-  assert.match(opsBillingRouteTs, /requireRelayOperator/);
+  assert.match(opsBillingRouteTs, /requirePlatformOperator/);
   assert.match(opsBillingRouteTs, /getOpsBillingAccountBySlug/);
   assert.match(opsBillingRouteTs, /canApplyOperatorBillingOverride/);
   assert.match(opsBillingRouteTs, /updateAccountBillingRecord/);
@@ -329,21 +331,21 @@ test("assisted onboarding setup requests are operator-only and status tracked", 
   assert.match(authTs, /export function isRelayOperator/);
   assert.match(authTs, /export async function requireRelayOperator\(\)/);
   assert.match(opsToolbarTsx, /href="\/ops\/setup-requests"/);
-  assert.match(opsSetupRequestsPageTsx, /requireRelayOperator\(\)/);
+  assert.match(opsSetupRequestsPageTsx, /requirePlatformOperator\(\)/);
   assert.match(opsSetupRequestsPageTsx, /listSetupRequests\(status\)/);
   assert.match(opsSetupRequestsPageTsx, /New/);
   assert.match(opsSetupRequestsPageTsx, /Contacted/);
   assert.match(opsSetupRequestsPageTsx, /Onboarded/);
   assert.match(opsSetupRequestsPageTsx, /Closed/);
-  assert.match(opsSetupRequestsRouteTs, /requireRelayOperator\(\)/);
+  assert.match(opsSetupRequestsRouteTs, /requirePlatformOperator\(\)/);
   assert.match(opsSetupRequestsRouteTs, /updateSetupRequestStatus\(id, status\)/);
   assert.match(setupRequestsTs, /export type SetupRequestStatus = "new" \| "contacted" \| "onboarded" \| "closed"/);
   assert.match(setupRequestsTs, /\.from\("setup_requests"\)[\s\S]*\.update\(\{ status \}\)/);
   assert.match(opsBillingPageTsx, /Assisted onboarding deadlines/);
-  assert.match(opsBillingPageTsx, /Start \/ reopen 14-day clock/);
+  assert.match(opsBillingPageTsx, /Start \/ reopen clock/);
   assert.match(opsBillingPageTsx, /Do not use this for carrier\/A2P review/);
   assert.match(opsBillingPageTsx, /listAccountsForOnboardingDeadlineMaintenance/);
-  assert.match(opsOnboardingDeadlinesRouteTs, /requireRelayOperator\(\)/);
+  assert.match(opsOnboardingDeadlinesRouteTs, /requirePlatformOperator\(\)/);
   assert.match(opsOnboardingDeadlinesRouteTs, /getOpsOnboardingAccountBySlug/);
   assert.match(opsOnboardingDeadlinesRouteTs, /canMoveAccountToCustomerDelay/);
   assert.match(opsOnboardingDeadlinesRouteTs, /markAccountRequirementsRequested/);
@@ -391,15 +393,22 @@ test("ops pages share the same internal tool actions", () => {
   assert.match(opsHeaderTsx, /operatorEmail/);
   assert.match(opsHeaderTsx, /Owner app/);
   assert.match(globalsCss, /\.ops-header/);
+  assert.match(opsPageTsx, /listOpsAccounts\(q\)/);
+  assert.match(opsPageTsx, /getOpsAccountBySlug\(accountSlug\)/);
+  assert.match(opsBillingPageTsx, /Choose an account before viewing or changing billing/);
+  assert.match(opsAccountDirectoryTsx, /Billing & setup/);
+  assert.match(opsAccountDirectoryTsx, /Open account/);
+  assert.match(emailTestRouteTs, /requirePlatformOperatorJson/);
+  assert.match(emailTestRouteTs, /getOpsAccountBySlug/);
   assert.match(opsToolbarTsx, /export function OpsToolbar/);
-  assert.match(opsToolbarTsx, /href="\/ops"/);
+  assert.match(opsToolbarTsx, /Technical logs/);
   assert.match(opsToolbarTsx, /href="\/ops\/setup-requests"/);
   assert.match(opsToolbarTsx, /href="\/ops\/runbook"/);
   assert.match(opsToolbarTsx, /action="\/api\/email-test\/start"/);
   assert.match(opsToolbarTsx, /href="\/leads"/);
 
   for (const source of [opsPageTsx, opsRunbookPageTsx, opsSetupRequestsPageTsx, opsBillingPageTsx]) {
-    assert.match(source, /requireRelayOperator\(\)/);
+    assert.match(source, /requirePlatformOperator\(\)/);
     assert.match(source, /OpsHeader/);
     assert.match(source, /OpsToolbar/);
   }
@@ -529,7 +538,7 @@ test("human-facing pages require authenticated account context", () => {
   assert.match(settingsPageTsx, /requireAccountUser\(\)/);
   assert.match(reportsPageTsx, /requireAccountUser\(\)/);
   assert.match(leadConversationPageTsx, /requireAccountUser\(\)/);
-  assert.match(opsPageTsx, /requireRelayOperator\(\)/);
+  assert.match(opsPageTsx, /requirePlatformOperator\(\)/);
   assert.doesNotMatch(leadsPageTsx, /getDefaultAccountConfig/);
   assert.doesNotMatch(setupPageTsx, /getDefaultAccountConfig/);
   assert.doesNotMatch(settingsPageTsx, /getDefaultAccountConfig/);

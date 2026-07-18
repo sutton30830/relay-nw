@@ -1940,6 +1940,79 @@ code {
   margin: 0;
 }
 
+.ops-account-search {
+  margin: 18px 0 22px;
+}
+
+.ops-account-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.ops-account-card {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+}
+
+.ops-account-card--good {
+  border-color: color-mix(in oklab, var(--good) 48%, var(--line));
+  background: linear-gradient(135deg, color-mix(in oklab, var(--good-soft) 55%, var(--panel)), var(--panel));
+}
+
+.ops-account-card--warn {
+  border-color: color-mix(in oklab, var(--warn) 52%, var(--line));
+  background: linear-gradient(135deg, color-mix(in oklab, var(--warn-soft) 42%, var(--panel)), var(--panel));
+}
+
+.ops-account-card--danger {
+  border-color: color-mix(in oklab, var(--danger) 54%, var(--line));
+  background: linear-gradient(135deg, color-mix(in oklab, var(--danger-soft) 42%, var(--panel)), var(--panel));
+}
+
+.ops-account-card__head,
+.ops-account-card__actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.ops-account-card__head h2 {
+  margin: 2px 0 4px;
+  font-size: clamp(20px, 3vw, 28px);
+}
+
+.ops-account-card__states {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ops-account-card__states > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.ops-account-card__states strong {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ops-account-card__actions {
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.ops-account-empty {
+  margin-top: 18px;
+}
+
 .pulse-strip {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-bottom: 24px;
@@ -4685,6 +4758,20 @@ code {
 
   .ops-header__operator {
     max-width: 100%;
+  }
+
+  .ops-account-card__head,
+  .ops-account-card__actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ops-account-card__head .chip {
+    align-self: flex-start;
+  }
+
+  .ops-account-card__states {
+    grid-template-columns: 1fr;
   }
 
   .home-view .app-head__right--primary {

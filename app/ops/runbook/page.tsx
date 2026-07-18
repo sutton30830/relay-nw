@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { OpsHeader } from "@/app/ops/_components/ops-header";
 import { OpsToolbar } from "@/app/ops/_components/ops-toolbar";
-import { requireRelayOperator } from "@/lib/auth";
+import { requirePlatformOperator } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +42,7 @@ const RUNBOOK_SECTIONS: RunbookSection[] = [
     title: "Move a setup request to a live account.",
     summary: "This is for you as the Relay NW operator. It is not something a contractor customer needs to understand.",
     steps: [
-      "Open setup requests from the Relay NW house account and mark each request Contacted, Onboarded, or Closed.",
+      "Open setup requests as a platform operator and mark each request Contacted, Onboarded, or Closed.",
       <>Create the account with <code>npm run provision:account</code>.</>,
       <>Verify it with <code>npm run verify:account -- &lt;slug&gt;</code>.</>,
       "Confirm Twilio webhooks, A2P status, owner email, and owner phone before giving access.",
@@ -122,16 +122,13 @@ function RunbookCard({ section }: { section: RunbookSection }) {
 }
 
 export default async function OpsRunbookPage() {
-  const session = await requireRelayOperator();
-  const { account } = session;
+  const operator = await requirePlatformOperator();
 
   return (
     <main className="leads-view">
       <section className="leads-shell">
         <OpsHeader
-          businessName={account.businessName}
-          operatorEmail={session.email}
-          switchAccountHref={session.membershipCount > 1 ? "/account/select?next=/ops/runbook" : undefined}
+          operatorEmail={operator.email}
         />
 
         <OpsToolbar showSetupRequests subtitle="Internal checklist" />
@@ -141,7 +138,7 @@ export default async function OpsRunbookPage() {
             <p className="t-eyebrow">Internal ops</p>
             <h1 className="t-display">Support checklist</h1>
             <p className="leads-subtitle">
-              For Relay NW operators. Use this when onboarding a customer or checking whether the missed-call loop worked for {account.businessName}.
+              For Relay NW operators. Use this when onboarding a customer or checking whether the missed-call loop worked for a customer account.
             </p>
           </div>
         </div>

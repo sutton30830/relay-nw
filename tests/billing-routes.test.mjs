@@ -201,7 +201,7 @@ async function runOpsBillingOverride({
       },
     },
     "@/lib/auth": {
-      requireRelayOperator: async () => authSession,
+      requirePlatformOperator: async () => authSession,
     },
     "@/lib/billing": billing,
     "@/lib/supabase": {
@@ -215,6 +215,7 @@ async function runOpsBillingOverride({
       recordAccountAuditEvents: async (input) => {
         calls.audits.push(input);
       },
+      recordPlatformAuditEvent: async () => {},
     },
   });
 

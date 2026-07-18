@@ -1,14 +1,27 @@
-import { requireWriteAccessJson } from "@/lib/auth";
+import { requirePlatformOperatorJson } from "@/lib/auth";
 import { notifyOwnerTestEmail } from "@/lib/email";
+import { getAccountConfigByAccountId, getOpsAccountBySlug } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
-export async function POST() {
-  const auth = await requireWriteAccessJson();
+export async function POST(request: Request) {
+  const auth = await requirePlatformOperatorJson();
   if (auth.response) return auth.response;
 
+  const formData = await request.formData();
+  const accountSlug = String(formData.get("account_slug") ?? "").trim();
+  const target = await getOpsAccountBySlug(accountSlug);
+  if (!target) {
+    return Response.json({ ok: false, error: "Account not found" }, { status: 404 });
+  }
+
+  const account = await getAccountConfigByAccountId(target.accountId);
+  if (!account) {
+    return Response.json({ ok: false, error: "Account configuration not found" }, { status: 409 });
+  }
+
   const result = await notifyOwnerTestEmail({
-    account: auth.session.account,
+    account,
     requestedBy: auth.session.email,
   });
 

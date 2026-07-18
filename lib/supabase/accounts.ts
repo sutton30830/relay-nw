@@ -190,6 +190,22 @@ export type OpsBillingAccount = AccountBillingRecord & {
   businessName: string;
 };
 
+export type OpsAccountSummary = {
+  accountId: string;
+  accountSlug: string;
+  businessName: string;
+  accountStatus: "active" | "paused" | "archived";
+  ownerEmail: string | null;
+  billingStatus: AccountBillingStatus;
+  onboardingStatus: AccountOnboardingStatus;
+  stripeSubscriptionStatus: StripeSubscriptionStatus | null;
+  requirementsDueAt: string | null;
+  activatedAt: string | null;
+  firstPaidAt: string | null;
+  cancelAtPeriodEnd: boolean;
+  updatedAt: string | null;
+};
+
 const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   billingStatus: "not_started",
   onboardingStatus: "requirements_needed",
@@ -938,6 +954,92 @@ export async function hasAccountAuditAction(accountId: string, action: string): 
   }
 
   return Boolean(data?.id);
+}
+
+function mapOpsAccountSummary(row: Record<string, unknown>): OpsAccountSummary {
+  const settingsRaw = row.account_settings;
+  const settings = Array.isArray(settingsRaw) ? settingsRaw[0] : settingsRaw;
+  const settingsRecord = settings && typeof settings === "object" ? settings as Record<string, unknown> : null;
+  const businessName =
+    typeof settingsRecord?.business_name === "string" && settingsRecord.business_name.trim()
+      ? settingsRecord.business_name
+      : String(row.name ?? row.slug);
+  const ownerEmail =
+    typeof settingsRecord?.owner_email === "string" && settingsRecord.owner_email.trim()
+      ? settingsRecord.owner_email
+      : null;
+
+  return {
+    accountId: String(row.id),
+    accountSlug: String(row.slug),
+    businessName,
+    accountStatus: row.status === "paused" || row.status === "archived" ? row.status : "active",
+    ownerEmail,
+    billingStatus: normalizeAccountBillingStatus(row.billing_status as string | null | undefined),
+    onboardingStatus: normalizeAccountOnboardingStatus(row.onboarding_status as string | null | undefined),
+    stripeSubscriptionStatus: normalizeAccountStripeSubscriptionStatus(
+      row.stripe_subscription_status as string | null | undefined,
+    ),
+    requirementsDueAt: typeof row.requirements_due_at === "string" ? row.requirements_due_at : null,
+    activatedAt: typeof row.activated_at === "string" ? row.activated_at : null,
+    firstPaidAt: typeof row.first_paid_at === "string" ? row.first_paid_at : null,
+    cancelAtPeriodEnd: Boolean(row.cancel_at_period_end),
+    updatedAt: typeof row.updated_at === "string" ? row.updated_at : null,
+  };
+}
+
+export async function listOpsAccounts(query = ""): Promise<OpsAccountSummary[]> {
+  if (isPlaceholderSupabaseConfig()) return [];
+
+  const normalizedQuery = query.trim();
+  let request = supabaseAdmin
+    .from("accounts")
+    .select(
+      "id, slug, name, status, billing_status, onboarding_status, stripe_subscription_status, requirements_due_at, activated_at, first_paid_at, cancel_at_period_end, updated_at, account_settings(owner_email, business_name)",
+    )
+    .order("updated_at", { ascending: false })
+    .limit(250);
+
+  if (normalizedQuery) {
+    const escaped = normalizedQuery.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll(",", "\\,");
+    request = request.or(`slug.ilike.%${escaped}%,name.ilike.%${escaped}%`);
+  }
+
+  const { data, error } = await request;
+  if (error) {
+    if (error.message.includes("account_settings") || error.message.includes("onboarding_status")) {
+      console.warn("Account lifecycle columns are missing. Run supabase.sql before enabling the Operations directory.");
+      return [];
+    }
+
+    throwIfSupabaseError(error);
+  }
+
+  return (data ?? []).map((row) => mapOpsAccountSummary(row as Record<string, unknown>));
+}
+
+export async function getOpsAccountBySlug(slug: string): Promise<OpsAccountSummary | null> {
+  const normalizedSlug = slug.trim();
+  if (!normalizedSlug || isPlaceholderSupabaseConfig()) return null;
+
+  const { data, error } = await supabaseAdmin
+    .from("accounts")
+    .select(
+      "id, slug, name, status, billing_status, onboarding_status, stripe_subscription_status, requirements_due_at, activated_at, first_paid_at, cancel_at_period_end, updated_at, account_settings(owner_email, business_name)",
+    )
+    .eq("slug", normalizedSlug)
+    .maybeSingle();
+
+  if (error) {
+    if (error.message.includes("account_settings") || error.message.includes("onboarding_status")) {
+      console.warn("Account lifecycle columns are missing. Run supabase.sql before enabling the Operations directory.");
+      return null;
+    }
+
+    throwIfSupabaseError(error);
+  }
+
+  return data ? mapOpsAccountSummary(data as Record<string, unknown>) : null;
 }
 
 export async function getOpsOnboardingAccountBySlug(slug: string): Promise<OpsOnboardingAccount | null> {

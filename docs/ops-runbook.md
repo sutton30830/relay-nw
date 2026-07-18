@@ -10,11 +10,12 @@ Use this when Relay NW is live for a business and something important may have f
 - The initial platform operator is bootstrapped by `supabase.sql` from the Supabase Auth email `srlowry21@gmail.com`.
 - Add future operators deliberately to `platform_operators` with role `super_admin`, `operator`, or `support`; revoke access by setting `status='revoked'`.
 - Do not grant Operations access by adding someone to a house-account `account_users` row. Account membership and platform access are separate concerns.
-- Until the multi-account directory lands, existing Ops pages still require an account session. Phase 7B removes that dependency and makes the target account explicit in every Ops route.
+- `/ops` is the account directory. Choose a customer before opening technical logs or Billing & setup.
+- Billing and onboarding forms carry the selected account server-side; never use an owner account cookie to decide which customer gets changed.
 
 ## First Response
 
-1. Open `/ops` for the affected account.
+1. Open `/ops`, search for the affected customer, and choose the account.
 2. Search by `CallSid`, `MessageSid`, `RecordingSid`, caller last 4, or webhook source.
 3. Open the lead inbox and confirm whether the caller has a lead.
 4. Check the lead card for `sms_status`, voicemail status, transcript status, and any visible error.
@@ -51,7 +52,7 @@ Run `npm run test:activation` locally before high-risk releases. This is determi
 ### SMS Failed, Undelivered, or Not Sent
 
 - If `sms_status=failed` or `undelivered`, tell the owner to call the lead.
-- Check `/ops` for `twilio_sms_status` and the `MessageSid`.
+- Open that account's Technical logs from `/ops` and check `twilio_sms_status` plus the `MessageSid`.
 - If `sms_status=skipped_disabled`, confirm whether the owner intentionally paused automatic texting.
 - If A2P is not approved, keep SMS off and treat the account as calls-ready only.
 - If Twilio accepted the SMS but the lead update failed, wait for the status callback to reconcile through the messages table. If it does not reconcile, search `/ops` by `MessageSid`.

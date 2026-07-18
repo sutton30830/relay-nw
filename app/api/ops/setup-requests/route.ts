@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { requireRelayOperator } from "@/lib/auth";
+import { requirePlatformOperator } from "@/lib/auth";
 import { updateSetupRequestStatus, type SetupRequestStatus } from "@/lib/supabase";
 
 const VALID_STATUSES = new Set<SetupRequestStatus>(["new", "contacted", "onboarded", "closed"]);
@@ -9,7 +9,7 @@ function readString(formData: FormData, key: string, maxLength = 120) {
 }
 
 export async function POST(request: Request) {
-  await requireRelayOperator();
+  await requirePlatformOperator();
 
   const formData = await request.formData();
   const id = readString(formData, "id", 80);

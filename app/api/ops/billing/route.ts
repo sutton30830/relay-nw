@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { requireRelayOperator } from "@/lib/auth";
+import { requirePlatformOperator } from "@/lib/auth";
 import {
   addTrialDays,
   canApplyOperatorBillingOverride,
@@ -8,6 +8,7 @@ import {
 } from "@/lib/billing";
 import {
   getOpsBillingAccountBySlug,
+  recordPlatformAuditEvent,
   recordAccountAuditEvents,
   updateAccountBillingRecord,
 } from "@/lib/supabase";
@@ -46,7 +47,7 @@ function actionSummary(action: OperatorBillingOverrideAction, days?: number) {
 }
 
 export async function POST(request: Request) {
-  const session = await requireRelayOperator();
+  const session = await requirePlatformOperator();
   const formData = await request.formData();
   const accountSlug = readString(formData, "account_slug", 80);
   const action = readAction(formData);
@@ -108,6 +109,13 @@ export async function POST(request: Request) {
           summary: auditSummary,
         },
       ],
+    });
+    await recordPlatformAuditEvent({
+      actorUserId: session.userId,
+      actorEmail: session.email,
+      targetAccountId: account.accountId,
+      action: `billing.operator.${action}`,
+      summary: auditSummary,
     });
   } catch (error) {
     console.error("Operator billing override failed", {

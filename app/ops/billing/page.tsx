@@ -1,12 +1,14 @@
+import { OpsAccountDirectory } from "@/app/ops/_components/ops-account-directory";
 import { OpsHeader } from "@/app/ops/_components/ops-header";
 import { OpsToolbar } from "@/app/ops/_components/ops-toolbar";
-import { requireRelayOperator } from "@/lib/auth";
+import { requirePlatformOperator } from "@/lib/auth";
 import { canApplyOperatorBillingOverride } from "@/lib/billing";
 import { daysUntil } from "@/lib/onboarding-deadlines";
 import {
   canMoveAccountToCustomerDelay,
-  getAccountBillingRecord,
+  getOpsBillingAccountBySlug,
   getRecentStripeEventsForAccount,
+  listOpsAccounts,
   listAccountsForOnboardingDeadlineMaintenance,
   type OnboardingDeadlineAccount,
 } from "@/lib/supabase";
@@ -139,11 +141,35 @@ export default async function OpsBillingPage({
 }: {
   searchParams: Promise<{ q?: string; onboarding?: string; billing_action?: string; account?: string }>;
 }) {
-  const session = await requireRelayOperator();
-  const { account, accountId } = session;
+  const operator = await requirePlatformOperator();
   const { q = "", onboarding, billing_action: billingAction, account: noticeAccountSlug } = await searchParams;
+  const targetAccount = noticeAccountSlug ? await getOpsBillingAccountBySlug(noticeAccountSlug) : null;
+
+  if (!targetAccount) {
+    const accounts = await listOpsAccounts(q);
+
+    return (
+      <main className="leads-view">
+        <section className="leads-shell">
+          <OpsHeader operatorEmail={operator.email} />
+          <OpsToolbar showSetupRequests subtitle="Billing and onboarding control" />
+          <div className="leads-header">
+            <div>
+              <p className="t-eyebrow">Relay Operations</p>
+              <h1 className="t-display">Billing &amp; setup</h1>
+              <p className="leads-subtitle">Choose an account before viewing or changing billing and onboarding state.</p>
+            </div>
+          </div>
+          <OpsAccountDirectory accounts={accounts} query={q} />
+        </section>
+      </main>
+    );
+  }
+
+  const account = targetAccount;
+  const accountId = account.accountId;
   const [billing, allEvents, onboardingDeadlines] = await Promise.all([
-    getAccountBillingRecord(accountId),
+    Promise.resolve(account),
     getRecentStripeEventsForAccount(accountId, 50),
     listAccountsForOnboardingDeadlineMaintenance(),
   ]);
@@ -161,11 +187,10 @@ export default async function OpsBillingPage({
       <section className="leads-shell">
         <OpsHeader
           businessName={account.businessName}
-          operatorEmail={session.email}
-          switchAccountHref={session.membershipCount > 1 ? "/account/select?next=/ops/billing" : undefined}
+          operatorEmail={operator.email}
         />
 
-        <OpsToolbar showSetupRequests subtitle="Billing diagnostics" />
+        <OpsToolbar showSetupRequests accountSlug={account.accountSlug} subtitle={`Billing diagnostics · ${account.accountSlug}`} />
 
         <div className="leads-header">
           <div>
@@ -253,16 +278,7 @@ export default async function OpsBillingPage({
               </p>
             ) : null}
             <form action="/api/ops/billing" method="post" className="setup-panel__action">
-              <label className="field-label" htmlFor="billing-override-account">
-                Account slug
-              </label>
-              <input
-                id="billing-override-account"
-                className="field"
-                name="account_slug"
-                defaultValue={account.accountSlug}
-                placeholder="relay-nw"
-              />
+              <input type="hidden" name="account_slug" value={account.accountSlug} />
               <div className="ops-billing-actions" aria-label="Manual billing actions">
                 <button className="btn btn-secondary" type="submit" name="action" value="comp" disabled={!canApplyBillingOverride}>
                   Comp account
@@ -315,19 +331,10 @@ export default async function OpsBillingPage({
             </div>
           ) : null}
           <form action="/api/ops/onboarding-deadlines" method="post" className="setup-panel__action">
-              <label className="field-label" htmlFor="customer-delay-account">
-                Account slug waiting on customer
-              </label>
+              <input type="hidden" name="account_slug" value={account.accountSlug} />
               <div className="lead-controls" style={{ margin: 0 }}>
-                <input
-                  id="customer-delay-account"
-                  className="field"
-                  name="account_slug"
-                  defaultValue={account.accountSlug}
-                  placeholder="relay-nw"
-                />
                 <button className="btn btn-primary" type="submit">
-                  Start / reopen 14-day clock
+                  Start / reopen clock for {account.accountSlug}
                 </button>
               </div>
               <p className="setup-panel__note">

@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
-import { requireRelayOperator } from "@/lib/auth";
+import { requirePlatformOperator } from "@/lib/auth";
 import {
   canMoveAccountToCustomerDelay,
   getOpsOnboardingAccountBySlug,
   markAccountRequirementsRequested,
+  recordPlatformAuditEvent,
 } from "@/lib/supabase";
 
 function readString(formData: FormData, key: string, maxLength = 120) {
@@ -17,7 +18,7 @@ function redirectWith(status: string, accountSlug?: string) {
 }
 
 export async function POST(request: Request) {
-  const session = await requireRelayOperator();
+  const session = await requirePlatformOperator();
   const formData = await request.formData();
   const accountSlug = readString(formData, "account_slug", 80);
 
@@ -40,6 +41,15 @@ export async function POST(request: Request) {
       previousOnboardingStatus: account.onboardingStatus,
       actorUserId: session.userId,
       actorEmail: session.email,
+    });
+    await recordPlatformAuditEvent({
+      actorUserId: session.userId,
+      actorEmail: session.email,
+      targetAccountId: account.accountId,
+      action: "onboarding.operator.customer_delay",
+      summary: account.onboardingStatus === "paused_incomplete" || account.onboardingStatus === "closed_incomplete"
+        ? "Reopened customer requirements deadline"
+        : "Started customer requirements deadline",
     });
   } catch (error) {
     console.error("Operator onboarding deadline update failed", {

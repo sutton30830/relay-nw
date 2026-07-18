@@ -3,10 +3,14 @@ import Link from "next/link";
 export function OpsToolbar({
   showSetupRequests,
   subtitle,
+  accountSlug,
 }: {
   showSetupRequests: boolean;
   subtitle: string;
+  accountSlug?: string;
 }) {
+  const accountQuery = accountSlug ? `?account=${encodeURIComponent(accountSlug)}` : "";
+
   return (
     <div className="ops-toolbar">
       <div>
@@ -14,15 +18,18 @@ export function OpsToolbar({
         <span>{subtitle}</span>
       </div>
       <div className="ops-toolbar__actions">
-        <Link className="btn btn-secondary btn-sm" href="/ops">Technical logs</Link>
-        <Link className="btn btn-secondary btn-sm" href="/ops/billing">Billing events</Link>
+        <Link className="btn btn-secondary btn-sm" href={`/ops${accountQuery}`}>Technical logs</Link>
+        <Link className="btn btn-secondary btn-sm" href={`/ops/billing${accountQuery}`}>Billing & setup</Link>
         {showSetupRequests ? (
           <Link className="btn btn-secondary btn-sm" href="/ops/setup-requests">Setup requests</Link>
         ) : null}
         <Link className="btn btn-secondary btn-sm" href="/ops/runbook">Runbook</Link>
-        <form action="/api/email-test/start" method="post">
-          <button className="btn btn-secondary btn-sm" type="submit">Test owner email</button>
-        </form>
+        {accountSlug ? (
+          <form action="/api/email-test/start" method="post">
+            <input type="hidden" name="account_slug" value={accountSlug} />
+            <button className="btn btn-secondary btn-sm" type="submit">Test owner email</button>
+          </form>
+        ) : null}
         <Link className="btn btn-secondary btn-sm" href="/leads">Back to leads</Link>
       </div>
     </div>

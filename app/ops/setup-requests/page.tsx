@@ -1,6 +1,6 @@
 import { OpsHeader } from "@/app/ops/_components/ops-header";
 import { OpsToolbar } from "@/app/ops/_components/ops-toolbar";
-import { requireRelayOperator } from "@/lib/auth";
+import { requirePlatformOperator } from "@/lib/auth";
 import { listSetupRequests, type SetupRequest, type SetupRequestStatus } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -97,8 +97,7 @@ export default async function SetupRequestsPage({
 }: {
   searchParams: Promise<{ status?: string }>;
 }) {
-  const session = await requireRelayOperator();
-  const { account } = session;
+  const operator = await requirePlatformOperator();
 
   const { status: rawStatus } = await searchParams;
   const status = validStatus(rawStatus);
@@ -108,9 +107,7 @@ export default async function SetupRequestsPage({
     <main className="leads-view">
       <section className="leads-shell">
         <OpsHeader
-          businessName={account.businessName}
-          operatorEmail={session.email}
-          switchAccountHref={session.membershipCount > 1 ? "/account/select?next=/ops/setup-requests" : undefined}
+          operatorEmail={operator.email}
         />
 
         <OpsToolbar showSetupRequests subtitle="Assisted onboarding" />

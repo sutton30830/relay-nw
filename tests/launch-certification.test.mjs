@@ -103,7 +103,7 @@ async function postOperatorDeadline({
       },
     },
     "@/lib/auth": {
-      requireRelayOperator: async () => {
+      requirePlatformOperator: async () => {
         if (operatorThrows) throw new Error("not operator");
         return { userId: "user_1", email: "ops@example.com" };
       },
@@ -125,6 +125,7 @@ async function postOperatorDeadline({
         calls.marks.push(input);
         return { requirementsDueAt: "2026-08-15T00:00:00.000Z" };
       },
+      recordPlatformAuditEvent: async () => {},
     },
   });
 
