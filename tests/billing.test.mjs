@@ -243,6 +243,21 @@ test("active, trialing, and comped billing states are accepted without setup enf
   }
 });
 
+test("trialing billing lifecycle does not claim the account is renewing monthly", () => {
+  const state = billing.computeBillingLifecycle({
+    billing: billingRecord({
+      billingStatus: "trialing",
+      trialEndsAt: "2026-08-01T12:00:00.000Z",
+    }),
+    setupReadiness: setupReadiness({ callCaptureReady: true, smsRegistrationReady: true }),
+  });
+
+  assert.equal(state.label, "Trial active");
+  assert.equal(state.headline, "Trial is active.");
+  assert.match(state.summary, /trial is active until Aug 1, 2026/);
+  assert.doesNotMatch(state.summary, /renew monthly/);
+});
+
 test("scheduled cancellation stays manageable and does not imply service shutdown", () => {
   const state = billing.computeBillingLifecycle({
     billing: billingRecord({

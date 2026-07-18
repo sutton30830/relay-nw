@@ -65,8 +65,77 @@ function billingStatusLabel(billing: AccountBillingRecord) {
     return periodDate ? `Active until ${periodDate}` : "Active until period end";
   }
   if (billing.billingStatus === "active") return "Subscription active";
-  if (billing.billingStatus === "trialing") return "Trialing";
+  if (billing.billingStatus === "trialing") return "Trial active";
   return "Not started";
+}
+
+function daysUntilBillingDate(value: string | null) {
+  if (!value) return null;
+
+  const end = new Date(value);
+  if (!Number.isFinite(end.getTime())) return null;
+
+  return Math.ceil((end.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+}
+
+function billingHeadline(billing: AccountBillingRecord, lifecycle: BillingLifecycleState) {
+  const periodDate = formatBillingDate(billing.currentPeriodEnd);
+  const trialDate = formatBillingDate(billing.trialEndsAt);
+
+  if (billing.cancelAtPeriodEnd && billing.billingStatus === "active") {
+    return periodDate ? `Active until ${periodDate}` : "Active until the billing period ends";
+  }
+
+  if (billing.billingStatus === "trialing") {
+    return trialDate ? `Trial ends ${trialDate}` : "Trial active";
+  }
+
+  if (billing.billingStatus === "comped") return "Free account";
+  if (billing.billingStatus === "past_due") return "Payment needs attention";
+  if (billing.billingStatus === "canceled") return "Subscription canceled";
+  if (billing.billingStatus === "active") return "Subscription active";
+  if (lifecycle.activationReady) return "Ready to start billing";
+  return "Finish setup before billing";
+}
+
+function billingSummary(billing: AccountBillingRecord, lifecycle: BillingLifecycleState) {
+  const periodDate = formatBillingDate(billing.currentPeriodEnd);
+  const trialDate = formatBillingDate(billing.trialEndsAt);
+  const trialDaysLeft = daysUntilBillingDate(billing.trialEndsAt);
+
+  if (billing.cancelAtPeriodEnd && billing.billingStatus === "active") {
+    return periodDate
+      ? `Your subscription has been canceled. Relay keeps working until ${periodDate}.`
+      : "Your subscription has been canceled. Relay keeps working until the current billing period ends.";
+  }
+
+  if (billing.billingStatus === "trialing") {
+    if (trialDate && trialDaysLeft !== null && trialDaysLeft > 0) {
+      return `${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left in your trial. Start billing any time.`;
+    }
+
+    if (trialDate) {
+      return `Your trial ended ${trialDate}. Start billing to move this account onto a paid subscription.`;
+    }
+
+    return "Your trial is active. Start billing any time.";
+  }
+
+  if (billing.billingStatus === "comped") {
+    return "Relay isn't charging this account.";
+  }
+
+  if (billing.billingStatus === "past_due") {
+    return "Update payment so the subscription stays in good standing.";
+  }
+
+  if (billing.billingStatus === "canceled") {
+    return lifecycle.activationReady
+      ? "Restart the subscription when you're ready to treat this account as paid."
+      : "Finish setup before restarting billing.";
+  }
+
+  return lifecycle.summary;
 }
 
 function BillingPrimaryAction({
@@ -92,6 +161,20 @@ function BillingPrimaryAction({
         Finish setup
       </a>
     );
+  }
+
+  if (billing.billingStatus === "trialing" && !billing.stripeCustomerId) {
+    return (
+      <form action="/api/billing/checkout" method="post">
+        <button className="btn btn-primary settings-billing__action" type="submit">
+          Start billing
+        </button>
+      </form>
+    );
+  }
+
+  if (billing.billingStatus === "comped") {
+    return null;
   }
 
   if (lifecycle.ownerAction === "start_billing" || lifecycle.ownerAction === "restart_subscription") {
@@ -131,6 +214,7 @@ function BillingSection({
   role: string;
 }) {
   const periodDate = formatBillingDate(billing.currentPeriodEnd);
+  const trialDate = formatBillingDate(billing.trialEndsAt);
   const guaranteeDate = formatBillingDate(billing.guaranteeEndsAt);
   const periodLabel = billing.cancelAtPeriodEnd ? "Ends" : "Renews";
   const showPaymentWarning = billing.billingStatus === "past_due";
@@ -142,8 +226,13 @@ function BillingSection({
         <div>
           <p className="t-eyebrow settings-section__title">Billing</p>
           <h2 className="settings-billing__plan">Current plan: $99/month</h2>
-          <p className="settings-section__lead">{billingStatusLabel(billing)}</p>
-          <p className="settings-section__meta">{lifecycle.summary}</p>
+          <p className="settings-section__lead">{billingHeadline(billing, lifecycle)}</p>
+          <p className="settings-section__meta">{billingSummary(billing, lifecycle)}</p>
+          {billing.billingStatus !== "active" || billing.cancelAtPeriodEnd ? (
+            <p className="settings-section__meta settings-billing__reassurance">
+              Missed-call capture is never interrupted by billing.
+            </p>
+          ) : null}
         </div>
         <BillingPrimaryAction billing={billing} lifecycle={lifecycle} role={role} />
       </div>
@@ -171,6 +260,12 @@ function BillingSection({
           <div>
             <dt>{periodLabel}</dt>
             <dd>{periodDate}</dd>
+          </div>
+        ) : null}
+        {trialDate ? (
+          <div>
+            <dt>Trial ends</dt>
+            <dd>{trialDate}</dd>
           </div>
         ) : null}
         {guaranteeDate ? (

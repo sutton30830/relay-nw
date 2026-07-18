@@ -2901,6 +2901,9 @@ code {
 .settings-billing__action {
   white-space: nowrap;
 }
+.settings-billing__reassurance {
+  margin-top: 8px;
+}
 .settings-billing__facts {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

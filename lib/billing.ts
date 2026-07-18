@@ -428,6 +428,7 @@ export function computeBillingLifecycle(input: {
 
   if (billingStatus === "active" || billingStatus === "trialing" || billingStatus === "comped") {
     const scheduledToCancel = billing.cancelAtPeriodEnd && billingStatus !== "comped";
+    const trialEndsAt = formatBillingLifecycleDate(billing.trialEndsAt);
 
     return {
       activationReady,
@@ -436,17 +437,23 @@ export function computeBillingLifecycle(input: {
       ownerAction,
       customerDelay,
       carrierDelay,
-      label: scheduledToCancel ? "Active until end date" : billingStatus === "comped" ? "Comped" : billingStatus === "trialing" ? "Trial" : "Active",
+      label: scheduledToCancel ? "Active until end date" : billingStatus === "comped" ? "Comped" : billingStatus === "trialing" ? "Trial active" : "Active",
       headline: scheduledToCancel
         ? "Subscription is scheduled to end."
         : billingStatus === "comped"
           ? "Billing is comped."
-          : "Billing is active.",
+          : billingStatus === "trialing"
+            ? "Trial is active."
+            : "Billing is active.",
       summary: scheduledToCancel
         ? "Your subscription has been canceled. Relay keeps catching missed calls until the current billing period ends."
         : billingStatus === "comped"
           ? "Relay is intentionally not charging this account."
-          : "Your subscription is active and will renew monthly unless canceled.",
+          : billingStatus === "trialing"
+            ? trialEndsAt
+              ? `Your trial is active until ${trialEndsAt}.`
+              : "Your trial is active."
+            : "Your subscription is active and will renew monthly unless canceled.",
       tone: scheduledToCancel ? "warn" : billingStatus === "comped" ? "neutral" : "good",
     };
   }
