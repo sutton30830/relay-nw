@@ -51,6 +51,7 @@ const opsSetupRequestsPageTsx = await readFile(new URL("../app/ops/setup-request
 const opsToolbarTsx = await readFile(new URL("../app/ops/_components/ops-toolbar.tsx", import.meta.url), "utf8");
 const opsSetupRequestsRouteTs = await readFile(new URL("../app/api/ops/setup-requests/route.ts", import.meta.url), "utf8");
 const opsOnboardingDeadlinesRouteTs = await readFile(new URL("../app/api/ops/onboarding-deadlines/route.ts", import.meta.url), "utf8");
+const opsBillingRouteTs = await readFile(new URL("../app/api/ops/billing/route.ts", import.meta.url), "utf8");
 const onboardingDeadlinesCronTs = await readFile(new URL("../app/api/cron/onboarding-deadlines/route.ts", import.meta.url), "utf8");
 const privacyPageTsx = await readFile(new URL("../app/privacy/page.tsx", import.meta.url), "utf8");
 const termsPageTsx = await readFile(new URL("../app/terms/page.tsx", import.meta.url), "utf8");
@@ -119,11 +120,14 @@ test("billing foundation is account-scoped and activation-based", () => {
   assert.match(accountStore, /markStripeEventIgnored/);
   assert.match(accountStore, /markStripeEventFailed/);
   assert.match(accountStore, /getRecentStripeEventsForAccount/);
+  assert.match(accountStore, /getOpsBillingAccountBySlug/);
   assert.match(accountStore, /processing_started_at\.lt/);
   assert.match(accountStore, /Account billing lifecycle columns are missing/);
   assert.match(billingTs, /isBillingActivationReady/);
   assert.match(billingTs, /computeBillingLifecycle/);
   assert.match(billingTs, /ownerAction/);
+  assert.match(billingTs, /canApplyOperatorBillingOverride/);
+  assert.match(billingTs, /normalizeOperatorTrialDays/);
   assert.match(billingTs, /callCaptureReady && readiness\.smsRegistrationReady/);
   assert.match(onboardingDeadlinesTs, /defaultRequirementsDueAt/);
   assert.match(onboardingDeadlinesTs, /chooseOnboardingDeadlineAction/);
@@ -253,6 +257,15 @@ test("ops runbook is authenticated and covers failure visibility plus retention"
   assert.match(opsBillingPageTsx, /getRecentStripeEventsForAccount/);
   assert.match(opsBillingPageTsx, /Stripe webhook processing/);
   assert.match(opsBillingPageTsx, /failedCount/);
+  assert.match(opsBillingPageTsx, /Operator billing controls/);
+  assert.match(opsBillingPageTsx, /Comp account/);
+  assert.match(opsBillingPageTsx, /Grant trial/);
+  assert.match(opsBillingPageTsx, /canApplyOperatorBillingOverride/);
+  assert.match(opsBillingRouteTs, /requireRelayOperator/);
+  assert.match(opsBillingRouteTs, /getOpsBillingAccountBySlug/);
+  assert.match(opsBillingRouteTs, /canApplyOperatorBillingOverride/);
+  assert.match(opsBillingRouteTs, /updateAccountBillingRecord/);
+  assert.match(opsBillingRouteTs, /recordAccountAuditEvents/);
   assert.match(verifyAccountScript, /Stripe event ledger healthy/);
   assert.match(opsRunbookPageTsx, /Auto-text sends only when A2P is approved and texting is on/);
   assert.match(opsRunbookPageTsx, /WEBHOOK_EVENT_RETENTION_DAYS/);

@@ -442,3 +442,59 @@ test("stripe events without account metadata are ignored instead of guessing a t
     null,
   );
 });
+
+test("operator billing overrides are blocked while Stripe has a live subscription", () => {
+  assert.equal(billing.canApplyOperatorBillingOverride(null), true);
+  assert.equal(billing.canApplyOperatorBillingOverride(billingRecord()), true);
+  assert.equal(
+    billing.canApplyOperatorBillingOverride(
+      billingRecord({ stripeSubscriptionId: "sub_active", stripeSubscriptionStatus: "active" }),
+    ),
+    false,
+  );
+  assert.equal(
+    billing.canApplyOperatorBillingOverride(
+      billingRecord({ stripeSubscriptionId: "sub_past_due", stripeSubscriptionStatus: "past_due" }),
+    ),
+    false,
+  );
+  assert.equal(
+    billing.canApplyOperatorBillingOverride(
+      billingRecord({ stripeSubscriptionId: "sub_canceled", stripeSubscriptionStatus: "canceled" }),
+    ),
+    true,
+  );
+  assert.equal(
+    billing.canApplyOperatorBillingOverride(
+      billingRecord({ stripeSubscriptionId: "sub_expired", stripeSubscriptionStatus: "incomplete_expired" }),
+    ),
+    true,
+  );
+});
+
+test("operator trial days are clamped to a safe support range", () => {
+  assert.equal(billing.normalizeOperatorTrialDays(undefined), 30);
+  assert.equal(billing.normalizeOperatorTrialDays("3"), 7);
+  assert.equal(billing.normalizeOperatorTrialDays("14"), 14);
+  assert.equal(billing.normalizeOperatorTrialDays("120"), 90);
+  assert.equal(billing.normalizeOperatorTrialDays("nope"), 30);
+});
+
+test("trial extension starts from current future trial end instead of now", () => {
+  assert.equal(
+    billing.addTrialDays({
+      trialEndsAt: "2026-07-20T00:00:00.000Z",
+      days: 10,
+      now: new Date("2026-07-18T00:00:00.000Z"),
+    }),
+    "2026-07-30T00:00:00.000Z",
+  );
+  assert.equal(
+    billing.addTrialDays({
+      trialEndsAt: "2026-07-01T00:00:00.000Z",
+      days: 7,
+      now: new Date("2026-07-18T00:00:00.000Z"),
+    }),
+    "2026-07-25T00:00:00.000Z",
+  );
+});

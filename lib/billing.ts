@@ -96,6 +96,13 @@ export type BillingCheckoutEligibility =
         | "contact_support";
     };
 
+export type OperatorBillingOverrideAction =
+  | "comp"
+  | "uncomp"
+  | "grant_trial"
+  | "extend_trial"
+  | "end_trial_now";
+
 const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   billingStatus: "not_started",
   onboardingStatus: "requirements_needed",
@@ -513,4 +520,34 @@ export function getBillingCheckoutEligibility(input: {
   }
 
   return { ok: false, reason: "contact_support" };
+}
+
+export function canApplyOperatorBillingOverride(
+  billing: Pick<AccountBillingRecord, "stripeSubscriptionId" | "stripeSubscriptionStatus"> | null | undefined,
+) {
+  if (!billing?.stripeSubscriptionId) {
+    return true;
+  }
+
+  const stripeStatus = normalizeStripeSubscriptionStatus(billing.stripeSubscriptionStatus);
+  return stripeStatus === "canceled" || stripeStatus === "incomplete_expired";
+}
+
+export function normalizeOperatorTrialDays(value: number | string | null | undefined, fallback = 30) {
+  const numeric = typeof value === "number" ? value : Number(value);
+  const days = Number.isFinite(numeric) ? Math.round(numeric) : fallback;
+
+  return Math.min(90, Math.max(7, days));
+}
+
+export function addTrialDays(input: {
+  trialEndsAt?: string | null;
+  days: number;
+  now?: Date;
+}) {
+  const now = input.now ?? new Date();
+  const existing = input.trialEndsAt ? new Date(input.trialEndsAt) : null;
+  const base = existing && Number.isFinite(existing.getTime()) && existing > now ? existing : now;
+
+  return new Date(base.getTime() + input.days * 24 * 60 * 60 * 1000).toISOString();
 }

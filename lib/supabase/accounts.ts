@@ -174,6 +174,12 @@ export type OpsOnboardingAccount = {
   guaranteeEndsAt: string | null;
 };
 
+export type OpsBillingAccount = AccountBillingRecord & {
+  accountId: string;
+  accountSlug: string;
+  businessName: string;
+};
+
 const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   billingStatus: "not_started",
   onboardingStatus: "requirements_needed",
@@ -904,6 +910,59 @@ export async function getOpsOnboardingAccountBySlug(slug: string): Promise<OpsOn
     activatedAt: typeof data.activated_at === "string" ? data.activated_at : null,
     firstPaidAt: typeof data.first_paid_at === "string" ? data.first_paid_at : null,
     guaranteeEndsAt: typeof data.guarantee_ends_at === "string" ? data.guarantee_ends_at : null,
+  };
+}
+
+export async function getOpsBillingAccountBySlug(slug: string): Promise<OpsBillingAccount | null> {
+  const normalizedSlug = slug.trim();
+  if (!normalizedSlug || isPlaceholderSupabaseConfig()) {
+    return null;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("accounts")
+    .select(
+      "id, slug, name, billing_status, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, requirements_due_at, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, onboarding_status_updated_at",
+    )
+    .eq("slug", normalizedSlug)
+    .maybeSingle();
+
+  if (error) {
+    if (
+      error.message.includes("billing_status") ||
+      error.message.includes("stripe_subscription_id") ||
+      error.message.includes("trial_ends_at")
+    ) {
+      console.warn("Account billing lifecycle columns are missing. Run supabase.sql before using operator billing controls.");
+      return null;
+    }
+
+    throwIfSupabaseError(error);
+  }
+
+  if (!data) return null;
+
+  return {
+    accountId: String(data.id),
+    accountSlug: String(data.slug),
+    businessName: String(data.name),
+    billingStatus: normalizeAccountBillingStatus(data.billing_status as string | null | undefined),
+    onboardingStatus: normalizeAccountOnboardingStatus(data.onboarding_status as string | null | undefined),
+    stripeCustomerId: typeof data.stripe_customer_id === "string" ? data.stripe_customer_id : null,
+    stripeSubscriptionId: typeof data.stripe_subscription_id === "string" ? data.stripe_subscription_id : null,
+    stripePriceId: typeof data.stripe_price_id === "string" ? data.stripe_price_id : null,
+    stripeSubscriptionStatus: normalizeAccountStripeSubscriptionStatus(data.stripe_subscription_status as string | null | undefined),
+    trialEndsAt: typeof data.trial_ends_at === "string" ? data.trial_ends_at : null,
+    currentPeriodEnd: typeof data.current_period_end === "string" ? data.current_period_end : null,
+    cancelAtPeriodEnd: Boolean(data.cancel_at_period_end),
+    requirementsDueAt: typeof data.requirements_due_at === "string" ? data.requirements_due_at : null,
+    activatedAt: typeof data.activated_at === "string" ? data.activated_at : null,
+    firstPaidAt: typeof data.first_paid_at === "string" ? data.first_paid_at : null,
+    guaranteeEndsAt: typeof data.guarantee_ends_at === "string" ? data.guarantee_ends_at : null,
+    billingAttentionSince: typeof data.billing_attention_since === "string" ? data.billing_attention_since : null,
+    billingUpdatedAt: typeof data.billing_updated_at === "string" ? data.billing_updated_at : null,
+    onboardingStatusUpdatedAt:
+      typeof data.onboarding_status_updated_at === "string" ? data.onboarding_status_updated_at : null,
   };
 }
 

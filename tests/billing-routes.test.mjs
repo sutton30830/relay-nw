@@ -176,6 +176,62 @@ async function runPortal({
   return calls;
 }
 
+async function runOpsBillingOverride({
+  authSession = { userId: "user-1", email: "ops@example.com" },
+  accountBilling = billingRecord({ accountId: "acct-1", accountSlug: "demo", businessName: "Demo Plumbing" }),
+  form = { account_slug: "demo", action: "comp" },
+} = {}) {
+  const calls = {
+    lookups: [],
+    updates: [],
+    audits: [],
+    redirects: [],
+  };
+
+  const { POST } = await loadTsModule("app/api/ops/billing/route.ts", {
+    "next/navigation": {
+      redirect: (url) => {
+        calls.redirects.push(url);
+        throw Object.assign(new Error(`REDIRECT:${url}`), { url });
+      },
+    },
+    "@/lib/auth": {
+      requireRelayOperator: async () => authSession,
+    },
+    "@/lib/billing": billing,
+    "@/lib/supabase": {
+      getOpsBillingAccountBySlug: async (slug) => {
+        calls.lookups.push(slug);
+        return accountBilling;
+      },
+      updateAccountBillingRecord: async (accountId, update) => {
+        calls.updates.push({ accountId, update });
+      },
+      recordAccountAuditEvents: async (input) => {
+        calls.audits.push(input);
+      },
+    },
+  });
+
+  const body = new FormData();
+  for (const [key, value] of Object.entries(form)) {
+    body.set(key, value);
+  }
+
+  try {
+    await POST(new Request("http://localhost:3000/api/ops/billing", {
+      method: "POST",
+      body,
+    }));
+  } catch (error) {
+    if (!String(error?.message ?? "").startsWith("REDIRECT:")) {
+      throw error;
+    }
+  }
+
+  return calls;
+}
+
 test("direct Checkout before activation readiness fails", async () => {
   const calls = await runCheckout({ callCaptureReady: false, smsRegistrationReady: true });
 
@@ -276,4 +332,84 @@ test("double Checkout submission uses the same deterministic Stripe idempotency 
   assert.equal(first.checkoutInputs.length, 1);
   assert.equal(second.checkoutInputs.length, 1);
   assert.equal(first.checkoutInputs[0].idempotencyKey, second.checkoutInputs[0].idempotencyKey);
+});
+
+test("operator can manually comp an account without a live Stripe subscription", async () => {
+  const calls = await runOpsBillingOverride();
+
+  assert.deepEqual(calls.lookups, ["demo"]);
+  assert.deepEqual(calls.updates, [
+    {
+      accountId: "acct-1",
+      update: {
+        billingStatus: "comped",
+        trialEndsAt: null,
+        cancelAtPeriodEnd: false,
+        billingAttentionSince: null,
+      },
+    },
+  ]);
+  assert.equal(calls.audits.length, 1);
+  assert.equal(calls.audits[0].accountId, "acct-1");
+  assert.equal(calls.audits[0].events[0].action, "billing.operator.comp");
+  assert.equal(calls.redirects.at(-1), "/ops/billing?billing_action=comp&account=demo");
+});
+
+test("operator can grant a bounded manual trial", async () => {
+  const calls = await runOpsBillingOverride({
+    form: { account_slug: "demo", action: "grant_trial", trial_days: "120" },
+  });
+
+  assert.equal(calls.updates.length, 1);
+  assert.equal(calls.updates[0].update.billingStatus, "trialing");
+  assert.match(calls.updates[0].update.trialEndsAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(calls.updates[0].update.cancelAtPeriodEnd, false);
+  assert.equal(calls.audits[0].events[0].summary, "Granted 90-day trial");
+  assert.equal(calls.redirects.at(-1), "/ops/billing?billing_action=grant_trial&account=demo");
+});
+
+test("operator can end a manual trial without mutating durable lifecycle dates", async () => {
+  const calls = await runOpsBillingOverride({
+    accountBilling: billingRecord({
+      accountId: "acct-1",
+      accountSlug: "demo",
+      businessName: "Demo Plumbing",
+      billingStatus: "trialing",
+      trialEndsAt: "2026-08-01T00:00:00.000Z",
+      activatedAt: "2026-07-01T00:00:00.000Z",
+      firstPaidAt: "2026-07-02T00:00:00.000Z",
+      guaranteeEndsAt: "2026-08-01T00:00:00.000Z",
+    }),
+    form: { account_slug: "demo", action: "end_trial_now" },
+  });
+
+  assert.deepEqual(calls.updates, [
+    {
+      accountId: "acct-1",
+      update: {
+        billingStatus: "not_started",
+        trialEndsAt: null,
+        cancelAtPeriodEnd: false,
+        billingAttentionSince: null,
+      },
+    },
+  ]);
+  assert.equal(calls.audits[0].events[0].action, "billing.operator.end_trial_now");
+});
+
+test("operator billing override refuses active Stripe subscriptions", async () => {
+  const calls = await runOpsBillingOverride({
+    accountBilling: billingRecord({
+      accountId: "acct-1",
+      accountSlug: "demo",
+      businessName: "Demo Plumbing",
+      billingStatus: "active",
+      stripeSubscriptionId: "sub_live",
+      stripeSubscriptionStatus: "active",
+    }),
+  });
+
+  assert.deepEqual(calls.updates, []);
+  assert.deepEqual(calls.audits, []);
+  assert.equal(calls.redirects.at(-1), "/ops/billing?billing_action=override_blocked&account=demo");
 });

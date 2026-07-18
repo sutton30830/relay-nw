@@ -1,6 +1,7 @@
 import { AppHeader } from "@/app/leads/_components/app-header";
 import { OpsToolbar } from "@/app/ops/_components/ops-toolbar";
 import { isRelayOperator, requireAccountUser } from "@/lib/auth";
+import { canApplyOperatorBillingOverride } from "@/lib/billing";
 import { daysUntil } from "@/lib/onboarding-deadlines";
 import {
   canMoveAccountToCustomerDelay,
@@ -69,6 +70,31 @@ function onboardingNotice(status: string | undefined, accountSlug: string | unde
   return null;
 }
 
+function billingActionNotice(status: string | undefined, accountSlug: string | undefined) {
+  if (!status) return null;
+
+  const prefix = accountSlug ? `${accountSlug}: ` : "";
+  if (status === "comp") return `${prefix}billing is now comped.`;
+  if (status === "uncomp") return `${prefix}manual comp removed. Account is back to not started.`;
+  if (status === "grant_trial") return `${prefix}manual trial granted.`;
+  if (status === "extend_trial") return `${prefix}manual trial extended.`;
+  if (status === "end_trial_now") return `${prefix}manual trial ended.`;
+  if (status === "override_blocked") return `${prefix}not changed. Stripe has a live subscription, so Stripe remains the source of truth.`;
+  if (status === "account_not_found") return `${prefix}account not found.`;
+  if (status === "missing_account") return "Enter an account slug.";
+  if (status === "invalid_action") return `${prefix}choose a valid billing action.`;
+  if (status === "save_failed") return `${prefix}billing override failed. Check logs before trying again.`;
+  return null;
+}
+
+function billingActionSucceeded(status: string | undefined) {
+  return status === "comp" ||
+    status === "uncomp" ||
+    status === "grant_trial" ||
+    status === "extend_trial" ||
+    status === "end_trial_now";
+}
+
 function OnboardingDeadlineCard({ account }: { account: OnboardingDeadlineAccount }) {
   const days = account.requirementsDueAt ? daysUntil(account.requirementsDueAt) : null;
   const dueCopy = days === null
@@ -111,11 +137,11 @@ function OnboardingDeadlineCard({ account }: { account: OnboardingDeadlineAccoun
 export default async function OpsBillingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; onboarding?: string; account?: string }>;
+  searchParams: Promise<{ q?: string; onboarding?: string; billing_action?: string; account?: string }>;
 }) {
   const session = await requireAccountUser();
   const { account, accountId } = session;
-  const { q = "", onboarding, account: onboardingAccountSlug } = await searchParams;
+  const { q = "", onboarding, billing_action: billingAction, account: noticeAccountSlug } = await searchParams;
   const showSetupRequests = isRelayOperator(session);
   const [billing, allEvents, onboardingDeadlines] = await Promise.all([
     getAccountBillingRecord(accountId),
@@ -126,8 +152,10 @@ export default async function OpsBillingPage({
   const failedCount = allEvents.filter((event) => event.processing_status === "failed").length;
   const ignoredCount = allEvents.filter((event) => event.processing_status === "ignored").length;
   const processingCount = allEvents.filter((event) => event.processing_status === "processing").length;
-  const notice = onboardingNotice(onboarding, onboardingAccountSlug);
+  const notice = onboardingNotice(onboarding, noticeAccountSlug);
+  const billingNotice = billingActionNotice(billingAction, noticeAccountSlug);
   const canStartCustomerDelay = canMoveAccountToCustomerDelay(billing.onboardingStatus, billing);
+  const canApplyBillingOverride = canApplyOperatorBillingOverride(billing);
 
   return (
     <main className="leads-view">
@@ -194,6 +222,10 @@ export default async function OpsBillingPage({
               <dd>{formatDate(billing.currentPeriodEnd)}</dd>
             </div>
             <div>
+              <dt>Trial ends</dt>
+              <dd>{formatDate(billing.trialEndsAt)}</dd>
+            </div>
+            <div>
               <dt>Cancel at period end</dt>
               <dd>{billing.cancelAtPeriodEnd ? "yes" : "no"}</dd>
             </div>
@@ -202,6 +234,73 @@ export default async function OpsBillingPage({
               <dd>{formatDate(billing.billingUpdatedAt)}</dd>
             </div>
           </dl>
+          {showSetupRequests ? (
+            <div className="ops-manual-controls">
+              {billingNotice ? (
+                <div className={billingActionSucceeded(billingAction) ? "settings-notice" : "intake-error settings-notice"} role="status">
+                  {billingNotice}
+                </div>
+              ) : null}
+              <div className="setup-panel__head">
+                <p className="t-eyebrow">Operator billing controls</p>
+                <h3>Manual comp or trial</h3>
+                <p className="setup-copy">
+                  Use only when Relay is intentionally not charging yet. These controls are blocked when Stripe has a live subscription.
+                </p>
+              </div>
+              {!canApplyBillingOverride ? (
+                <p className="intake-error settings-notice">
+                  Manual overrides are locked because this account has a live Stripe subscription. Use Stripe Portal or webhooks instead.
+                </p>
+              ) : null}
+              <form action="/api/ops/billing" method="post" className="setup-panel__action">
+                <label className="field-label" htmlFor="billing-override-account">
+                  Account slug
+                </label>
+                <input
+                  id="billing-override-account"
+                  className="field"
+                  name="account_slug"
+                  defaultValue={account.accountSlug}
+                  placeholder="relay-nw"
+                />
+                <div className="ops-billing-actions" aria-label="Manual billing actions">
+                  <button className="btn btn-secondary" type="submit" name="action" value="comp" disabled={!canApplyBillingOverride}>
+                    Comp account
+                  </button>
+                  <button className="btn btn-secondary" type="submit" name="action" value="uncomp" disabled={!canApplyBillingOverride}>
+                    Remove comp
+                  </button>
+                </div>
+                <label className="field-label" htmlFor="billing-trial-days">
+                  Trial days
+                </label>
+                <div className="lead-controls" style={{ margin: 0 }}>
+                  <input
+                    id="billing-trial-days"
+                    className="field"
+                    name="trial_days"
+                    type="number"
+                    min="7"
+                    max="90"
+                    defaultValue="30"
+                  />
+                  <button className="btn btn-primary" type="submit" name="action" value="grant_trial" disabled={!canApplyBillingOverride}>
+                    Grant trial
+                  </button>
+                  <button className="btn btn-secondary" type="submit" name="action" value="extend_trial" disabled={!canApplyBillingOverride}>
+                    Extend trial
+                  </button>
+                  <button className="btn btn-secondary" type="submit" name="action" value="end_trial_now" disabled={!canApplyBillingOverride}>
+                    End trial now
+                  </button>
+                </div>
+                <p className="setup-panel__note">
+                  Every change is audited. Manual comp/trial does not reset activation, first-paid, or guarantee dates.
+                </p>
+              </form>
+            </div>
+          ) : null}
         </article>
 
         {showSetupRequests ? (

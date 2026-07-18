@@ -5041,6 +5041,32 @@ code {
   margin-bottom: 0;
 }
 
+.ops-manual-controls {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
+.ops-billing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ops-manual-controls .setup-panel__action {
+  align-items: stretch;
+  border-top: 0;
+  display: grid;
+  gap: 12px;
+  padding: 0;
+}
+
+.ops-manual-controls .lead-controls {
+  align-items: center;
+}
+
 .ops-billing-status {
   display: inline-flex;
   align-items: center;
