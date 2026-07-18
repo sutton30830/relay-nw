@@ -3051,49 +3051,74 @@ code {
 }
 
 /* --- Reports --- */
+.report-statement {
+  max-width: 720px;
+}
 .report-hero {
-  margin-bottom: 28px;
-  padding: clamp(22px, 4vw, 34px);
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 22px;
-  background:
-    radial-gradient(circle at 85% 10%, color-mix(in oklab, var(--good-soft) 62%, transparent), transparent 38%),
-    var(--panel);
+  margin-bottom: 34px;
+  border-bottom: 1px solid var(--line);
+  padding: 4px 0 24px;
 }
 .report-hero__label,
 .report-metric__label,
 .report-action__label {
   margin: 0;
 }
+.report-hero__figure-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: baseline;
+  margin-top: 10px;
+}
 .report-hero__title {
   max-width: 760px;
-  margin: 10px 0 8px;
+  margin: 0;
   color: var(--ink);
   font-family: var(--font-display);
-  font-size: clamp(36px, 7vw, 72px);
+  font-size: clamp(56px, 10vw, 96px);
   font-weight: 500;
-  letter-spacing: -0.055em;
+  letter-spacing: normal;
   line-height: 0.95;
 }
+.report-hero--count .report-hero__title {
+  font-size: clamp(68px, 12vw, 112px);
+}
+.report-hero--quiet .report-hero__title {
+  max-width: 620px;
+  font-size: clamp(38px, 7vw, 62px);
+  line-height: 1;
+}
+.report-hero__tag {
+  border: 1px solid color-mix(in oklab, var(--warn) 48%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--warn-soft) 62%, transparent);
+  padding: 6px 9px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.report-hero__unit {
+  margin: 8px 0 0;
+  color: var(--ink);
+  font-size: clamp(22px, 3.5vw, 34px);
+  font-weight: 750;
+  letter-spacing: -0.04em;
+  line-height: 1.08;
+}
 .report-hero__sub {
-  margin: 0;
+  margin: 10px 0 0;
   color: var(--ink-4);
   font-size: clamp(16px, 2vw, 20px);
   line-height: 1.45;
 }
 .report-hero__note {
-  flex: 0 0 auto;
-  margin: 0;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--panel-2);
-  padding: 10px 13px;
+  margin: 16px 0 0;
   color: var(--ink-4);
   font-size: 13px;
   font-weight: 700;
-  white-space: nowrap;
 }
 .report-period {
   margin-bottom: 28px;
@@ -3210,14 +3235,6 @@ code {
 }
 
 @media (max-width: 820px) {
-  .report-hero {
-    display: block;
-  }
-  .report-hero__note {
-    display: inline-flex;
-    margin-top: 16px;
-    white-space: normal;
-  }
   .report-metric-grid,
   .report-action-grid,
   .report-compare__grid {
@@ -3225,6 +3242,12 @@ code {
   }
   .report-action {
     min-height: 0;
+  }
+}
+
+@media (min-width: 860px) {
+  .report-hero__note {
+    text-align: right;
   }
 }
 
