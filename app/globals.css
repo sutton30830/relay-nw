@@ -3060,8 +3060,7 @@ code {
   padding: 4px 0 24px;
 }
 .report-hero__label,
-.ledger__label,
-.report-action__label {
+.ledger__label {
   margin: 0;
 }
 .report-hero__figure-row {
@@ -3126,7 +3125,6 @@ code {
 .report-period__head {
   margin-bottom: 12px;
 }
-.report-action-grid,
 .report-compare__grid {
   display: grid;
   gap: 12px;
@@ -3171,43 +3169,56 @@ code {
 .ledger__row--total .ledger__value {
   font-size: clamp(32px, 7vw, 50px);
 }
-.report-action-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.attention {
+  display: grid;
+  gap: 10px;
 }
-.report-action {
+.attention__row {
   display: flex;
-  min-height: 126px;
-  align-items: flex-start;
+  min-height: 56px;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 18px;
-  text-decoration: none;
+  gap: 14px;
+  border-top: 1px solid var(--line);
+  padding: 14px 0;
   color: inherit;
-  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+  text-decoration: none;
+  transition: color 140ms ease, transform 140ms ease;
 }
-.report-action:hover {
-  border-color: var(--brand);
-  box-shadow: var(--shadow-sm);
+.attention__row:hover {
+  color: var(--brand);
   transform: translateY(-1px);
 }
-.report-action--warning {
-  border-color: color-mix(in oklab, var(--danger) 50%, var(--line));
-  background: color-mix(in oklab, var(--danger-soft) 38%, var(--panel));
+.attention__row--warning {
+  border-left: 3px solid var(--warn);
+  padding-left: 12px;
 }
-.report-action__value {
-  margin: 8px 0 2px;
+.attention__count {
+  min-width: 36px;
   color: var(--ink);
-  font-size: 34px;
-  font-weight: 800;
-  letter-spacing: -0.04em;
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  line-height: 1;
 }
-.report-action__hint {
+.attention__body {
+  flex: 1;
+  min-width: 0;
+}
+.attention__label {
   margin: 0;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 800;
+}
+.attention__hint {
+  margin: 3px 0 0;
   color: var(--ink-4);
   font-size: 13px;
   line-height: 1.35;
 }
-.report-action__open {
+.attention__open {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -3215,6 +3226,16 @@ code {
   font-size: 12.5px;
   font-weight: 650;
   white-space: nowrap;
+}
+.attention__clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding: 16px 0 0;
+  color: var(--ok);
+  font-size: 14px;
+  font-weight: 800;
 }
 .report-compare {
   margin-bottom: 18px;
@@ -3257,12 +3278,8 @@ code {
 }
 
 @media (max-width: 820px) {
-  .report-action-grid,
   .report-compare__grid {
     grid-template-columns: 1fr;
-  }
-  .report-action {
-    min-height: 0;
   }
 }
 

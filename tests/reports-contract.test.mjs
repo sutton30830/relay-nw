@@ -29,6 +29,8 @@ test("reports page exposes a small action strip instead of a raw analytics grid"
   assert.match(reportsPage, /Failed texts/);
   assert.match(reportsPage, /Booked missing value/);
   assert.match(reportsPage, /inboxCounts\.smsIssues/);
+  assert.match(reportsPage, /Nothing needs your attention/);
+  assert.match(reportsPage, /activeAttentionItems/);
 });
 
 test("reports stats distinguish reply leads and booked jobs missing value", () => {

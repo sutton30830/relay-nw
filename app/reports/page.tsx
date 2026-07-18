@@ -49,27 +49,27 @@ function LedgerRow({
   );
 }
 
-function ActionCard({
+function AttentionRow({
   label,
-  value,
+  count,
   hint,
   href,
   tone = "default",
 }: {
   label: string;
-  value: string;
+  count: number;
   hint: string;
   href: string;
   tone?: "default" | "warning";
 }) {
   return (
-    <Link className={`panel report-action report-action--${tone}`} href={href}>
-      <div>
-        <p className="t-eyebrow report-action__label">{label}</p>
-        <p className="report-action__value">{value}</p>
-        <p className="report-action__hint">{hint}</p>
+    <Link className={`attention__row attention__row--${tone}`} href={href}>
+      <span className="attention__count">{count}</span>
+      <div className="attention__body">
+        <p className="attention__label">{label}</p>
+        <p className="attention__hint">{hint}</p>
       </div>
-      <span className="report-action__open">
+      <span className="attention__open">
         Open <Icon name="arrowRight" size={13} />
       </span>
     </Link>
@@ -114,6 +114,37 @@ export default async function ReportsPage() {
     missedCalls: thisMonth.missedCalls,
     typicalJobValueCents: null,
   });
+  const attentionItems: Array<{
+    label: string;
+    count: number;
+    hint: string;
+    href: string;
+    tone?: "default" | "warning";
+  }> = [
+    {
+      label: "New leads",
+      count: inboxCounts.new,
+      hint: inboxCounts.new > 0 ? "Call or text these next." : "No fresh leads waiting.",
+      href: "/leads?filter=new",
+    },
+    {
+      label: "Failed texts",
+      count: inboxCounts.smsIssues,
+      hint: inboxCounts.smsIssues > 0 ? "Open the inbox and call these directly." : "No known delivery issues.",
+      href: "/leads",
+      tone: "warning",
+    },
+    {
+      label: "Booked missing value",
+      count: thisMonth.bookedMissingValue,
+      hint:
+        thisMonth.bookedMissingValue > 0
+          ? "Add values so reports tell the truth."
+          : "Booked jobs have values entered.",
+      href: "/leads?filter=booked",
+    },
+  ];
+  const activeAttentionItems = attentionItems.filter((item) => item.count > 0);
 
   return (
     <main className="leads-view">
@@ -180,35 +211,25 @@ export default async function ReportsPage() {
             <div className="drawer__section-head report-period__head">
               <p className="t-eyebrow">Needs attention</p>
             </div>
-            <div className="report-action-grid">
-              <ActionCard
-                label="New leads"
-                value={String(inboxCounts.new)}
-                hint={inboxCounts.new > 0 ? "Call or text these next." : "No fresh leads waiting."}
-                href="/leads?filter=new"
-              />
-              <ActionCard
-                label="Failed texts"
-                value={String(inboxCounts.smsIssues)}
-                hint={
-                  inboxCounts.smsIssues > 0
-                    ? "Open the inbox and call these directly."
-                    : "No known delivery issues."
-                }
-                href="/leads"
-                tone={inboxCounts.smsIssues > 0 ? "warning" : "default"}
-              />
-              <ActionCard
-                label="Booked missing value"
-                value={String(thisMonth.bookedMissingValue)}
-                hint={
-                  thisMonth.bookedMissingValue > 0
-                    ? "Add values so reports tell the truth."
-                    : "Booked jobs have values entered."
-                }
-                href="/leads?filter=booked"
-              />
-            </div>
+            {activeAttentionItems.length > 0 ? (
+              <div className="attention">
+                {activeAttentionItems.map((item) => (
+                  <AttentionRow
+                    key={item.label}
+                    label={item.label}
+                    count={item.count}
+                    hint={item.hint}
+                    href={item.href}
+                    tone={item.tone}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="attention__clear">
+                <Icon name="check" size={14} />
+                <span>Nothing needs your attention.</span>
+              </div>
+            )}
           </section>
 
           {hasUsefulPriorMonth(lastMonth) ? (
