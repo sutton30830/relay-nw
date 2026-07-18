@@ -20,6 +20,13 @@ type HeaderSample = {
 
 type HeaderPage = "inbox" | "reports" | "setup" | "settings" | "conversation";
 
+const OWNER_NAV_ITEMS = [
+  { key: "inbox", href: "/leads", icon: "inbox" as const, label: "Inbox" },
+  { key: "reports", href: "/reports", icon: "chart" as const, label: "Reports" },
+  { key: "setup", href: "/setup", icon: "settings" as const, label: "Setup" },
+  { key: "settings", href: "/settings", icon: "user" as const, label: "Settings" },
+];
+
 export function AppHeader({
   businessName,
   currentPage,
@@ -41,14 +48,11 @@ export function AppHeader({
   // destination, so neither shows this.
   const showBackToInbox = currentPage != null && currentPage !== "inbox" && currentPage !== "conversation";
   const menuItems = [
-    { key: "inbox", href: "/leads", icon: "inbox" as const, label: "Inbox" },
-    { key: "setup", href: "/setup", icon: "settings" as const, label: "Setup" },
-    { key: "reports", href: "/reports", icon: "inbox" as const, label: "Reports" },
-    { key: "settings", href: "/settings", icon: "user" as const, label: "Settings" },
+    ...OWNER_NAV_ITEMS,
     ...(showOperations
       ? [{ key: "operations", href: "/ops", icon: "shield" as const, label: "Operations" }]
       : []),
-  ].filter((item) => item.key !== currentPage);
+  ];
 
   return (
     <header className="app-head">
@@ -68,6 +72,25 @@ export function AppHeader({
       </Link>
 
       <div className="app-head__right">
+        {currentPage && currentPage !== "conversation" ? (
+          <nav className="app-head__nav" aria-label="Owner navigation">
+            {OWNER_NAV_ITEMS.map((item) => {
+              const isCurrent = item.key === currentPage;
+              return (
+                <Link
+                  key={item.key}
+                  className={`app-head__nav-link ${isCurrent ? "app-head__nav-link--active" : ""}`}
+                  href={item.href}
+                  aria-current={isCurrent ? "page" : undefined}
+                >
+                  <Icon name={item.icon} size={14} />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+        ) : null}
+
         {showBackToInbox ? (
           <Link className="btn btn-secondary btn-sm app-head__back" href="/leads">
             <Icon name="arrowLeft" size={14} /> Inbox
@@ -113,7 +136,12 @@ export function AppHeader({
             </div>
 
             {menuItems.map((item) => (
-              <Link key={item.key} className="mobile-owner-menu__item" href={item.href}>
+              <Link
+                key={item.key}
+                className={`mobile-owner-menu__item ${item.key === currentPage ? "mobile-owner-menu__item--active" : ""}`}
+                href={item.href}
+                aria-current={item.key === currentPage ? "page" : undefined}
+              >
                 <Icon name={item.icon} size={15} />
                 {item.label}
               </Link>

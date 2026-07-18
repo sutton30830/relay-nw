@@ -43,6 +43,7 @@ const leadCardTsx = await readFile(new URL("../app/leads/_components/lead-card.t
 const leadDrawerTsx = await readFile(new URL("../app/leads/_components/lead-drawer.tsx", import.meta.url), "utf8");
 const leadControlsTsx = await readFile(new URL("../app/leads/_components/controls.tsx", import.meta.url), "utf8");
 const setupRequestDetailsTsx = await readFile(new URL("../app/leads/_components/setup-request-details.tsx", import.meta.url), "utf8");
+const iconTsx = await readFile(new URL("../components/icon.tsx", import.meta.url), "utf8");
 const globalsCss = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 const opsPageTsx = await readFile(new URL("../app/ops/page.tsx", import.meta.url), "utf8");
 const opsBillingPageTsx = await readFile(new URL("../app/ops/billing/page.tsx", import.meta.url), "utf8");
@@ -519,11 +520,17 @@ test("human-facing pages require authenticated account context", () => {
 test("authenticated app pages share the Relay brand header and owner menu", () => {
   assert.match(appHeaderTsx, /export function AppHeader/);
   assert.match(appHeaderTsx, /app-head__brand/);
+  assert.match(appHeaderTsx, /app-head__nav/);
+  assert.match(appHeaderTsx, /Owner navigation/);
   assert.match(appHeaderTsx, /mobile-owner-menu/);
+  assert.match(appHeaderTsx, /mobile-owner-menu__item--active/);
   assert.match(appHeaderTsx, /\/leads/);
   assert.match(appHeaderTsx, /\/setup/);
   assert.match(appHeaderTsx, /\/reports/);
   assert.match(appHeaderTsx, /\/settings/);
+  assert.match(appHeaderTsx, /Reports/);
+  assert.match(appHeaderTsx, /icon: "chart"/);
+  assert.match(iconTsx, /chart/);
   assert.match(appHeaderTsx, /showOperations/);
   assert.match(appHeaderTsx, /\/ops/);
   assert.match(appHeaderTsx, /Operations/);

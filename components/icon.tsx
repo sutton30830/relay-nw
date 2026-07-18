@@ -5,6 +5,7 @@ type IconName =
   | "arrowLeft"
   | "arrowRight"
   | "calendar"
+  | "chart"
   | "check"
   | "checkDouble"
   | "chevronRight"
@@ -38,6 +39,14 @@ const ICONS: Record<IconName, ReactNode> = {
     <>
       <rect x="3" y="4.5" width="14" height="13" rx="2" />
       <path d="M3 8h14M7 3v3M13 3v3" />
+    </>
+  ),
+  chart: (
+    <>
+      <path d="M3.5 16.5h13" />
+      <path d="M6 13.5v-4" />
+      <path d="M10 13.5v-8" />
+      <path d="M14 13.5v-6" />
     </>
   ),
   check: <path d="M4 10.5 8 14.5 16 5.5" />,
