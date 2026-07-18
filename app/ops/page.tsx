@@ -6,20 +6,14 @@ import { getOpsAccountBySlug, getRecentWebhookEventsForAccount, listOpsAccounts 
 
 export const dynamic = "force-dynamic";
 
-function onboardingLabel(status: string) {
-  return status.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
 function billingLabel(status: string) {
   return status === "not_started" ? "Not started" : status.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function nextAction(account: Awaited<ReturnType<typeof getOpsAccountBySlug>>) {
   if (!account) return { label: "Choose an account", detail: "Select a customer from the account directory first." };
-  if (account.billingStatus === "past_due") return { label: "Resolve payment", detail: "Open Billing & setup and use Stripe Portal or inspect the failed payment event." };
-  if (account.onboardingStatus === "carrier_attention" || account.onboardingStatus === "carrier_review") {
-    return { label: "Monitor carrier approval", detail: "This is a carrier/A2P delay. Do not start the customer-delay clock." };
-  }
+  if (account.billingStatus === "past_due") return { label: "Resolve payment", detail: "Open the account and use Billing Portal to fix the failed payment." };
+  if (account.onboardingStatus === "carrier_attention" || account.onboardingStatus === "carrier_review") return { label: "Monitor carrier approval", detail: "This account is waiting on carrier approval. No customer action is needed." };
   if (account.onboardingStatus === "waiting_on_customer" || account.onboardingStatus === "paused_incomplete" || account.onboardingStatus === "closed_incomplete") {
     return { label: "Follow up with customer", detail: "Open Billing & setup to review or reopen the requirements deadline." };
   }
@@ -54,10 +48,10 @@ function formatDate(value: string | null | undefined) {
 export default async function OpsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; account?: string; view?: string }>;
+  searchParams: Promise<{ q?: string; account?: string; view?: string; stage?: "all" | "kickoff" | "setting_up" | "carrier_review" | "ready_to_activate" | "active" | "canceled" }>;
 }) {
   const operator = await requirePlatformOperator();
-  const { q = "", account: accountSlug = "", view = "overview" } = await searchParams;
+  const { q = "", account: accountSlug = "", view = "overview", stage = "all" } = await searchParams;
 
   if (!accountSlug) {
     const accounts = await listOpsAccounts(q);
@@ -66,19 +60,19 @@ export default async function OpsPage({
       <main className="leads-view">
         <section className="leads-shell">
           <OpsHeader operatorEmail={operator.email} />
-          <OpsToolbar showSetupRequests subtitle="Platform-wide account control" />
+          <OpsToolbar showSetupRequests subtitle="Move each customer to the next clear step" />
 
           <div className="leads-header">
             <div>
-              <p className="t-eyebrow">Relay Operations</p>
-              <h1 className="t-display">Customer accounts</h1>
+              <p className="t-eyebrow">Pipeline</p>
+              <h1 className="t-display">What needs to move today?</h1>
               <p className="leads-subtitle">
-                One place to see onboarding, billing, and technical health across every Relay account.
+                Every customer has one next step. Open an account only when the card tells you to.
               </p>
             </div>
           </div>
 
-          <OpsAccountDirectory accounts={accounts} query={q} />
+          <OpsAccountDirectory accounts={accounts} query={q} stage={stage} />
         </section>
       </main>
     );
@@ -90,7 +84,7 @@ export default async function OpsPage({
       <main className="leads-view">
         <section className="leads-shell">
           <OpsHeader operatorEmail={operator.email} />
-          <OpsToolbar showSetupRequests subtitle="Platform-wide account control" />
+          <OpsToolbar showSetupRequests subtitle="Move each customer to the next clear step" />
           <div className="panel setup-panel ops-account-empty">
             <p className="t-eyebrow">Account not found</p>
             <h1 className="t-display">Choose another account.</h1>
@@ -125,7 +119,7 @@ export default async function OpsPage({
             </div>
             <div className="pulse-cell">
               <span className="pulse-sub">Onboarding</span>
-              <strong className="pulse-value">{onboardingLabel(account.onboardingStatus)}</strong>
+              <strong className="pulse-value">{account.onboardingStatus.replaceAll("_", " ")}</strong>
             </div>
             <div className="pulse-cell">
               <span className="pulse-sub">Billing</span>

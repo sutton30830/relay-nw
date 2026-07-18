@@ -1,103 +1,104 @@
 import Link from "next/link";
 import type { OpsAccountSummary } from "@/lib/supabase";
+import { getOpsLifecycle, type OpsLifecycleStage } from "@/lib/ops-lifecycle";
 
-function onboardingLabel(status: OpsAccountSummary["onboardingStatus"]) {
-  const labels: Record<OpsAccountSummary["onboardingStatus"], string> = {
-    requirements_needed: "Requirements needed",
-    waiting_on_customer: "Waiting on customer",
-    carrier_review: "Carrier review",
-    carrier_attention: "Carrier attention",
-    ready_for_live_test: "Ready for live test",
-    ready_to_activate: "Ready to activate",
-    activated: "Activated",
-    paused_incomplete: "Paused incomplete",
-    closed_incomplete: "Closed incomplete",
-  };
+const FILTERS: Array<{ key: OpsLifecycleStage | "all"; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "kickoff", label: "Kickoff" },
+  { key: "setting_up", label: "Setting up" },
+  { key: "carrier_review", label: "Carrier review" },
+  { key: "ready_to_activate", label: "Ready" },
+  { key: "active", label: "Active" },
+  { key: "canceled", label: "Canceled" },
+];
 
-  return labels[status];
+function formatDays(days: number | null) {
+  return days === null ? "day count unavailable" : `day ${days}`;
 }
 
-function billingLabel(status: OpsAccountSummary["billingStatus"]) {
-  const labels: Record<OpsAccountSummary["billingStatus"], string> = {
-    not_started: "Not started",
-    trialing: "Trialing",
-    active: "Active",
-    past_due: "Past due",
-    canceled: "Canceled",
-    comped: "Comped",
-  };
-
-  return labels[status];
-}
-
-function cardTone(account: OpsAccountSummary) {
-  if (account.billingStatus === "past_due" || account.onboardingStatus === "carrier_attention") return "ops-account-card--danger";
-  if (account.onboardingStatus === "waiting_on_customer" || account.onboardingStatus === "paused_incomplete") return "ops-account-card--warn";
-  if (account.onboardingStatus === "activated" && account.billingStatus === "active") return "ops-account-card--good";
+function tone(stage: OpsLifecycleStage, billingStatus: string) {
+  if (billingStatus === "past_due") return "lead-card--attention";
+  if (stage === "ready_to_activate") return "lead-card--fast";
+  if (stage === "active") return "lead-card--good";
   return "";
 }
 
 export function OpsAccountDirectory({
   accounts,
   query,
+  stage = "all",
 }: {
   accounts: OpsAccountSummary[];
   query: string;
+  stage?: OpsLifecycleStage | "all";
 }) {
+  const rows = accounts.map((account) => ({ account, lifecycle: getOpsLifecycle({
+    onboardingStatus: account.onboardingStatus,
+    billingStatus: account.billingStatus,
+    activatedAt: account.activatedAt,
+    updatedAt: account.updatedAt,
+  }) })).filter(({ lifecycle }) => stage === "all" || lifecycle.stage === stage);
+  const counts = new Map<string, number>();
+  for (const account of accounts) {
+    const lifecycle = getOpsLifecycle({ onboardingStatus: account.onboardingStatus, billingStatus: account.billingStatus, activatedAt: account.activatedAt, updatedAt: account.updatedAt });
+    counts.set(lifecycle.stage, (counts.get(lifecycle.stage) ?? 0) + 1);
+  }
+
   return (
     <>
       <form className="lead-controls ops-account-search" action="/ops">
-        <input
-          className="field"
-          name="q"
-          defaultValue={query}
-          placeholder="Search business or account slug"
-          aria-label="Search accounts"
-        />
-        <button className="btn btn-primary" type="submit">Search accounts</button>
+        <input className="field" name="q" defaultValue={query} placeholder="Search business or owner" aria-label="Search accounts" />
+        <button className="btn btn-primary" type="submit">Search</button>
       </form>
 
-      <p className="ops-directory-hint">{"Select an account to manage onboarding and Billing & setup. Technical logs are kept behind Troubleshoot."}</p>
+      <nav className="filters clean-scroll" aria-label="Filter customer pipeline">
+        {FILTERS.map((item) => (
+          <Link key={item.key} className={`filter-pill ${stage === item.key ? "filter-pill--on" : ""}`} href={`/ops?${new URLSearchParams({ ...(query ? { q: query } : {}), ...(item.key !== "all" ? { stage: item.key } : {}) }).toString()}`}>
+            {item.label}<span className="filter-pill__count">{item.key === "all" ? accounts.length : counts.get(item.key) ?? 0}</span>
+          </Link>
+        ))}
+      </nav>
+
+      <section className="ops-attention-grid" aria-label="Needs attention">
+        {accounts.filter((account) => account.billingStatus === "past_due").map((account) => (
+          <Link className="ops-attention-row" key={account.accountId} href={`/ops?account=${encodeURIComponent(account.accountSlug)}`}>
+            <span className="ops-attention-row__dot" />
+            <span><strong>Payment failed</strong><small>{account.businessName} needs a billing check</small></span>
+            <span className="ops-attention-row__arrow">→</span>
+          </Link>
+        ))}
+      </section>
 
       <div className="ops-account-grid">
-        {accounts.length === 0 ? (
-          <article className="panel setup-panel ops-account-empty">
-            <p className="t-eyebrow">Customer accounts</p>
-            <h2>No accounts match this search.</h2>
-            <p className="setup-copy">Try a business name or account slug.</p>
+        {rows.length === 0 ? (
+          <article className="empty-state">
+            <div className="empty-state__icon">✓</div>
+            <h2 className="t-display">Nothing needs you here.</h2>
+            <p>Try another stage or clear the search.</p>
           </article>
-        ) : accounts.map((account) => (
-          <article className={`panel ops-account-card ${cardTone(account)}`} key={account.accountId}>
-            <div className="ops-account-card__head">
+        ) : rows.map(({ account, lifecycle }) => (
+          <article className={`lead-card ops-account-card ${tone(lifecycle.stage, account.billingStatus)}`} key={account.accountId}>
+            <div className="lead-card__head">
               <div>
-                <p className="t-eyebrow">{account.accountSlug}</p>
-                <h2>{account.businessName}</h2>
-                <p className="setup-copy">{account.ownerEmail ?? "Owner email not set"}</p>
+                <p className="lead-card__id">{account.accountSlug}</p>
+                <h2 className="lead-card__name">{account.businessName}</h2>
+                <p className="lead-card__meta"><span>{lifecycle.label}</span><span>{formatDays(lifecycle.daysInStage)}</span><span>{account.ownerEmail ?? "Owner not set"}</span></p>
               </div>
-              <span className={`chip ${account.accountStatus === "active" ? "status-pill--booked" : "chip-muted"}`}>
-                {account.accountStatus}
-              </span>
+              <span className={`lead-card__status-pill lead-card__status-pill--${lifecycle.stage === "active" ? "booked" : lifecycle.stage === "ready_to_activate" ? "new" : "contacted"}`}>{lifecycle.label}</span>
             </div>
-
-            <div className="ops-account-card__states">
-              <div>
-                <span className="pulse-sub">Onboarding</span>
-                <strong>{onboardingLabel(account.onboardingStatus)}</strong>
+            <section className="lead-card__request lead-card__request--summary">
+              <div className="lead-card__request-label">Next step</div>
+              <p>{account.billingStatus === "past_due" ? "Payment failed — open Billing Portal." : lifecycle.blockedOn}</p>
+            </section>
+            <div className="lead-card__actions">
+              <div className="lead-card__primary-actions">
+                <Link className="btn btn-primary btn-sm" href={`/ops?account=${encodeURIComponent(account.accountSlug)}`}>
+                  {account.billingStatus === "past_due" ? "Resolve payment" : lifecycle.primaryAction}
+                </Link>
               </div>
-              <div>
-                <span className="pulse-sub">Billing</span>
-                <strong>{billingLabel(account.billingStatus)}</strong>
+              <div className="lead-card__utility-actions">
+                <Link className="btn btn-ghost btn-sm" href={`/ops?account=${encodeURIComponent(account.accountSlug)}&view=logs`}>Diagnostics</Link>
               </div>
-              <div>
-                <span className="pulse-sub">Subscription</span>
-                <strong>{account.stripeSubscriptionStatus ?? "Not connected"}</strong>
-              </div>
-            </div>
-
-            <div className="ops-account-card__actions">
-              <Link className="btn btn-primary btn-sm" href={`/ops?account=${encodeURIComponent(account.accountSlug)}`}>
-                Manage account
-              </Link>
             </div>
           </article>
         ))}

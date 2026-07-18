@@ -392,15 +392,15 @@ test("launch certification verifies account readiness without mutating state", (
 
 test("ops pages share the same internal tool actions", () => {
   assert.match(opsHeaderTsx, /export function OpsHeader/);
-  assert.match(opsHeaderTsx, /Relay Operations/);
-  assert.match(opsHeaderTsx, /operatorEmail/);
-  assert.match(opsHeaderTsx, /Owner app/);
-  assert.match(globalsCss, /\.ops-header/);
+  assert.match(opsHeaderTsx, /AppHeader/);
+  assert.match(opsHeaderTsx, /variant="operations"/);
+  assert.match(appHeaderTsx, /Relay NW · Operations/);
+  assert.match(appHeaderTsx, /Back to my inbox/);
   assert.match(opsPageTsx, /listOpsAccounts\(q\)/);
   assert.match(opsPageTsx, /getOpsAccountBySlug\(accountSlug\)/);
   assert.match(opsBillingPageTsx, /Choose an account before viewing or changing billing/);
-  assert.match(opsAccountDirectoryTsx, /Billing & setup/);
-  assert.match(opsAccountDirectoryTsx, /Manage account/);
+  assert.match(opsAccountDirectoryTsx, /Needs attention/);
+  assert.match(opsAccountDirectoryTsx, /Diagnostics/);
   assert.match(emailTestRouteTs, /requirePlatformOperatorJson/);
   assert.match(emailTestRouteTs, /getOpsAccountBySlug/);
   assert.match(opsToolbarTsx, /export function OpsToolbar/);

@@ -18,7 +18,7 @@ type HeaderSample = {
   visible: boolean;
 };
 
-type HeaderPage = "inbox" | "reports" | "setup" | "settings" | "conversation";
+type HeaderPage = "inbox" | "reports" | "setup" | "settings" | "conversation" | "operations" | "customers" | "requests" | "team";
 
 const OWNER_NAV_ITEMS = [
   { key: "inbox", href: "/leads", icon: "inbox" as const, label: "Inbox" },
@@ -34,6 +34,7 @@ export function AppHeader({
   search,
   showOperations = false,
   switchAccountHref,
+  variant = "owner",
 }: {
   businessName: string;
   currentPage?: HeaderPage;
@@ -41,15 +42,27 @@ export function AppHeader({
   search?: HeaderSearch;
   showOperations?: boolean;
   switchAccountHref?: string;
+  variant?: "owner" | "operations";
 }) {
+  const isOperations = variant === "operations";
   const businessInitial = businessName.trim().charAt(0).toUpperCase() || "R";
   // Sub-pages get a plain, always-visible way back to the inbox. The
   // conversation view has its own back control, and the inbox is the
   // destination, so neither shows this.
   const showBackToInbox = currentPage != null && currentPage !== "inbox" && currentPage !== "conversation";
+  const operationsNavItems = [
+    { key: "operations", href: "/ops", icon: "inbox" as const, label: "Pipeline" },
+    { key: "customers", href: "/ops/customers", icon: "user" as const, label: "Customers" },
+    { key: "requests", href: "/ops/setup-requests", icon: "message" as const, label: "Requests" },
+    { key: "team", href: "/ops/team", icon: "settings" as const, label: "Team" },
+  ];
+  const navItems = isOperations ? operationsNavItems : OWNER_NAV_ITEMS;
   const menuItems = [
-    ...OWNER_NAV_ITEMS,
-    ...(showOperations
+    ...navItems,
+    ...(isOperations
+      ? [{ key: "back-to-inbox", href: "/leads", icon: "arrowLeft" as const, label: "Back to my inbox" }]
+      : []),
+    ...(!isOperations && showOperations
       ? [{ key: "operations", href: "/ops", icon: "shield" as const, label: "Operations" }]
       : []),
   ];
@@ -57,10 +70,10 @@ export function AppHeader({
   return (
     <header className="app-head">
       <Link className="app-head__brand app-head__brand--link" href="/">
-        <div className="brand-mark"><Icon name="relay" size={18} /></div>
+        <div className="brand-mark"><Icon name={isOperations ? "shield" : "relay"} size={18} /></div>
         <div>
-          <p className="t-eyebrow" style={{ fontSize: 10 }}>Relay NW</p>
-          <h1 className="t-display" style={{ fontSize: 22, margin: 0 }}>{businessName}</h1>
+          <p className="t-eyebrow" style={{ fontSize: 10 }}>{isOperations ? "Relay NW · Operations" : "Relay NW"}</p>
+          <h1 className="t-display" style={{ fontSize: 22, margin: 0 }}>{isOperations ? "Operations" : businessName}</h1>
         </div>
         {currentPage === "inbox" ? (
           <span className="live-dot" title="Auto-refreshes every few seconds">
@@ -73,8 +86,8 @@ export function AppHeader({
 
       <div className="app-head__right">
         {currentPage && currentPage !== "conversation" ? (
-          <nav className="app-head__nav" aria-label="Owner navigation">
-            {OWNER_NAV_ITEMS.map((item) => {
+            <nav className="app-head__nav" aria-label={isOperations ? "Operations navigation" : "Owner navigation"}>
+            {navItems.map((item) => {
               const isCurrent = item.key === currentPage;
               return (
                 <Link
@@ -131,7 +144,7 @@ export function AppHeader({
               <div className="mobile-owner-menu__avatar">{businessInitial}</div>
               <div>
                 <p>{businessName}</p>
-                <span>Missed-call inbox</span>
+                <span>{isOperations ? "Operations" : "Missed-call inbox"}</span>
               </div>
             </div>
 

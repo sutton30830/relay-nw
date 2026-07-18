@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { requireAccountUser } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { createStripePortalSession } from "@/lib/stripe-billing";
-import { getAccountBillingRecord } from "@/lib/supabase";
+import { getAccountBillingRecord, recordPlatformAuditEvent, updateAccountBillingRecord } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +36,19 @@ export async function POST() {
       accountId: session.accountId,
       error: error instanceof Error ? error.message : error,
     });
+
+    const message = error instanceof Error ? error.message : String(error);
+    if (/no such customer|resource_missing/i.test(message)) {
+      await updateAccountBillingRecord(session.accountId, { stripeCustomerId: null });
+      await recordPlatformAuditEvent({
+        actorUserId: session.userId,
+        actorEmail: session.email,
+        action: "billing.customer_link_reset",
+        summary: "Cleared an invalid billing customer link so billing can be reconnected",
+        targetAccountId: session.accountId,
+      });
+      billingRedirect("relink_required");
+    }
 
     billingRedirect("portal_failed");
   }

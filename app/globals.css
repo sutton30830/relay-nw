@@ -1982,6 +1982,31 @@ code {
   gap: 14px;
 }
 
+.ops-attention-grid {
+  display: grid;
+  gap: 8px;
+  margin: 18px 0 22px;
+}
+
+.ops-attention-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--danger, #b94a48) 24%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--danger, #b94a48) 5%, var(--paper));
+  color: inherit;
+  text-decoration: none;
+}
+
+.ops-attention-row:hover { border-color: var(--danger, #b94a48); }
+.ops-attention-row__dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: var(--danger, #b94a48); }
+.ops-attention-row span:nth-child(2) { display: grid; gap: 2px; flex: 1; }
+.ops-attention-row small { color: var(--ink-3); }
+.ops-attention-row__arrow { color: var(--ink-3); font-size: 18px; }
+.ops-account-card.lead-card--good { border-color: color-mix(in srgb, var(--success, #3b8067) 35%, var(--line)); }
+
 .ops-account-card {
   display: grid;
   gap: 18px;
