@@ -86,6 +86,7 @@ async function loadAuthModule({ role, user = { id: "user-1", email: "owner@examp
     "@/lib/supabase": {
       supabaseAdmin: accountUsersAdminFake(row),
       getAccountConfigByAccountId: async (accountId) => ({ accountId }),
+      getPlatformOperatorByUserId: async () => null,
     },
   });
 }

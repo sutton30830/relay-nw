@@ -4,13 +4,13 @@ Use this when Relay NW is live for a business and something important may have f
 
 ## Operator Boundary
 
-`/ops/*` is an internal Relay Operations surface. A Relay operator is an `owner` or `admin` user on the Relay NW house account, not a customer owner on a customer account.
+`/ops/*` is an internal Relay Operations surface. A Relay operator is an active row in `platform_operators`, not merely an `owner` or `admin` on any customer account.
 
 - Customer owners should use `/leads`, `/setup`, `/settings`, and `/reports`.
-- Operators can open `/ops` from the account menu when signed into the Relay NW house account.
-- Add an operator deliberately by inserting or inviting an `account_users` row for the Relay NW house account with role `owner` or `admin`.
-- Do not add customer users to the Relay NW house account unless they should have internal operational access.
-- If an operator belongs to multiple accounts, select the Relay NW house account before using `/ops/*`.
+- The initial platform operator is bootstrapped by `supabase.sql` from the Supabase Auth email `srlowry21@gmail.com`.
+- Add future operators deliberately to `platform_operators` with role `super_admin`, `operator`, or `support`; revoke access by setting `status='revoked'`.
+- Do not grant Operations access by adding someone to a house-account `account_users` row. Account membership and platform access are separate concerns.
+- Until the multi-account directory lands, existing Ops pages still require an account session. Phase 7B removes that dependency and makes the target account explicit in every Ops route.
 
 ## First Response
 
@@ -38,7 +38,7 @@ Run `npm run test:activation` locally before high-risk releases. This is determi
 
 ### Assisted Onboarding Queue
 
-- Open `/ops/setup-requests` from the Relay NW house account.
+- Open `/ops/setup-requests` as an active platform operator.
 - Move each request through `New`, `Contacted`, `Onboarded`, or `Closed`.
 - Provision real customer accounts with `npm run provision:account`; do not manually recreate the same rows from memory.
 - Verify every customer account with `npm run verify:account -- <slug>` before handing over access.

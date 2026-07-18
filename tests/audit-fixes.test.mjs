@@ -234,6 +234,7 @@ test("account_users email lookup escapes ilike wildcards so j_doe cannot match j
     "@/lib/supabase": {
       supabaseAdmin: { from: () => accountUsersQuery() },
       getAccountConfigByAccountId: async () => null,
+      getPlatformOperatorByUserId: async () => null,
     },
   };
 

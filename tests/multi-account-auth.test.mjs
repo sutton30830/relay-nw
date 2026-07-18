@@ -81,7 +81,7 @@ function makeSupabaseAdmin(rows) {
   };
 }
 
-function makeAuthMocks({ rows, cookieValue = null, user = { id: "user-1", email: "owner@example.com" } }) {
+function makeAuthMocks({ rows, cookieValue = null, user = { id: "user-1", email: "owner@example.com" }, platformOperator = null }) {
   const supabase = makeSupabaseAdmin(rows);
   const accountConfigs = new Map([
     ["acct-a", { accountId: "acct-a", accountSlug: "alpha", businessName: "Alpha Plumbing" }],
@@ -121,12 +121,32 @@ function makeAuthMocks({ rows, cookieValue = null, user = { id: "user-1", email:
       "@/lib/supabase": {
         supabaseAdmin: supabase.client,
         getAccountConfigByAccountId: async (accountId) => accountConfigs.get(accountId) ?? null,
+        getPlatformOperatorByUserId: async () => platformOperator,
       },
     },
     updates: supabase.updates,
     cookieSets,
   };
 }
+
+test("Operations access follows explicit platform operator membership, not house-account role", async () => {
+  const { mocks } = makeAuthMocks({
+    rows: [membership({ role: "viewer" })],
+    platformOperator: {
+      userId: "user-1",
+      email: "owner@example.com",
+      role: "operator",
+      status: "active",
+    },
+  });
+  const auth = await loadTsModule("lib/auth.ts", mocks);
+
+  const resolution = await auth.resolveAccountUserSessionForUser({ id: "user-1", email: "owner@example.com" });
+
+  assert.equal(resolution.status, "single_account");
+  assert.equal(auth.isRelayOperator(resolution.session), true);
+  assert.equal(resolution.session.platformOperatorRole, "operator");
+});
 
 function membership(overrides) {
   return {

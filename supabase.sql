@@ -297,6 +297,66 @@ create index if not exists account_audit_events_account_created_at_idx
   on public.account_audit_events (account_id, created_at desc);
 alter table public.account_audit_events enable row level security;
 
+-- Phase 7A platform Operations authorization.
+-- Operations access is intentionally separate from account_users membership.
+-- A house-account owner is still a normal account user; only an explicit row
+-- here can access the internal multi-account console.
+-- Rollback: remove the seeded/operator rows, then drop the platform audit and
+-- operator tables after confirming no Operations routes still depend on them.
+create table if not exists public.platform_operators (
+  user_id uuid primary key,
+  email text,
+  role text not null default 'operator' check (role in ('super_admin', 'operator', 'support')),
+  status text not null default 'active' check (status in ('active', 'revoked')),
+  created_by uuid,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table public.platform_operators add column if not exists email text;
+alter table public.platform_operators add column if not exists role text not null default 'operator';
+alter table public.platform_operators add column if not exists status text not null default 'active';
+alter table public.platform_operators add column if not exists created_by uuid;
+alter table public.platform_operators add column if not exists created_at timestamptz not null default now();
+alter table public.platform_operators add column if not exists updated_at timestamptz not null default now();
+alter table public.platform_operators drop constraint if exists platform_operators_role_check;
+alter table public.platform_operators
+  add constraint platform_operators_role_check check (role in ('super_admin', 'operator', 'support'));
+alter table public.platform_operators drop constraint if exists platform_operators_status_check;
+alter table public.platform_operators
+  add constraint platform_operators_status_check check (status in ('active', 'revoked'));
+create unique index if not exists platform_operators_email_unique_idx
+  on public.platform_operators (lower(email));
+alter table public.platform_operators enable row level security;
+
+create table if not exists public.platform_audit_events (
+  id uuid primary key default gen_random_uuid(),
+  actor_user_id uuid not null,
+  actor_email text,
+  target_user_id uuid,
+  target_account_id uuid references public.accounts(id) on delete set null,
+  action text not null,
+  summary text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists platform_audit_events_created_at_idx
+  on public.platform_audit_events (created_at desc);
+create index if not exists platform_audit_events_target_account_idx
+  on public.platform_audit_events (target_account_id, created_at desc)
+  where target_account_id is not null;
+alter table public.platform_audit_events enable row level security;
+
+-- Bootstrap the intended first platform operator when the Supabase Auth user
+-- already exists. This does not grant Operations to other house-account users.
+insert into public.platform_operators (user_id, email, role, status)
+select id, lower(email), 'super_admin', 'active'
+from auth.users
+where lower(email) = 'srlowry21@gmail.com'
+on conflict (user_id) do update
+set email = excluded.email,
+    role = 'super_admin',
+    status = 'active',
+    updated_at = now();
+
 alter table public.account_users enable row level security;
 
 create table if not exists public.leads (
@@ -676,6 +736,16 @@ create policy deny_client_access on public.forwarding_health_checks
 
 drop policy if exists deny_client_access on public.setup_requests;
 create policy deny_client_access on public.setup_requests
+  as restrictive for all to anon, authenticated
+  using (false) with check (false);
+
+drop policy if exists deny_client_access on public.platform_operators;
+create policy deny_client_access on public.platform_operators
+  as restrictive for all to anon, authenticated
+  using (false) with check (false);
+
+drop policy if exists deny_client_access on public.platform_audit_events;
+create policy deny_client_access on public.platform_audit_events
   as restrictive for all to anon, authenticated
   using (false) with check (false);
 

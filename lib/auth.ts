@@ -2,7 +2,13 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createServerClient } from "@supabase/ssr";
 import { env } from "@/lib/env";
-import { getAccountConfigByAccountId, supabaseAdmin, type AccountRuntimeConfig } from "@/lib/supabase";
+import {
+  getAccountConfigByAccountId,
+  getPlatformOperatorByUserId,
+  supabaseAdmin,
+  type AccountRuntimeConfig,
+  type PlatformOperatorRole,
+} from "@/lib/supabase";
 
 export type AccountRole = "owner" | "admin" | "viewer";
 export const SELECTED_ACCOUNT_COOKIE = "relay_selected_account";
@@ -14,6 +20,7 @@ export type AccountUserSession = {
   role: AccountRole;
   account: AccountRuntimeConfig;
   membershipCount: number;
+  platformOperatorRole?: PlatformOperatorRole;
 };
 
 export type AccountMembership = AccountUserSession & {
@@ -156,6 +163,7 @@ async function findAccountUserRows(userId: string, email: string | null) {
 export async function getAccountMembershipsForUser(user: { id: string; email?: string | null }) {
   const email = user.email ?? null;
   const rows = await findAccountUserRows(user.id, email);
+  const platformOperator = await getPlatformOperatorByUserId(user.id);
   const memberships: AccountMembership[] = [];
 
   for (const row of rows) {
@@ -172,6 +180,7 @@ export async function getAccountMembershipsForUser(user: { id: string; email?: s
       account,
       membershipId: row.id,
       membershipCount: 0,
+      platformOperatorRole: platformOperator?.role,
     });
   }
 
@@ -345,35 +354,86 @@ export async function requireWriteAccessJson(viewerMessage = "Viewers have read-
 }
 
 export function isRelayOperator(session: AccountUserSession) {
-  return (
-    session.account.accountSlug === env.defaultAccountSlug &&
-    (session.role === "owner" || session.role === "admin")
-  );
+  return Boolean(session.platformOperatorRole);
+}
+
+export type PlatformOperatorSession = {
+  userId: string;
+  email: string | null;
+  role: PlatformOperatorRole;
+};
+
+async function getAuthenticatedUser() {
+  const supabase = await createSupabaseAuthServerClient();
+  const { data, error } = await supabase.auth.getUser();
+  return error || !data.user ? null : data.user;
+}
+
+export async function getPlatformOperatorSession(): Promise<PlatformOperatorSession | null> {
+  const user = await getAuthenticatedUser();
+  if (!user) return null;
+
+  const operator = await getPlatformOperatorByUserId(user.id);
+  if (!operator) return null;
+
+  return {
+    userId: user.id,
+    email: user.email ?? operator.email ?? null,
+    role: operator.role,
+  };
+}
+
+export async function requirePlatformOperator() {
+  const operator = await getPlatformOperatorSession();
+
+  if (!operator) {
+    redirect("/leads?error=ops_forbidden");
+  }
+
+  return operator;
+}
+
+export async function requirePlatformOperatorJson() {
+  const operator = await getPlatformOperatorSession();
+
+  if (!operator) {
+    const user = await getAuthenticatedUser();
+    return {
+      session: null,
+      response: Response.json(
+        { error: user ? "Forbidden" : "Unauthorized" },
+        { status: user ? 403 : 401 },
+      ),
+    };
+  }
+
+  return { session: operator, response: null };
 }
 
 export async function requireRelayOperator() {
+  const operator = await requirePlatformOperator();
   const session = await requireAccountUser();
 
-  if (!isRelayOperator(session)) {
-    redirect("/ops");
-  }
-
-  return session;
+  return { ...session, platformOperatorRole: operator.role };
 }
 
 export async function requireRelayOperatorJson() {
-  const auth = await requireAccountUserJson();
+  const operator = await requirePlatformOperatorJson();
 
+  if (operator.response) {
+    return operator;
+  }
+
+  const auth = await requireAccountUserJson();
   if (auth.response) {
     return auth;
   }
 
-  if (!isRelayOperator(auth.session)) {
-    return {
-      session: null,
-      response: Response.json({ error: "Forbidden" }, { status: 403 }),
-    };
-  }
-
-  return auth;
+  return {
+    session: {
+      ...auth.session,
+      platformOperatorRole: operator.session.role,
+    },
+    response: null,
+  };
 }

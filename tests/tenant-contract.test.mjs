@@ -305,7 +305,8 @@ test("ops runbook is authenticated and covers failure visibility plus retention"
   assert.match(opsRunbookMd, /\/ops\/billing.*customer-delay clock/);
   assert.match(opsRunbookMd, /Carrier review and carrier attention are not customer-delay states/);
   assert.match(opsRunbookMd, /Relay Operations surface/);
-  assert.match(opsRunbookMd, /Relay NW house account/);
+  assert.match(opsRunbookMd, /platform_operators/);
+  assert.match(opsRunbookMd, /srlowry21@gmail\.com/);
 });
 
 test("app-level trials expire through a secured billing cron without disabling capture", () => {
