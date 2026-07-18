@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 const EXPECTED_PRICE_CENTS = 9900;
+const EXPECTED_SETUP_FEE_CENTS = 15000;
 const EXPECTED_CURRENCY = "usd";
 
 export const requiredStripeWebhookEvents = [
@@ -96,7 +97,13 @@ async function stripeGet(path, secretKey, fetchImpl) {
 }
 
 function verifyEnv(inputEnv, checks) {
-  const required = ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_ID", "APP_BASE_URL"];
+  const required = [
+    "STRIPE_SECRET_KEY",
+    "STRIPE_WEBHOOK_SECRET",
+    "STRIPE_PRICE_ID",
+    "STRIPE_SETUP_FEE_PRICE_ID",
+    "APP_BASE_URL",
+  ];
   const missing = required.filter((name) => !stringValue(inputEnv[name]));
 
   if (missing.length) {
@@ -131,9 +138,43 @@ function verifyEnv(inputEnv, checks) {
     secretKey,
     mode,
     priceId: inputEnv.STRIPE_PRICE_ID,
+    setupFeePriceId: inputEnv.STRIPE_SETUP_FEE_PRICE_ID,
     appBaseUrl,
     expectedWebhookUrl: `${appBaseUrl}/api/stripe/webhook`,
   };
+}
+
+function verifySetupFeePrice(price, mode, checks) {
+  const priceMode = price?.livemode === true ? "live" : "test";
+
+  addCheck(
+    checks,
+    price?.active === true,
+    "Stripe setup-fee price active",
+    price?.active === true ? `Price ${price.id} is active.` : `Price ${price?.id ?? "unknown"} is not active.`,
+  );
+  addCheck(
+    checks,
+    price?.type === "one_time" && !price?.recurring,
+    "Stripe setup-fee price type",
+    price?.type === "one_time" && !price?.recurring
+      ? "Price is a one-time payment."
+      : `Expected a one-time price; got type=${price?.type ?? "unknown"}.`,
+  );
+  addCheck(
+    checks,
+    price?.currency === EXPECTED_CURRENCY && price?.unit_amount === EXPECTED_SETUP_FEE_CENTS,
+    "Stripe setup-fee price amount",
+    price?.currency === EXPECTED_CURRENCY && price?.unit_amount === EXPECTED_SETUP_FEE_CENTS
+      ? "$150 one-time setup fee matches owner-facing copy."
+      : `Expected ${EXPECTED_CURRENCY} ${EXPECTED_SETUP_FEE_CENTS}; got ${price?.currency ?? "unknown"} ${price?.unit_amount ?? "unknown"}.`,
+  );
+  addCheck(
+    checks,
+    mode === "unknown" || priceMode === mode,
+    "Stripe setup-fee price mode",
+    priceMode === mode ? `Price is in ${priceMode} mode.` : `Secret key is ${mode}, but price is ${priceMode}.`,
+  );
 }
 
 function verifyPrice(price, mode, checks) {
@@ -246,6 +287,13 @@ export async function verifyBillingConfig({ env: inputEnv = process.env, fetchIm
     verifyPrice(price, config.mode, checks);
   } catch (error) {
     addCheck(checks, false, "Stripe price lookup", error instanceof Error ? error.message : String(error));
+  }
+
+  try {
+    const setupFeePrice = await stripeGet(`/prices/${encodeURIComponent(config.setupFeePriceId)}`, config.secretKey, fetchImpl);
+    verifySetupFeePrice(setupFeePrice, config.mode, checks);
+  } catch (error) {
+    addCheck(checks, false, "Stripe setup-fee price lookup", error instanceof Error ? error.message : String(error));
   }
 
   try {

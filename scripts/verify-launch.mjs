@@ -128,8 +128,12 @@ function deriveCallCaptureReady({ settings, latestLead, lastPassedForwarding }) 
 function deriveCheckoutAllowed({ account, activationReady }) {
   const billingStatus = account?.billing_status ?? "not_started";
   const stripeStatus = account?.stripe_subscription_status ?? null;
+  const setupFeeStatus = account?.setup_fee_status ?? "waived";
 
   if (!activationReady) return { ok: false, detail: "Checkout is blocked until call capture and A2P/SMS registration are ready." };
+  if (setupFeeStatus !== "paid" && setupFeeStatus !== "waived") {
+    return { ok: false, detail: `Checkout is blocked until the one-time setup fee is paid or waived (status=${setupFeeStatus}).` };
+  }
   if (billingStatus === "active" || billingStatus === "trialing" || stripeStatus === "active" || stripeStatus === "trialing") {
     return { ok: false, detail: "Checkout should be blocked because billing is already active/trialing." };
   }
@@ -229,6 +233,7 @@ export function analyzeLaunchCertification(input) {
   const effectiveOnboardingStatus = deriveEffectiveOnboardingStatus(account, activationReady);
   const checkoutAllowed = deriveCheckoutAllowed({ account, activationReady });
   const blocker = onboardingBlocker(account, activationReady);
+  const setupFeeStatus = account.setup_fee_status ?? "waived";
 
   addCheck(
     checks,
@@ -280,6 +285,17 @@ export function analyzeLaunchCertification(input) {
     "billing status",
     `billing_status=${account.billing_status ?? "not_started"}, stripe_subscription_status=${account.stripe_subscription_status ?? "none"}.`,
     ACTIVE_BILLING_STATUSES.has(account.billing_status ?? "not_started") ? "pass" : "warn",
+  );
+  addCheck(
+    checks,
+    setupFeeStatus === "paid" || setupFeeStatus === "waived",
+    "setup fee status",
+    setupFeeStatus === "paid"
+      ? "The one-time setup fee is paid."
+      : setupFeeStatus === "waived"
+        ? "The one-time setup fee is explicitly waived."
+        : `The one-time setup fee is not settled (status=${setupFeeStatus}).`,
+    setupFeeStatus === "paid" || setupFeeStatus === "waived" ? "pass" : "fail",
   );
 
   const dangerousStripeDisagreement =
@@ -345,7 +361,7 @@ async function loadAccountFacts(supabase, slug) {
   const account = await maybeSingle(
     supabase
       .from("accounts")
-      .select("id, slug, name, status, billing_status, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, requirements_due_at, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since")
+      .select("id, slug, name, status, billing_status, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, requirements_due_at, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, setup_fee_status, setup_fee_paid_at, setup_fee_waived_at")
       .eq("slug", slug),
     "account lookup",
   );

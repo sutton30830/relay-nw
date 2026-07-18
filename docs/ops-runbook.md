@@ -131,7 +131,7 @@ Before handing a business live access:
 9. Confirm `/ops` shows the voice/dial-status, SMS status, inbound reply, recording, and Stripe events.
 10. Confirm privacy and terms links are visible from intake/setup flows.
 
-`verify:billing` is read-only. It confirms the Stripe price is the $99 monthly plan, Customer Portal is active, and the production webhook endpoint is enabled for every billing event Relay NW processes.
+`verify:billing` is read-only. It confirms the Stripe prices are the `$99/month` recurring plan and the `$150` one-time setup fee, Customer Portal is active, and the production webhook endpoint is enabled for every billing event Relay NW processes.
 
 `verify:launch` is also read-only. It ties the account, setup readiness, SMS mode, billing state, Stripe config, Checkout eligibility, and Portal availability into one launch decision. Treat a paused SMS warning as an operating choice, not a setup failure, but make sure the owner understands callers are not getting automatic replies.
 

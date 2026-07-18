@@ -46,6 +46,7 @@ function readyFacts(overrides = {}) {
       stripe_subscription_id: "sub_123",
       stripe_price_id: "price_123",
       stripe_subscription_status: "active",
+      setup_fee_status: "paid",
       ...overrides.account,
     },
     settings: {
@@ -243,6 +244,16 @@ test("launch verifier reports paused SMS as operational choice, not setup failur
   assert.equal(sms.level, "warn");
   assert.match(sms.detail, /paused by owner choice/);
   assert.equal(result.ok, true);
+});
+
+test("launch verifier blocks monthly Checkout when the setup fee is unsettled", () => {
+  const result = analyzeLaunchCertification(readyFacts({
+    account: { setup_fee_status: "refunded" },
+  }));
+
+  assert.equal(result.ok, false);
+  assert.equal(result.checkoutAllowed.ok, false);
+  assert.match(result.checks.find((check) => check.label === "setup fee status").detail, /not settled/);
 });
 
 test("launch verifier reconciles stale customer-delay status for active accounts", () => {

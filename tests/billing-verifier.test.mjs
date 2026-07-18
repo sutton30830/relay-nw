@@ -10,6 +10,7 @@ const baseEnv = {
   STRIPE_SECRET_KEY: "sk_test_1234567890abcdef",
   STRIPE_WEBHOOK_SECRET: "whsec_1234567890abcdef",
   STRIPE_PRICE_ID: "price_relay_99",
+  STRIPE_SETUP_FEE_PRICE_ID: "price_relay_setup_150",
   APP_BASE_URL: "http://localhost:3000",
 };
 
@@ -34,6 +35,15 @@ function fetchMock(overrides = {}) {
         interval: "month",
         interval_count: 1,
       },
+    },
+    "/v1/prices/price_relay_setup_150": {
+      id: "price_relay_setup_150",
+      active: true,
+      type: "one_time",
+      currency: "usd",
+      unit_amount: 15000,
+      livemode: false,
+      recurring: null,
     },
     "/v1/billing_portal/configurations?active=true&limit=10": {
       data: [{ id: "bpc_123", active: true }],
@@ -96,6 +106,10 @@ test("billing verifier passes for the expected Stripe price, portal, and webhook
     "Stripe price interval",
     "Stripe price amount",
     "Stripe price mode",
+    "Stripe setup-fee price active",
+    "Stripe setup-fee price type",
+    "Stripe setup-fee price amount",
+    "Stripe setup-fee price mode",
     "Customer Portal configuration",
     "Stripe webhook endpoint",
     "Stripe webhook events",
@@ -118,6 +132,25 @@ test("billing verifier blocks the wrong owner-facing price", async () => {
 
   assert.equal(result.ok, false);
   assert.match(result.checks.find((check) => check.label === "Stripe price amount")?.detail ?? "", /Expected usd 9900/);
+});
+
+test("billing verifier blocks a missing or incorrect setup-fee price", async () => {
+  const fetchImpl = fetchMock({
+    "/v1/prices/price_relay_setup_150": {
+      id: "price_relay_setup_150",
+      active: true,
+      type: "recurring",
+      currency: "usd",
+      unit_amount: 9900,
+      livemode: false,
+      recurring: { interval: "month", interval_count: 1 },
+    },
+  });
+  const result = await verifyBillingConfig({ env: baseEnv, fetchImpl });
+
+  assert.equal(result.ok, false);
+  assert.match(result.checks.find((check) => check.label === "Stripe setup-fee price type")?.detail ?? "", /one-time/);
+  assert.match(result.checks.find((check) => check.label === "Stripe setup-fee price amount")?.detail ?? "", /15000/);
 });
 
 test("billing verifier blocks when Customer Portal has no active configuration", async () => {

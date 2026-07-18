@@ -149,6 +149,12 @@ export function defaultBillingRecord(): AccountBillingRecord {
   return { ...DEFAULT_BILLING_RECORD };
 }
 
+export function isSetupFeeSettled(status: AccountBillingRecord["setupFeeStatus"] | null | undefined) {
+  // Older callers and pre-commercial rows have no setup-fee field; preserve
+  // their explicit pilot behavior while treating a recorded refund as due.
+  return status == null || status === "paid" || status === "waived";
+}
+
 export function normalizeBillingStatus(value: string | null | undefined): AccountBillingStatus {
   if (
     value === "not_started" ||
@@ -303,7 +309,7 @@ export function computeBillingReadiness(input: {
     };
   }
 
-  if (billing.setupFeeStatus === "due") {
+  if (!isSetupFeeSettled(billing.setupFeeStatus)) {
     return {
       state: "setup_not_billable",
       activationReady: lifecycle.activationReady,
@@ -387,7 +393,7 @@ function actionFor(input: {
   }
 
   if (
-    input.setupFeeStatus === "due" &&
+    !isSetupFeeSettled(input.setupFeeStatus) &&
     input.billingStatus !== "active" &&
     input.billingStatus !== "trialing" &&
     input.billingStatus !== "past_due"
@@ -518,7 +524,7 @@ export function computeBillingLifecycle(input: {
     };
   }
 
-  if (billing.setupFeeStatus === "due") {
+  if (!isSetupFeeSettled(billing.setupFeeStatus)) {
     return {
       activationReady,
       billingStatus,
@@ -577,7 +583,7 @@ export function getBillingCheckoutEligibility(input: {
     return { ok: false, reason: "setup_incomplete" };
   }
 
-  if (billing.setupFeeStatus === "due") {
+  if (!isSetupFeeSettled(billing.setupFeeStatus)) {
     return { ok: false, reason: "setup_fee_required" };
   }
 
