@@ -68,6 +68,7 @@ const packageJson = await readFile(new URL("../package.json", import.meta.url), 
 const verifyAccountScript = await readFile(new URL("../scripts/verify-account.mjs", import.meta.url), "utf8");
 const verifyBillingScript = await readFile(new URL("../scripts/verify-billing.mjs", import.meta.url), "utf8");
 const verifyLaunchScript = await readFile(new URL("../scripts/verify-launch.mjs", import.meta.url), "utf8");
+const verifyBillingControlsScript = await readFile(new URL("../scripts/verify-billing-controls.mjs", import.meta.url), "utf8");
 const backfillAccountIdsScript = await readFile(new URL("../scripts/backfill-account-ids.mjs", import.meta.url), "utf8");
 const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
 const vercelJson = await readFile(new URL("../vercel.json", import.meta.url), "utf8");
@@ -265,6 +266,9 @@ test("ops runbook is authenticated and covers failure visibility plus retention"
   assert.match(opsRunbookPageTsx, /Search technical logs by caller last 4, call id, message id, recording id/);
   assert.match(opsRunbookPageTsx, /Trust Stripe, but inspect Relay's event ledger/);
   assert.match(opsRunbookPageTsx, /npm run verify:billing/);
+  assert.match(opsRunbookPageTsx, /npm run verify:launch --/);
+  assert.match(opsRunbookPageTsx, /npm run verify:billing-controls --/);
+  assert.match(opsRunbookPageTsx, /Stripe test-mode Checkout/);
   assert.match(opsRunbookPageTsx, /Stripe price is the \$99 monthly plan/);
   assert.match(opsRunbookPageTsx, /Never manually mark an account active from Checkout alone/);
   assert.match(opsBillingPageTsx, /getRecentStripeEventsForAccount/);
@@ -292,6 +296,10 @@ test("ops runbook is authenticated and covers failure visibility plus retention"
   assert.match(opsRunbookMd, /Backup, Restore, and Deletion/);
   assert.match(opsRunbookMd, /npm run verify:billing/);
   assert.match(opsRunbookMd, /npm run verify:launch -- <slug>/);
+  assert.match(opsRunbookMd, /npm run verify:billing-controls -- <scratch-slug>/);
+  assert.match(opsRunbookMd, /--billing-controls <scratch-slug>/);
+  assert.match(opsRunbookMd, /refuses non-scratch slugs/);
+  assert.match(opsRunbookMd, /comp, uncomp, trial grant, and app-trial expiry/);
   assert.match(opsRunbookMd, /Stripe price is the \$99 monthly plan/);
   assert.match(opsRunbookMd, /\/api\/cron\/onboarding-deadlines/);
   assert.match(opsRunbookMd, /\/ops\/billing.*customer-delay clock/);
@@ -349,9 +357,12 @@ test("assisted onboarding setup requests are operator-only and status tracked", 
 
 test("launch certification verifies account readiness without mutating state", () => {
   assert.match(packageJson, /"verify:launch": "node scripts\/verify-launch\.mjs"/);
+  assert.match(packageJson, /"verify:billing-controls": "node scripts\/verify-billing-controls\.mjs"/);
   assert.match(verifyLaunchScript, /analyzeLaunchCertification/);
   assert.match(verifyLaunchScript, /verifyLaunchCertification/);
   assert.match(verifyLaunchScript, /verifyBillingConfig/);
+  assert.match(verifyLaunchScript, /--billing-controls/);
+  assert.match(verifyLaunchScript, /runBillingControlsRehearsal/);
   assert.match(verifyLaunchScript, /call capture readiness/);
   assert.match(verifyLaunchScript, /A2P\/SMS registration readiness/);
   assert.match(verifyLaunchScript, /automatic SMS mode/);
@@ -363,6 +374,14 @@ test("launch certification verifies account readiness without mutating state", (
   assert.doesNotMatch(verifyLaunchScript, /\.insert\(/);
   assert.doesNotMatch(verifyLaunchScript, /\.update\(/);
   assert.doesNotMatch(verifyLaunchScript, /\.delete\(/);
+  assert.match(verifyBillingControlsScript, /isScratchBillingSlug/);
+  assert.match(verifyBillingControlsScript, /Refusing to mutate a non-scratch account/);
+  assert.match(verifyBillingControlsScript, /live Stripe subscription/);
+  assert.match(verifyBillingControlsScript, /billing\.operator\.comp/);
+  assert.match(verifyBillingControlsScript, /billing\.operator\.grant_trial/);
+  assert.match(verifyBillingControlsScript, /billing\.trial\.expired/);
+  assert.match(verifyBillingControlsScript, /restoreOriginal/);
+  assert.match(verifyBillingControlsScript, /Call capture remains on/);
 });
 
 test("ops pages share the same internal tool actions", () => {

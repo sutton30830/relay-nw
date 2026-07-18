@@ -111,11 +111,16 @@ Before handing a business live access:
 1. `npm run verify:account -- <slug>`
 2. `npm run verify:billing`
 3. `npm run verify:launch -- <slug>`
-4. `npm run test:activation`
-5. One real missed-call test through Twilio.
-6. Confirm `/ops` shows the voice/dial-status, SMS status, inbound reply, and recording events.
-7. Confirm privacy and terms links are visible from intake/setup flows.
+4. On a scratch account only, run `npm run verify:billing-controls -- <scratch-slug>` after operator billing changes.
+5. For one combined launch pass, run `npm run verify:launch -- <slug> --billing-controls <scratch-slug>`.
+6. `npm run test:activation`
+7. One real missed-call test through Twilio.
+8. One Stripe test-mode Checkout for the launch account or a matching sandbox account.
+9. Confirm `/ops` shows the voice/dial-status, SMS status, inbound reply, recording, and Stripe events.
+10. Confirm privacy and terms links are visible from intake/setup flows.
 
 `verify:billing` is read-only. It confirms the Stripe price is the $99 monthly plan, Customer Portal is active, and the production webhook endpoint is enabled for every billing event Relay NW processes.
 
 `verify:launch` is also read-only. It ties the account, setup readiness, SMS mode, billing state, Stripe config, Checkout eligibility, and Portal availability into one launch decision. Treat a paused SMS warning as an operating choice, not a setup failure, but make sure the owner understands callers are not getting automatic replies.
+
+The optional `--billing-controls <scratch-slug>` launch flag runs a separate scratch-only billing-control rehearsal after the read-only launch checks. It refuses non-scratch slugs and accounts with live Stripe subscriptions, then snapshots and restores billing fields by default after proving comp, uncomp, trial grant, and app-trial expiry. Use `--keep-state` only if you intentionally want to leave the scratch account at the final rehearsal state.

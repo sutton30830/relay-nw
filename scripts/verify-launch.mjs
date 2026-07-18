@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import { verifyBillingConfig } from "./verify-billing.mjs";
+import { runBillingControlsRehearsal } from "./verify-billing-controls.mjs";
 
 const READY_A2P_STATUSES = new Set(["approved"]);
 const ACTIVE_BILLING_STATUSES = new Set(["active", "trialing", "comped"]);
@@ -82,6 +83,29 @@ function statusLine(check) {
   const marker = check.ok ? "PASS" : check.level === "warn" ? "WARN" : "FAIL";
   const detail = check.detail ? ` - ${check.detail}` : "";
   return `[${marker}] ${check.label}${detail}`;
+}
+
+export function parseLaunchArgs(argv) {
+  let slug = "";
+  let billingControlsSlug = "";
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--billing-controls") {
+      billingControlsSlug = argv[index + 1]?.trim() ?? "";
+      index += 1;
+      continue;
+    }
+
+    if (!arg?.startsWith("--") && !slug) {
+      slug = arg.trim();
+    }
+  }
+
+  return {
+    slug,
+    billingControlsSlug,
+  };
 }
 
 function firstRow(rows) {
@@ -413,9 +437,9 @@ export async function verifyLaunchCertification({
 async function main() {
   await loadLocalEnv();
 
-  const slug = process.argv[2]?.trim();
+  const { slug, billingControlsSlug } = parseLaunchArgs(process.argv.slice(2));
   if (!slug) {
-    console.error("Usage: npm run verify:launch -- <slug>");
+    console.error("Usage: npm run verify:launch -- <slug> [--billing-controls <scratch-slug>]");
     process.exit(1);
   }
 
@@ -425,6 +449,26 @@ async function main() {
   console.log("");
   for (const check of result.checks) {
     console.log(statusLine(check));
+  }
+
+  if (billingControlsSlug) {
+    console.log("");
+    console.log(`Billing-control scratch rehearsal: ${billingControlsSlug}`);
+    const billingControls = await runBillingControlsRehearsal({ slug: billingControlsSlug });
+    for (const check of billingControls.checks) {
+      console.log(statusLine(check));
+    }
+    addCheck(
+      result.checks,
+      billingControls.ok,
+      "Billing-control scratch rehearsal",
+      billingControls.ok
+        ? `Scratch billing controls passed for ${billingControlsSlug}.`
+        : `Scratch billing controls failed for ${billingControlsSlug}.`,
+    );
+    if (!billingControls.ok) {
+      result.ok = false;
+    }
   }
   console.log("");
 

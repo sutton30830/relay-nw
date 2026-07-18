@@ -56,9 +56,12 @@ const RUNBOOK_SECTIONS: RunbookSection[] = [
     steps: [
       <>Run <code>npm run verify:account -- &lt;slug&gt;</code>.</>,
       <>Run <code>npm run verify:billing</code>.</>,
+      <>Run <code>npm run verify:launch -- &lt;slug&gt;</code>.</>,
+      <>On a scratch account, run <code>npm run verify:billing-controls -- &lt;scratch-slug&gt;</code> after operator billing changes.</>,
       <>Run <code>npm run test:activation</code>.</>,
       "Complete one real missed-call test through Twilio.",
-      "Confirm technical logs show voice, SMS status, inbound reply, and recording events.",
+      "Complete one Stripe test-mode Checkout for the launch account or a matching sandbox account.",
+      "Confirm technical logs show voice, SMS status, inbound reply, recording, and Stripe events.",
     ],
   },
   {

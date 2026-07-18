@@ -3,7 +3,14 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
-import { analyzeLaunchCertification } from "../scripts/verify-launch.mjs";
+import { analyzeLaunchCertification, parseLaunchArgs } from "../scripts/verify-launch.mjs";
+import {
+  billingControlRehearsalSteps,
+  canRehearseBillingControls,
+  isScratchBillingSlug,
+  runBillingControlsRehearsal,
+  snapshotBillingRecord,
+} from "../scripts/verify-billing-controls.mjs";
 
 async function loadTsModule(path, mocks = {}) {
   const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
@@ -279,4 +286,109 @@ test("launch verifier distinguishes customer delay from carrier delay", () => {
   assert.equal(carrier.blocker, "carrier_delay");
   assert.match(customer.checks.find((check) => check.label === "onboarding blocker").detail, /customer delay/);
   assert.match(carrier.checks.find((check) => check.label === "onboarding blocker").detail, /carrier\/A2P delay/);
+});
+
+test("launch verifier parses optional scratch billing-control rehearsal args", () => {
+  assert.deepEqual(
+    parseLaunchArgs(["relay-nw", "--billing-controls", "scratch-launch"]),
+    { slug: "relay-nw", billingControlsSlug: "scratch-launch" },
+  );
+  assert.deepEqual(
+    parseLaunchArgs(["--billing-controls", "scratch-launch", "relay-nw"]),
+    { slug: "relay-nw", billingControlsSlug: "scratch-launch" },
+  );
+});
+
+test("billing-control rehearsal refuses non-scratch and live Stripe accounts", () => {
+  assert.equal(isScratchBillingSlug("scratch-launch"), true);
+  assert.equal(isScratchBillingSlug("relay-nw"), false);
+  assert.deepEqual(canRehearseBillingControls(null), { ok: false, reason: "missing_account" });
+  assert.deepEqual(canRehearseBillingControls({ slug: "relay-nw" }), { ok: false, reason: "not_scratch" });
+  assert.deepEqual(
+    canRehearseBillingControls({
+      slug: "scratch-launch",
+      stripe_subscription_id: "sub_live",
+      stripe_subscription_status: "active",
+    }),
+    { ok: false, reason: "live_stripe_subscription" },
+  );
+});
+
+test("billing-control rehearsal snapshots only billing fields", () => {
+  assert.deepEqual(
+    snapshotBillingRecord({
+      slug: "scratch-launch",
+      billing_status: "trialing",
+      trial_ends_at: "2026-07-20T00:00:00.000Z",
+      cancel_at_period_end: true,
+      billing_attention_since: null,
+      stripe_customer_id: "cus_123",
+      stripe_subscription_id: null,
+      stripe_subscription_status: null,
+      name: "Should not be in snapshot",
+    }),
+    {
+      billing_status: "trialing",
+      trial_ends_at: "2026-07-20T00:00:00.000Z",
+      cancel_at_period_end: true,
+      billing_attention_since: null,
+      stripe_customer_id: "cus_123",
+      stripe_subscription_id: null,
+      stripe_subscription_status: null,
+    },
+  );
+});
+
+test("billing-control rehearsal steps cover comp, uncomp, trial grant, and expiry flip", () => {
+  const steps = billingControlRehearsalSteps(new Date("2026-07-18T12:00:00.000Z"));
+
+  assert.deepEqual(steps.map((step) => step.key), ["comp", "uncomp", "grant_trial", "expiry_flip"]);
+  assert.equal(steps[0].update.billing_status, "comped");
+  assert.equal(steps[1].update.billing_status, "not_started");
+  assert.equal(steps[2].update.billing_status, "trialing");
+  assert.equal(steps[3].update.billing_status, "past_due");
+  assert.match(steps[3].auditSummary, /Call capture remains on/);
+});
+
+test("billing-control rehearsal mutates only a scratch account and restores original billing state", async () => {
+  const calls = { updates: [], audits: [] };
+  let account = {
+    id: "acct_scratch",
+    slug: "scratch-launch",
+    billing_status: "not_started",
+    trial_ends_at: null,
+    cancel_at_period_end: false,
+    billing_attention_since: null,
+    stripe_customer_id: null,
+    stripe_subscription_id: null,
+    stripe_subscription_status: null,
+  };
+  const store = {
+    loadAccount: async () => ({ ...account }),
+    updateAccount: async (_accountId, update) => {
+      calls.updates.push(update);
+      account = { ...account, ...update };
+    },
+    recordAudit: async (_accountId, action, summary) => {
+      calls.audits.push({ action, summary });
+    },
+  };
+
+  const result = await runBillingControlsRehearsal({
+    slug: "scratch-launch",
+    store,
+    now: new Date("2026-07-18T12:00:00.000Z"),
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(calls.audits.length, 4);
+  assert.deepEqual(calls.audits.map((audit) => audit.action), [
+    "billing.operator.comp",
+    "billing.operator.uncomp",
+    "billing.operator.grant_trial",
+    "billing.trial.expired",
+  ]);
+  assert.equal(calls.updates.at(-1).billing_status, "not_started");
+  assert.equal(calls.updates.at(-1).trial_ends_at, null);
+  assert.match(result.checks.find((check) => check.label === "scratch account restored").detail, /restored/);
 });

@@ -10,6 +10,7 @@
     "provision:account": "node scripts/provision-account.mjs",
     "verify:account": "node scripts/verify-account.mjs",
     "verify:billing": "node scripts/verify-billing.mjs",
+    "verify:billing-controls": "node scripts/verify-billing-controls.mjs",
     "verify:launch": "node scripts/verify-launch.mjs",
     "backfill:account-ids": "node scripts/backfill-account-ids.mjs",
     "test:activation": "node --test tests/activation-flow.test.mjs",
