@@ -264,7 +264,7 @@ test("selected account determines the Stripe customer used for Checkout", async 
   assert.equal(calls.checkoutInputs.length, 1);
   assert.equal(calls.checkoutInputs[0].accountId, "acct-b");
   assert.equal(calls.checkoutInputs[0].stripeCustomerId, "cus_tenant_b");
-  assert.equal(calls.checkoutInputs[0].trialPeriodDays, 30);
+  assert.equal(calls.checkoutInputs[0].trialPeriodDays, 0);
 });
 
 test("active subscription cannot create duplicate Checkout", async () => {
@@ -358,6 +358,23 @@ test("Checkout honors the selected account's remaining app-level trial", async (
   assert.equal(calls.checkoutInputs[0].trialPeriodDays, 12);
 });
 
+test("activation Checkout is blocked until the setup fee is paid or waived", async () => {
+  const calls = await runCheckout({
+    accountBilling: billingRecord({ setupFeeStatus: "due" }),
+  });
+
+  assert.deepEqual(calls.checkoutInputs, []);
+  assert.deepEqual(calls.redirects, ["/settings?billing=setup_fee_required#billing"]);
+});
+
+test("standard activation Checkout does not add a Stripe trial", async () => {
+  const calls = await runCheckout({
+    accountBilling: billingRecord({ setupFeeStatus: "waived" }),
+  });
+
+  assert.equal(calls.checkoutInputs[0].trialPeriodDays, 0);
+});
+
 test("operator can manually comp an account without a live Stripe subscription", async () => {
   const calls = await runOpsBillingOverride();
 
@@ -377,6 +394,39 @@ test("operator can manually comp an account without a live Stripe subscription",
   assert.equal(calls.audits[0].accountId, "acct-1");
   assert.equal(calls.audits[0].events[0].action, "billing.operator.comp");
   assert.equal(calls.redirects.at(-1), "/ops/billing?billing_action=comp&account=demo");
+});
+
+test("operator can waive a setup fee for a selected pilot account and audit the reason", async () => {
+  const calls = await runOpsBillingOverride({
+    accountBilling: billingRecord({
+      accountId: "acct-1",
+      accountSlug: "demo",
+      businessName: "Demo Plumbing",
+      setupFeeStatus: "due",
+    }),
+    form: { account_slug: "demo", action: "waive_setup_fee", waiver_reason: "Pilot customer" },
+  });
+
+  assert.equal(calls.updates[0].update.setupFeeStatus, "waived");
+  assert.equal(calls.updates[0].update.setupFeeWaiverReason, "Pilot customer");
+  assert.equal(calls.audits[0].events[0].action, "billing.operator.waive_setup_fee");
+  assert.equal(calls.redirects.at(-1), "/ops/billing?billing_action=waive_setup_fee&account=demo");
+});
+
+test("operator cannot overwrite a paid setup fee", async () => {
+  const calls = await runOpsBillingOverride({
+    accountBilling: billingRecord({
+      accountId: "acct-1",
+      accountSlug: "demo",
+      businessName: "Demo Plumbing",
+      setupFeeStatus: "paid",
+    }),
+    form: { account_slug: "demo", action: "require_setup_fee" },
+  });
+
+  assert.deepEqual(calls.updates, []);
+  assert.deepEqual(calls.audits, []);
+  assert.equal(calls.redirects.at(-1), "/ops/billing?billing_action=setup_fee_already_paid&account=demo");
 });
 
 test("operator can grant a bounded manual trial", async () => {

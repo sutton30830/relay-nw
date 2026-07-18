@@ -19,6 +19,8 @@ const VALID_ACTIONS = new Set<OperatorBillingOverrideAction>([
   "grant_trial",
   "extend_trial",
   "end_trial_now",
+  "waive_setup_fee",
+  "require_setup_fee",
 ]);
 
 function readString(formData: FormData, key: string, maxLength = 120) {
@@ -43,6 +45,8 @@ function actionSummary(action: OperatorBillingOverrideAction, days?: number) {
   if (action === "uncomp") return "Removed comp and reset account to not started";
   if (action === "grant_trial") return `Granted ${days ?? 30}-day trial`;
   if (action === "extend_trial") return `Extended trial by ${days ?? 30} days`;
+  if (action === "waive_setup_fee") return "Waived the one-time setup fee for this account";
+  if (action === "require_setup_fee") return "Restored the one-time setup fee requirement";
   return "Ended manual trial";
 }
 
@@ -69,11 +73,28 @@ export async function POST(request: Request) {
     return redirectWith("override_blocked", account.accountSlug);
   }
 
+  if ((action === "waive_setup_fee" || action === "require_setup_fee") && account.setupFeeStatus === "paid") {
+    return redirectWith("setup_fee_already_paid", account.accountSlug);
+  }
+
   const days = normalizeOperatorTrialDays(readString(formData, "trial_days", 8));
+  const waiverReason = readString(formData, "waiver_reason", 240);
   const auditSummary = actionSummary(action, days);
 
   try {
-    if (action === "comp") {
+    if (action === "waive_setup_fee") {
+      await updateAccountBillingRecord(account.accountId, {
+        setupFeeStatus: "waived",
+        setupFeeWaivedAt: new Date().toISOString(),
+        setupFeeWaiverReason: waiverReason || "Pilot waiver; operator did not provide a reason.",
+      });
+    } else if (action === "require_setup_fee") {
+      await updateAccountBillingRecord(account.accountId, {
+        setupFeeStatus: "due",
+        setupFeeWaivedAt: null,
+        setupFeeWaiverReason: null,
+      });
+    } else if (action === "comp") {
       await updateAccountBillingRecord(account.accountId, {
         billingStatus: "comped",
         trialEndsAt: null,

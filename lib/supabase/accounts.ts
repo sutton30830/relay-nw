@@ -103,6 +103,14 @@ type AccountBillingRow = {
   billing_attention_since: string | null;
   billing_updated_at: string | null;
   onboarding_status_updated_at: string | null;
+  setup_fee_cents: number | null;
+  setup_fee_status: string | null;
+  setup_fee_checkout_session_id: string | null;
+  setup_fee_payment_intent_id: string | null;
+  setup_fee_paid_at: string | null;
+  setup_fee_waived_at: string | null;
+  setup_fee_waiver_reason: string | null;
+  monthly_price_cents: number | null;
 };
 
 type AccountDurableBillingDates = {
@@ -223,6 +231,14 @@ const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   billingAttentionSince: null,
   billingUpdatedAt: null,
   onboardingStatusUpdatedAt: null,
+  setupFeeCents: 15000,
+  setupFeeStatus: "waived",
+  setupFeeCheckoutSessionId: null,
+  setupFeePaymentIntentId: null,
+  setupFeePaidAt: null,
+  setupFeeWaivedAt: null,
+  setupFeeWaiverReason: null,
+  monthlyPriceCents: 9900,
 };
 
 function defaultAccountBillingRecord(): AccountBillingRecord {
@@ -285,6 +301,11 @@ function normalizeAccountStripeSubscriptionStatus(value: string | null | undefin
   }
 
   return null;
+}
+
+function normalizeSetupFeeStatus(value: string | null | undefined): AccountBillingRecord["setupFeeStatus"] {
+  if (value === "due" || value === "paid" || value === "waived" || value === "refunded") return value;
+  return "waived";
 }
 
 const ACCOUNT_SETTINGS_SELECT =
@@ -446,7 +467,7 @@ export async function getAccountBillingRecord(accountId: string | null | undefin
   const { data, error } = await supabaseAdmin
     .from("accounts")
     .select(
-      "billing_status, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, requirements_due_at, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, onboarding_status_updated_at",
+      "billing_status, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, requirements_due_at, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, onboarding_status_updated_at, setup_fee_cents, setup_fee_status, setup_fee_checkout_session_id, setup_fee_payment_intent_id, setup_fee_paid_at, setup_fee_waived_at, setup_fee_waiver_reason, monthly_price_cents",
     )
     .eq("id", accountId)
     .maybeSingle();
@@ -459,7 +480,8 @@ export async function getAccountBillingRecord(accountId: string | null | undefin
       error.message.includes("stripe_subscription_id") ||
       error.message.includes("stripe_subscription_status") ||
       error.message.includes("current_period_end") ||
-      error.message.includes("activated_at")
+      error.message.includes("activated_at") ||
+      error.message.includes("setup_fee_status")
     ) {
       console.warn("Account billing lifecycle columns are missing. Run supabase.sql before enabling billing.");
       return defaultAccountBillingRecord();
@@ -490,6 +512,14 @@ export async function getAccountBillingRecord(accountId: string | null | undefin
     billingAttentionSince: row.billing_attention_since,
     billingUpdatedAt: row.billing_updated_at,
     onboardingStatusUpdatedAt: row.onboarding_status_updated_at,
+    setupFeeCents: Number(row.setup_fee_cents ?? 15000),
+    setupFeeStatus: normalizeSetupFeeStatus(row.setup_fee_status),
+    setupFeeCheckoutSessionId: row.setup_fee_checkout_session_id,
+    setupFeePaymentIntentId: row.setup_fee_payment_intent_id,
+    setupFeePaidAt: row.setup_fee_paid_at,
+    setupFeeWaivedAt: row.setup_fee_waived_at,
+    setupFeeWaiverReason: row.setup_fee_waiver_reason,
+    monthlyPriceCents: Number(row.monthly_price_cents ?? 9900),
   };
 }
 
@@ -501,7 +531,7 @@ export async function updateAccountBillingRecord(
     return;
   }
 
-  const payload: Record<string, string | boolean | null> = {
+  const payload: Record<string, string | number | boolean | null> = {
     billing_updated_at: new Date().toISOString(),
   };
   const writesDurableDates =
@@ -559,6 +589,14 @@ export async function updateAccountBillingRecord(
     payload.guarantee_ends_at = update.guaranteeEndsAt;
   }
   if (update.billingAttentionSince !== undefined) payload.billing_attention_since = update.billingAttentionSince;
+  if (update.setupFeeCents !== undefined) payload.setup_fee_cents = update.setupFeeCents;
+  if (update.setupFeeStatus !== undefined) payload.setup_fee_status = update.setupFeeStatus;
+  if (update.setupFeeCheckoutSessionId !== undefined) payload.setup_fee_checkout_session_id = update.setupFeeCheckoutSessionId;
+  if (update.setupFeePaymentIntentId !== undefined) payload.setup_fee_payment_intent_id = update.setupFeePaymentIntentId;
+  if (update.setupFeePaidAt !== undefined) payload.setup_fee_paid_at = update.setupFeePaidAt;
+  if (update.setupFeeWaivedAt !== undefined) payload.setup_fee_waived_at = update.setupFeeWaivedAt;
+  if (update.setupFeeWaiverReason !== undefined) payload.setup_fee_waiver_reason = update.setupFeeWaiverReason;
+  if (update.monthlyPriceCents !== undefined) payload.monthly_price_cents = update.monthlyPriceCents;
 
   const { error } = await supabaseAdmin
     .from("accounts")
@@ -1089,7 +1127,7 @@ export async function getOpsBillingAccountBySlug(slug: string): Promise<OpsBilli
   const { data, error } = await supabaseAdmin
     .from("accounts")
     .select(
-      "id, slug, name, billing_status, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, requirements_due_at, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, onboarding_status_updated_at",
+      "id, slug, name, billing_status, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, requirements_due_at, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, onboarding_status_updated_at, setup_fee_cents, setup_fee_status, setup_fee_checkout_session_id, setup_fee_payment_intent_id, setup_fee_paid_at, setup_fee_waived_at, setup_fee_waiver_reason, monthly_price_cents",
     )
     .eq("slug", normalizedSlug)
     .maybeSingle();
@@ -1098,7 +1136,8 @@ export async function getOpsBillingAccountBySlug(slug: string): Promise<OpsBilli
     if (
       error.message.includes("billing_status") ||
       error.message.includes("stripe_subscription_id") ||
-      error.message.includes("trial_ends_at")
+      error.message.includes("trial_ends_at") ||
+      error.message.includes("setup_fee_status")
     ) {
       console.warn("Account billing lifecycle columns are missing. Run supabase.sql before using operator billing controls.");
       return null;
@@ -1130,6 +1169,14 @@ export async function getOpsBillingAccountBySlug(slug: string): Promise<OpsBilli
     billingUpdatedAt: typeof data.billing_updated_at === "string" ? data.billing_updated_at : null,
     onboardingStatusUpdatedAt:
       typeof data.onboarding_status_updated_at === "string" ? data.onboarding_status_updated_at : null,
+    setupFeeCents: Number(data.setup_fee_cents ?? 15000),
+    setupFeeStatus: normalizeSetupFeeStatus(data.setup_fee_status as string | null | undefined),
+    setupFeeCheckoutSessionId: typeof data.setup_fee_checkout_session_id === "string" ? data.setup_fee_checkout_session_id : null,
+    setupFeePaymentIntentId: typeof data.setup_fee_payment_intent_id === "string" ? data.setup_fee_payment_intent_id : null,
+    setupFeePaidAt: typeof data.setup_fee_paid_at === "string" ? data.setup_fee_paid_at : null,
+    setupFeeWaivedAt: typeof data.setup_fee_waived_at === "string" ? data.setup_fee_waived_at : null,
+    setupFeeWaiverReason: typeof data.setup_fee_waiver_reason === "string" ? data.setup_fee_waiver_reason : null,
+    monthlyPriceCents: Number(data.monthly_price_cents ?? 9900),
   };
 }
 

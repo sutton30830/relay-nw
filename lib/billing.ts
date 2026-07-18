@@ -25,6 +25,7 @@ export type StripeSubscriptionStatus =
 
 export type BillingOwnerAction =
   | "none"
+  | "pay_setup_fee"
   | "finish_setup"
   | "start_billing"
   | "manage_billing"
@@ -49,6 +50,14 @@ export type AccountBillingRecord = {
   billingAttentionSince: string | null;
   billingUpdatedAt: string | null;
   onboardingStatusUpdatedAt: string | null;
+  setupFeeCents: number;
+  setupFeeStatus: "due" | "paid" | "waived" | "refunded";
+  setupFeeCheckoutSessionId: string | null;
+  setupFeePaymentIntentId: string | null;
+  setupFeePaidAt: string | null;
+  setupFeeWaivedAt: string | null;
+  setupFeeWaiverReason: string | null;
+  monthlyPriceCents: number;
 };
 
 export type BillingOperatingState =
@@ -90,6 +99,7 @@ export type BillingCheckoutEligibility =
       ok: false;
       reason:
         | "setup_incomplete"
+        | "setup_fee_required"
         | "already_active"
         | "subscription_incomplete"
         | "past_due"
@@ -101,7 +111,9 @@ export type OperatorBillingOverrideAction =
   | "uncomp"
   | "grant_trial"
   | "extend_trial"
-  | "end_trial_now";
+  | "end_trial_now"
+  | "waive_setup_fee"
+  | "require_setup_fee";
 
 export const BILLING_TRIAL_EXPIRY_ACTION = "billing.trial.expired";
 
@@ -122,6 +134,15 @@ const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   billingAttentionSince: null,
   billingUpdatedAt: null,
   onboardingStatusUpdatedAt: null,
+  setupFeeCents: 15000,
+  // Missing commercial columns degrade to the pre-commercial pilot behavior.
+  setupFeeStatus: "waived",
+  setupFeeCheckoutSessionId: null,
+  setupFeePaymentIntentId: null,
+  setupFeePaidAt: null,
+  setupFeeWaivedAt: null,
+  setupFeeWaiverReason: null,
+  monthlyPriceCents: 9900,
 };
 
 export function defaultBillingRecord(): AccountBillingRecord {
@@ -282,6 +303,20 @@ export function computeBillingReadiness(input: {
     };
   }
 
+  if (billing.setupFeeStatus === "due") {
+    return {
+      state: "setup_not_billable",
+      activationReady: lifecycle.activationReady,
+      billingStatus,
+      onboardingStatus: lifecycle.onboardingStatus,
+      ownerAction: "pay_setup_fee",
+      label: "Setup fee due",
+      headline: "Start with the setup fee.",
+      summary: "Pay the one-time setup fee so Relay can finish configuring this account. Monthly billing starts only after carrier approval and activation.",
+      tone: "warn",
+    };
+  }
+
   if (lifecycle.activationReady) {
     return {
       state: "ready_to_start_billing",
@@ -345,9 +380,19 @@ function actionFor(input: {
   stripeSubscriptionId?: string | null;
   trialEndsAt?: string | null;
   cancelAtPeriodEnd?: boolean;
+  setupFeeStatus?: AccountBillingRecord["setupFeeStatus"];
 }): BillingOwnerAction {
   if (input.billingStatus === "comped") {
     return "none";
+  }
+
+  if (
+    input.setupFeeStatus === "due" &&
+    input.billingStatus !== "active" &&
+    input.billingStatus !== "trialing" &&
+    input.billingStatus !== "past_due"
+  ) {
+    return "pay_setup_fee";
   }
 
   if (input.billingStatus === "active" || input.billingStatus === "trialing") {
@@ -396,6 +441,7 @@ export function computeBillingLifecycle(input: {
     stripeSubscriptionId: billing.stripeSubscriptionId,
     trialEndsAt: billing.trialEndsAt,
     cancelAtPeriodEnd: billing.cancelAtPeriodEnd,
+    setupFeeStatus: billing.setupFeeStatus,
   });
   const customerDelay =
     onboardingStatus === "requirements_needed" ||
@@ -472,6 +518,21 @@ export function computeBillingLifecycle(input: {
     };
   }
 
+  if (billing.setupFeeStatus === "due") {
+    return {
+      activationReady,
+      billingStatus,
+      onboardingStatus,
+      ownerAction,
+      customerDelay,
+      carrierDelay,
+      label: "Setup fee due",
+      headline: "Start with the setup fee.",
+      summary: "Pay the one-time setup fee so Relay can finish configuring this account. Monthly billing starts only after carrier approval and activation.",
+      tone: "warn",
+    };
+  }
+
   if (activationReady) {
     return {
       activationReady,
@@ -514,6 +575,10 @@ export function getBillingCheckoutEligibility(input: {
 
   if (!activationReady) {
     return { ok: false, reason: "setup_incomplete" };
+  }
+
+  if (billing.setupFeeStatus === "due") {
+    return { ok: false, reason: "setup_fee_required" };
   }
 
   if (billingStatus === "active" || stripeStatus === "active" || stripeStatus === "trialing") {

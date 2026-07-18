@@ -92,6 +92,21 @@ function BillingAction({ billingReadiness, role }: { billingReadiness: BillingRe
     return null;
   }
 
+  if (billingReadiness.ownerAction === "pay_setup_fee") {
+    if (role !== "owner") {
+      return <p className="setup-panel__note">Relay will collect the one-time setup fee before hands-on setup begins.</p>;
+    }
+
+    return (
+      <form action="/api/billing/setup-fee" method="post" className="setup-panel__action">
+        <button className="btn btn-primary" type="submit">
+          Pay $150 setup fee
+        </button>
+        <p>Monthly billing starts only after A2P approval and activation. Missed-call capture is not interrupted by billing.</p>
+      </form>
+    );
+  }
+
   if (billingReadiness.state === "billing_attention") {
     return (
       <p className="setup-panel__note">

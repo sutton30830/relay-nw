@@ -229,6 +229,36 @@ test("exact Stripe event replay is acknowledged and skipped", async () => {
   assert.deepEqual(calls.processed, []);
 });
 
+test("paid setup-fee Checkout marks only the setup fee as paid", async () => {
+  const { response, calls } = await runWebhook({
+    event: stripeEvent("checkout.session.completed", {
+      id: "cs_setup_fee_1",
+      mode: "payment",
+      customer: "cus_1",
+      payment_intent: "pi_setup_1",
+      payment_status: "paid",
+      metadata: { account_id: "acct_1", charge_type: "setup_fee" },
+    }),
+    subscriptionAccountId: null,
+    customerAccountId: "acct_1",
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls.updates, [
+    {
+      accountId: "acct_1",
+      update: {
+        setupFeeStatus: "paid",
+        setupFeeCheckoutSessionId: "cs_setup_fee_1",
+        setupFeePaymentIntentId: "pi_setup_1",
+        setupFeePaidAt: calls.updates[0]?.update?.setupFeePaidAt,
+      },
+    },
+  ]);
+  assert.match(calls.updates[0].update.setupFeePaidAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(calls.processed.length, 1);
+});
+
 test("two concurrent copies leave only one processor owning the event", async () => {
   const { response, body, calls } = await runWebhook({
     claim: { status: "already_processing", attemptCount: 1 },

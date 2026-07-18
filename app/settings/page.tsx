@@ -144,6 +144,10 @@ function billingSummary(billing: AccountBillingRecord, lifecycle: BillingLifecyc
       : "Finish setup before restarting billing.";
   }
 
+  if (billing.setupFeeStatus === "due") {
+    return "Pay the one-time $150 setup fee so Relay can finish configuring this account. Monthly billing starts only after A2P approval and activation.";
+  }
+
   return lifecycle.summary;
 }
 
@@ -169,6 +173,16 @@ function BillingPrimaryAction({
       <a className="btn btn-secondary settings-billing__action" href="/setup">
         Finish setup
       </a>
+    );
+  }
+
+  if (lifecycle.ownerAction === "pay_setup_fee") {
+    return (
+      <form action="/api/billing/setup-fee" method="post">
+        <button className="btn btn-primary settings-billing__action" type="submit">
+          Pay $150 setup fee
+        </button>
+      </form>
     );
   }
 
@@ -228,6 +242,7 @@ function BillingSection({
   const periodLabel = billing.cancelAtPeriodEnd ? "Ends" : "Renews";
   const showPaymentWarning = billing.billingStatus === "past_due";
   const showCancelWarning = billing.cancelAtPeriodEnd && billing.billingStatus !== "canceled";
+  const setupFeeDate = formatBillingDate(billing.setupFeePaidAt ?? billing.setupFeeWaivedAt);
 
   return (
     <section id="billing" className="panel settings-section settings-billing">
@@ -283,6 +298,18 @@ function BillingSection({
             <dd>Eligible through {guaranteeDate}</dd>
           </div>
         ) : null}
+        <div>
+          <dt>Setup fee</dt>
+          <dd>
+            {billing.setupFeeStatus === "paid"
+              ? `Paid${setupFeeDate ? ` ${setupFeeDate}` : ""}`
+              : billing.setupFeeStatus === "waived"
+                ? "Waived"
+                : billing.setupFeeStatus === "refunded"
+                  ? "Refunded"
+                  : "$150 due"}
+          </dd>
+        </div>
       </dl>
     </section>
   );
@@ -369,6 +396,16 @@ export default async function SettingsPage({
                         ? "Stripe Checkout could not be started. Try again."
                         : params.billing === "portal_failed"
                           ? "Stripe Billing Portal could not be opened. Try again."
+                          : params.billing === "setup_fee_required"
+                            ? "Pay the one-time setup fee before starting monthly billing."
+                            : params.billing === "setup_fee_checkout_failed"
+                              ? "Setup-fee Checkout could not be started. Try again."
+                              : params.billing === "setup_fee_not_configured"
+                                ? "Setup billing is not configured yet. Contact Relay support."
+                                : params.billing === "setup_fee_settled"
+                                  ? "The setup fee is already paid or waived for this account."
+                                  : params.billing === "setup_fee_success"
+                                    ? "Setup fee received. Relay will continue setup and start monthly billing only after activation."
                           : "Billing needs support before continuing."}
           </div>
         ) : null}

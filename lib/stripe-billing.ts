@@ -16,6 +16,15 @@ export type StripeCheckoutSession = {
   url: string;
 };
 
+export type StripeSetupFeeCheckoutSessionInput = {
+  accountId: string;
+  accountSlug: string;
+  ownerEmail: string | null;
+  stripeCustomerId: string | null;
+  setupFeeCents: number;
+  idempotencyKey: string;
+};
+
 export type StripePortalSessionInput = {
   stripeCustomerId: string;
   returnUrl: string;
@@ -197,6 +206,12 @@ export function assertStripeCheckoutConfigured() {
   }
 }
 
+export function assertStripeSetupFeeConfigured() {
+  if (!env.stripeSecretKey || !env.stripeSetupFeePriceId) {
+    throw new Error("Stripe setup-fee checkout is not configured. Set STRIPE_SECRET_KEY and STRIPE_SETUP_FEE_PRICE_ID.");
+  }
+}
+
 export function assertStripePortalConfigured() {
   if (!env.stripeSecretKey) {
     throw new Error("Stripe portal is not configured. Set STRIPE_SECRET_KEY.");
@@ -308,6 +323,56 @@ export async function createStripeCheckoutSession(
   if (!id || !url) {
     throw new Error("Stripe checkout did not return a redirect URL.");
   }
+
+  return { id, url };
+}
+
+export async function createStripeSetupFeeCheckoutSession(
+  input: StripeSetupFeeCheckoutSessionInput,
+): Promise<StripeCheckoutSession> {
+  assertStripeSetupFeeConfigured();
+
+  const params = new URLSearchParams({
+    mode: "payment",
+    client_reference_id: input.accountId,
+    success_url: `${env.appBaseUrl}/settings?billing=setup_fee_success#billing`,
+    cancel_url: `${env.appBaseUrl}/settings?billing=setup_fee_canceled#billing`,
+    "line_items[0][price]": env.stripeSetupFeePriceId!,
+    "line_items[0][quantity]": "1",
+    "metadata[account_id]": input.accountId,
+    "metadata[account_slug]": input.accountSlug,
+    "metadata[charge_type]": "setup_fee",
+    "payment_intent_data[metadata][account_id]": input.accountId,
+    "payment_intent_data[metadata][charge_type]": "setup_fee",
+  });
+
+  if (input.stripeCustomerId) {
+    params.set("customer", input.stripeCustomerId);
+  } else if (input.ownerEmail) {
+    params.set("customer_email", input.ownerEmail);
+  }
+
+  const response = await fetch(`${STRIPE_API_BASE}/checkout/sessions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.stripeSecretKey}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Idempotency-Key": input.idempotencyKey,
+    },
+    body: params,
+  });
+
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) {
+    const message = typeof body.error === "object" && body.error
+      ? stringValue((body.error as Record<string, unknown>).message)
+      : null;
+    throw new Error(message ?? `Stripe setup-fee checkout failed with status ${response.status}`);
+  }
+
+  const id = stringValue(body.id);
+  const url = stringValue(body.url);
+  if (!id || !url) throw new Error("Stripe setup-fee checkout did not return a redirect URL.");
 
   return { id, url };
 }

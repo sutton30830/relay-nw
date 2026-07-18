@@ -49,6 +49,17 @@ Run `npm run test:activation` locally before high-risk releases. This is determi
 - Carrier review and carrier attention are not customer-delay states; do not penalize the owner for carrier-caused delays.
 - Reopening a closed incomplete onboarding requires operator action, a new requirements deadline, and does not reset the original guarantee period.
 
+### Commercial Terms and Activation Billing
+
+- New accounts start with a one-time `$150 setup fee` due. Existing pilot/house accounts are backfilled as explicitly waived by the Phase 7C migration.
+- A pilot waiver must be made from the selected account in `/ops/billing`, include a short reason, and remain visible in the account audit history. A waiver never starts monthly billing.
+- Monthly billing is `$99/month` and is allowed only after call capture and A2P registration are ready. The owner or operator may open Stripe Checkout only after the setup fee is paid or waived.
+- Customer delay and carrier delay are separate: do not start the customer deadline clock for `carrier_review` or `carrier_attention`.
+- Standard monthly Checkout has no automatic trial. Use the existing bounded manual trial controls only for an intentional, audited exception.
+- Configure a separate Stripe one-time Price for `STRIPE_SETUP_FEE_PRICE_ID`. The existing `STRIPE_PRICE_ID` remains the recurring monthly Price.
+- The Stripe webhook must include `checkout.session.completed`; setup-fee sessions carry `metadata[charge_type]=setup_fee` and never mark a subscription active.
+- If setup-fee payment succeeds, confirm the account shows `setup_fee_status=paid`. If it is waived, confirm `setup_fee_status=waived` and the waiver reason. If monthly billing is active, confirm the subscription event separately.
+
 ### SMS Failed, Undelivered, or Not Sent
 
 - If `sms_status=failed` or `undelivered`, tell the owner to call the lead.

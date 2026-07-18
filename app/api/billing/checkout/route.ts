@@ -77,10 +77,14 @@ export async function POST() {
       accountSlug: session.account.accountSlug,
       ownerEmail: session.account.ownerEmail ?? session.email,
       stripeCustomerId: billing.stripeCustomerId,
-      trialPeriodDays: checkoutTrialPeriodDays({
-        billingStatus: billing.billingStatus,
-        trialEndsAt: billing.trialEndsAt,
-      }),
+      // Standard billing starts immediately after activation. Manual/operator
+      // trials remain supported only for accounts already marked trialing.
+      trialPeriodDays: billing.billingStatus === "trialing"
+        ? checkoutTrialPeriodDays({
+            billingStatus: billing.billingStatus,
+            trialEndsAt: billing.trialEndsAt,
+          })
+        : 0,
       idempotencyKey: checkoutIdempotencyKey({
         accountId: session.accountId,
         billingStatus: billing.billingStatus,

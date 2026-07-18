@@ -93,8 +93,17 @@ function isInvoicePaid(object: Record<string, unknown>) {
 function getCheckoutAssociation(object: Record<string, unknown>) {
   const customerId = typeof object.customer === "string" ? object.customer : null;
   const subscriptionId = typeof object.subscription === "string" ? object.subscription : null;
+  const paymentIntentId = typeof object.payment_intent === "string" ? object.payment_intent : null;
 
-  return { customerId, subscriptionId };
+  return { customerId, subscriptionId, paymentIntentId };
+}
+
+function checkoutChargeType(object: Record<string, unknown>) {
+  const metadata = object.metadata;
+  if (!metadata || typeof metadata !== "object") return null;
+  return typeof (metadata as Record<string, unknown>).charge_type === "string"
+    ? (metadata as Record<string, unknown>).charge_type
+    : null;
 }
 
 function expectedStripeLivemode() {
@@ -262,6 +271,25 @@ export async function POST(request: Request) {
 
     if (identity.eventType === "checkout.session.completed") {
       const association = getCheckoutAssociation(identity.object);
+      if (checkoutChargeType(identity.object) === "setup_fee") {
+        if (identity.object.payment_status !== "paid" || !association.customerId) {
+          await markStripeEventIgnored({ ...accountContext, reason: "setup_fee_not_paid" });
+          return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
+        }
+
+        await updateAccountBillingRecord(resolution.accountId, {
+          setupFeeStatus: "paid",
+          setupFeeCheckoutSessionId: identity.object.id as string,
+          setupFeePaymentIntentId: association.paymentIntentId,
+          setupFeePaidAt: new Date().toISOString(),
+        });
+        await markStripeEventProcessed({
+          ...accountContext,
+          stripeCustomerId: association.customerId,
+        });
+        return Response.json({ received: true }, { headers: { "Cache-Control": "no-store" } });
+      }
+
       if (!association.customerId || !association.subscriptionId) {
         await markStripeEventIgnored({ ...accountContext, reason: "checkout_missing_customer_or_subscription" });
         return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });

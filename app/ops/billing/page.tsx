@@ -81,10 +81,19 @@ function billingActionNotice(status: string | undefined, accountSlug: string | u
   if (status === "grant_trial") return `${prefix}manual trial granted.`;
   if (status === "extend_trial") return `${prefix}manual trial extended.`;
   if (status === "end_trial_now") return `${prefix}manual trial ended.`;
+  if (status === "waive_setup_fee") return `${prefix}the $150 setup fee was waived and recorded.`;
+  if (status === "require_setup_fee") return `${prefix}the $150 setup fee is required.`;
+  if (status === "setup_fee_already_paid") return `${prefix}not changed. A paid setup fee cannot be overwritten.`;
   if (status === "override_blocked") return `${prefix}not changed. Stripe has a live subscription, so Stripe remains the source of truth.`;
   if (status === "account_not_found") return `${prefix}account not found.`;
   if (status === "missing_account") return "Enter an account slug.";
   if (status === "invalid_action") return `${prefix}choose a valid billing action.`;
+  if (status === "setup_fee_required") return `${prefix}monthly billing is blocked until the setup fee is paid or waived.`;
+  if (status === "setup_incomplete") return `${prefix}monthly billing is blocked until call capture and A2P readiness are complete.`;
+  if (status === "past_due") return `${prefix}monthly billing is past due; use Stripe Portal instead of starting another subscription.`;
+  if (status === "already_active") return `${prefix}an active subscription already exists.`;
+  if (status === "subscription_incomplete") return `${prefix}Stripe has an incomplete subscription; resolve it before retrying.`;
+  if (status === "checkout_failed") return `${prefix}Stripe Checkout could not be started. Check the Stripe configuration and event log.`;
   if (status === "save_failed") return `${prefix}billing override failed. Check logs before trying again.`;
   return null;
 }
@@ -94,7 +103,9 @@ function billingActionSucceeded(status: string | undefined) {
     status === "uncomp" ||
     status === "grant_trial" ||
     status === "extend_trial" ||
-    status === "end_trial_now";
+    status === "end_trial_now" ||
+    status === "waive_setup_fee" ||
+    status === "require_setup_fee";
 }
 
 function OnboardingDeadlineCard({ account }: { account: OnboardingDeadlineAccount }) {
@@ -259,6 +270,16 @@ export default async function OpsBillingPage({
               <dd>{formatDate(billing.billingUpdatedAt)}</dd>
             </div>
           </dl>
+          {billing.setupFeeStatus !== "due" &&
+          billing.billingStatus !== "active" &&
+          billing.billingStatus !== "trialing" &&
+          billing.billingStatus !== "past_due" ? (
+            <form action="/api/ops/billing/checkout" method="post" className="setup-panel__action ops-activation-action">
+              <input type="hidden" name="account_slug" value={account.accountSlug} />
+              <button className="btn btn-primary" type="submit">Start $99 monthly billing</button>
+              <p className="setup-panel__note">Server-side checks will confirm call capture, A2P approval, and the setup-fee status before Stripe Checkout opens.</p>
+            </form>
+          ) : null}
           <div className="ops-manual-controls">
             {billingNotice ? (
               <div className={billingActionSucceeded(billingAction) ? "settings-notice" : "intake-error settings-notice"} role="status">
@@ -313,6 +334,27 @@ export default async function OpsBillingPage({
               <p className="setup-panel__note">
                 Every change is audited. Manual comp/trial does not reset activation, first-paid, or guarantee dates.
               </p>
+            </form>
+            <div className="setup-panel__head ops-commercial-controls">
+              <p className="t-eyebrow">Commercial terms</p>
+              <h3>Setup fee</h3>
+              <p className="setup-copy">
+                Current status: <strong>{billing.setupFeeStatus}</strong>. Waive this only for a named pilot or other documented exception.
+              </p>
+            </div>
+            <form action="/api/ops/billing" method="post" className="setup-panel__action">
+              <input type="hidden" name="account_slug" value={account.accountSlug} />
+              <label className="field-label" htmlFor="setup-fee-waiver-reason">Waiver reason</label>
+              <input id="setup-fee-waiver-reason" className="field" name="waiver_reason" maxLength={240} placeholder="e.g. pilot customer" />
+              <div className="ops-billing-actions">
+                <button className="btn btn-secondary" type="submit" name="action" value="waive_setup_fee" disabled={!canApplyBillingOverride || billing.setupFeeStatus === "paid"}>
+                  Waive $150 setup fee
+                </button>
+                <button className="btn btn-secondary" type="submit" name="action" value="require_setup_fee" disabled={!canApplyBillingOverride || billing.setupFeeStatus === "paid"}>
+                  Require setup fee
+                </button>
+              </div>
+              <p className="setup-panel__note">The setup fee is separate from the $99 monthly subscription. A waiver never starts monthly billing.</p>
             </form>
           </div>
         </article>

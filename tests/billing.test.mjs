@@ -215,6 +215,30 @@ test("checkout eligibility allows only not started or fully canceled accounts", 
   );
 });
 
+test("setup fee is an explicit prerequisite for monthly activation billing", () => {
+  const due = billing.getBillingCheckoutEligibility({
+    billing: billingRecord({ setupFeeStatus: "due" }),
+    setupReadiness: { callCaptureReady: true, smsRegistrationReady: true },
+  });
+  const waived = billing.getBillingCheckoutEligibility({
+    billing: billingRecord({ setupFeeStatus: "waived" }),
+    setupReadiness: { callCaptureReady: true, smsRegistrationReady: true },
+  });
+
+  assert.deepEqual(due, { ok: false, reason: "setup_fee_required" });
+  assert.deepEqual(waived, { ok: true });
+});
+
+test("commercial lifecycle makes setup fee the next owner action", () => {
+  const lifecycle = billing.computeBillingLifecycle({
+    billing: billingRecord({ setupFeeStatus: "due" }),
+    setupReadiness: { callCaptureReady: false, smsRegistrationReady: false },
+  });
+
+  assert.equal(lifecycle.ownerAction, "pay_setup_fee");
+  assert.equal(lifecycle.label, "Setup fee due");
+});
+
 test("activation and first paid dates are durable lifecycle facts", () => {
   const state = billing.computeBillingLifecycle({
     billing: billingRecord({

@@ -98,6 +98,8 @@ test("account users can bind Supabase Auth users to accounts", () => {
 
 test("billing foundation is account-scoped and activation-based", () => {
   assert.match(sql, /billing_status text not null default 'not_started'/);
+  assert.match(sql, /setup_fee_status text not null default 'due'/);
+  assert.match(sql, /monthly_price_cents integer not null default 9900/);
   assert.match(sql, /stripe_customer_id text/);
   assert.match(sql, /stripe_subscription_id text/);
   assert.match(sql, /onboarding_status text not null default 'requirements_needed'/);
@@ -152,6 +154,7 @@ test("stripe checkout and webhooks update account billing without gating missed-
   assert.match(envTs, /STRIPE_SECRET_KEY/);
   assert.match(envTs, /STRIPE_WEBHOOK_SECRET/);
   assert.match(envTs, /STRIPE_PRICE_ID/);
+  assert.match(envTs, /STRIPE_SETUP_FEE_PRICE_ID/);
   assert.match(envTs, /STRIPE_TRIAL_DAYS/);
   assert.match(accountStore, /updateAccountBillingRecord/);
 

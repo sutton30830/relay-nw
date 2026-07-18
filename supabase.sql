@@ -36,6 +36,14 @@ create table if not exists public.accounts (
   guarantee_ends_at timestamptz,
   billing_attention_since timestamptz,
   billing_updated_at timestamptz,
+  setup_fee_cents integer not null default 15000 check (setup_fee_cents >= 0),
+  setup_fee_status text not null default 'due' check (setup_fee_status in ('due', 'paid', 'waived', 'refunded')),
+  setup_fee_checkout_session_id text,
+  setup_fee_payment_intent_id text,
+  setup_fee_paid_at timestamptz,
+  setup_fee_waived_at timestamptz,
+  setup_fee_waiver_reason text,
+  monthly_price_cents integer not null default 9900 check (monthly_price_cents >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -56,6 +64,14 @@ alter table public.accounts add column if not exists first_paid_at timestamptz;
 alter table public.accounts add column if not exists guarantee_ends_at timestamptz;
 alter table public.accounts add column if not exists billing_attention_since timestamptz;
 alter table public.accounts add column if not exists billing_updated_at timestamptz;
+alter table public.accounts add column if not exists setup_fee_cents integer not null default 15000;
+alter table public.accounts add column if not exists setup_fee_status text not null default 'due';
+alter table public.accounts add column if not exists setup_fee_checkout_session_id text;
+alter table public.accounts add column if not exists setup_fee_payment_intent_id text;
+alter table public.accounts add column if not exists setup_fee_paid_at timestamptz;
+alter table public.accounts add column if not exists setup_fee_waived_at timestamptz;
+alter table public.accounts add column if not exists setup_fee_waiver_reason text;
+alter table public.accounts add column if not exists monthly_price_cents integer not null default 9900;
 do $$
 begin
   alter table public.accounts
@@ -110,6 +126,33 @@ create unique index if not exists accounts_stripe_customer_id_unique_idx
 create unique index if not exists accounts_stripe_subscription_id_unique_idx
   on public.accounts (stripe_subscription_id)
   where stripe_subscription_id is not null;
+create unique index if not exists accounts_setup_fee_checkout_session_unique_idx
+  on public.accounts (setup_fee_checkout_session_id)
+  where setup_fee_checkout_session_id is not null;
+create unique index if not exists accounts_setup_fee_payment_intent_unique_idx
+  on public.accounts (setup_fee_payment_intent_id)
+  where setup_fee_payment_intent_id is not null;
+
+do $$
+begin
+  alter table public.accounts
+    add constraint accounts_setup_fee_status_check
+    check (setup_fee_status in ('due', 'paid', 'waived', 'refunded'));
+exception
+  when duplicate_object then null;
+end $$;
+
+-- Phase 7C commercial terms.
+-- Existing accounts are pre-commercial pilot/house accounts. Preserve their
+-- current behavior by explicitly waiving the new setup fee, with an audit note
+-- available for operators to review. New accounts retain the default 'due'.
+update public.accounts
+set
+  setup_fee_status = 'waived',
+  setup_fee_waived_at = coalesce(setup_fee_waived_at, now()),
+  setup_fee_waiver_reason = coalesce(setup_fee_waiver_reason, 'Pre-commercial account backfill; review before customer billing.')
+where setup_fee_status = 'due'
+  and created_at < now();
 
 -- Phase 6A lifecycle coherence backfill.
 -- Paid or previously activated accounts should not remain in customer-delay
