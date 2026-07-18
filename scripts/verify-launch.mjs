@@ -131,7 +131,7 @@ function deriveCheckoutAllowed({ account, activationReady }) {
   const setupFeeStatus = account?.setup_fee_status ?? "waived";
 
   if (!activationReady) return { ok: false, detail: "Checkout is blocked until call capture and A2P/SMS registration are ready." };
-  if (setupFeeStatus !== "paid" && setupFeeStatus !== "waived") {
+  if (!account?.first_paid_at && setupFeeStatus !== "paid" && setupFeeStatus !== "waived") {
     return { ok: false, detail: `Checkout is blocked until the one-time setup fee is paid or waived (status=${setupFeeStatus}).` };
   }
   if (billingStatus === "active" || billingStatus === "trialing" || stripeStatus === "active" || stripeStatus === "trialing") {
@@ -288,14 +288,16 @@ export function analyzeLaunchCertification(input) {
   );
   addCheck(
     checks,
-    setupFeeStatus === "paid" || setupFeeStatus === "waived",
+    Boolean(account.first_paid_at) || setupFeeStatus === "paid" || setupFeeStatus === "waived",
     "setup fee status",
-    setupFeeStatus === "paid"
+    account.first_paid_at
+      ? "The one-time setup fee was settled before the first paid activation."
+      : setupFeeStatus === "paid"
       ? "The one-time setup fee is paid."
       : setupFeeStatus === "waived"
         ? "The one-time setup fee is explicitly waived."
         : `The one-time setup fee is not settled (status=${setupFeeStatus}).`,
-    setupFeeStatus === "paid" || setupFeeStatus === "waived" ? "pass" : "fail",
+    account.first_paid_at || setupFeeStatus === "paid" || setupFeeStatus === "waived" ? "pass" : "fail",
   );
 
   const dangerousStripeDisagreement =

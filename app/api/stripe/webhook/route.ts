@@ -278,6 +278,7 @@ export async function POST(request: Request) {
         }
 
         await updateAccountBillingRecord(resolution.accountId, {
+          stripeCustomerId: association.customerId,
           setupFeeStatus: "paid",
           setupFeeCheckoutSessionId: identity.object.id as string,
           setupFeePaymentIntentId: association.paymentIntentId,

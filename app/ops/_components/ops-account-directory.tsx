@@ -57,6 +57,8 @@ export function OpsAccountDirectory({
         <button className="btn btn-primary" type="submit">Search accounts</button>
       </form>
 
+      <p className="ops-directory-hint">{"Select an account to manage onboarding and Billing & setup. Technical logs are kept behind Troubleshoot."}</p>
+
       <div className="ops-account-grid">
         {accounts.length === 0 ? (
           <article className="panel setup-panel ops-account-empty">
@@ -94,10 +96,7 @@ export function OpsAccountDirectory({
 
             <div className="ops-account-card__actions">
               <Link className="btn btn-primary btn-sm" href={`/ops?account=${encodeURIComponent(account.accountSlug)}`}>
-                Open account
-              </Link>
-              <Link className="btn btn-secondary btn-sm" href={`/ops/billing?account=${encodeURIComponent(account.accountSlug)}`}>
-                Billing & setup
+                Manage account
               </Link>
             </div>
           </article>

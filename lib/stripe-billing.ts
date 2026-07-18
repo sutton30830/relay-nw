@@ -346,8 +346,30 @@ export async function createStripeSetupFeeCheckoutSession(
     "payment_intent_data[metadata][charge_type]": "setup_fee",
   });
 
-  if (input.stripeCustomerId) {
-    params.set("customer", input.stripeCustomerId);
+  let usableCustomerId = input.stripeCustomerId;
+  if (usableCustomerId) {
+    const customerResponse = await fetch(`${STRIPE_API_BASE}/customers/${encodeURIComponent(usableCustomerId)}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${env.stripeSecretKey}` },
+    });
+
+    if (!customerResponse.ok) {
+      if (customerResponse.status === 404) {
+        // A customer id from the other Stripe mode, or a deleted customer,
+        // must not prevent a new one-time payment from being collected.
+        usableCustomerId = null;
+      } else {
+        const body = (await customerResponse.json().catch(() => ({}))) as Record<string, unknown>;
+        const message = typeof body.error === "object" && body.error
+          ? stringValue((body.error as Record<string, unknown>).message)
+          : null;
+        throw new Error(message ?? `Stripe customer lookup failed with status ${customerResponse.status}`);
+      }
+    }
+  }
+
+  if (usableCustomerId) {
+    params.set("customer", usableCustomerId);
   } else if (input.ownerEmail) {
     params.set("customer_email", input.ownerEmail);
   }

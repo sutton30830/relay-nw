@@ -301,7 +301,9 @@ function BillingSection({
         <div>
           <dt>Setup fee</dt>
           <dd>
-            {billing.setupFeeStatus === "paid"
+            {billing.firstPaidAt
+              ? "Settled through prior activation"
+              : billing.setupFeeStatus === "paid"
               ? `Paid${setupFeeDate ? ` ${setupFeeDate}` : ""}`
               : billing.setupFeeStatus === "waived"
                 ? "Waived"

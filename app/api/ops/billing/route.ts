@@ -73,7 +73,10 @@ export async function POST(request: Request) {
     return redirectWith("override_blocked", account.accountSlug);
   }
 
-  if ((action === "waive_setup_fee" || action === "require_setup_fee") && account.setupFeeStatus === "paid") {
+  if (
+    (action === "waive_setup_fee" || action === "require_setup_fee") &&
+    (account.firstPaidAt || account.setupFeeStatus === "paid")
+  ) {
     return redirectWith("setup_fee_already_paid", account.accountSlug);
   }
 

@@ -1944,6 +1944,39 @@ code {
   margin: 18px 0 22px;
 }
 
+.ops-directory-hint {
+  margin: -10px 0 18px;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+.ops-account-overview {
+  margin-bottom: 18px;
+}
+
+.ops-account-overview__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.ops-next-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 18px;
+}
+
+.ops-next-action h2 {
+  margin: 4px 0 0;
+}
+
+.ops-account-facts {
+  margin-bottom: 24px;
+}
+
 .ops-account-grid {
   display: grid;
   gap: 14px;
@@ -4772,6 +4805,15 @@ code {
 
   .ops-account-card__states {
     grid-template-columns: 1fr;
+  }
+
+  .ops-next-action {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ops-account-overview__actions {
+    justify-content: flex-start;
   }
 
   .home-view .app-head__right--primary {

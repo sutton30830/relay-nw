@@ -248,6 +248,7 @@ test("paid setup-fee Checkout marks only the setup fee as paid", async () => {
     {
       accountId: "acct_1",
       update: {
+        stripeCustomerId: "cus_1",
         setupFeeStatus: "paid",
         setupFeeCheckoutSessionId: "cs_setup_fee_1",
         setupFeePaymentIntentId: "pi_setup_1",

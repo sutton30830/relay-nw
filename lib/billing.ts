@@ -149,10 +149,14 @@ export function defaultBillingRecord(): AccountBillingRecord {
   return { ...DEFAULT_BILLING_RECORD };
 }
 
-export function isSetupFeeSettled(status: AccountBillingRecord["setupFeeStatus"] | null | undefined) {
+export function isSetupFeeSettled(
+  status: AccountBillingRecord["setupFeeStatus"] | null | undefined,
+  firstPaidAt?: string | null,
+) {
   // Older callers and pre-commercial rows have no setup-fee field; preserve
-  // their explicit pilot behavior while treating a recorded refund as due.
-  return status == null || status === "paid" || status === "waived";
+  // their explicit pilot behavior. A prior paid activation also proves that
+  // this one-time fee was already settled and must not be charged again.
+  return Boolean(firstPaidAt) || status == null || status === "paid" || status === "waived";
 }
 
 export function normalizeBillingStatus(value: string | null | undefined): AccountBillingStatus {
@@ -309,7 +313,7 @@ export function computeBillingReadiness(input: {
     };
   }
 
-  if (!isSetupFeeSettled(billing.setupFeeStatus)) {
+  if (!isSetupFeeSettled(billing.setupFeeStatus, billing.firstPaidAt)) {
     return {
       state: "setup_not_billable",
       activationReady: lifecycle.activationReady,
@@ -387,13 +391,14 @@ function actionFor(input: {
   trialEndsAt?: string | null;
   cancelAtPeriodEnd?: boolean;
   setupFeeStatus?: AccountBillingRecord["setupFeeStatus"];
+  firstPaidAt?: string | null;
 }): BillingOwnerAction {
   if (input.billingStatus === "comped") {
     return "none";
   }
 
   if (
-    !isSetupFeeSettled(input.setupFeeStatus) &&
+    !isSetupFeeSettled(input.setupFeeStatus, input.firstPaidAt) &&
     input.billingStatus !== "active" &&
     input.billingStatus !== "trialing" &&
     input.billingStatus !== "past_due"
@@ -448,6 +453,7 @@ export function computeBillingLifecycle(input: {
     trialEndsAt: billing.trialEndsAt,
     cancelAtPeriodEnd: billing.cancelAtPeriodEnd,
     setupFeeStatus: billing.setupFeeStatus,
+    firstPaidAt: billing.firstPaidAt,
   });
   const customerDelay =
     onboardingStatus === "requirements_needed" ||
@@ -524,7 +530,7 @@ export function computeBillingLifecycle(input: {
     };
   }
 
-  if (!isSetupFeeSettled(billing.setupFeeStatus)) {
+  if (!isSetupFeeSettled(billing.setupFeeStatus, billing.firstPaidAt)) {
     return {
       activationReady,
       billingStatus,
@@ -583,7 +589,7 @@ export function getBillingCheckoutEligibility(input: {
     return { ok: false, reason: "setup_incomplete" };
   }
 
-  if (!isSetupFeeSettled(billing.setupFeeStatus)) {
+  if (!isSetupFeeSettled(billing.setupFeeStatus, billing.firstPaidAt)) {
     return { ok: false, reason: "setup_fee_required" };
   }
 

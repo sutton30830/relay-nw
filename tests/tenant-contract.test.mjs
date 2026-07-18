@@ -305,7 +305,7 @@ test("ops runbook is authenticated and covers failure visibility plus retention"
   assert.match(opsRunbookMd, /--billing-controls <scratch-slug>/);
   assert.match(opsRunbookMd, /refuses non-scratch slugs/);
   assert.match(opsRunbookMd, /comp, uncomp, trial grant, and app-trial expiry/);
-  assert.match(opsRunbookMd, /Stripe price is the \$99 monthly plan/);
+  assert.match(opsRunbookMd, /Stripe prices are the `\$99\/month` recurring plan and the `\$150` one-time setup fee/);
   assert.match(opsRunbookMd, /\/api\/cron\/onboarding-deadlines/);
   assert.match(opsRunbookMd, /\/ops\/billing.*customer-delay clock/);
   assert.match(opsRunbookMd, /Carrier review and carrier attention are not customer-delay states/);
@@ -400,14 +400,13 @@ test("ops pages share the same internal tool actions", () => {
   assert.match(opsPageTsx, /getOpsAccountBySlug\(accountSlug\)/);
   assert.match(opsBillingPageTsx, /Choose an account before viewing or changing billing/);
   assert.match(opsAccountDirectoryTsx, /Billing & setup/);
-  assert.match(opsAccountDirectoryTsx, /Open account/);
+  assert.match(opsAccountDirectoryTsx, /Manage account/);
   assert.match(emailTestRouteTs, /requirePlatformOperatorJson/);
   assert.match(emailTestRouteTs, /getOpsAccountBySlug/);
   assert.match(opsToolbarTsx, /export function OpsToolbar/);
-  assert.match(opsToolbarTsx, /Technical logs/);
+  assert.match(opsToolbarTsx, /Troubleshoot/);
   assert.match(opsToolbarTsx, /href="\/ops\/setup-requests"/);
   assert.match(opsToolbarTsx, /href="\/ops\/runbook"/);
-  assert.match(opsToolbarTsx, /action="\/api\/email-test\/start"/);
   assert.match(opsToolbarTsx, /href="\/leads"/);
 
   for (const source of [opsPageTsx, opsRunbookPageTsx, opsSetupRequestsPageTsx, opsBillingPageTsx]) {

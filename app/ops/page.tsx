@@ -6,6 +6,30 @@ import { getOpsAccountBySlug, getRecentWebhookEventsForAccount, listOpsAccounts 
 
 export const dynamic = "force-dynamic";
 
+function onboardingLabel(status: string) {
+  return status.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function billingLabel(status: string) {
+  return status === "not_started" ? "Not started" : status.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function nextAction(account: Awaited<ReturnType<typeof getOpsAccountBySlug>>) {
+  if (!account) return { label: "Choose an account", detail: "Select a customer from the account directory first." };
+  if (account.billingStatus === "past_due") return { label: "Resolve payment", detail: "Open Billing & setup and use Stripe Portal or inspect the failed payment event." };
+  if (account.onboardingStatus === "carrier_attention" || account.onboardingStatus === "carrier_review") {
+    return { label: "Monitor carrier approval", detail: "This is a carrier/A2P delay. Do not start the customer-delay clock." };
+  }
+  if (account.onboardingStatus === "waiting_on_customer" || account.onboardingStatus === "paused_incomplete" || account.onboardingStatus === "closed_incomplete") {
+    return { label: "Follow up with customer", detail: "Open Billing & setup to review or reopen the requirements deadline." };
+  }
+  if (account.onboardingStatus === "ready_to_activate") return { label: "Review activation", detail: "Confirm the setup fee and start monthly billing when the customer is ready." };
+  if (account.billingStatus === "active" || account.billingStatus === "trialing" || account.billingStatus === "comped") {
+    return { label: "No action needed", detail: "The account is operating. Use Troubleshoot only when a delivery or webhook issue is reported." };
+  }
+  return { label: "Finish setup", detail: "Review setup readiness before handing this account to the owner." };
+}
+
 function eventMatchesQuery(event: Awaited<ReturnType<typeof getRecentWebhookEventsForAccount>>[number], query: string) {
   if (!query) return true;
 
@@ -30,10 +54,10 @@ function formatDate(value: string | null | undefined) {
 export default async function OpsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; account?: string }>;
+  searchParams: Promise<{ q?: string; account?: string; view?: string }>;
 }) {
   const operator = await requirePlatformOperator();
-  const { q = "", account: accountSlug = "" } = await searchParams;
+  const { q = "", account: accountSlug = "", view = "overview" } = await searchParams;
 
   if (!accountSlug) {
     const accounts = await listOpsAccounts(q);
@@ -77,6 +101,74 @@ export default async function OpsPage({
     );
   }
 
+  if (view !== "logs") {
+    const action = nextAction(account);
+
+    return (
+      <main className="leads-view">
+        <section className="leads-shell">
+          <OpsHeader businessName={account.businessName} operatorEmail={operator.email} />
+          <OpsToolbar showSetupRequests accountSlug={account.accountSlug} subtitle={`Managing ${account.accountSlug}`} />
+
+          <div className="leads-header">
+            <div>
+              <p className="t-eyebrow">Customer account</p>
+              <h1 className="t-display">{account.businessName}</h1>
+              <p className="leads-subtitle">One control surface for this account. Start with the next action; use Troubleshoot for raw technical events.</p>
+            </div>
+          </div>
+
+          <section className="pulse-strip ops-account-overview" aria-label="Account operating summary">
+            <div className="pulse-cell pulse-cell--brand">
+              <span className="pulse-sub">Account</span>
+              <strong className="pulse-value">{account.accountStatus}</strong>
+            </div>
+            <div className="pulse-cell">
+              <span className="pulse-sub">Onboarding</span>
+              <strong className="pulse-value">{onboardingLabel(account.onboardingStatus)}</strong>
+            </div>
+            <div className="pulse-cell">
+              <span className="pulse-sub">Billing</span>
+              <strong className="pulse-value">{billingLabel(account.billingStatus)}</strong>
+            </div>
+            <div className="pulse-cell">
+              <span className="pulse-sub">Owner</span>
+              <strong className="pulse-value">{account.ownerEmail ?? "Not set"}</strong>
+            </div>
+          </section>
+
+          <section className="ops-next-action panel setup-panel">
+            <div>
+              <p className="t-eyebrow">Next operator action</p>
+              <h2>{action.label}</h2>
+              <p className="setup-copy">{action.detail}</p>
+            </div>
+            <div className="ops-account-overview__actions">
+              <a className="btn btn-primary" href={`/ops/billing?account=${encodeURIComponent(account.accountSlug)}`}>Billing &amp; setup</a>
+              <a className="btn btn-secondary" href={`/ops?account=${encodeURIComponent(account.accountSlug)}&view=logs`}>Troubleshoot</a>
+              <a className="btn btn-secondary" href="/ops/setup-requests">Setup requests</a>
+            </div>
+          </section>
+
+          <section className="ops-account-facts panel setup-panel">
+            <div className="setup-panel__head">
+              <p className="t-eyebrow">Account facts</p>
+              <h2>Keep the customer context together.</h2>
+            </div>
+            <dl className="webhook-event__meta">
+              <div><dt>Account slug</dt><dd>{account.accountSlug}</dd></div>
+              <div><dt>Owner email</dt><dd>{account.ownerEmail ?? "not set"}</dd></div>
+              <div><dt>Subscription</dt><dd>{account.stripeSubscriptionStatus ?? "not connected"}</dd></div>
+              <div><dt>Requirements due</dt><dd>{account.requirementsDueAt ? new Date(account.requirementsDueAt).toLocaleDateString() : "not set"}</dd></div>
+              <div><dt>Activated</dt><dd>{account.activatedAt ? new Date(account.activatedAt).toLocaleDateString() : "not yet"}</dd></div>
+              <div><dt>Last account update</dt><dd>{account.updatedAt ? new Date(account.updatedAt).toLocaleString() : "not available"}</dd></div>
+            </dl>
+          </section>
+        </section>
+      </main>
+    );
+  }
+
   const events = (await getRecentWebhookEventsForAccount(account.accountId, 50))
     .filter((event) => eventMatchesQuery(event, q));
 
@@ -84,13 +176,13 @@ export default async function OpsPage({
     <main className="leads-view">
       <section className="leads-shell">
         <OpsHeader businessName={account.businessName} operatorEmail={operator.email} />
-        <OpsToolbar showSetupRequests accountSlug={account.accountSlug} subtitle={`Technical logs · ${account.accountSlug}`} />
+        <OpsToolbar showSetupRequests accountSlug={account.accountSlug} view="logs" subtitle={`Troubleshoot · ${account.accountSlug}`} />
 
         <div className="leads-header">
           <div>
-            <p className="t-eyebrow">Technical logs</p>
+            <p className="t-eyebrow">Troubleshoot</p>
             <h1 className="t-display">{account.businessName}</h1>
-            <p className="leads-subtitle">Webhook events for {account.accountSlug}. Use this when the missed-call loop or delivery state looks off.</p>
+            <p className="leads-subtitle">Raw webhook events for {account.accountSlug}. Use this only when the account overview points you here or a delivery state looks off.</p>
           </div>
         </div>
 

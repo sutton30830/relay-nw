@@ -270,7 +270,7 @@ export default async function OpsBillingPage({
               <dd>{formatDate(billing.billingUpdatedAt)}</dd>
             </div>
           </dl>
-          {billing.setupFeeStatus !== "due" &&
+          {(billing.setupFeeStatus !== "due" || Boolean(billing.firstPaidAt)) &&
           billing.billingStatus !== "active" &&
           billing.billingStatus !== "trialing" &&
           billing.billingStatus !== "past_due" ? (
@@ -339,7 +339,7 @@ export default async function OpsBillingPage({
               <p className="t-eyebrow">Commercial terms</p>
               <h3>Setup fee</h3>
               <p className="setup-copy">
-                Current status: <strong>{billing.setupFeeStatus}</strong>. Waive this only for a named pilot or other documented exception.
+                Current status: <strong>{billing.firstPaidAt ? "settled through prior activation" : billing.setupFeeStatus}</strong>. Waive this only for a named pilot or other documented exception.
               </p>
             </div>
             <form action="/api/ops/billing" method="post" className="setup-panel__action">
@@ -347,10 +347,10 @@ export default async function OpsBillingPage({
               <label className="field-label" htmlFor="setup-fee-waiver-reason">Waiver reason</label>
               <input id="setup-fee-waiver-reason" className="field" name="waiver_reason" maxLength={240} placeholder="e.g. pilot customer" />
               <div className="ops-billing-actions">
-                <button className="btn btn-secondary" type="submit" name="action" value="waive_setup_fee" disabled={!canApplyBillingOverride || billing.setupFeeStatus === "paid"}>
+                <button className="btn btn-secondary" type="submit" name="action" value="waive_setup_fee" disabled={!canApplyBillingOverride || billing.setupFeeStatus === "paid" || Boolean(billing.firstPaidAt)}>
                   Waive $150 setup fee
                 </button>
-                <button className="btn btn-secondary" type="submit" name="action" value="require_setup_fee" disabled={!canApplyBillingOverride || billing.setupFeeStatus === "paid"}>
+                <button className="btn btn-secondary" type="submit" name="action" value="require_setup_fee" disabled={!canApplyBillingOverride || billing.setupFeeStatus === "paid" || Boolean(billing.firstPaidAt)}>
                   Require setup fee
                 </button>
               </div>

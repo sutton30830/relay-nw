@@ -16,7 +16,7 @@ export async function POST() {
   if (session.role !== "owner") billingRedirect("forbidden");
 
   const billing = await getAccountBillingRecord(session.accountId);
-  if (billing.setupFeeStatus === "paid" || billing.setupFeeStatus === "waived") {
+  if (billing.firstPaidAt || billing.setupFeeStatus === "paid" || billing.setupFeeStatus === "waived") {
     billingRedirect("setup_fee_settled");
   }
 
