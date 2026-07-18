@@ -665,6 +665,11 @@ test("authenticated setup page exposes onboarding checks without creating a new 
   // The forwarding + SMS checks are exposed through the unified Full-test panel.
   assert.match(setupPageTsx, /FullTestPanel/);
   assert.match(setupPageTsx, /Set up forwarding from your business number/);
+  assert.match(setupPageTsx, /function ReadinessFact/);
+  assert.match(setupPageTsx, /className="readiness__facts"/);
+  assert.doesNotMatch(setupPageTsx, /className="setup-metrics"/);
+  assert.ok(setupPageTsx.indexOf("className={`readiness readiness--") < setupPageTsx.indexOf("Get Relay ready for your next missed call."));
+  assert.ok(setupPageTsx.indexOf("Get Relay ready for your next missed call.") < setupPageTsx.indexOf("id=\"live-tests\""));
   // Carrier-aware forwarding guidance; the codes live in lib/carriers (tested
   // in carriers.test.mjs) and render through the CarrierForwarding component.
   assert.match(setupPageTsx, /CarrierForwarding relayNumber=/);

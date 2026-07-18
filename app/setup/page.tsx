@@ -63,7 +63,7 @@ function Step({
   );
 }
 
-function MetricCard({
+function ReadinessFact({
   label,
   value,
   detail,
@@ -75,11 +75,11 @@ function MetricCard({
   tone?: "good" | "warn" | "neutral";
 }) {
   return (
-    <article className={`setup-metric setup-metric--${tone}`}>
-      <p className="t-eyebrow">{label}</p>
+    <div className={`readiness__fact readiness__fact--${tone}`}>
+      <span>{label}</span>
       <strong>{value}</strong>
-      <span>{detail}</span>
-    </article>
+      <small>{detail}</small>
+    </div>
   );
 }
 
@@ -201,6 +201,25 @@ export default async function SetupPage() {
                 Confirmed {formatRelativeAge(readiness.evidence.at, Date.now())} — {readiness.evidence.label.toLowerCase()}
               </p>
             ) : null}
+            <div className="readiness__facts" aria-label="Setup details">
+              <ReadinessFact
+                label="Call mode"
+                value={account.callMode === "forwarding" ? "Forwarding" : "Direct"}
+                detail={account.callMode === "forwarding" ? "Keep your public business number" : "Use the Relay number directly"}
+              />
+              <ReadinessFact
+                label="Texting"
+                value={smsMetric.value}
+                detail={smsMetric.detail}
+                tone={smsMetric.tone}
+              />
+              <ReadinessFact
+                label="Billing"
+                value={billingReadiness.label}
+                detail={billingReadiness.summary}
+                tone={billingReadiness.tone}
+              />
+            </div>
           </div>
           {/* Plain anchor (not next/link): the test actions point to
               /setup#live-tests, and a same-page hash must scroll to the tool
@@ -218,26 +237,6 @@ export default async function SetupPage() {
             {onboardingDelayMessage}
           </div>
         ) : null}
-
-        <section className="setup-metrics" aria-label="Setup details">
-          <MetricCard
-            label="Call mode"
-            value={account.callMode === "forwarding" ? "Forwarding" : "Direct"}
-            detail={account.callMode === "forwarding" ? "Keep your public business number" : "Use the Relay number directly"}
-          />
-          <MetricCard
-            label="Texting"
-            value={smsMetric.value}
-            detail={smsMetric.detail}
-            tone={smsMetric.tone}
-          />
-          <MetricCard
-            label="Billing"
-            value={billingReadiness.label}
-            detail={billingReadiness.summary}
-            tone={billingReadiness.tone}
-          />
-        </section>
 
         <section className="setup-grid">
           <article className="panel setup-panel">
