@@ -150,7 +150,7 @@ export function formatPhone(phone: string) {
 }
 
 export function formatCurrency(cents: number | null | undefined) {
-  if (!cents) return "$0";
+  if (!cents || cents <= 0) return "No value entered";
   return new Intl.NumberFormat(undefined, {
     style: "currency",
     currency: "USD",

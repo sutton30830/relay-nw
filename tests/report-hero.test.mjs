@@ -36,7 +36,7 @@ test("entered booked values lead with booked dollars", () => {
     kind: "entered_value",
     figure: "$4,200",
     unitLine: "booked from Relay leads",
-    subLine: "3 jobs marked booked this month.",
+    subLine: "3 jobs currently marked booked.",
     footnote: "Based on job values you entered.",
     scale: "strong",
   });
@@ -91,11 +91,11 @@ test("bookings with no values can estimate from typical job value", () => {
   });
 });
 
-test("calls without bookings lead with missed calls caught", () => {
+test("leads without bookings lead with live inbox count", () => {
   assert.deepEqual(hero({ missedCalls: 12 }), {
     kind: "calls_caught",
     figure: "12",
-    unitLine: "missed calls caught",
+    unitLine: "leads in your inbox",
     subLine: "Mark booked jobs to track recovery.",
     footnote: null,
     scale: "count",
@@ -107,7 +107,7 @@ test("empty account gets a reduced young-account state", () => {
     kind: "empty",
     figure: "No recovered jobs yet",
     unitLine: "Reports will fill in as Relay catches missed calls.",
-    subLine: "Once Relay catches missed calls and you mark booked jobs, the value will show here.",
+    subLine: "Once Relay catches leads and you mark booked jobs, the value will show here.",
     footnote: null,
     scale: "quiet",
   });

@@ -3,11 +3,7 @@ import { Icon } from "@/components/icon";
 import { AppHeader } from "@/app/leads/_components/app-header";
 import { requireAccountUser } from "@/lib/auth";
 import { computeReportHero } from "@/lib/report-hero";
-import {
-  getAccountRecoveryStats,
-  getLeadInboxCountsForAccount,
-  type RecoveryStats,
-} from "@/lib/supabase";
+import { getLeadInboxCountsForAccount } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
@@ -19,8 +15,10 @@ function formatDollars(cents: number) {
   }).format(cents / 100);
 }
 
-function monthLabel(date: Date) {
-  return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+function bookedValueLabel(bookedCount: number, bookedValueCents: number) {
+  if (bookedCount <= 0) return null;
+  if (bookedValueCents <= 0) return "No values entered yet";
+  return formatDollars(bookedValueCents);
 }
 
 function pluralize(count: number, singular: string, plural = `${singular}s`) {
@@ -76,32 +74,18 @@ function AttentionRow({
   );
 }
 
-function hasUsefulPriorMonth(stats: RecoveryStats) {
-  return stats.missedCalls > 0 || stats.booked > 0 || stats.recoveredCents > 0;
-}
-
 export default async function ReportsPage() {
   const { account, accountId, membershipCount } = await requireAccountUser();
 
-  const now = new Date();
-  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-
-  const [thisMonth, lastMonth, allTime, inboxCounts] = await Promise.all([
-    getAccountRecoveryStats(accountId, { since: thisMonthStart.toISOString() }),
-    getAccountRecoveryStats(accountId, {
-      since: lastMonthStart.toISOString(),
-      until: thisMonthStart.toISOString(),
-    }),
-    getAccountRecoveryStats(accountId, { since: null }),
-    getLeadInboxCountsForAccount(accountId),
-  ]);
+  const inboxCounts = await getLeadInboxCountsForAccount(accountId);
+  const bookedMissingValue = Math.max(0, inboxCounts.booked - inboxCounts.bookedWithValue);
+  const bookedValue = bookedValueLabel(inboxCounts.booked, inboxCounts.bookedValueCents);
 
   const hero = computeReportHero({
-    booked: thisMonth.booked,
-    bookedMissingValue: thisMonth.bookedMissingValue,
-    recoveredCents: thisMonth.recoveredCents,
-    missedCalls: thisMonth.missedCalls,
+    booked: inboxCounts.booked,
+    bookedMissingValue,
+    recoveredCents: inboxCounts.bookedValueCents,
+    missedCalls: inboxCounts.all,
     typicalJobValueCents: account.typicalJobValueCents,
   });
   const attentionItems: Array<{
@@ -126,9 +110,9 @@ export default async function ReportsPage() {
     },
     {
       label: "Booked missing value",
-      count: thisMonth.bookedMissingValue,
+      count: bookedMissingValue,
       hint:
-        thisMonth.bookedMissingValue > 0
+        bookedMissingValue > 0
           ? "Add values so reports tell the truth."
           : "Booked jobs have values entered.",
       href: "/leads?filter=booked",
@@ -156,9 +140,9 @@ export default async function ReportsPage() {
 
           <section
             className={`report-hero report-hero--${hero.scale}`}
-            data-contract-copy="booked from Relay leads · Based on job values you entered."
+            data-contract-copy="live inbox snapshot · Based on job values you entered."
           >
-            <p className="t-eyebrow report-hero__label">{monthLabel(now)}</p>
+            <p className="t-eyebrow report-hero__label">Live inbox</p>
             <div className="report-hero__figure-row">
               <h2 className="report-hero__title">{hero.figure}</h2>
               {hero.estimateLabel ? <span className="report-hero__tag">{hero.estimateLabel}</span> : null}
@@ -168,30 +152,34 @@ export default async function ReportsPage() {
             {hero.footnote ? <p className="report-hero__note">{hero.footnote}</p> : null}
           </section>
 
-          <section className="report-period" aria-label="This month">
+          <section className="report-period" aria-label="Live inbox">
             <div className="drawer__section-head report-period__head">
-              <p className="t-eyebrow">This month</p>
+              <p className="t-eyebrow">Current inbox</p>
             </div>
             <div className="ledger">
               <LedgerRow
-                label="Missed calls captured"
-                value={String(thisMonth.missedCalls)}
-                hint="Calls Relay saved in your inbox."
+                label="Leads in inbox"
+                value={String(inboxCounts.all)}
+                hint="Current non-trash lead cards in your inbox."
               />
               <LedgerRow
-                label="Leads that replied"
-                value={String(thisMonth.uniqueReplyLeads)}
-                hint="People who texted back after Relay followed up."
+                label="New leads"
+                value={String(inboxCounts.new)}
+                hint="Leads waiting for your next action."
               />
               <LedgerRow
                 label="Jobs booked"
-                value={String(thisMonth.booked)}
-                hint="Leads you marked as booked this month."
+                value={String(inboxCounts.booked)}
+                hint="Leads currently marked as booked."
               />
               <LedgerRow
                 label="Booked value"
-                value={formatDollars(thisMonth.recoveredCents)}
-                hint="Only counts values you entered."
+                value={bookedValue ?? "Add booked jobs first"}
+                hint={
+                  bookedValue
+                    ? "Only counts values currently entered on booked leads."
+                    : "Mark a lead as booked, then add the job value."
+                }
                 emphasis
               />
             </div>
@@ -223,27 +211,11 @@ export default async function ReportsPage() {
           </section>
 
           <footer className="report-footer" aria-label="Statement totals">
-            {hasUsefulPriorMonth(lastMonth) ? (
-              <div className="report-footer__compare" aria-label={`Compared with ${monthLabel(lastMonthStart)}`}>
-                <span>
-                  {formatDollars(thisMonth.recoveredCents)} booked
-                  <small>{monthLabel(lastMonthStart)}: {formatDollars(lastMonth.recoveredCents)}</small>
-                </span>
-                <span>
-                  {pluralize(thisMonth.booked, "job")}
-                  <small>{monthLabel(lastMonthStart)}: {lastMonth.booked}</small>
-                </span>
-                <span>
-                  {pluralize(thisMonth.missedCalls, "missed call")} captured
-                  <small>{monthLabel(lastMonthStart)}: {lastMonth.missedCalls}</small>
-                </span>
-              </div>
-            ) : null}
             <div className="report-footer__lifetime" aria-label="Lifetime totals">
-              <span>All time</span>
-              <strong>{formatDollars(allTime.recoveredCents)} booked</strong>
+              <span>Current mailbox</span>
+              {bookedValue ? <strong>{bookedValue} booked</strong> : <strong>No booked value entered</strong>}
               <span>
-                {pluralize(allTime.booked, "job")} · {pluralize(allTime.missedCalls, "missed call")} captured
+                {pluralize(inboxCounts.booked, "job")} · {pluralize(inboxCounts.all, "lead")} in inbox
               </span>
             </div>
           </footer>

@@ -230,3 +230,96 @@ test("booked leads remain in their workflow status filters", async () => {
   assert.equal(countLeads(leads).booked, 1);
   assert.equal(countLeads(leads).dead, 1);
 });
+
+test("current mailbox booked counts follow condensed visible caller cards", async () => {
+  const { condenseLeadsByPhone, countLeads, filterLeads } = await loadLeadUtils();
+  const olderBooked = lead({
+    id: "older-booked",
+    phone: "+12065550111",
+    status: "contacted",
+    booked_at: "2026-07-03T10:00:00.000Z",
+    job_value_cents: 40000,
+    created_at: "2026-07-03T10:00:00.000Z",
+  });
+  const newerUnbooked = lead({
+    id: "newer-unbooked",
+    phone: "+12065550111",
+    status: "new",
+    booked_at: null,
+    job_value_cents: null,
+    created_at: "2026-07-03T11:00:00.000Z",
+  });
+  const distinctBookedA = lead({
+    id: "distinct-booked-a",
+    phone: "+12065550112",
+    status: "new",
+    booked_at: "2026-07-03T11:30:00.000Z",
+    job_value_cents: 25000,
+  });
+  const distinctBookedB = lead({
+    id: "distinct-booked-b",
+    phone: "+12065550113",
+    status: "dead",
+    booked_at: "2026-07-03T11:45:00.000Z",
+    job_value_cents: null,
+  });
+
+  const currentMailbox = condenseLeadsByPhone([
+    olderBooked,
+    newerUnbooked,
+    distinctBookedA,
+    distinctBookedB,
+  ]).leads;
+
+  assert.deepEqual(currentMailbox.map((item) => item.id).sort(), [
+    "distinct-booked-a",
+    "distinct-booked-b",
+    "newer-unbooked",
+  ]);
+  assert.equal(countLeads(currentMailbox).all, 3);
+  assert.equal(countLeads(currentMailbox).booked, 2);
+  assert.equal(countLeads(currentMailbox).bookedValueCents, 25000);
+  assert.equal(countLeads(currentMailbox).bookedWithValue, 1);
+  assert.deepEqual(filterLeads(currentMailbox, "booked", "").map((item) => item.id).sort(), [
+    "distinct-booked-a",
+    "distinct-booked-b",
+  ]);
+});
+
+test("two booked rows for one phone produce one booked card and one booked count", async () => {
+  const { condenseLeadsByPhone, countLeads, filterLeads } = await loadLeadUtils();
+  const currentMailbox = condenseLeadsByPhone([
+    lead({
+      id: "older-booked",
+      phone: "+12065550114",
+      booked_at: "2026-07-03T10:00:00.000Z",
+      job_value_cents: 25000,
+      created_at: "2026-07-03T10:00:00.000Z",
+    }),
+    lead({
+      id: "newer-booked",
+      phone: "+12065550114",
+      booked_at: "2026-07-03T11:00:00.000Z",
+      job_value_cents: 50000,
+      created_at: "2026-07-03T11:00:00.000Z",
+    }),
+  ]).leads;
+
+  assert.deepEqual(currentMailbox.map((item) => item.id), ["newer-booked"]);
+  assert.equal(countLeads(currentMailbox).booked, 1);
+  assert.equal(countLeads(currentMailbox).bookedValueCents, 50000);
+  assert.equal(filterLeads(currentMailbox, "booked", "").length, countLeads(currentMailbox).booked);
+});
+
+test("booked value helpers treat empty or zero as missing, not zero dollars", async () => {
+  const { centsToInputValue, dollarsToCents, formatCurrency } = await loadLeadUtils();
+
+  assert.equal(centsToInputValue(null), "");
+  assert.equal(centsToInputValue(0), "");
+  assert.equal(dollarsToCents(""), null);
+  assert.equal(dollarsToCents("0"), null);
+  assert.equal(dollarsToCents("$0"), null);
+  assert.equal(formatCurrency(null), "No value entered");
+  assert.equal(formatCurrency(0), "No value entered");
+  assert.equal(formatCurrency(12500), "$125");
+});

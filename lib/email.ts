@@ -566,9 +566,11 @@ export async function notifyOwnerWeeklyDigest(input: {
     `Callers texted back automatically: ${stats.textedBack}`,
     `ASAP callbacks flagged: ${stats.urgent}`,
     `Customer replies: ${stats.replies}`,
-    stats.booked > 0
+    stats.booked > 0 && stats.recoveredCents > 0
       ? `Jobs booked: ${stats.booked} (${formatDollars(stats.recoveredCents)})`
-      : "Jobs booked: 0 — mark leads as booked with a value so this report can show recovered revenue.",
+      : stats.booked > 0
+        ? `Jobs booked: ${stats.booked} — add job values so this report can show recovered revenue.`
+        : "Jobs booked: none yet — mark leads as booked with a value so this report can show recovered revenue.",
   ];
 
   return sendEmail({

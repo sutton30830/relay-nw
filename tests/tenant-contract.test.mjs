@@ -377,12 +377,16 @@ test("booked is an outcome flag, never a workflow status button", () => {
   assert.match(leadCardTsx, /onBooked\(lead\.id, !booked\)/);
 });
 
-test("server booked inbox count and filter include booked rows hidden by caller condensing", () => {
-  assert.match(sql, /booked_rows as \(/);
-  assert.match(sql, /select count\(\*\) from booked_rows\) as booked_count/);
-  assert.match(sql, /coalesce\(\(select sum\(job_value_cents\) from booked_rows\), 0\) as booked_value_cents/);
-  assert.match(sql, /coalesce\(p_filter, 'all'\) = 'booked'[\s\S]*from public\.leads/);
-  assert.match(sql, /from public\.lead_inbox_condensed\(p_account\)[\s\S]*coalesce\(p_filter, 'all'\) <> 'booked'/);
+test("server inbox counts and booked filter use the same condensed live mailbox", () => {
+  assert.doesNotMatch(sql, /booked_rows as \(/);
+  assert.match(sql, /one current card per caller phone number/);
+  assert.match(sql, /select count\(\*\) from rollup where deleted_at is null and \(booked_at is not null or status = 'booked'\)\) as booked_count/);
+  assert.match(sql, /select sum\(job_value_cents\)[\s\S]*from rollup[\s\S]*booked_value_cents/);
+  assert.match(sql, /from public\.lead_inbox_condensed\(p_account\)/);
+  assert.doesNotMatch(sql, /coalesce\(p_filter, 'all'\) = 'booked'[\s\S]{0,160}from public\.leads/);
+  assert.match(sql, /p_filter = 'booked' and \(booked_at is not null or status = 'booked'\)/);
+  assert.match(sql, /count\(\*\) over \(\) as total_count/);
+  assert.match(sql, /left join phone_calls pc on pc\.phone = f\.phone/);
 });
 
 test("lead card actions keep workflow controls explicit and avoid duplicate details", () => {
@@ -392,6 +396,15 @@ test("lead card actions keep workflow controls explicit and avoid duplicate deta
   assert.match(leadCardTsx, /triggerAriaLabel="Change lead status"/);
   assert.doesNotMatch(leadCardTsx, />Details</);
   assert.doesNotMatch(leadCardTsx, /Booked value missing/);
+});
+
+test("booked value controls do not render missing money as zero dollars", () => {
+  assert.match(leadControlsTsx, /placeholder="Enter value"/);
+  assert.doesNotMatch(leadControlsTsx, /placeholder="0"/);
+  assert.match(leadUtilsTs, /if \(!cents \|\| cents <= 0\) return "No value entered"/);
+  assert.doesNotMatch(leadUtilsTs, /if \(!cents\) return "\$0"/);
+  assert.match(emailTs, /Jobs booked: \$\{stats\.booked\} — add job values/);
+  assert.doesNotMatch(emailTs, /stats\.booked > 0\s*\?\s*`Jobs booked: \$\{stats\.booked\} \(\$\{formatDollars\(stats\.recoveredCents\)\}\)`/);
 });
 
 test("lead card hides raw sms error codes behind owner-facing language", () => {

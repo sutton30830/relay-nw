@@ -122,7 +122,7 @@ export function BookedValueInput({
         <span>$</span>
         <input
           inputMode="numeric"
-          placeholder="0"
+          placeholder="Enter value"
           value={value}
           onChange={(event) => setValue(event.target.value)}
           onBlur={saveValue}

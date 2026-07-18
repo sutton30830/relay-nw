@@ -51,7 +51,7 @@ export function computeReportHero(input: ReportHeroInput): ReportHero {
       kind: "entered_value",
       figure: dollars(recoveredCents),
       unitLine: "booked from Relay leads",
-      subLine: `${pluralize(booked, "job")} marked booked this month.`,
+      subLine: `${pluralize(booked, "job")} currently marked booked.`,
       footnote: "Based on job values you entered.",
       scale: "strong",
     };
@@ -115,7 +115,7 @@ export function computeReportHero(input: ReportHeroInput): ReportHero {
     return {
       kind: "calls_caught",
       figure: String(missedCalls),
-      unitLine: "missed calls caught",
+      unitLine: "leads in your inbox",
       subLine: "Mark booked jobs to track recovery.",
       footnote: null,
       scale: "count",
@@ -126,7 +126,7 @@ export function computeReportHero(input: ReportHeroInput): ReportHero {
     kind: "empty",
     figure: "No recovered jobs yet",
     unitLine: "Reports will fill in as Relay catches missed calls.",
-    subLine: "Once Relay catches missed calls and you mark booked jobs, the value will show here.",
+    subLine: "Once Relay catches leads and you mark booked jobs, the value will show here.",
     footnote: null,
     scale: "quiet",
   };

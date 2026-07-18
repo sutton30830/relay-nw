@@ -274,6 +274,39 @@ function createSupabaseFake(seed) {
       .toLowerCase();
   }
 
+  function condenseLeadRows(rows) {
+    const newestByPhone = new Map();
+
+    for (const lead of rows) {
+      const bucket = `${lead.phone}:${lead.deleted_at ? "trash" : "live"}`;
+      const current = newestByPhone.get(bucket);
+      if (!current || lead.created_at > current.created_at || (lead.created_at === current.created_at && lead.id > current.id)) {
+        newestByPhone.set(bucket, lead);
+      }
+    }
+
+    return rows.filter((lead) => newestByPhone.get(`${lead.phone}:${lead.deleted_at ? "trash" : "live"}`)?.id === lead.id);
+  }
+
+  function leadInboxCounts(params) {
+    const rollup = condenseLeadRows(table("leads").filter((lead) => lead.account_id === params.p_account));
+    const visible = rollup.filter((lead) => !lead.deleted_at);
+    const booked = visible.filter((lead) => lead.booked_at || lead.status === "booked");
+
+    return {
+      all_count: visible.length,
+      new_count: visible.filter((lead) => lead.status === "new").length,
+      actionable_count: visible.filter((lead) => lead.status === "new" || lead.status === "contacted").length,
+      contacted_count: visible.filter((lead) => lead.status === "contacted").length,
+      booked_count: booked.length,
+      dead_count: visible.filter((lead) => lead.status === "dead").length,
+      trash_count: rollup.filter((lead) => lead.deleted_at).length,
+      sms_issues_count: visible.filter((lead) => lead.status === "new" && ["failed", "undelivered"].includes(lead.sms_status)).length,
+      booked_value_cents: booked.reduce((sum, lead) => sum + (lead.job_value_cents ?? 0), 0),
+      booked_with_value_count: booked.filter((lead) => (lead.job_value_cents ?? 0) > 0).length,
+    };
+  }
+
   function searchLeadInbox(params) {
     const filter = params.p_filter ?? "all";
     const query = String(params.p_query ?? "").trim().toLowerCase();
@@ -286,7 +319,8 @@ function createSupabaseFake(seed) {
       callCounts.set(lead.phone, (callCounts.get(lead.phone) ?? 0) + 1);
     }
 
-    const filtered = accountLeads
+    const sourceRows = condenseLeadRows(accountLeads);
+    const filtered = sourceRows
       .filter((lead) => {
         const inTrash = Boolean(lead.deleted_at);
         if (filter === "trash" ? !inTrash : inTrash) return false;
@@ -309,6 +343,19 @@ function createSupabaseFake(seed) {
     }));
   }
 
+  function rpcResult(data, error = null) {
+    const promise = Promise.resolve({ data, error });
+    return {
+      then: promise.then.bind(promise),
+      catch: promise.catch.bind(promise),
+      finally: promise.finally.bind(promise),
+      maybeSingle() {
+        const row = Array.isArray(data) ? (data[0] ?? null) : data;
+        return Promise.resolve({ data: row, error });
+      },
+    };
+  }
+
   return {
     tables,
     client: {
@@ -317,7 +364,10 @@ function createSupabaseFake(seed) {
       },
       rpc(name, params) {
         if (name === "search_lead_inbox") {
-          return Promise.resolve({ data: searchLeadInbox(params), error: null });
+          return rpcResult(searchLeadInbox(params));
+        }
+        if (name === "lead_inbox_counts") {
+          return rpcResult(leadInboxCounts(params));
         }
 
         throw new Error(`Unsupported rpc ${name}`);
@@ -518,12 +568,14 @@ test("paginated lead inbox stays account scoped and bounded", async () => {
       ...seed.leads[1],
       id: `lead-b-extra-${index}`,
       call_sid: `CA_B_EXTRA_${index}`,
+      phone: `+1555222000${index + 1}`,
       created_at: `2026-01-0${index + 3}T00:00:00.000Z`,
     })),
     ...Array.from({ length: 4 }, (_, index) => ({
       ...seed.leads[0],
       id: `lead-a-extra-${index}`,
       call_sid: `CA_A_EXTRA_${index}`,
+      phone: `+1555111000${index + 1}`,
       created_at: `2026-01-0${index + 3}T12:00:00.000Z`,
     })),
   ];
@@ -538,6 +590,67 @@ test("paginated lead inbox stays account scoped and bounded", async () => {
   assert.equal(page.leads.length, 2);
   assert.ok(page.leads.every((lead) => lead.account_id === "acct-b"));
   assert.deepEqual(page.leads.map((lead) => lead.id), ["lead-b-extra-1", "lead-b-extra-0"]);
+});
+
+test("server inbox counts match the same condensed booked cards returned by the inbox", async () => {
+  const seed = seedData();
+  seed.leads = [
+    {
+      ...seed.leads[0],
+      id: "older-booked-a",
+      phone: "+15551113333",
+      booked_at: "2026-01-01T00:00:00.000Z",
+      job_value_cents: 45000,
+      created_at: "2026-01-01T00:00:00.000Z",
+    },
+    {
+      ...seed.leads[0],
+      id: "newer-unbooked-a",
+      phone: "+15551113333",
+      booked_at: null,
+      job_value_cents: null,
+      status: "new",
+      created_at: "2026-01-02T00:00:00.000Z",
+    },
+    {
+      ...seed.leads[0],
+      id: "booked-b",
+      phone: "+15551114444",
+      booked_at: "2026-01-03T00:00:00.000Z",
+      job_value_cents: 25000,
+      created_at: "2026-01-03T00:00:00.000Z",
+    },
+    {
+      ...seed.leads[0],
+      id: "booked-c",
+      phone: "+15551115555",
+      booked_at: "2026-01-04T00:00:00.000Z",
+      job_value_cents: null,
+      created_at: "2026-01-04T00:00:00.000Z",
+    },
+    {
+      ...seed.leads[0],
+      id: "deleted-booked",
+      phone: "+15551116666",
+      booked_at: "2026-01-05T00:00:00.000Z",
+      job_value_cents: 90000,
+      deleted_at: "2026-01-05T01:00:00.000Z",
+      created_at: "2026-01-05T00:00:00.000Z",
+    },
+  ];
+  const fake = createSupabaseFake(seed);
+  const { leads } = await loadStores(fake);
+
+  const counts = await leads.getLeadInboxCountsForAccount("acct-a");
+  const bookedPage = await leads.getLeadInboxPageForAccount("acct-a", { filter: "booked", limit: 10, offset: 0 });
+  const allPage = await leads.getLeadInboxPageForAccount("acct-a", { filter: "all", limit: 10, offset: 0 });
+
+  assert.equal(counts.all, allPage.total);
+  assert.equal(counts.booked, bookedPage.total);
+  assert.equal(bookedPage.leads.length, 2);
+  assert.deepEqual(bookedPage.leads.map((lead) => lead.id), ["booked-c", "booked-b"]);
+  assert.equal(counts.bookedValueCents, 25000);
+  assert.equal(counts.bookedWithValue, 1);
 });
 
 test("account B cannot update or delete account A lead by id", async () => {

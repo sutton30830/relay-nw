@@ -713,9 +713,9 @@ $$;
 revoke all on function public.lead_inbox_condensed(uuid) from public, anon, authenticated;
 grant execute on function public.lead_inbox_condensed(uuid) to service_role;
 
--- Mirrors countLeads in app/leads/_utils.ts, including its quirks (a
--- migrated "booked" lead has status = 'dead' with booked_at set, so it
--- counts toward both booked and dead, matching client behavior exactly).
+-- Mirrors countLeads in app/leads/_utils.ts over the live mailbox projection:
+-- one current card per caller phone number. Raw sibling call rows can still
+-- feed call_count, but they must not inflate current tab/report counts.
 create or replace function public.lead_inbox_counts(p_account uuid)
 returns table (
   all_count bigint,
@@ -734,20 +734,13 @@ stable
 as $$
   with rollup as (
     select * from public.lead_inbox_condensed(p_account)
-  ),
-  booked_rows as (
-    select *
-    from public.leads
-    where account_id = p_account
-      and deleted_at is null
-      and (booked_at is not null or status = 'booked')
   )
   select
     (select count(*) from rollup where deleted_at is null) as all_count,
     (select count(*) from rollup where deleted_at is null and status = 'new') as new_count,
     (select count(*) from rollup where deleted_at is null and status in ('new', 'contacted')) as actionable_count,
     (select count(*) from rollup where deleted_at is null and status = 'contacted') as contacted_count,
-    (select count(*) from booked_rows) as booked_count,
+    (select count(*) from rollup where deleted_at is null and (booked_at is not null or status = 'booked')) as booked_count,
     (select count(*) from rollup where deleted_at is null and status = 'dead') as dead_count,
     (select count(*) from rollup where deleted_at is not null) as trash_count,
     (
@@ -755,11 +748,18 @@ as $$
       from rollup
       where deleted_at is null and status = 'new' and sms_status in ('failed', 'undelivered')
     ) as sms_issues_count,
-    coalesce((select sum(job_value_cents) from booked_rows), 0) as booked_value_cents,
+    coalesce((
+      select sum(job_value_cents)
+      from rollup
+      where deleted_at is null and (booked_at is not null or status = 'booked')
+    ), 0) as booked_value_cents,
     (
       select count(*)
-      from booked_rows
-      where job_value_cents is not null and job_value_cents <> 0
+      from rollup
+      where deleted_at is null
+        and (booked_at is not null or status = 'booked')
+        and job_value_cents is not null
+        and job_value_cents > 0
     ) as booked_with_value_count;
 $$;
 
@@ -822,15 +822,7 @@ stable
 as $$
   with source_rows as (
     select *
-    from public.leads
-    where account_id = p_account
-      and coalesce(p_filter, 'all') = 'booked'
-
-    union all
-
-    select *
     from public.lead_inbox_condensed(p_account)
-    where coalesce(p_filter, 'all') <> 'booked'
   ),
   phone_calls as (
     select phone, count(*) as call_count
@@ -839,7 +831,15 @@ as $$
     group by phone
   ),
   escaped as (
-    select replace(replace(replace(coalesce(p_query, ''), '\', '\\'), '%', '\%'), '_', '\_') as q
+    select replace(
+      replace(
+        replace(coalesce(p_query, ''), chr(92), chr(92) || chr(92)),
+        '%',
+        chr(92) || '%'
+      ),
+      '_',
+      chr(92) || '_'
+    ) as q
   ),
   filtered as (
     select source_rows.*
@@ -858,7 +858,7 @@ as $$
           case when nullif(btrim(coalesce(name, '')), '') is null then 'Unknown caller ' else '' end ||
           coalesce(message, '') || ' ' || coalesce(notes, '') || ' ' ||
           coalesce(voicemail_summary, '') || ' ' || coalesce(voicemail_transcript, '')
-        ) ilike '%' || escaped.q || '%' escape '\'
+        ) ilike '%' || escaped.q || '%' escape chr(92)
       )
   )
   select
