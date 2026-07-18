@@ -48,10 +48,10 @@ function formatDate(value: string | null | undefined) {
 export default async function OpsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; account?: string; view?: string; stage?: "all" | "kickoff" | "setting_up" | "carrier_review" | "ready_to_activate" | "active" | "canceled" }>;
+  searchParams: Promise<{ q?: string; account?: string; view?: string; stage?: "all" | "kickoff" | "setting_up" | "carrier_review" | "ready_to_activate" | "active" | "canceled"; kickoff?: string }>;
 }) {
   const operator = await requirePlatformOperator();
-  const { q = "", account: accountSlug = "", view = "overview", stage = "all" } = await searchParams;
+  const { q = "", account: accountSlug = "", view = "overview", stage = "all", kickoff } = await searchParams;
 
   if (!accountSlug) {
     const accounts = await listOpsAccounts(q);
@@ -141,6 +141,21 @@ export default async function OpsPage({
               <a className="btn btn-primary" href={`/ops/billing?account=${encodeURIComponent(account.accountSlug)}`}>Billing &amp; setup</a>
               <a className="btn btn-secondary" href={`/ops?account=${encodeURIComponent(account.accountSlug)}&view=logs`}>Troubleshoot</a>
               <a className="btn btn-secondary" href="/ops/setup-requests">Setup requests</a>
+            </div>
+          </section>
+
+          {kickoff ? (
+            <div className={kickoff === "failed" ? "intake-error settings-notice" : "settings-notice"} role="status">
+              {kickoff === "waived" ? "Kickoff waived and recorded." : kickoff === "card_saved" ? "Card saved. This customer can be activated later." : kickoff === "canceled" ? "Card setup canceled." : kickoff === "failed" ? "Kickoff action failed. No billing state was changed unless shown above." : "Kickoff action received."}
+            </div>
+          ) : null}
+
+          <section className="panel setup-panel">
+            <div className="setup-panel__head"><p className="t-eyebrow">Kickoff</p><h2>Collect the $150 upfront, or waive it deliberately.</h2><p className="setup-copy">This is separate from the $99 monthly plan. Saving a card does not start monthly billing.</p></div>
+            <div className="ops-billing-actions">
+              <form action="/api/ops/kickoff" method="post"><input type="hidden" name="account_slug" value={account.accountSlug} /><button className="btn btn-primary" name="action" value="send_invoice">Send kickoff payment</button></form>
+              <form action="/api/ops/kickoff" method="post"><input type="hidden" name="account_slug" value={account.accountSlug} /><button className="btn btn-secondary" name="action" value="waive_save_card">Waive + save card</button></form>
+              <form action="/api/ops/kickoff" method="post"><input type="hidden" name="account_slug" value={account.accountSlug} /><button className="btn btn-secondary" name="action" value="waive_entirely">Waive entirely</button></form>
             </div>
           </section>
 

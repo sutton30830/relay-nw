@@ -25,6 +25,14 @@ export type StripeSetupFeeCheckoutSessionInput = {
   idempotencyKey: string;
 };
 
+export type StripeSaveCardCheckoutSessionInput = {
+  accountId: string;
+  accountSlug: string;
+  ownerEmail: string | null;
+  stripeCustomerId: string | null;
+  idempotencyKey: string;
+};
+
 export type StripePortalSessionInput = {
   stripeCustomerId: string;
   returnUrl: string;
@@ -344,6 +352,7 @@ export async function createStripeSetupFeeCheckoutSession(
     "metadata[charge_type]": "setup_fee",
     "payment_intent_data[metadata][account_id]": input.accountId,
     "payment_intent_data[metadata][charge_type]": "setup_fee",
+    "payment_intent_data[setup_future_usage]": "off_session",
   });
 
   let usableCustomerId = input.stripeCustomerId;
@@ -396,6 +405,48 @@ export async function createStripeSetupFeeCheckoutSession(
   const url = stringValue(body.url);
   if (!id || !url) throw new Error("Stripe setup-fee checkout did not return a redirect URL.");
 
+  return { id, url };
+}
+
+export async function createStripeSaveCardCheckoutSession(
+  input: StripeSaveCardCheckoutSessionInput,
+): Promise<StripeCheckoutSession> {
+  assertStripeCheckoutConfigured();
+
+  const params = new URLSearchParams({
+    mode: "setup",
+    client_reference_id: input.accountId,
+    success_url: `${env.appBaseUrl}/ops?account=${encodeURIComponent(input.accountSlug)}&kickoff=card_saved`,
+    cancel_url: `${env.appBaseUrl}/ops?account=${encodeURIComponent(input.accountSlug)}&kickoff=canceled`,
+    "metadata[account_id]": input.accountId,
+    "metadata[account_slug]": input.accountSlug,
+    "metadata[charge_type]": "save_card",
+    "setup_intent_data[metadata][account_id]": input.accountId,
+    "setup_intent_data[metadata][charge_type]": "save_card",
+  });
+
+  if (input.stripeCustomerId) params.set("customer", input.stripeCustomerId);
+  else if (input.ownerEmail) params.set("customer_email", input.ownerEmail);
+
+  const response = await fetch(`${STRIPE_API_BASE}/checkout/sessions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.stripeSecretKey}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Idempotency-Key": input.idempotencyKey,
+    },
+    body: params,
+  });
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) {
+    const message = typeof body.error === "object" && body.error
+      ? stringValue((body.error as Record<string, unknown>).message)
+      : null;
+    throw new Error(message ?? `Stripe save-card checkout failed with status ${response.status}`);
+  }
+  const id = stringValue(body.id);
+  const url = stringValue(body.url);
+  if (!id || !url) throw new Error("Stripe save-card checkout did not return a redirect URL.");
   return { id, url };
 }
 

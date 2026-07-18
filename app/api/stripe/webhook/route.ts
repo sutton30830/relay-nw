@@ -94,8 +94,9 @@ function getCheckoutAssociation(object: Record<string, unknown>) {
   const customerId = typeof object.customer === "string" ? object.customer : null;
   const subscriptionId = typeof object.subscription === "string" ? object.subscription : null;
   const paymentIntentId = typeof object.payment_intent === "string" ? object.payment_intent : null;
+  const setupIntentId = typeof object.setup_intent === "string" ? object.setup_intent : null;
 
-  return { customerId, subscriptionId, paymentIntentId };
+  return { customerId, subscriptionId, paymentIntentId, setupIntentId };
 }
 
 function checkoutChargeType(object: Record<string, unknown>) {
@@ -288,6 +289,19 @@ export async function POST(request: Request) {
           ...accountContext,
           stripeCustomerId: association.customerId,
         });
+        return Response.json({ received: true }, { headers: { "Cache-Control": "no-store" } });
+      }
+
+      if (checkoutChargeType(identity.object) === "save_card") {
+        if (!association.customerId || !association.setupIntentId) {
+          await markStripeEventIgnored({ ...accountContext, reason: "save_card_missing_customer_or_setup_intent" });
+          return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
+        }
+
+        await updateAccountBillingRecord(resolution.accountId, {
+          stripeCustomerId: association.customerId,
+        });
+        await markStripeEventProcessed({ ...accountContext, stripeCustomerId: association.customerId });
         return Response.json({ received: true }, { headers: { "Cache-Control": "no-store" } });
       }
 

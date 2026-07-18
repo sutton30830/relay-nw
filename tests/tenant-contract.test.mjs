@@ -398,6 +398,7 @@ test("ops pages share the same internal tool actions", () => {
   assert.match(appHeaderTsx, /Back to my inbox/);
   assert.match(opsPageTsx, /listOpsAccounts\(q\)/);
   assert.match(opsPageTsx, /getOpsAccountBySlug\(accountSlug\)/);
+  assert.match(opsPageTsx, /Collect the \$150 upfront/);
   assert.match(opsBillingPageTsx, /Choose an account before viewing or changing billing/);
   assert.match(opsAccountDirectoryTsx, /Needs attention/);
   assert.match(opsAccountDirectoryTsx, /Diagnostics/);
