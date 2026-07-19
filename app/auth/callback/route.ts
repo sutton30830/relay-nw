@@ -12,14 +12,21 @@ function safeNext(value: string | null) {
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
+  const tokenHash = url.searchParams.get("token_hash");
+  const type = url.searchParams.get("type");
   const next = safeNext(url.searchParams.get("next"));
 
-  if (!code) {
+  if (!code && !tokenHash) {
     redirect(`/login?error=missing_code&next=${encodeURIComponent(next)}`);
   }
 
   const supabase = await createSupabaseAuthServerClient();
-  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+  const { data, error } = tokenHash
+    ? await supabase.auth.verifyOtp({
+        token_hash: tokenHash,
+        type: type === "recovery" ? "recovery" : "email",
+      })
+    : await supabase.auth.exchangeCodeForSession(code!);
 
   if (error) {
     console.warn("Supabase auth callback failed", { error: error.message });

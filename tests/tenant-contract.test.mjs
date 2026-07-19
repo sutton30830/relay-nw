@@ -645,7 +645,9 @@ test("email password is the primary owner sign-in path with magic link as fallba
   assert.match(authPasswordLoginRouteTs, /resolveAccountUserSessionForUser\(data\.user\)/);
   assert.match(authPasswordLoginRouteTs, /\/account\/select\?next=/);
   assert.match(authPasswordLoginRouteTs, /supabase\.auth\.signOut\(\)/);
-  assert.match(authPasswordResetRouteTs, /resetPasswordForEmail\(email/);
+  assert.match(authPasswordResetRouteTs, /generateLink\(\{\s*type:\s*"recovery"/);
+  assert.match(authPasswordResetRouteTs, /notifyOwnerPasswordSetup/);
+  assert.match(authPasswordResetRouteTs, /token_hash/);
   assert.match(authPasswordResetRouteTs, /\/account\/password/);
   assert.match(accountPasswordPageTsx, /requireAccountUser\(\)/);
   assert.match(authUpdatePasswordRouteTs, /resolveAccountUserSessionForUser\(userData\.user\)/);
@@ -656,7 +658,9 @@ test("email password is the primary owner sign-in path with magic link as fallba
 
 test("magic-link callback resolves account from exchanged user, not same-request cookies", () => {
   assert.match(authTs, /resolveAccountUserSessionForUser/);
-  assert.match(authCallbackRouteTs, /const \{ data, error \} = await supabase\.auth\.exchangeCodeForSession\(code\)/);
+  assert.match(authCallbackRouteTs, /exchangeCodeForSession\(code!\)/);
+  assert.match(authCallbackRouteTs, /verifyOtp\(\{/);
+  assert.match(authCallbackRouteTs, /token_hash/);
   assert.match(authCallbackRouteTs, /resolveAccountUserSessionForUser\(data\.user\)/);
   assert.match(authCallbackRouteTs, /\/account\/select\?next=/);
   assert.doesNotMatch(authCallbackRouteTs, /getAccountUserSession\(\)/);
