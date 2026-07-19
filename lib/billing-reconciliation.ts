@@ -1,6 +1,7 @@
 import {
   billingUpdateFromSubscription,
   retrieveStripePaymentIntent,
+  retrieveStripeSetupCheckoutSession,
   retrieveStripeSubscription,
   setupFeeStateFromPayment,
 } from "@/lib/stripe-billing";
@@ -10,12 +11,33 @@ export async function reconcileStripeBillingAccount(account: OpsBillingAccount) 
   let setupFeeChecked = false;
   let subscriptionChecked = false;
 
-  if (account.setupFeePaymentIntentId) {
-    const payment = await retrieveStripePaymentIntent(account.setupFeePaymentIntentId);
+  let setupPaymentIntentId = account.setupFeePaymentIntentId;
+  if (!setupPaymentIntentId && account.setupFeeCheckoutSessionId) {
+    const checkout = await retrieveStripeSetupCheckoutSession(account.setupFeeCheckoutSessionId);
+    const payment = checkout.paymentIntent;
+    if (payment) {
+      const state = setupFeeStateFromPayment(payment);
+      await updateAccountBillingRecord(account.accountId, {
+        ...state,
+        stripeCustomerId: checkout.customerId ?? payment.customerId ?? account.stripeCustomerId,
+        stripePaymentMethodId: payment.paymentMethodId ?? account.stripePaymentMethodId,
+        setupFeePaymentIntentId: payment.id,
+        setupFeeRefundedAt: state.setupFeeRefundedCents > 0
+          ? account.setupFeeRefundedAt ?? new Date().toISOString()
+          : null,
+      });
+      setupPaymentIntentId = payment.id;
+      setupFeeChecked = true;
+    }
+  }
+
+  if (setupPaymentIntentId && !setupFeeChecked) {
+    const payment = await retrieveStripePaymentIntent(setupPaymentIntentId);
     const state = setupFeeStateFromPayment(payment);
     await updateAccountBillingRecord(account.accountId, {
       ...state,
       stripeCustomerId: payment.customerId ?? account.stripeCustomerId,
+      stripePaymentMethodId: payment.paymentMethodId ?? account.stripePaymentMethodId,
       setupFeeRefundedAt: state.setupFeeRefundedCents > 0
         ? account.setupFeeRefundedAt ?? new Date().toISOString()
         : null,

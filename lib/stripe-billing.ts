@@ -103,6 +103,13 @@ export type StripePaymentIntentSnapshot = {
   disputed: boolean;
 };
 
+export type StripeSetupCheckoutSnapshot = {
+  id: string;
+  customerId: string | null;
+  paymentIntent: StripePaymentIntentSnapshot | null;
+  paymentStatus: string | null;
+};
+
 export type StripeSubscriptionSnapshot = {
   id: string;
   customerId: string | null;
@@ -123,6 +130,24 @@ function stringValue(value: unknown) {
 
 function numberValue(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function paymentIntentSnapshot(body: Record<string, unknown>): StripePaymentIntentSnapshot {
+  const id = stringValue(body.id);
+  if (!id) throw new Error("Stripe payment data did not include a PaymentIntent id.");
+  const charge = body.latest_charge && typeof body.latest_charge === "object"
+    ? body.latest_charge as Record<string, unknown>
+    : null;
+  return {
+    id,
+    customerId: stringValue(body.customer),
+    paymentMethodId: stringValue(body.payment_method),
+    status: stringValue(body.status),
+    amount: numberValue(body.amount) ?? 0,
+    amountReceived: numberValue(body.amount_received) ?? 0,
+    amountRefunded: charge ? numberValue(charge.amount_refunded) ?? 0 : 0,
+    disputed: charge?.disputed === true,
+  };
 }
 
 function metadataAccountId(object: Record<string, unknown>) {
@@ -428,6 +453,46 @@ export async function createStripeSetupFeeCheckoutSession(
   return { id, url };
 }
 
+export async function retrieveStripeSetupCheckoutSession(sessionId: string): Promise<StripeSetupCheckoutSnapshot> {
+  assertStripeSetupFeeConfigured();
+  const response = await fetch(
+    `${STRIPE_API_BASE}/checkout/sessions/${encodeURIComponent(sessionId)}?expand[]=payment_intent.latest_charge`,
+    { headers: { Authorization: `Bearer ${env.stripeSecretKey}` } },
+  );
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) {
+    const message = typeof body.error === "object" && body.error
+      ? stringValue((body.error as Record<string, unknown>).message)
+      : null;
+    throw new Error(message ?? `Stripe checkout lookup failed with status ${response.status}`);
+  }
+
+  const id = stringValue(body.id);
+  if (!id) throw new Error("Stripe checkout lookup returned no session ID.");
+
+  const paymentIntentObject = body.payment_intent && typeof body.payment_intent === "object"
+    ? body.payment_intent as Record<string, unknown>
+    : null;
+  const paymentIntentId = typeof body.payment_intent === "string"
+    ? stringValue(body.payment_intent)
+    : paymentIntentObject
+      ? stringValue(paymentIntentObject.id)
+      : null;
+
+  const paymentIntent = paymentIntentObject
+    ? paymentIntentSnapshot(paymentIntentObject)
+    : paymentIntentId
+      ? await retrieveStripePaymentIntent(paymentIntentId)
+      : null;
+
+  return {
+    id,
+    customerId: stringValue(body.customer) ?? paymentIntent?.customerId ?? null,
+    paymentIntent,
+    paymentStatus: stringValue(body.payment_status),
+  };
+}
+
 export async function createStripeSaveCardCheckoutSession(
   input: StripeSaveCardCheckoutSessionInput,
 ): Promise<StripeCheckoutSession> {
@@ -557,21 +622,7 @@ export async function retrieveStripePaymentIntent(
       : null;
     throw new Error(message ?? `Stripe payment retrieval failed with status ${response.status}`);
   }
-  const id = stringValue(body.id);
-  if (!id) throw new Error("Stripe payment retrieval did not return a PaymentIntent id.");
-  const charge = body.latest_charge && typeof body.latest_charge === "object"
-    ? body.latest_charge as Record<string, unknown>
-    : null;
-  return {
-    id,
-    customerId: stringValue(body.customer),
-    paymentMethodId: stringValue(body.payment_method),
-    status: stringValue(body.status),
-    amount: numberValue(body.amount) ?? 0,
-    amountReceived: numberValue(body.amount_received) ?? 0,
-    amountRefunded: charge ? numberValue(charge.amount_refunded) ?? 0 : 0,
-    disputed: charge?.disputed === true,
-  };
+  return paymentIntentSnapshot(body);
 }
 
 export async function retrieveStripeSetupIntent(setupIntentId: string) {
