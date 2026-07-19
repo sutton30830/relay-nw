@@ -11,13 +11,6 @@ type HeaderSearch = {
   value: string;
 };
 
-type HeaderSample = {
-  active: boolean;
-  label: string;
-  onToggle: () => void;
-  visible: boolean;
-};
-
 type HeaderPage = "inbox" | "reports" | "setup" | "settings" | "conversation" | "operations" | "customers" | "requests" | "team";
 
 const OWNER_NAV_ITEMS = [
@@ -30,7 +23,6 @@ const OWNER_NAV_ITEMS = [
 export function AppHeader({
   businessName,
   currentPage,
-  sample,
   search,
   showOperations = false,
   switchAccountHref,
@@ -38,7 +30,6 @@ export function AppHeader({
 }: {
   businessName: string;
   currentPage?: HeaderPage;
-  sample?: HeaderSample;
   search?: HeaderSearch;
   showOperations?: boolean;
   switchAccountHref?: string;
@@ -127,16 +118,6 @@ export function AppHeader({
           </div>
         ) : null}
 
-        {sample?.visible ? (
-          <button
-            className={`btn btn-secondary btn-sm app-head__sample ${sample.active ? "btn-sample-on" : ""}`}
-            type="button"
-            onClick={sample.onToggle}
-          >
-            {sample.label}
-          </button>
-        ) : null}
-
         <details className="mobile-owner-menu">
           <summary className="mobile-owner-menu__trigger" aria-label="Open account menu">
             <span>{businessInitial}</span>
@@ -168,17 +149,6 @@ export function AppHeader({
                 <Icon name="external" size={15} />
                 Switch business
               </Link>
-            ) : null}
-
-            {sample?.visible ? (
-              <button
-                className="mobile-owner-menu__item"
-                type="button"
-                onClick={sample.onToggle}
-              >
-                <Icon name="sparkle" size={15} />
-                {sample.active ? "Hide sample data" : "Sample data"}
-              </button>
             ) : null}
 
             <form action="/api/leads-logout" method="POST">

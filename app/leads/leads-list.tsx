@@ -92,12 +92,6 @@ export function LeadsList({
           placeholder: "Search name, phone, message...",
           value: inbox.query,
         }}
-        sample={{
-          active: inbox.sampleMode,
-          label: "Sample data",
-          onToggle: inbox.toggleSampleMode,
-          visible: inbox.sampleMode || !accountHasAnyLeads,
-        }}
       />
 
       <div className="mobile-inbox-search">
@@ -162,8 +156,8 @@ export function LeadsList({
             now={inbox.now}
             callCount={inbox.phoneCallCounts.get(lead.phone) ?? 1}
             // Real leads navigate to their conversation page via a real link
-            // (keyboard, middle-click, prefetch); sample leads have no page, so
-            // they fall back to opening the in-memory drawer through onOpen.
+            // (keyboard, middle-click, prefetch). Historical in-memory sample
+            // rows, if ever present in local state, still avoid dead links.
             href={lead.id.startsWith("sample-") ? undefined : `/leads/${lead.id}`}
             isOpening={inbox.openingLeadId === lead.id}
             onOpen={inbox.openLeadConversation}
@@ -201,8 +195,8 @@ export function LeadsList({
         </div>
       ) : null}
 
-      {/* Real leads open the full conversation page (/leads/[id]); the drawer is
-          the detail view for sample data only, which has no server-side page. */}
+      {/* Real leads open the full conversation page (/leads/[id]); the drawer
+          remains as a defensive fallback for non-persisted local rows. */}
       {inbox.openLead ? (
         <LeadDrawer
           key={inbox.openLead.id}

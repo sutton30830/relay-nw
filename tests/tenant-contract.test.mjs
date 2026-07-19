@@ -519,7 +519,8 @@ test("lead outcome editing offers quick booked-value presets off the compact car
 test("lead inbox empty states distinguish search misses from no leads", () => {
   assert.match(leadsListTsx, /const hasSearch = trimmedQuery\.length > 0/);
   assert.match(leadsListTsx, /accountHasAnyLeads = inbox\.counts\.all \+ inbox\.counts\.trash > 0/);
-  assert.match(leadsListTsx, /visible: inbox\.sampleMode \|\| !accountHasAnyLeads/);
+  assert.doesNotMatch(leadsListTsx, /Sample data/);
+  assert.doesNotMatch(appHeaderTsx, /Sample data|Hide sample data|app-head__sample/);
   assert.match(leadsListTsx, /No leads match/);
   assert.match(leadsListTsx, /this keyword just does not match them/);
   assert.match(leadsListTsx, /No missed calls yet/);

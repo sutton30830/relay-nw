@@ -313,12 +313,6 @@ code {
   border-color: var(--line-strong);
 }
 
-.btn-sample-on {
-  border-color: var(--brand);
-  background: var(--brand-soft);
-  color: var(--brand-ink);
-}
-
 .field {
   width: 100%;
   min-height: 44px;
@@ -4898,7 +4892,6 @@ code {
     font-size: 16px;
   }
 
-  .app-head__sample,
   .kbd,
   .sort-pill,
   .source-badge,
