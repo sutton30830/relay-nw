@@ -54,7 +54,7 @@ export async function POST(request: Request) {
     redirect(`/login?error=reset&next=${encodeURIComponent("/leads")}`);
   }
 
-  const setupUrl = new URL("/auth/callback", env.appBaseUrl);
+  const setupUrl = new URL("/auth/recovery", env.appBaseUrl);
   setupUrl.searchParams.set("type", "recovery");
   setupUrl.searchParams.set("token_hash", tokenHash);
   setupUrl.searchParams.set("next", next);

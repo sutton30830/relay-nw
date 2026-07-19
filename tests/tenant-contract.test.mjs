@@ -19,11 +19,13 @@ const authPasswordLoginRouteTs = await readFile(new URL("../app/api/auth/passwor
 const authPasswordResetRouteTs = await readFile(new URL("../app/api/auth/password-reset/route.ts", import.meta.url), "utf8");
 const authSelectAccountRouteTs = await readFile(new URL("../app/api/auth/select-account/route.ts", import.meta.url), "utf8");
 const authLogoutRouteTs = await readFile(new URL("../app/api/auth/logout/route.ts", import.meta.url), "utf8");
+const authRecoveryRouteTs = await readFile(new URL("../app/api/auth/recovery/route.ts", import.meta.url), "utf8");
 const authUpdatePasswordRouteTs = await readFile(new URL("../app/api/auth/update-password/route.ts", import.meta.url), "utf8");
 const billingCheckoutRouteTs = await readFile(new URL("../app/api/billing/checkout/route.ts", import.meta.url), "utf8");
 const billingPortalRouteTs = await readFile(new URL("../app/api/billing/portal/route.ts", import.meta.url), "utf8");
 const stripeWebhookRouteTs = await readFile(new URL("../app/api/stripe/webhook/route.ts", import.meta.url), "utf8");
 const authCallbackRouteTs = await readFile(new URL("../app/auth/callback/route.ts", import.meta.url), "utf8");
+const authRecoveryPageTsx = await readFile(new URL("../app/auth/recovery/page.tsx", import.meta.url), "utf8");
 const inboundSmsRouteTs = await readFile(new URL("../app/api/twilio/sms/route.ts", import.meta.url), "utf8");
 const homePageTsx = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 const loginPageTsx = await readFile(new URL("../app/login/page.tsx", import.meta.url), "utf8");
@@ -648,6 +650,12 @@ test("email password is the primary owner sign-in path with magic link as fallba
   assert.match(authPasswordResetRouteTs, /generateLink\(\{\s*type:\s*"recovery"/);
   assert.match(authPasswordResetRouteTs, /notifyOwnerPasswordSetup/);
   assert.match(authPasswordResetRouteTs, /token_hash/);
+  assert.match(authPasswordResetRouteTs, /new URL\("\/auth\/recovery"/);
+  assert.match(authRecoveryPageTsx, /action="\/api\/auth\/recovery"/);
+  assert.match(authRecoveryPageTsx, /name="token_hash"/);
+  assert.match(authRecoveryRouteTs, /verifyOtp\(\{/);
+  assert.match(authRecoveryRouteTs, /type:\s*"recovery"/);
+  assert.match(authRecoveryRouteTs, /resolveAccountUserSessionForUser\(data\.user\)/);
   assert.match(authPasswordResetRouteTs, /\/account\/password/);
   assert.match(accountPasswordPageTsx, /requireAccountUser\(\)/);
   assert.match(authUpdatePasswordRouteTs, /resolveAccountUserSessionForUser\(userData\.user\)/);
