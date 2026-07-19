@@ -523,12 +523,8 @@ export default async function OpsAccountPage({
             <form action="/api/ops/carrier" method="post" className="setup-panel__action">
               <input type="hidden" name="account_slug" value={summary.accountSlug} />
               <p className="t-eyebrow">Track carrier status (registered in the Twilio console)</p>
-              <div className="lead-controls">
-                <input className="field" name="twilio_brand_sid" defaultValue={carrierProfile?.twilioBrandSid ?? ""} placeholder="Brand reference (optional)" />
-                <input className="field" name="twilio_campaign_sid" defaultValue={carrierProfile?.twilioCampaignSid ?? ""} placeholder="Campaign reference (optional)" />
-                <input className="field" name="messaging_service_sid" defaultValue={carrierProfile?.messagingServiceSid ?? ""} placeholder="Messaging service (optional)" />
-              </div>
-              <input className="field" name="status_detail" defaultValue={carrierProfile?.statusDetail ?? ""} placeholder="Owner-facing correction or status note" />
+              <p className="setup-copy">When Twilio&apos;s Trust Hub status changes, click the match here. Approve is what turns on texting and moves the customer forward.</p>
+              <input className="field" name="status_detail" defaultValue={carrierProfile?.statusDetail ?? ""} placeholder="Owner-facing note (optional, shown to the customer)" />
               <div className="ops-billing-actions">
                 <button className="btn btn-secondary" name="action" value="submitted">Mark submitted</button>
                 <button className="btn btn-secondary" name="action" value="in_progress">In review</button>

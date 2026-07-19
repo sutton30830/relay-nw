@@ -5973,3 +5973,15 @@ code {
 .ops-worksheet__cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 10px; }
 .ops-worksheet ul { margin: 6px 0 0; padding-left: 18px; list-style: disc; color: var(--ink-2); font-size: 13.5px; line-height: 1.6; }
 @media (max-width: 720px) { .ops-worksheet__cols { grid-template-columns: 1fr; } }
+
+/* Ops on mobile: stack every control group, full-width buttons. */
+@media (max-width: 720px) {
+  .ops-billing-actions { display: grid; gap: 8px; }
+  .ops-billing-actions form, .ops-billing-actions .btn { width: 100%; }
+  .setup-panel__action .lead-controls { display: grid; gap: 8px; }
+  .setup-panel__action .lead-controls .field, .setup-panel__action .lead-controls .btn { width: 100%; }
+  .ops-stage-move { width: 100%; }
+  .ops-stage-move .field { flex: 1; }
+  .ops-account-card .lead-card__actions { flex-direction: column; align-items: stretch; gap: 8px; }
+  .webhook-event__meta { grid-template-columns: 1fr 1fr; }
+}
