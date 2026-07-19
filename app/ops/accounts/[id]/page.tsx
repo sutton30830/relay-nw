@@ -441,30 +441,19 @@ export default async function OpsAccountPage({
           {operator.role !== "support" ? (
             <details className="ops-manual" open={Boolean(notices.profile && notices.profile !== "saved")}>
               <summary>Edit business details as Relay</summary>
-              <form action="/api/ops/profile" method="post" className="setup-panel__action">
+              <form action="/api/ops/profile" method="post" className="setup-panel__action ops-form">
                 <input type="hidden" name="account_slug" value={summary.accountSlug} />
-                <div className="lead-controls">
-                  <input className="field" name="business_name" required defaultValue={runtime?.businessName ?? summary.businessName} placeholder="Business display name" aria-label="Business display name" />
-                  <input className="field" name="owner_name" defaultValue={runtime?.ownerName ?? ""} placeholder="Owner / admin name" aria-label="Owner name" />
-                  <input className="field" name="business_type" defaultValue={runtime?.businessType ?? ""} placeholder="Business type (e.g. Plumbing)" aria-label="Business type" />
-                </div>
-                <div className="lead-controls">
-                  <input className="field" type="email" name="owner_email" defaultValue={runtime?.ownerEmail ?? summary.ownerEmail ?? ""} placeholder="Notification email" aria-label="Notification email" />
-                  <input className="field" name="owner_phone_number" defaultValue={runtime?.ownerPhoneNumber ?? ""} placeholder="Owner alert phone" aria-label="Owner alert phone" />
-                  <input className="field" name="public_business_number" defaultValue={runtime?.publicBusinessNumber ?? ""} placeholder="Existing public business number" aria-label="Public business number" />
-                </div>
-                <div className="lead-controls">
-                  <select className="field" name="call_mode" defaultValue={runtime?.callMode ?? "forwarding"} aria-label="Call mode">
-                    <option value="forwarding">Forwarding (keep their number)</option>
-                    <option value="direct">Direct (Relay number is public)</option>
-                  </select>
-                  <input className="field" name="scheduling_url" defaultValue={runtime?.schedulingUrl ?? ""} placeholder="Scheduling link (optional)" aria-label="Scheduling link" />
-                </div>
-                <div className="lead-controls">
-                  <input className="field" name="missed_call_voice_message" defaultValue={runtime?.missedCallVoiceMessage ?? ""} placeholder="Voicemail greeting (text-to-speech, optional)" aria-label="Voicemail greeting" />
-                  <input className="field" name="dial_timeout_seconds" type="number" min={5} max={60} defaultValue={runtime?.dialTimeoutSeconds ?? 18} aria-label="Ring seconds before voicemail" />
-                  <input className="field" name="voicemail_max_seconds" type="number" min={10} max={300} defaultValue={runtime?.voicemailMaxSeconds ?? 60} aria-label="Max voicemail seconds" />
-                </div>
+                <label className="form-field"><span className="t-eyebrow form-field__label">Business display name</span><input className="field" name="business_name" required defaultValue={runtime?.businessName ?? summary.businessName} /></label>
+                <label className="form-field"><span className="t-eyebrow form-field__label">Owner / admin name</span><input className="field" name="owner_name" defaultValue={runtime?.ownerName ?? ""} /></label>
+                <label className="form-field"><span className="t-eyebrow form-field__label">Business type</span><input className="field" name="business_type" defaultValue={runtime?.businessType ?? ""} placeholder="e.g. Plumbing" /></label>
+                <label className="form-field"><span className="t-eyebrow form-field__label">Notification email</span><input className="field" type="email" name="owner_email" defaultValue={runtime?.ownerEmail ?? summary.ownerEmail ?? ""} /></label>
+                <label className="form-field"><span className="t-eyebrow form-field__label">Owner alert phone</span><input className="field" name="owner_phone_number" defaultValue={runtime?.ownerPhoneNumber ?? ""} /></label>
+                <label className="form-field"><span className="t-eyebrow form-field__label">Existing public business number</span><input className="field" name="public_business_number" defaultValue={runtime?.publicBusinessNumber ?? ""} /></label>
+                <label className="form-field"><span className="t-eyebrow form-field__label">Call mode</span><select className="field" name="call_mode" defaultValue={runtime?.callMode ?? "forwarding"}><option value="forwarding">Forwarding (keep their number)</option><option value="direct">Direct (Relay number is public)</option></select></label>
+                <label className="form-field"><span className="t-eyebrow form-field__label">Scheduling link (optional)</span><input className="field" name="scheduling_url" defaultValue={runtime?.schedulingUrl ?? ""} placeholder="https://…" /></label>
+                <label className="form-field"><span className="t-eyebrow form-field__label">Voicemail greeting (text-to-speech, optional)</span><input className="field" name="missed_call_voice_message" defaultValue={runtime?.missedCallVoiceMessage ?? ""} /></label>
+                <label className="form-field"><span className="t-eyebrow form-field__label">Ring seconds before voicemail (5–60)</span><input className="field" name="dial_timeout_seconds" type="number" min={5} max={60} defaultValue={runtime?.dialTimeoutSeconds ?? 18} /></label>
+                <label className="form-field"><span className="t-eyebrow form-field__label">Max voicemail seconds (10–300)</span><input className="field" name="voicemail_max_seconds" type="number" min={10} max={300} defaultValue={runtime?.voicemailMaxSeconds ?? 60} /></label>
                 <button className="btn btn-primary" type="submit">Save for customer</button>
                 <p className="setup-panel__note">Audited as entered by Relay. Completing these finishes the customer&apos;s &ldquo;Your details&rdquo; phase.</p>
               </form>
@@ -499,41 +488,41 @@ export default async function OpsAccountPage({
             </dl>
           ) : null}
           {operator.role !== "support" ? (
-            <details className="ops-manual" open={Boolean(notices.carrier_profile && notices.carrier_profile !== "saved")}>
-              <summary>{carrierProfile ? "Edit registration information as Relay" : "Enter registration information as Relay"}</summary>
-              <form action="/api/ops/carrier-profile" method="post" className="setup-panel__action">
-                <input type="hidden" name="account_slug" value={summary.accountSlug} />
-                <div className="lead-controls">
-                  <select className="field" name="has_ein" defaultValue={carrierProfile?.hasEin === false ? "no" : "yes"} aria-label="Has EIN">
-                    <option value="yes">Business has an EIN</option>
-                    <option value="no">Sole proprietor (no EIN)</option>
-                  </select>
-                  <input className="field" name="registration_id" defaultValue="" placeholder={carrierProfile?.registrationIdLast4 ? `EIN on file (…${carrierProfile.registrationIdLast4}) — enter to replace` : "EIN (leave blank for sole proprietor)"} aria-label="EIN" />
+            <details className="ops-manual">
+              <summary>Registration worksheet — what to collect from the customer</summary>
+              <div className="ops-worksheet">
+                <p className="setup-copy">Registration itself happens in the Twilio console (Trust Hub). Collect these on the setup call, enter them in Twilio, then mark the status below. Relay does not store tax IDs.</p>
+                <div className="ops-worksheet__cols">
+                  <div>
+                    <p className="t-eyebrow">Business with an EIN (Standard / Low-Volume)</p>
+                    <ul>
+                      <li>Legal business name + EIN</li>
+                      <li>Business type (LLC, Corp, Partnership…) and private/public</li>
+                      <li>Physical address (street, city, state, ZIP)</li>
+                      <li>Industry and website</li>
+                      <li>Regions of operation</li>
+                      <li>Authorized rep: name, email, phone, title, and job position (Director/VP/GM/GC/CEO/CFO)</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="t-eyebrow">Sole proprietor (no EIN, US/CA only)</p>
+                    <ul>
+                      <li>Brand/business name</li>
+                      <li>First and last name</li>
+                      <li>Email address</li>
+                      <li>Mobile phone (US/CA — validates max 3 brands)</li>
+                      <li>Physical address (US/CA)</li>
+                    </ul>
+                  </div>
                 </div>
-                <div className="lead-controls">
-                  <input className="field" name="representative_first_name" required defaultValue={carrierProfile?.representativeFirstName ?? runtime?.ownerName?.split(" ")[0] ?? ""} placeholder="Representative first name" aria-label="Representative first name" />
-                  <input className="field" name="representative_last_name" required defaultValue={carrierProfile?.representativeLastName ?? ""} placeholder="Last name" aria-label="Representative last name" />
-                  <input className="field" name="representative_title" defaultValue={carrierProfile?.representativeTitle ?? "Owner"} placeholder="Job title" aria-label="Representative title" />
-                </div>
-                <div className="lead-controls">
-                  <input className="field" name="representative_mobile" required defaultValue={carrierProfile?.representativeMobile ?? runtime?.ownerPhoneNumber ?? ""} placeholder="Mobile for verification" aria-label="Representative mobile" />
-                  <input className="field" type="email" name="representative_email" required defaultValue={carrierProfile?.representativeEmail ?? runtime?.ownerEmail ?? ""} placeholder="Representative email" aria-label="Representative email" />
-                </div>
-                <input className="field" name="messaging_use_case" required defaultValue={carrierProfile?.messagingUseCase ?? "Missed-call follow-up texts to customers who called this business and did not reach anyone."} aria-label="Messaging use case" />
-                <textarea className="field" name="opt_in_flow" required rows={2} defaultValue={carrierProfile?.optInFlow ?? "Customers call the business first; the reply text responds to their call. Every message includes STOP to opt out."} aria-label="Opt-in flow" />
-                <textarea className="field" name="sample_messages" required rows={3} defaultValue={carrierProfile?.sampleMessages?.join("\n") ?? "Sorry we missed your call — text us what you need and we'll get right back to you. Reply STOP to opt out.\nThanks for reaching out. I can call you shortly. Reply STOP to opt out."} aria-label="Sample messages (one per line)" />
-                <div className="lead-controls">
-                  <input className="field" type="url" name="privacy_policy_url" defaultValue={carrierProfile?.privacyPolicyUrl ?? ""} placeholder="Privacy policy URL (https://…)" aria-label="Privacy policy URL" />
-                  <input className="field" type="url" name="terms_url" defaultValue={carrierProfile?.termsUrl ?? ""} placeholder="Terms URL (https://…)" aria-label="Terms URL" />
-                </div>
-                <button className="btn btn-primary" type="submit">Save registration for customer</button>
-                <p className="setup-panel__note">Audited as entered by Relay. Marks the account ready for carrier submission.</p>
-              </form>
+                <p className="setup-panel__note">Campaign side (use case, opt-in flow, sample messages) is Relay-standard — reuse the approved missed-call template.</p>
+              </div>
             </details>
           ) : null}
           {operator.role !== "support" ? (
             <form action="/api/ops/carrier" method="post" className="setup-panel__action">
               <input type="hidden" name="account_slug" value={summary.accountSlug} />
+              <p className="t-eyebrow">Track carrier status (registered in the Twilio console)</p>
               <div className="lead-controls">
                 <input className="field" name="twilio_brand_sid" defaultValue={carrierProfile?.twilioBrandSid ?? ""} placeholder="Brand reference (optional)" />
                 <input className="field" name="twilio_campaign_sid" defaultValue={carrierProfile?.twilioCampaignSid ?? ""} placeholder="Campaign reference (optional)" />
@@ -541,12 +530,12 @@ export default async function OpsAccountPage({
               </div>
               <input className="field" name="status_detail" defaultValue={carrierProfile?.statusDetail ?? ""} placeholder="Owner-facing correction or status note" />
               <div className="ops-billing-actions">
-                <button className="btn btn-secondary" name="action" value="submitted" disabled={!carrierProfile}>Mark submitted</button>
-                <button className="btn btn-secondary" name="action" value="in_progress" disabled={!carrierProfile}>In review</button>
-                <button className="btn btn-primary" name="action" value="approved" disabled={!carrierProfile}>Approve</button>
-                <button className="btn btn-secondary" name="action" value="needs_changes" disabled={!carrierProfile}>Needs changes</button>
-                <button className="btn btn-secondary" name="action" value="rejected" disabled={!carrierProfile}>Rejected</button>
-                <button className="btn btn-secondary" name="action" value="ready_to_activate" disabled={!carrierProfile}>Mark ready to activate (override)</button>
+                <button className="btn btn-secondary" name="action" value="submitted">Mark submitted</button>
+                <button className="btn btn-secondary" name="action" value="in_progress">In review</button>
+                <button className="btn btn-primary" name="action" value="approved">Approve</button>
+                <button className="btn btn-secondary" name="action" value="needs_changes">Needs changes</button>
+                <button className="btn btn-secondary" name="action" value="rejected">Rejected</button>
+                <button className="btn btn-secondary" name="action" value="ready_to_activate">Mark ready to activate (override)</button>
               </div>
             </form>
           ) : null}
