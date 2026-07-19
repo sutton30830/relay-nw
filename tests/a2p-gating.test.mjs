@@ -31,6 +31,7 @@ function makeSession(overrides = {}) {
     role: "owner",
     account: {
       smsEnabled: false,
+      twilioPhoneNumber: "+15551234567",
     },
     ...overrides,
   };
@@ -60,6 +61,8 @@ async function runSettingsPost({
 } = {}) {
   const calls = {
     a2pLookups: [],
+    billingLookups: [],
+    billingUpdates: [],
     updates: [],
     auditEvents: [],
     redirects: [],
@@ -85,6 +88,15 @@ async function runSettingsPost({
       getA2pRegistrationStatus: async (accountId) => {
         calls.a2pLookups.push(accountId);
         return a2pStatus;
+      },
+      getAccountBillingRecord: async (accountId) => {
+        calls.billingLookups.push(accountId);
+        return {
+          onboardingStatus: "requirements_needed",
+        };
+      },
+      updateAccountBillingRecord: async (accountId, update) => {
+        calls.billingUpdates.push({ accountId, update });
       },
       updateAccountSettings: async (accountId, update) => {
         calls.updates.push({ accountId, update });
@@ -116,7 +128,40 @@ test("owner enabling SMS with approved A2P persists sms_enabled true", async () 
   assert.equal(calls.updates.length, 1);
   assert.equal(calls.updates[0].update.sms_enabled, true);
   assert.equal(calls.updates[0].update.typical_job_value_cents, 25000);
+  assert.deepEqual(calls.billingUpdates, [
+    {
+      accountId: "acct-1",
+      update: {
+        onboardingStatus: "carrier_review",
+        requirementsDueAt: null,
+      },
+    },
+  ]);
   assert.deepEqual(calls.redirects, ["/settings?saved=1"]);
+});
+
+test("complete business profile save clears stale customer requirements deadline", async () => {
+  const calls = await runSettingsPost({
+    form: settingsForm(),
+  });
+
+  assert.deepEqual(calls.billingLookups, ["acct-1"]);
+  assert.deepEqual(calls.billingUpdates, [
+    {
+      accountId: "acct-1",
+      update: {
+        onboardingStatus: "carrier_review",
+        requirementsDueAt: null,
+      },
+    },
+  ]);
+  assert.equal(calls.auditEvents.length, 1);
+  assert.deepEqual(calls.auditEvents[0].events, [
+    {
+      action: "onboarding.customer_requirements_completed",
+      summary: "Business profile completed; cleared the customer requirements deadline.",
+    },
+  ]);
 });
 
 test("blank typical job value clears report estimates", async () => {

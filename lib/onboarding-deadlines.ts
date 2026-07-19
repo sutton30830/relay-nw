@@ -26,10 +26,15 @@ export function daysUntil(value: string, now = new Date()) {
 
 export function ownerOnboardingDelayMessage(input: {
   onboardingStatus: AccountOnboardingStatus;
+  hasBusinessProfile?: boolean;
   requirementsDueAt: string | null;
   now?: Date;
 }) {
-  if (input.onboardingStatus !== "waiting_on_customer" || !input.requirementsDueAt) {
+  if (
+    input.hasBusinessProfile === true ||
+    input.onboardingStatus !== "waiting_on_customer" ||
+    !input.requirementsDueAt
+  ) {
     return null;
   }
 

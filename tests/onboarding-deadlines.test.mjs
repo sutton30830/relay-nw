@@ -138,6 +138,14 @@ test("owner delay message is only shown while waiting on customer requirements",
     }),
     null,
   );
+  assert.equal(
+    policy.ownerOnboardingDelayMessage({
+      hasBusinessProfile: true,
+      onboardingStatus: "waiting_on_customer",
+      requirementsDueAt: "2026-08-15T00:00:00.000Z",
+    }),
+    null,
+  );
 });
 
 test("deadline policy sends day-3 and day-7 reminders before pausing and closing", () => {

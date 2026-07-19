@@ -2,7 +2,14 @@ import { redirect } from "next/navigation";
 import { requireAccountUser } from "@/lib/auth";
 import { normalizePhoneNumber } from "@/lib/phone";
 import { diffSettingsForAudit, type AuditableSettings } from "@/lib/audit";
-import { getA2pRegistrationStatus, recordAccountAuditEvents, updateAccountSettings, type AccountSettingsUpdate } from "@/lib/supabase";
+import {
+  getA2pRegistrationStatus,
+  getAccountBillingRecord,
+  recordAccountAuditEvents,
+  updateAccountBillingRecord,
+  updateAccountSettings,
+  type AccountSettingsUpdate,
+} from "@/lib/supabase";
 
 const LIMITS = {
   dialTimeoutSeconds: { min: 5, max: 60 },
@@ -139,6 +146,30 @@ export async function POST(request: Request) {
     redirect("/settings?error=save_failed");
   }
 
+  const completedBusinessProfile = Boolean(businessName && ownerPhone && session.account.twilioPhoneNumber);
+  let clearedCustomerRequirements = false;
+
+  if (completedBusinessProfile) {
+    try {
+      const billing = await getAccountBillingRecord(session.accountId);
+      if (
+        billing &&
+        (billing.onboardingStatus === "requirements_needed" || billing.onboardingStatus === "waiting_on_customer")
+      ) {
+        await updateAccountBillingRecord(session.accountId, {
+          onboardingStatus: "carrier_review",
+          requirementsDueAt: null,
+        });
+        clearedCustomerRequirements = true;
+      }
+    } catch (error) {
+      console.warn("Could not clear completed customer requirements after settings save.", {
+        accountId: session.accountId,
+        error: error instanceof Error ? error.message : error,
+      });
+    }
+  }
+
   // Audit trail: record what actually changed, with the SMS master switch called
   // out explicitly. Non-fatal — a logging failure must not fail the save.
   const before: AuditableSettings = {
@@ -173,11 +204,19 @@ export async function POST(request: Request) {
     ...(session.role === "owner" ? { smsEnabled: update.sms_enabled } : {}),
   };
 
+  const auditEvents = diffSettingsForAudit(before, after);
+  if (clearedCustomerRequirements) {
+    auditEvents.push({
+      action: "onboarding.customer_requirements_completed",
+      summary: "Business profile completed; cleared the customer requirements deadline.",
+    });
+  }
+
   await recordAccountAuditEvents({
     accountId: session.accountId,
     actorUserId: session.userId,
     actorEmail: session.email,
-    events: diffSettingsForAudit(before, after),
+    events: auditEvents,
   });
 
   redirect("/settings?saved=1");

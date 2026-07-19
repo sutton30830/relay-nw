@@ -181,6 +181,7 @@ export default async function SetupPage() {
     setupReadiness: readiness,
   });
   const onboardingDelayMessage = ownerOnboardingDelayMessage({
+    hasBusinessProfile: isProfileReady,
     onboardingStatus: billingReadiness.onboardingStatus,
     requirementsDueAt: billingReadiness.onboardingStatus === "waiting_on_customer" ? billing.requirementsDueAt : null,
   });
