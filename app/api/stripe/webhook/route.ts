@@ -273,18 +273,23 @@ export async function POST(request: Request) {
     if (identity.eventType === "checkout.session.completed") {
       const association = getCheckoutAssociation(identity.object);
       if (checkoutChargeType(identity.object) === "setup_fee") {
-        if (identity.object.payment_status !== "paid" || !association.customerId) {
+        if (identity.object.payment_status !== "paid") {
           await markStripeEventIgnored({ ...accountContext, reason: "setup_fee_not_paid" });
           return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
         }
 
-        await updateAccountBillingRecord(resolution.accountId, {
-          stripeCustomerId: association.customerId,
+        const setupFeeUpdate = {
           setupFeeStatus: "paid",
           setupFeeCheckoutSessionId: identity.object.id as string,
           setupFeePaymentIntentId: association.paymentIntentId,
           setupFeePaidAt: new Date().toISOString(),
-        });
+        } as const;
+        await updateAccountBillingRecord(
+          resolution.accountId,
+          association.customerId
+            ? { ...setupFeeUpdate, stripeCustomerId: association.customerId }
+            : setupFeeUpdate,
+        );
         await markStripeEventProcessed({
           ...accountContext,
           stripeCustomerId: association.customerId,

@@ -38,6 +38,7 @@ const stripeBilling = await loadTsModule("lib/stripe-billing.ts", {
       stripeSecretKey: "sk_test_example",
       stripeWebhookSecret: "whsec_example",
       stripePriceId: "price_123",
+      stripeSetupFeePriceId: "price_setup_150",
     },
   },
   "@/lib/billing": {},
@@ -354,6 +355,41 @@ test("stripe webhook signatures must be valid and recent", () => {
   assert.equal(stripeBilling.verifyStripeWebhookSignature(rawBody, header, secret, timestamp * 1000), true);
   assert.equal(stripeBilling.verifyStripeWebhookSignature(rawBody, header, "wrong_secret", timestamp * 1000), false);
   assert.equal(stripeBilling.verifyStripeWebhookSignature(rawBody, header, secret, (timestamp + 1_000) * 1000), false);
+});
+
+test("setup fee checkout creates a customer when collecting a new card", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return {
+      ok: true,
+      async json() {
+        return { id: "cs_setup_123", url: "https://checkout.stripe.test/setup" };
+      },
+    };
+  };
+
+  try {
+    const checkout = await stripeBilling.createStripeSetupFeeCheckoutSession({
+      accountId: "acct_123",
+      accountSlug: "demo-plumbing",
+      ownerEmail: "owner@example.com",
+      stripeCustomerId: null,
+      setupFeeCents: 15000,
+      idempotencyKey: "idem_setup",
+    });
+    const params = new URLSearchParams(calls[0].init.body);
+
+    assert.deepEqual(checkout, { id: "cs_setup_123", url: "https://checkout.stripe.test/setup" });
+    assert.equal(calls.length, 1);
+    assert.equal(params.get("mode"), "payment");
+    assert.equal(params.get("customer_email"), "owner@example.com");
+    assert.equal(params.get("customer_creation"), "always");
+    assert.equal(params.get("payment_intent_data[setup_future_usage]"), "off_session");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("checkout session completed only associates billing identifiers", () => {

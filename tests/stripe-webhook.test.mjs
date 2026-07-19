@@ -260,6 +260,35 @@ test("paid setup-fee Checkout marks only the setup fee as paid", async () => {
   assert.equal(calls.processed.length, 1);
 });
 
+test("paid setup-fee Checkout without a customer still marks setup paid", async () => {
+  const { response, calls } = await runWebhook({
+    event: stripeEvent("checkout.session.completed", {
+      id: "cs_setup_fee_customerless",
+      mode: "payment",
+      payment_intent: "pi_setup_customerless",
+      payment_status: "paid",
+      metadata: { account_id: "acct_1", charge_type: "setup_fee" },
+    }),
+    subscriptionAccountId: null,
+    customerAccountId: null,
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls.ignored, []);
+  assert.deepEqual(calls.updates, [
+    {
+      accountId: "acct_1",
+      update: {
+        setupFeeStatus: "paid",
+        setupFeeCheckoutSessionId: "cs_setup_fee_customerless",
+        setupFeePaymentIntentId: "pi_setup_customerless",
+        setupFeePaidAt: calls.updates[0]?.update?.setupFeePaidAt,
+      },
+    },
+  ]);
+  assert.equal(calls.processed.length, 1);
+});
+
 test("two concurrent copies leave only one processor owning the event", async () => {
   const { response, body, calls } = await runWebhook({
     claim: { status: "already_processing", attemptCount: 1 },

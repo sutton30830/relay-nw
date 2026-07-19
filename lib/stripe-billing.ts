@@ -382,6 +382,7 @@ export async function createStripeSetupFeeCheckoutSession(
     params.set("customer", usableCustomerId);
   } else if (input.ownerEmail) {
     params.set("customer_email", input.ownerEmail);
+    params.set("customer_creation", "always");
   }
 
   const response = await fetch(`${STRIPE_API_BASE}/checkout/sessions`, {
