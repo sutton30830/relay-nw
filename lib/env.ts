@@ -96,6 +96,7 @@ export const env = {
   openaiSummaryModel: getOptionalEnv("OPENAI_SUMMARY_MODEL") ?? "gpt-4o-mini",
   resendApiKey: getOptionalEnv("RESEND_API_KEY"),
   cronSecret: getOptionalEnv("CRON_SECRET"),
+  billingReconciliationSecret: getOptionalEnv("BILLING_RECONCILIATION_SECRET"),
   alertFromEmail: getOptionalEnv("ALERT_FROM_EMAIL") ?? "Relay NW <alerts@relay-nw.com>",
   adminAlertEmail: getOptionalEnv("ADMIN_ALERT_EMAIL"),
   stripeSecretKey: getOptionalEnv("STRIPE_SECRET_KEY"),

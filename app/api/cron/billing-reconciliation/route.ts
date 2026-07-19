@@ -11,8 +11,14 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 function authError(request: Request) {
-  if (!env.cronSecret) return Response.json({ error: "CRON_SECRET is not configured" }, { status: 503 });
-  if (request.headers.get("authorization") !== `Bearer ${env.cronSecret}`) {
+  const authorization = request.headers.get("authorization");
+  const valid = [env.cronSecret, env.billingReconciliationSecret]
+    .filter((secret): secret is string => Boolean(secret))
+    .some((secret) => authorization === `Bearer ${secret}`);
+  if (!env.cronSecret && !env.billingReconciliationSecret) {
+    return Response.json({ error: "Billing reconciliation authentication is not configured" }, { status: 503 });
+  }
+  if (!valid) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
   return null;
