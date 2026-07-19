@@ -24,6 +24,47 @@ type TwilioRequestSummary = {
 
 export const twilioClient = twilio(env.twilioAccountSid, env.twilioAuthToken);
 
+export async function findAvailableRelayNumbers(areaCode: string, limit = 8) {
+  if (!/^\d{3}$/.test(areaCode)) throw new Error("Enter a three-digit area code.");
+  const numbers = await twilioClient.availablePhoneNumbers("US").local.list({
+    areaCode: Number(areaCode),
+    voiceEnabled: true,
+    smsEnabled: true,
+    limit: Math.min(20, Math.max(1, limit)),
+  });
+  return numbers.map((number) => ({ phoneNumber: number.phoneNumber, locality: number.locality, region: number.region }));
+}
+
+export async function purchaseAndConfigureRelayNumber(phoneNumber: string) {
+  const base = env.appBaseUrl;
+  const number = await twilioClient.incomingPhoneNumbers.create({
+    phoneNumber,
+    voiceUrl: `${base}/api/twilio/voice`,
+    voiceMethod: "POST",
+    voiceFallbackUrl: `${base}/api/twilio/voice`,
+    voiceFallbackMethod: "POST",
+    smsUrl: `${base}/api/twilio/sms`,
+    smsMethod: "POST",
+  });
+  return { sid: number.sid, phoneNumber: number.phoneNumber };
+}
+
+export async function configureExistingRelayNumber(phoneNumber: string) {
+  const matches = await twilioClient.incomingPhoneNumbers.list({ phoneNumber, limit: 2 });
+  const existing = matches.find((number) => number.phoneNumber === phoneNumber);
+  if (!existing) throw new Error("That number is not owned by the configured Twilio account.");
+  const base = env.appBaseUrl;
+  const updated = await twilioClient.incomingPhoneNumbers(existing.sid).update({
+    voiceUrl: `${base}/api/twilio/voice`,
+    voiceMethod: "POST",
+    voiceFallbackUrl: `${base}/api/twilio/voice`,
+    voiceFallbackMethod: "POST",
+    smsUrl: `${base}/api/twilio/sms`,
+    smsMethod: "POST",
+  });
+  return { sid: updated.sid, phoneNumber: updated.phoneNumber };
+}
+
 // Texts the owner from the account's Relay number. Never throws — notification
 // failures must not disturb the pipeline that called this. Gated on smsEnabled:
 // owner texts ride the same A2P-gated number as customer texting.

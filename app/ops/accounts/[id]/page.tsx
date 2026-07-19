@@ -11,6 +11,8 @@ import {
   getOpsBillingAccountBySlug,
   getRecentStripeEventsForAccount,
   getRecentWebhookEventsForAccount,
+  getCarrierProfile,
+  getAccountConfigByAccountId,
 } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +37,8 @@ function kickoffNotice(status: string | undefined) {
   if (!status) return null;
   if (status === "waived") return "Kickoff waived and recorded.";
   if (status === "card_saved") return "Card saved. This customer can be activated later.";
+  if (status === "card_link_sent") return "Secure card-save link emailed to the customer. Monthly billing has not started.";
+  if (status === "payment_link_sent") return "Secure $150 payment link emailed to the customer.";
   if (status === "canceled") return "Card setup canceled.";
   if (status === "failed") return "Kickoff action failed. No billing state was changed unless shown above.";
   return "Kickoff action received.";
@@ -45,6 +49,9 @@ function activationNotice(status: string | undefined) {
   if (status === "comp") return "Account activated as a comped pilot.";
   if (status === "trial") return "Account activated with a trial.";
   if (status === "start_billing") return "Monthly billing started.";
+  if (status === "payment_action_required") return "Monthly billing was created, but the customer must approve or update the payment in Stripe.";
+  if (status === "card_missing") return "No usable saved kickoff card is attached. Send the customer through secure Stripe Checkout.";
+  if (status === "billing_failed") return "Stripe could not start monthly billing. No local paid state was invented.";
   if (status === "account_not_found") return "Account not found.";
   if (status === "invalid_action") return "Choose a valid activation path.";
   if (status === "blocked") return "Activation is blocked until the account is ready.";
@@ -60,6 +67,12 @@ function billingActionNotice(status: string | undefined) {
   if (status === "end_trial_now") return "Manual trial ended.";
   if (status === "waive_setup_fee") return "The $150 setup fee was waived and recorded.";
   if (status === "require_setup_fee") return "The $150 setup fee is required.";
+  if (status === "refund_started") return "Stripe accepted the setup-fee refund. Relay will confirm it from Stripe.";
+  if (status === "reconciled") return "Billing state refreshed from Stripe.";
+  if (status === "refund_forbidden") return "Only a super admin can refund a payment.";
+  if (status === "refund_unavailable") return "This setup payment cannot be refunded from Relay.";
+  if (status === "refund_failed") return "Stripe could not create the refund. No local payment state was changed.";
+  if (status === "reconcile_failed") return "Stripe reconciliation failed. Check Diagnostics before retrying.";
   if (status === "setup_fee_already_paid") return "Not changed. A paid setup fee cannot be overwritten.";
   if (status === "override_blocked") return "Not changed. Stripe has a live subscription, so Stripe remains the source of truth.";
   if (status === "setup_fee_required") return "Monthly billing is blocked until the setup fee is paid or waived.";
@@ -76,7 +89,8 @@ function billingActionNotice(status: string | undefined) {
 function billingActionSucceeded(status: string | undefined) {
   return status === "comp" || status === "uncomp" || status === "grant_trial" ||
     status === "extend_trial" || status === "end_trial_now" ||
-    status === "waive_setup_fee" || status === "require_setup_fee";
+    status === "waive_setup_fee" || status === "require_setup_fee" ||
+    status === "refund_started" || status === "reconciled";
 }
 
 function onboardingNotice(status: string | undefined) {
@@ -91,6 +105,7 @@ function onboardingNotice(status: string | undefined) {
 function setupStageCopy(status: string) {
   if (status === "requirements_needed") return "Waiting on business details from the customer.";
   if (status === "waiting_on_customer") return "Waiting on the customer to finish requirements.";
+  if (status === "ready_for_carrier") return "Customer details are complete. Ready to submit for carrier review.";
   if (status === "carrier_review") return "Waiting on carrier approval — nothing needed from anyone.";
   if (status === "carrier_attention") return "Carrier approval needs attention.";
   if (status === "ready_for_live_test") return "Ready for a live missed-call test.";
@@ -111,6 +126,8 @@ export default async function OpsAccountPage({
     activation?: string;
     billing_action?: string;
     onboarding?: string;
+    carrier?: string;
+    number?: string;
   }>;
 }) {
   const operator = await requirePlatformOperator();
@@ -146,9 +163,11 @@ export default async function OpsAccountPage({
     updatedAt: summary.updatedAt,
   });
 
-  const [stripeEvents, systemEvents] = await Promise.all([
+  const [stripeEvents, systemEvents, carrierProfile, runtime] = await Promise.all([
     getRecentStripeEventsForAccount(billing.accountId, 25),
     getRecentWebhookEventsForAccount(billing.accountId, 25),
+    getCarrierProfile(billing.accountId),
+    getAccountConfigByAccountId(billing.accountId),
   ]);
   const failedCount = stripeEvents.filter((event) => event.processing_status === "failed").length;
 
@@ -156,11 +175,20 @@ export default async function OpsAccountPage({
   const canStartCustomerDelay = canMoveAccountToCustomerDelay(billing.onboardingStatus, billing);
 
   // Kickoff state, spelled out before any buttons.
-  const kickoffSettled = billing.setupFeeStatus === "paid" || billing.setupFeeStatus === "waived" || Boolean(billing.firstPaidAt);
+  const kickoffSettled = billing.setupFeeStatus === "paid" || billing.setupFeeStatus === "waived" ||
+    billing.setupFeeStatus === "partially_refunded" || Boolean(billing.firstPaidAt);
   const kickoffState = billing.setupFeeStatus === "paid"
     ? "Paid"
     : billing.setupFeeStatus === "waived"
       ? "Waived"
+      : billing.setupFeeStatus === "partially_refunded"
+        ? "Partially refunded"
+        : billing.setupFeeStatus === "refunded"
+          ? "Refunded"
+          : billing.setupFeeStatus === "disputed"
+            ? "Disputed"
+            : billing.setupFeeStatus === "charged_back"
+              ? "Charged back"
       : billing.firstPaidAt
         ? "Settled through prior activation"
         : "Due";
@@ -211,6 +239,10 @@ export default async function OpsAccountPage({
           </div>
         </div>
 
+        <div className="settings-notice" role="status">
+          You are signed in as operator <strong>{operator.email}</strong> and managing the separate customer account for <strong>{summary.ownerEmail ?? "an owner whose email is not set"}</strong>. Operator changes apply only to {summary.businessName}.
+        </div>
+
         {/* The one thing to do next. */}
         <section className="readiness readiness--testing ops-next" aria-label="Next operator action">
           <div className="readiness__main">
@@ -237,8 +269,8 @@ export default async function OpsAccountPage({
           ) : null}
           {kickoffState === "Due" ? (
             <div className="ops-billing-actions">
-              <form action="/api/ops/kickoff" method="post"><input type="hidden" name="account_slug" value={summary.accountSlug} /><button className="btn btn-primary" name="action" value="send_invoice">Send kickoff payment</button></form>
-              <form action="/api/ops/kickoff" method="post"><input type="hidden" name="account_slug" value={summary.accountSlug} /><button className="btn btn-secondary" name="action" value="waive_save_card">Waive + save card</button></form>
+              <form action="/api/ops/kickoff" method="post"><input type="hidden" name="account_slug" value={summary.accountSlug} /><button className="btn btn-primary" name="action" value="send_invoice">Email $150 payment link</button></form>
+              <form action="/api/ops/kickoff" method="post"><input type="hidden" name="account_slug" value={summary.accountSlug} /><button className="btn btn-secondary" name="action" value="waive_save_card">Waive + email card link</button></form>
               <form action="/api/ops/kickoff" method="post"><input type="hidden" name="account_slug" value={summary.accountSlug} /><button className="btn btn-secondary" name="action" value="waive_entirely">Waive entirely</button></form>
             </div>
           ) : (
@@ -253,6 +285,28 @@ export default async function OpsAccountPage({
               <input type="hidden" name="account_slug" value={summary.accountSlug} />
               <button className="btn btn-ghost btn-sm" type="submit" name="action" value="require_setup_fee">Require the fee again</button>
             </form>
+          ) : null}
+          {billing.setupFeePaymentIntentId ? (
+            <details className="ops-manual">
+              <summary>Payment controls</summary>
+              <div className="ops-billing-actions">
+                <form action="/api/ops/billing/reconcile" method="post">
+                  <input type="hidden" name="account_slug" value={summary.accountSlug} />
+                  <button className="btn btn-secondary" type="submit">Sync with Stripe</button>
+                </form>
+              </div>
+              {(billing.setupFeeStatus === "paid" || billing.setupFeeStatus === "partially_refunded") && operator.role === "super_admin" ? (
+                <form action="/api/ops/billing/refund" method="post" className="setup-panel__action">
+                  <input type="hidden" name="account_slug" value={summary.accountSlug} />
+                  <label className="field-label" htmlFor="setup-refund-reason">Refund reason</label>
+                  <div className="lead-controls ops-trial-controls">
+                    <input id="setup-refund-reason" className="field" name="reason" maxLength={240} required placeholder="Why is this being refunded?" />
+                    <button className="btn btn-secondary" type="submit">Refund remaining setup fee</button>
+                  </div>
+                  <p className="setup-panel__note">This creates a real Stripe refund. Relay changes state only after Stripe confirms it.</p>
+                </form>
+              ) : null}
+            </details>
           ) : null}
         </section>
 
@@ -276,7 +330,7 @@ export default async function OpsAccountPage({
 
           {canStartMonthly ? (
             <div className="ops-billing-actions">
-              <form action="/api/ops/billing/checkout" method="post"><input type="hidden" name="account_slug" value={summary.accountSlug} /><button className="btn btn-primary" type="submit">Start $99 billing</button></form>
+              <form action="/api/ops/activate" method="post"><input type="hidden" name="account_slug" value={summary.accountSlug} /><button className="btn btn-primary" name="action" value="start_billing">Start $99 billing</button></form>
               <form action="/api/ops/activate" method="post"><input type="hidden" name="account_slug" value={summary.accountSlug} /><button className="btn btn-secondary" name="action" value="comp">Comp pilot</button></form>
               <form action="/api/ops/activate" method="post"><input type="hidden" name="account_slug" value={summary.accountSlug} /><input type="hidden" name="trial_days" value="30" /><button className="btn btn-secondary" name="action" value="trial">30-day trial</button></form>
             </div>
@@ -340,6 +394,63 @@ export default async function OpsAccountPage({
               <input type="hidden" name="account_slug" value={summary.accountSlug} />
               <button className="btn btn-secondary" type="submit">Start / reopen the 14-day customer clock</button>
               <p className="setup-panel__note">Use only when Relay is waiting on the customer — never for carrier review.</p>
+            </form>
+          ) : null}
+        </section>
+
+        <section className="panel setup-panel" aria-label="Carrier registration">
+          <div className="setup-panel__head">
+            <p className="t-eyebrow">Carrier registration</p>
+            <h2>{carrierProfile?.status ? carrierProfile.status.replaceAll("_", " ") : "Waiting on customer information"}</h2>
+            <p className="setup-copy">Customer-entered legal and consent information stays separate from the Relay number and billing records.</p>
+          </div>
+          {notices.carrier ? <div className="settings-notice" role="status">Carrier status updated: {notices.carrier.replaceAll("_", " ")}.</div> : null}
+          {carrierProfile ? (
+            <dl className="webhook-event__meta">
+              <div><dt>Business registration</dt><dd>{carrierProfile.hasEin ? `EIN ending ${carrierProfile.registrationIdLast4 ?? "not saved"}` : "Sole proprietor"}</dd></div>
+              <div><dt>Representative</dt><dd>{[carrierProfile.representativeFirstName, carrierProfile.representativeLastName].filter(Boolean).join(" ") || "not set"}</dd></div>
+              <div><dt>Consent flow</dt><dd>{carrierProfile.optInFlow ? "provided" : "missing"}</dd></div>
+              <div><dt>Sample messages</dt><dd>{carrierProfile.sampleMessages.length}</dd></div>
+            </dl>
+          ) : null}
+          {operator.role !== "support" ? (
+            <form action="/api/ops/carrier" method="post" className="setup-panel__action">
+              <input type="hidden" name="account_slug" value={summary.accountSlug} />
+              <div className="lead-controls">
+                <input className="field" name="twilio_brand_sid" defaultValue={carrierProfile?.twilioBrandSid ?? ""} placeholder="Brand reference (optional)" />
+                <input className="field" name="twilio_campaign_sid" defaultValue={carrierProfile?.twilioCampaignSid ?? ""} placeholder="Campaign reference (optional)" />
+                <input className="field" name="messaging_service_sid" defaultValue={carrierProfile?.messagingServiceSid ?? ""} placeholder="Messaging service (optional)" />
+              </div>
+              <input className="field" name="status_detail" defaultValue={carrierProfile?.statusDetail ?? ""} placeholder="Owner-facing correction or status note" />
+              <div className="ops-billing-actions">
+                <button className="btn btn-secondary" name="action" value="submitted" disabled={!carrierProfile}>Mark submitted</button>
+                <button className="btn btn-secondary" name="action" value="in_progress" disabled={!carrierProfile}>In review</button>
+                <button className="btn btn-primary" name="action" value="approved" disabled={!carrierProfile}>Approve</button>
+                <button className="btn btn-secondary" name="action" value="needs_changes" disabled={!carrierProfile}>Needs changes</button>
+                <button className="btn btn-secondary" name="action" value="rejected" disabled={!carrierProfile}>Rejected</button>
+              </div>
+            </form>
+          ) : null}
+        </section>
+
+        <section className="panel setup-panel" aria-label="Relay number assignment">
+          <div className="setup-panel__head">
+            <p className="t-eyebrow">Relay number</p>
+            <h2>{runtime?.twilioPhoneNumber || "No number assigned"}</h2>
+            <p className="setup-copy">Attach a number already owned in Twilio, or purchase a specific available number. Relay configures the voice and messaging callbacks automatically.</p>
+          </div>
+          {notices.number ? <div className={notices.number === "assigned" ? "settings-notice" : "intake-error settings-notice"} role="status">
+            {notices.number === "assigned" ? "Relay number assigned and configured." : notices.number === "invalid" ? "Enter a US number in +1 format." : "Number assignment failed. No account routing was changed."}
+          </div> : null}
+          {operator.role !== "support" ? (
+            <form action="/api/ops/twilio/assign" method="post" className="setup-panel__action">
+              <input type="hidden" name="account_slug" value={summary.accountSlug} />
+              <div className="lead-controls">
+                <input className="field" name="phone_number" required pattern="\+1[0-9]{10}" placeholder="+12065550123" aria-label="Twilio phone number" />
+                <button className="btn btn-primary" name="action" value="attach_existing">Attach owned number</button>
+                <button className="btn btn-secondary" name="action" value="purchase">Purchase this number</button>
+              </div>
+              <p className="setup-panel__note">Purchasing creates a real Twilio charge. Use Attach when the number already appears in your Twilio account.</p>
             </form>
           ) : null}
         </section>

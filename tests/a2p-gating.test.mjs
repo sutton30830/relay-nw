@@ -40,8 +40,13 @@ function makeSession(overrides = {}) {
 function settingsForm(overrides = {}) {
   return new URLSearchParams({
     business_name: "Demo Plumbing",
+    owner_name: "Demo Owner",
     owner_phone_number: "+12065550123",
     owner_email: "owner@example.com",
+    public_business_number: "+12065550124",
+    business_type: "llc",
+    call_mode: "forwarding",
+    greeting_preference: "generated",
     scheduling_url: "https://example.com/book",
     sms_template: "Hi",
     missed_call_voice_message: "Leave a message",
@@ -83,6 +88,12 @@ async function runSettingsPost({
     },
     "@/lib/audit": {
       diffSettingsForAudit: () => [],
+    },
+    "@/lib/onboarding-profile": {
+      isCustomerProfileComplete: (profile) => Boolean(
+        profile.businessName && profile.ownerName && profile.ownerEmail && profile.ownerPhoneNumber &&
+        profile.publicBusinessNumber && profile.businessType && profile.callMode
+      ),
     },
     "@/lib/supabase": {
       getA2pRegistrationStatus: async (accountId) => {

@@ -42,7 +42,7 @@ export function IntakeForm() {
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     const form = event.currentTarget;
-    const requiredFields = ["businessName", "ownerName", "phone", "businessType", "currentBusinessNumber"];
+    const requiredFields = ["businessName", "ownerName", "ownerEmail", "phone", "businessType", "currentBusinessNumber"];
     const missingField = requiredFields.find((field) => !hasValue(form, field));
 
     if (missingField) {
@@ -83,7 +83,14 @@ export function IntakeForm() {
         </label>
 
         <label className="field-label">
-          <span>Phone number</span>
+          <span>Owner email</span>
+          <input className="field" name="ownerEmail" type="email" autoComplete="email" placeholder="owner@example.com" required />
+        </label>
+      </div>
+
+      <div className="intake-row">
+        <label className="field-label">
+          <span>Owner phone</span>
           <input
             className="field"
             name="phone"

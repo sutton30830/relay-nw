@@ -43,6 +43,12 @@ export type StripePortalSession = {
   url: string;
 };
 
+export type StripeSubscriptionCreation = {
+  subscription: StripeSubscriptionSnapshot;
+  paymentActionRequired: boolean;
+  hostedInvoiceUrl: string | null;
+};
+
 export type StripeBillingUpdate = {
   accountId: string;
   billingStatus: AccountBillingStatus;
@@ -82,7 +88,19 @@ export type StripeEventIdentity = {
   object: StripeEventObject | null;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
+  stripePaymentIntentId: string | null;
   metadataAccountId: string | null;
+};
+
+export type StripePaymentIntentSnapshot = {
+  id: string;
+  customerId: string | null;
+  paymentMethodId: string | null;
+  status: string | null;
+  amount: number;
+  amountReceived: number;
+  amountRefunded: number;
+  disputed: boolean;
 };
 
 export type StripeSubscriptionSnapshot = {
@@ -523,6 +541,173 @@ export async function retrieveStripeSubscription(
   return stripeSubscriptionSnapshot(body);
 }
 
+export async function retrieveStripePaymentIntent(
+  paymentIntentId: string,
+): Promise<StripePaymentIntentSnapshot> {
+  if (!env.stripeSecretKey) throw new Error("Stripe payment retrieval is not configured. Set STRIPE_SECRET_KEY.");
+  const params = new URLSearchParams({ "expand[]": "latest_charge" });
+  const response = await fetch(
+    `${STRIPE_API_BASE}/payment_intents/${encodeURIComponent(paymentIntentId)}?${params}`,
+    { headers: { Authorization: `Bearer ${env.stripeSecretKey}` } },
+  );
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) {
+    const message = typeof body.error === "object" && body.error
+      ? stringValue((body.error as Record<string, unknown>).message)
+      : null;
+    throw new Error(message ?? `Stripe payment retrieval failed with status ${response.status}`);
+  }
+  const id = stringValue(body.id);
+  if (!id) throw new Error("Stripe payment retrieval did not return a PaymentIntent id.");
+  const charge = body.latest_charge && typeof body.latest_charge === "object"
+    ? body.latest_charge as Record<string, unknown>
+    : null;
+  return {
+    id,
+    customerId: stringValue(body.customer),
+    paymentMethodId: stringValue(body.payment_method),
+    status: stringValue(body.status),
+    amount: numberValue(body.amount) ?? 0,
+    amountReceived: numberValue(body.amount_received) ?? 0,
+    amountRefunded: charge ? numberValue(charge.amount_refunded) ?? 0 : 0,
+    disputed: charge?.disputed === true,
+  };
+}
+
+export async function retrieveStripeSetupIntent(setupIntentId: string) {
+  if (!env.stripeSecretKey) throw new Error("Stripe card setup retrieval is not configured. Set STRIPE_SECRET_KEY.");
+  const response = await fetch(`${STRIPE_API_BASE}/setup_intents/${encodeURIComponent(setupIntentId)}`, {
+    headers: { Authorization: `Bearer ${env.stripeSecretKey}` },
+  });
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) {
+    const message = typeof body.error === "object" && body.error
+      ? stringValue((body.error as Record<string, unknown>).message) : null;
+    throw new Error(message ?? `Stripe card setup retrieval failed with status ${response.status}`);
+  }
+  return {
+    id: stringValue(body.id),
+    customerId: stringValue(body.customer),
+    paymentMethodId: stringValue(body.payment_method),
+    status: stringValue(body.status),
+  };
+}
+
+export async function createStripeRefund(input: {
+  paymentIntentId: string;
+  amountCents?: number | null;
+  accountId: string;
+  reason: string;
+  idempotencyKey: string;
+}) {
+  if (!env.stripeSecretKey) throw new Error("Stripe refunds are not configured. Set STRIPE_SECRET_KEY.");
+  const params = new URLSearchParams({
+    payment_intent: input.paymentIntentId,
+    "metadata[account_id]": input.accountId,
+    "metadata[refund_reason]": input.reason.slice(0, 240),
+  });
+  if (input.amountCents && input.amountCents > 0) params.set("amount", String(Math.round(input.amountCents)));
+  const response = await fetch(`${STRIPE_API_BASE}/refunds`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.stripeSecretKey}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Idempotency-Key": input.idempotencyKey,
+    },
+    body: params,
+  });
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) {
+    const message = typeof body.error === "object" && body.error
+      ? stringValue((body.error as Record<string, unknown>).message)
+      : null;
+    throw new Error(message ?? `Stripe refund failed with status ${response.status}`);
+  }
+  const id = stringValue(body.id);
+  if (!id) throw new Error("Stripe refund did not return a refund id.");
+  return { id, status: stringValue(body.status), amount: numberValue(body.amount) ?? 0 };
+}
+
+export async function createStripeSubscriptionFromSavedCard(input: {
+  accountId: string;
+  accountSlug: string;
+  customerId: string;
+  paymentMethodId: string;
+  idempotencyKey: string;
+  trialDays?: number | null;
+}): Promise<StripeSubscriptionCreation> {
+  assertStripeCheckoutConfigured();
+  const customerParams = new URLSearchParams({
+    "invoice_settings[default_payment_method]": input.paymentMethodId,
+  });
+  const customerResponse = await fetch(`${STRIPE_API_BASE}/customers/${encodeURIComponent(input.customerId)}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${env.stripeSecretKey}`, "Content-Type": "application/x-www-form-urlencoded" },
+    body: customerParams,
+  });
+  const customerBody = (await customerResponse.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!customerResponse.ok) {
+    const message = typeof customerBody.error === "object" && customerBody.error
+      ? stringValue((customerBody.error as Record<string, unknown>).message) : null;
+    throw new Error(message ?? `Stripe customer payment method update failed with status ${customerResponse.status}`);
+  }
+  const params = new URLSearchParams({
+    customer: input.customerId,
+    "items[0][price]": env.stripePriceId!,
+    default_payment_method: input.paymentMethodId,
+    payment_behavior: "default_incomplete",
+    "payment_settings[save_default_payment_method]": "on_subscription",
+    "metadata[account_id]": input.accountId,
+    "metadata[account_slug]": input.accountSlug,
+    "expand[]": "latest_invoice.payment_intent",
+  });
+  if (input.trialDays && input.trialDays > 0) params.set("trial_period_days", String(Math.round(input.trialDays)));
+  const response = await fetch(`${STRIPE_API_BASE}/subscriptions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.stripeSecretKey}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Idempotency-Key": input.idempotencyKey,
+    },
+    body: params,
+  });
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) {
+    const message = typeof body.error === "object" && body.error
+      ? stringValue((body.error as Record<string, unknown>).message) : null;
+    throw new Error(message ?? `Stripe subscription creation failed with status ${response.status}`);
+  }
+  const invoice = body.latest_invoice && typeof body.latest_invoice === "object"
+    ? body.latest_invoice as Record<string, unknown> : null;
+  const paymentIntent = invoice?.payment_intent && typeof invoice.payment_intent === "object"
+    ? invoice.payment_intent as Record<string, unknown> : null;
+  const paymentStatus = paymentIntent ? stringValue(paymentIntent.status) : null;
+  return {
+    subscription: stripeSubscriptionSnapshot(body),
+    paymentActionRequired: paymentStatus === "requires_action" || paymentStatus === "requires_payment_method",
+    hostedInvoiceUrl: invoice ? stringValue(invoice.hosted_invoice_url) : null,
+  };
+}
+
+export function setupFeeStateFromPayment(payment: StripePaymentIntentSnapshot): Pick<
+  import("@/lib/billing").AccountBillingRecord,
+  "setupFeeStatus" | "setupFeeRefundedCents"
+> {
+  const fullyRefunded = payment.amountRefunded >= Math.max(payment.amountReceived, payment.amount);
+  return {
+    setupFeeStatus: payment.disputed
+      ? "disputed"
+      : fullyRefunded
+        ? "refunded"
+        : payment.amountRefunded > 0
+          ? "partially_refunded"
+          : payment.status === "succeeded"
+            ? "paid"
+            : "due",
+    setupFeeRefundedCents: payment.amountRefunded,
+  };
+}
+
 export function verifyStripeWebhookSignature(
   rawBody: string,
   signatureHeader: string | null | undefined,
@@ -559,6 +744,12 @@ export function getStripeEventIdentity(event: StripeEvent): StripeEventIdentity 
   const eventCreatedAt = event.created ? unixSecondsToIso(event.created) : null;
   const eventType = stringValue(event.type);
   const isInvoice = eventType?.startsWith("invoice.") ?? false;
+  const isSubscription = eventType?.startsWith("customer.subscription.") ?? false;
+  const isCheckout = eventType?.startsWith("checkout.session.") ?? false;
+  const paymentIntentId = object
+    ? stringValue(object.payment_intent) ??
+      (eventType?.startsWith("payment_intent.") ? stringValue(object.id) : null)
+    : null;
 
   return {
     eventId: stringValue(event.id),
@@ -566,12 +757,19 @@ export function getStripeEventIdentity(event: StripeEvent): StripeEventIdentity 
     eventCreatedAt,
     livemode: event.livemode === true,
     object,
-    stripeCustomerId: object ? stringValue(object.customer) : null,
+    stripeCustomerId: object
+      ? eventType === "customer.deleted" ? stringValue(object.id) : stringValue(object.customer)
+      : null,
     stripeSubscriptionId: object
       ? isInvoice
         ? subscriptionIdFromInvoice(object)
-        : stringValue(object.id) ?? stringValue(object.subscription)
+        : isSubscription
+          ? stringValue(object.id)
+          : isCheckout
+            ? stringValue(object.subscription)
+            : null
       : null,
+    stripePaymentIntentId: paymentIntentId,
     metadataAccountId: object ? metadataAccountId(object) : null,
   };
 }

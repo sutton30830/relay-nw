@@ -15,6 +15,12 @@ export const requiredStripeWebhookEvents = [
   "invoice.payment_failed",
   "invoice.payment_action_required",
   "invoice.paid",
+  "checkout.session.expired",
+  "charge.refunded",
+  "refund.updated",
+  "charge.dispute.created",
+  "charge.dispute.closed",
+  "customer.deleted",
 ];
 
 function parseDotenvLine(line) {

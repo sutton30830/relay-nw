@@ -2,6 +2,7 @@ export { supabaseAdmin } from "./client";
 export * from "./accounts";
 export * from "./audit";
 export * from "./calls";
+export * from "./carrier-profiles";
 export * from "./health-checks";
 export * from "./leads";
 export * from "./messages";

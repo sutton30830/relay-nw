@@ -9,6 +9,7 @@ import type { BillingReadiness } from "@/lib/billing";
 import { ownerOnboardingDelayMessage } from "@/lib/onboarding-deadlines";
 import {
   getA2pRegistrationStatus,
+  getCarrierProfile,
   getAccountBillingRecord,
   getAccountRecoveryStats,
   getForwardingHealthSummary,
@@ -16,6 +17,7 @@ import {
 } from "@/lib/supabase";
 import { computeSetupReadiness, type A2pStatus } from "@/lib/readiness";
 import { formatRelativeAge } from "@/lib/report-metrics";
+import { isCustomerProfileComplete, missingCustomerProfileFields } from "@/lib/onboarding-profile";
 
 export const dynamic = "force-dynamic";
 
@@ -137,20 +139,36 @@ function BillingAction({ billingReadiness, role }: { billingReadiness: BillingRe
   );
 }
 
-export default async function SetupPage() {
+export default async function SetupPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ carrier?: string }>;
+}) {
   const session = await requireAccountUser();
   const { account, accountId, role, membershipCount } = session;
-  const [forwardingHealth, a2pStatus, recovery, lastRecoveredCallAt, billing] = await Promise.all([
+  const notices = await searchParams;
+  const [forwardingHealth, a2pStatus, recovery, lastRecoveredCallAt, billing, carrierProfile] = await Promise.all([
     getForwardingHealthSummary(accountId),
     getA2pRegistrationStatus(accountId),
     getAccountRecoveryStats(accountId, { since: null }),
     getLastRecoveredCallAt(accountId),
     getAccountBillingRecord(accountId),
+    getCarrierProfile(accountId),
   ]);
 
   const carrierStatus = a2pStatus ?? "unknown";
   const isA2pApproved = carrierStatus === "approved";
-  const isProfileReady = Boolean(account.businessName && account.ownerPhoneNumber && account.twilioPhoneNumber);
+  const profileFacts = {
+    businessName: account.businessName,
+    ownerName: account.ownerName,
+    ownerEmail: account.ownerEmail,
+    ownerPhoneNumber: account.ownerPhoneNumber,
+    publicBusinessNumber: account.publicBusinessNumber,
+    businessType: account.businessType,
+    callMode: account.callMode,
+  };
+  const isProfileReady = isCustomerProfileComplete(profileFacts);
+  const missingProfile = missingCustomerProfileFields(profileFacts);
   const smsMetric = isA2pApproved
     ? account.smsEnabled
       ? { value: "Auto-text on", detail: "Carrier approved. Callers get an immediate reply.", tone: "good" as const }
@@ -254,6 +272,69 @@ export default async function SetupPage() {
           </div>
         ) : null}
 
+        <section className="panel setup-panel" id="carrier-registration" aria-label="Carrier registration information">
+          <div className="setup-panel__head">
+            <div>
+              <p className="t-eyebrow">Carrier registration</p>
+              <h2 className="t-display">Tell carriers who is sending messages.</h2>
+              <p className="setup-copy">Relay submits this after you finish it. Your registration number is encrypted; only the last four digits remain visible here.</p>
+            </div>
+          </div>
+          {notices.carrier ? (
+            <div className={notices.carrier === "saved" ? "settings-notice settings-notice--ok" : "intake-error settings-notice"} role="status">
+              {notices.carrier === "saved" ? "Carrier information saved. Relay will review it before submission."
+                : notices.carrier === "registration_id_required" ? "Enter the EIN or registration number for this business."
+                  : notices.carrier === "invalid_url" ? "Privacy and terms links must begin with https://."
+                    : "Complete the required carrier fields and include at least two sample messages."}
+            </div>
+          ) : null}
+          <form action="/api/setup/carrier-profile" method="post" className="settings-form">
+            <fieldset disabled={role === "viewer"} className="settings-fieldset">
+              <div className="form-field">
+                <span className="t-eyebrow form-field__label">Does this business have an EIN?</span>
+                <select className="field" name="has_ein" defaultValue={carrierProfile?.hasEin === false ? "no" : "yes"}>
+                  <option value="yes">Yes — register as a business</option>
+                  <option value="no">No — register as a sole proprietor</option>
+                </select>
+              </div>
+              <label className="form-field">
+                <span className="t-eyebrow form-field__label">EIN or registration number</span>
+                <input className="field" name="registration_id" autoComplete="off" placeholder={carrierProfile?.registrationIdLast4 ? `Saved ending in ${carrierProfile.registrationIdLast4} — leave blank to keep it` : "Required when the business has an EIN"} />
+              </label>
+              <div className="lead-controls">
+                <input className="field" name="representative_first_name" required defaultValue={carrierProfile?.representativeFirstName ?? ""} placeholder="Authorized representative first name" aria-label="Authorized representative first name" />
+                <input className="field" name="representative_last_name" required defaultValue={carrierProfile?.representativeLastName ?? ""} placeholder="Last name" aria-label="Authorized representative last name" />
+              </div>
+              <div className="lead-controls">
+                <input className="field" name="representative_title" defaultValue={carrierProfile?.representativeTitle ?? ""} placeholder="Job title" aria-label="Authorized representative title" />
+                <input className="field" name="representative_mobile" required defaultValue={carrierProfile?.representativeMobile ?? account.ownerPhoneNumber} placeholder="Mobile for verification" aria-label="Authorized representative mobile" />
+                <input className="field" type="email" name="representative_email" required defaultValue={carrierProfile?.representativeEmail ?? account.ownerEmail ?? ""} placeholder="Representative email" aria-label="Authorized representative email" />
+              </div>
+              <label className="form-field">
+                <span className="t-eyebrow form-field__label">How Relay messages customers</span>
+                <textarea className="field" name="messaging_use_case" rows={3} required defaultValue={carrierProfile?.messagingUseCase ?? "Relay sends one customer-care text after a caller phones the business and the call is missed, then supports replies about that service request."} />
+              </label>
+              <label className="form-field">
+                <span className="t-eyebrow form-field__label">How callers consent</span>
+                <textarea className="field" name="opt_in_flow" rows={3} required defaultValue={carrierProfile?.optInFlow ?? "The customer initiates contact by calling the business. If the call is unanswered, the voicemail greeting discloses that Relay may send a follow-up text. The first text identifies the business and includes STOP instructions."} />
+              </label>
+              <label className="form-field">
+                <span className="t-eyebrow form-field__label">Sample messages</span>
+                <textarea className="field" name="sample_messages" rows={4} required defaultValue={(carrierProfile?.sampleMessages.length ? carrierProfile.sampleMessages : [
+                  `Hi, this is ${account.businessName}. Sorry we missed your call. How can we help? Reply STOP to opt out.`,
+                  `Thanks for calling ${account.businessName}. We received your message and will follow up shortly. Reply STOP to opt out.`,
+                ]).join("\n")} />
+                <span className="form-field__hint">One message per line; include the business name and STOP language.</span>
+              </label>
+              <div className="lead-controls">
+                <input className="field" type="url" name="privacy_policy_url" defaultValue={carrierProfile?.privacyPolicyUrl ?? ""} placeholder="https://…/privacy" aria-label="Privacy policy URL" />
+                <input className="field" type="url" name="terms_url" defaultValue={carrierProfile?.termsUrl ?? ""} placeholder="https://…/terms" aria-label="Terms URL" />
+              </div>
+              {role !== "viewer" ? <button className="btn btn-primary" type="submit">Save carrier information</button> : null}
+            </fieldset>
+          </form>
+        </section>
+
         <section className="setup-grid">
           <article className="panel setup-panel">
             <div className="setup-panel__head">
@@ -265,7 +346,9 @@ export default async function SetupPage() {
             <ol className="setup-status__steps">
               <Step
                 title="Business profile"
-                detail={`${account.ownerPhoneNumber} is where Relay sends alerts. ${role === "viewer" ? "Ask an owner or admin to edit settings." : "Edit settings if this is wrong."}`}
+                detail={isProfileReady
+                  ? `${account.ownerPhoneNumber} is where Relay sends alerts. ${role === "viewer" ? "Ask an owner or admin to edit settings." : "Edit settings if this is wrong."}`
+                  : `Still needed: ${missingProfile.join(", ")}.`}
                 status={isProfileReady ? "complete" : "blocked"}
               />
               <Step

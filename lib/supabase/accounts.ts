@@ -13,6 +13,21 @@ export type AccountRuntimeConfig = {
   accountSlug: string;
   businessName: string;
   ownerEmail: string | null;
+  ownerName: string | null;
+  legalBusinessName: string | null;
+  publicBusinessNumber: string | null;
+  businessType: string | null;
+  businessIndustry: string | null;
+  websiteUrl: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  addressCity: string | null;
+  addressRegion: string | null;
+  addressPostalCode: string | null;
+  addressCountry: string;
+  businessHours: Record<string, unknown> | null;
+  implementationNotes: string | null;
+  greetingPreference: "generated" | "recorded";
   callMode: "direct" | "forwarding";
   smsEnabled: boolean;
   intakeUrl: string;
@@ -68,6 +83,21 @@ type AccountSettingsRow = {
   account_id: string;
   business_name: string;
   owner_email: string | null;
+  owner_name?: string | null;
+  legal_business_name?: string | null;
+  public_business_number?: string | null;
+  business_type?: string | null;
+  business_industry?: string | null;
+  website_url?: string | null;
+  address_line_1?: string | null;
+  address_line_2?: string | null;
+  address_city?: string | null;
+  address_region?: string | null;
+  address_postal_code?: string | null;
+  address_country?: string | null;
+  business_hours?: Record<string, unknown> | null;
+  implementation_notes?: string | null;
+  greeting_preference?: string | null;
   owner_phone_number: string;
   intake_url: string;
   scheduling_url: string | null;
@@ -92,6 +122,7 @@ type AccountBillingRow = {
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   stripe_price_id: string | null;
+  stripe_payment_method_id: string | null;
   stripe_subscription_status: string | null;
   trial_ends_at: string | null;
   current_period_end: string | null;
@@ -111,6 +142,9 @@ type AccountBillingRow = {
   setup_fee_paid_at: string | null;
   setup_fee_waived_at: string | null;
   setup_fee_waiver_reason: string | null;
+  setup_fee_refunded_at: string | null;
+  setup_fee_refunded_cents: number | null;
+  setup_fee_dispute_status: string | null;
   monthly_price_cents: number | null;
 };
 
@@ -224,6 +258,7 @@ const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   stripeCustomerId: null,
   stripeSubscriptionId: null,
   stripePriceId: null,
+  stripePaymentMethodId: null,
   stripeSubscriptionStatus: null,
   trialEndsAt: null,
   currentPeriodEnd: null,
@@ -243,6 +278,9 @@ const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   setupFeePaidAt: null,
   setupFeeWaivedAt: null,
   setupFeeWaiverReason: null,
+  setupFeeRefundedAt: null,
+  setupFeeRefundedCents: 0,
+  setupFeeDisputeStatus: null,
   monthlyPriceCents: 9900,
 };
 
@@ -277,6 +315,7 @@ function normalizeAccountOnboardingStatus(value: string | null | undefined): Acc
   if (
     value === "requirements_needed" ||
     value === "waiting_on_customer" ||
+    value === "ready_for_carrier" ||
     value === "carrier_review" ||
     value === "carrier_attention" ||
     value === "ready_for_live_test" ||
@@ -309,11 +348,17 @@ function normalizeAccountStripeSubscriptionStatus(value: string | null | undefin
 }
 
 function normalizeSetupFeeStatus(value: string | null | undefined): AccountBillingRecord["setupFeeStatus"] {
-  if (value === "due" || value === "paid" || value === "waived" || value === "refunded") return value;
+  if (
+    value === "due" || value === "paid" || value === "waived" ||
+    value === "partially_refunded" || value === "refunded" ||
+    value === "disputed" || value === "charged_back"
+  ) return value;
   return "waived";
 }
 
 const ACCOUNT_SETTINGS_SELECT =
+  "account_id, business_name, owner_email, owner_name, legal_business_name, public_business_number, business_type, business_industry, website_url, address_line_1, address_line_2, address_city, address_region, address_postal_code, address_country, business_hours, implementation_notes, greeting_preference, owner_phone_number, intake_url, scheduling_url, call_mode, sms_enabled, sms_template, quick_reply_templates, missed_call_voice_message, missed_call_voice_name, missed_call_greeting_audio_url, voicemail_max_seconds, dial_timeout_seconds, missed_call_sms_cooldown_hours, typical_job_value_cents, voicemail_transcription_enabled, accounts(slug)";
+const ACCOUNT_SETTINGS_SELECT_PRE_PROFILE =
   "account_id, business_name, owner_email, owner_phone_number, intake_url, scheduling_url, call_mode, sms_enabled, sms_template, quick_reply_templates, missed_call_voice_message, missed_call_voice_name, missed_call_greeting_audio_url, voicemail_max_seconds, dial_timeout_seconds, missed_call_sms_cooldown_hours, typical_job_value_cents, voicemail_transcription_enabled, accounts(slug)";
 // Same columns minus quick_reply_templates, for a deploy that lands before the
 // supabase.sql migration adds the column. Account config is on every request's
@@ -329,6 +374,21 @@ export function envAccountConfig(): AccountRuntimeConfig {
     accountSlug: env.defaultAccountSlug,
     businessName: env.businessName,
     ownerEmail: null,
+    ownerName: null,
+    legalBusinessName: null,
+    publicBusinessNumber: null,
+    businessType: null,
+    businessIndustry: null,
+    websiteUrl: null,
+    addressLine1: null,
+    addressLine2: null,
+    addressCity: null,
+    addressRegion: null,
+    addressPostalCode: null,
+    addressCountry: "US",
+    businessHours: null,
+    implementationNotes: null,
+    greetingPreference: "generated",
     callMode: env.callMode as "direct" | "forwarding",
     smsEnabled: env.smsEnabled,
     intakeUrl: env.intakeUrl,
@@ -356,6 +416,21 @@ function configFromSettings(row: AccountSettingsRow, primaryNumber: string): Acc
     accountSlug: account?.slug ?? env.defaultAccountSlug,
     businessName: row.business_name,
     ownerEmail: row.owner_email,
+    ownerName: row.owner_name ?? null,
+    legalBusinessName: row.legal_business_name ?? null,
+    publicBusinessNumber: row.public_business_number ?? null,
+    businessType: row.business_type ?? null,
+    businessIndustry: row.business_industry ?? null,
+    websiteUrl: row.website_url ?? null,
+    addressLine1: row.address_line_1 ?? null,
+    addressLine2: row.address_line_2 ?? null,
+    addressCity: row.address_city ?? null,
+    addressRegion: row.address_region ?? null,
+    addressPostalCode: row.address_postal_code ?? null,
+    addressCountry: row.address_country ?? "US",
+    businessHours: row.business_hours ?? null,
+    implementationNotes: row.implementation_notes ?? null,
+    greetingPreference: row.greeting_preference === "recorded" ? "recorded" : "generated",
     callMode: row.call_mode,
     smsEnabled: row.sms_enabled,
     intakeUrl: row.intake_url,
@@ -392,7 +467,27 @@ async function getPrimaryAccountPhoneNumber(accountId: string) {
     throw error;
   }
 
-  return data?.phone_number ?? env.twilioPhoneNumber;
+  return data?.phone_number ?? "";
+}
+
+export async function assignPrimaryAccountPhoneNumber(input: {
+  accountId: string;
+  phoneNumber: string;
+  twilioSid: string;
+  label?: string;
+}) {
+  const phoneNumber = normalizePhoneNumber(input.phoneNumber);
+  const cleared = await supabaseAdmin.from("account_phone_numbers").update({ is_primary: false, updated_at: new Date().toISOString() }).eq("account_id", input.accountId).eq("is_primary", true);
+  if (cleared.error) throw cleared.error;
+  const { error } = await supabaseAdmin.from("account_phone_numbers").upsert({
+    account_id: input.accountId,
+    phone_number: phoneNumber,
+    twilio_sid: input.twilioSid,
+    label: input.label ?? "Primary Relay number",
+    is_primary: true,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "phone_number" });
+  if (error) throw error;
 }
 
 export async function getAccountConfigByAccountId(accountId: string | null | undefined) {
@@ -410,6 +505,15 @@ export async function getAccountConfigByAccountId(accountId: string | null | und
   ]);
 
   let { data, error } = settingsResult;
+
+  if (error && /owner_name|legal_business_name|public_business_number|business_type|business_industry|website_url|address_|business_hours|implementation_notes|greeting_preference/.test(error.message)) {
+    console.warn("Extended customer profile columns are missing. Run supabase.sql to enable guided onboarding.");
+    ({ data, error } = await supabaseAdmin
+      .from("account_settings")
+      .select(ACCOUNT_SETTINGS_SELECT_PRE_PROFILE)
+      .eq("account_id", accountId)
+      .maybeSingle());
+  }
 
   if (error?.message.includes("quick_reply_templates")) {
     console.warn("account_settings.quick_reply_templates is missing. Run supabase.sql to enable editable quick replies.");
@@ -472,7 +576,7 @@ export async function getAccountBillingRecord(accountId: string | null | undefin
   const { data, error } = await supabaseAdmin
     .from("accounts")
     .select(
-      "billing_status, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, requirements_due_at, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, canceled_at, onboarding_status_updated_at, setup_fee_cents, setup_fee_status, setup_fee_checkout_session_id, setup_fee_payment_intent_id, setup_fee_paid_at, setup_fee_waived_at, setup_fee_waiver_reason, monthly_price_cents",
+      "billing_status, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_payment_method_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, requirements_due_at, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, canceled_at, onboarding_status_updated_at, setup_fee_cents, setup_fee_status, setup_fee_checkout_session_id, setup_fee_payment_intent_id, setup_fee_paid_at, setup_fee_waived_at, setup_fee_waiver_reason, setup_fee_refunded_at, setup_fee_refunded_cents, setup_fee_dispute_status, monthly_price_cents",
     )
     .eq("id", accountId)
     .maybeSingle();
@@ -506,6 +610,7 @@ export async function getAccountBillingRecord(accountId: string | null | undefin
     stripeCustomerId: row.stripe_customer_id,
     stripeSubscriptionId: row.stripe_subscription_id,
     stripePriceId: row.stripe_price_id,
+    stripePaymentMethodId: row.stripe_payment_method_id,
     stripeSubscriptionStatus: normalizeAccountStripeSubscriptionStatus(row.stripe_subscription_status),
     trialEndsAt: row.trial_ends_at,
     currentPeriodEnd: row.current_period_end,
@@ -525,6 +630,9 @@ export async function getAccountBillingRecord(accountId: string | null | undefin
     setupFeePaidAt: row.setup_fee_paid_at,
     setupFeeWaivedAt: row.setup_fee_waived_at,
     setupFeeWaiverReason: row.setup_fee_waiver_reason,
+    setupFeeRefundedAt: row.setup_fee_refunded_at,
+    setupFeeRefundedCents: Number(row.setup_fee_refunded_cents ?? 0),
+    setupFeeDisputeStatus: row.setup_fee_dispute_status,
     monthlyPriceCents: Number(row.monthly_price_cents ?? 9900),
   };
 }
@@ -578,6 +686,7 @@ export async function updateAccountBillingRecord(
   if (update.stripeCustomerId !== undefined) payload.stripe_customer_id = update.stripeCustomerId;
   if (update.stripeSubscriptionId !== undefined) payload.stripe_subscription_id = update.stripeSubscriptionId;
   if (update.stripePriceId !== undefined) payload.stripe_price_id = update.stripePriceId;
+  if (update.stripePaymentMethodId !== undefined) payload.stripe_payment_method_id = update.stripePaymentMethodId;
   if (update.stripeSubscriptionStatus !== undefined) payload.stripe_subscription_status = update.stripeSubscriptionStatus;
   if (update.trialEndsAt !== undefined) payload.trial_ends_at = update.trialEndsAt;
   if (update.currentPeriodEnd !== undefined) payload.current_period_end = update.currentPeriodEnd;
@@ -603,6 +712,9 @@ export async function updateAccountBillingRecord(
   if (update.setupFeePaidAt !== undefined) payload.setup_fee_paid_at = update.setupFeePaidAt;
   if (update.setupFeeWaivedAt !== undefined) payload.setup_fee_waived_at = update.setupFeeWaivedAt;
   if (update.setupFeeWaiverReason !== undefined) payload.setup_fee_waiver_reason = update.setupFeeWaiverReason;
+  if (update.setupFeeRefundedAt !== undefined) payload.setup_fee_refunded_at = update.setupFeeRefundedAt;
+  if (update.setupFeeRefundedCents !== undefined) payload.setup_fee_refunded_cents = update.setupFeeRefundedCents;
+  if (update.setupFeeDisputeStatus !== undefined) payload.setup_fee_dispute_status = update.setupFeeDisputeStatus;
   if (update.monthlyPriceCents !== undefined) payload.monthly_price_cents = update.monthlyPriceCents;
 
   const { error } = await supabaseAdmin
@@ -668,6 +780,19 @@ export async function resolveAccountIdByStripeCustomerId(
     throwIfSupabaseError(error);
   }
 
+  return typeof data?.id === "string" ? data.id : null;
+}
+
+export async function resolveAccountIdBySetupFeePaymentIntentId(
+  paymentIntentId: string | null | undefined,
+): Promise<string | null> {
+  if (!paymentIntentId || isPlaceholderSupabaseConfig()) return null;
+  const { data, error } = await supabaseAdmin
+    .from("accounts")
+    .select("id")
+    .eq("setup_fee_payment_intent_id", paymentIntentId)
+    .maybeSingle();
+  if (error) throwIfSupabaseError(error);
   return typeof data?.id === "string" ? data.id : null;
 }
 
@@ -1137,7 +1262,7 @@ export async function getOpsBillingAccountBySlug(slug: string): Promise<OpsBilli
   const { data, error } = await supabaseAdmin
     .from("accounts")
     .select(
-      "id, slug, name, billing_status, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, requirements_due_at, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, canceled_at, onboarding_status_updated_at, setup_fee_cents, setup_fee_status, setup_fee_checkout_session_id, setup_fee_payment_intent_id, setup_fee_paid_at, setup_fee_waived_at, setup_fee_waiver_reason, monthly_price_cents",
+      "id, slug, name, billing_status, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_payment_method_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, requirements_due_at, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, canceled_at, onboarding_status_updated_at, setup_fee_cents, setup_fee_status, setup_fee_checkout_session_id, setup_fee_payment_intent_id, setup_fee_paid_at, setup_fee_waived_at, setup_fee_waiver_reason, setup_fee_refunded_at, setup_fee_refunded_cents, setup_fee_dispute_status, monthly_price_cents",
     )
     .eq("slug", normalizedSlug)
     .maybeSingle();
@@ -1167,6 +1292,7 @@ export async function getOpsBillingAccountBySlug(slug: string): Promise<OpsBilli
     stripeCustomerId: typeof data.stripe_customer_id === "string" ? data.stripe_customer_id : null,
     stripeSubscriptionId: typeof data.stripe_subscription_id === "string" ? data.stripe_subscription_id : null,
     stripePriceId: typeof data.stripe_price_id === "string" ? data.stripe_price_id : null,
+    stripePaymentMethodId: typeof data.stripe_payment_method_id === "string" ? data.stripe_payment_method_id : null,
     stripeSubscriptionStatus: normalizeAccountStripeSubscriptionStatus(data.stripe_subscription_status as string | null | undefined),
     trialEndsAt: typeof data.trial_ends_at === "string" ? data.trial_ends_at : null,
     currentPeriodEnd: typeof data.current_period_end === "string" ? data.current_period_end : null,
@@ -1187,6 +1313,9 @@ export async function getOpsBillingAccountBySlug(slug: string): Promise<OpsBilli
     setupFeePaidAt: typeof data.setup_fee_paid_at === "string" ? data.setup_fee_paid_at : null,
     setupFeeWaivedAt: typeof data.setup_fee_waived_at === "string" ? data.setup_fee_waived_at : null,
     setupFeeWaiverReason: typeof data.setup_fee_waiver_reason === "string" ? data.setup_fee_waiver_reason : null,
+    setupFeeRefundedAt: typeof data.setup_fee_refunded_at === "string" ? data.setup_fee_refunded_at : null,
+    setupFeeRefundedCents: Number(data.setup_fee_refunded_cents ?? 0),
+    setupFeeDisputeStatus: typeof data.setup_fee_dispute_status === "string" ? data.setup_fee_dispute_status : null,
     monthlyPriceCents: Number(data.monthly_price_cents ?? 9900),
   };
 }
@@ -1353,12 +1482,15 @@ export async function provisionAccount(input: {
   slug: string;
   businessName: string;
   ownerPhoneNumber: string;
-  twilioPhoneNumber: string;
+  twilioPhoneNumber?: string | null;
   intakeUrl: string;
   schedulingUrl?: string | null;
   callMode?: "direct" | "forwarding";
   smsEnabled?: boolean;
   ownerEmail?: string | null;
+  ownerName?: string | null;
+  businessType?: string | null;
+  publicBusinessNumber?: string | null;
 }) {
   if (shouldSkipDatabaseWrite("account provisioning", input)) {
     return null;
@@ -1385,7 +1517,12 @@ export async function provisionAccount(input: {
       account_id: accountId,
       business_name: input.businessName,
       owner_email: input.ownerEmail?.toLowerCase() ?? null,
+      owner_name: input.ownerName ?? null,
       owner_phone_number: normalizePhoneNumber(input.ownerPhoneNumber),
+      business_type: input.businessType ?? null,
+      public_business_number: input.publicBusinessNumber
+        ? normalizePhoneNumber(input.publicBusinessNumber)
+        : null,
       intake_url: input.intakeUrl,
       scheduling_url: input.schedulingUrl ?? input.intakeUrl,
       call_mode: input.callMode ?? "forwarding",
@@ -1395,17 +1532,30 @@ export async function provisionAccount(input: {
 
   throwIfSupabaseError(settingsError);
 
-  const { error: phoneError } = await supabaseAdmin
-    .from("account_phone_numbers")
-    .upsert({
-      account_id: accountId,
-      phone_number: normalizePhoneNumber(input.twilioPhoneNumber),
-      label: "Primary Twilio number",
-      is_primary: true,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: "phone_number" });
+  if (input.twilioPhoneNumber) {
+    const { error: phoneError } = await supabaseAdmin
+      .from("account_phone_numbers")
+      .upsert({
+        account_id: accountId,
+        phone_number: normalizePhoneNumber(input.twilioPhoneNumber),
+        label: "Primary Twilio number",
+        is_primary: true,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "phone_number" });
 
-  throwIfSupabaseError(phoneError);
+    throwIfSupabaseError(phoneError);
+  }
+
+  if (input.ownerEmail) {
+    const { error: membershipError } = await supabaseAdmin
+      .from("account_users")
+      .upsert({
+        account_id: accountId,
+        email: input.ownerEmail.trim().toLowerCase(),
+        role: "owner",
+      }, { onConflict: "account_id,email" });
+    throwIfSupabaseError(membershipError);
+  }
 
   return accountId;
 }
@@ -1455,6 +1605,23 @@ export async function getOwnerNotificationEmail(accountId: string | null | undef
 export type AccountSettingsUpdate = Partial<{
   business_name: string;
   owner_email: string | null;
+  owner_name: string | null;
+  legal_business_name: string | null;
+  public_business_number: string | null;
+  business_type: string | null;
+  business_industry: string | null;
+  website_url: string | null;
+  address_line_1: string | null;
+  address_line_2: string | null;
+  address_city: string | null;
+  address_region: string | null;
+  address_postal_code: string | null;
+  address_country: string;
+  business_hours: Record<string, unknown> | null;
+  implementation_notes: string | null;
+  greeting_preference: "generated" | "recorded";
+  a2p_registration_status: "not_started" | "in_progress" | "approved" | "rejected" | "paused";
+  call_mode: "direct" | "forwarding";
   owner_phone_number: string;
   scheduling_url: string | null;
   sms_enabled: boolean;

@@ -229,6 +229,37 @@ export async function notifyOwnerPasswordSetup(input: {
   });
 }
 
+export async function notifyOwnerKickoffPayment(input: {
+  to: string;
+  businessName: string;
+  checkoutUrl: string;
+  feeWaived: boolean;
+}) {
+  const lines = input.feeWaived
+    ? [
+        `Relay NW waived the setup fee for ${input.businessName}.`,
+        "Use the secure Stripe link to save a payment method. Monthly billing does not start from this step.",
+      ]
+    : [
+        `Relay NW setup for ${input.businessName} starts with a one-time $150 kickoff payment.`,
+        "Use the secure Stripe link to pay and save your card. Monthly billing starts only after setup is approved and Relay activates the account.",
+      ];
+
+  return sendEmail({
+    to: input.to,
+    subject: input.feeWaived ? "Save your Relay NW payment method" : "Complete your Relay NW kickoff payment",
+    html: emailHtml({
+      title: input.feeWaived ? "Save payment method" : "Complete kickoff",
+      preview: lines[0],
+      lines,
+      actionLabel: input.feeWaived ? "Save card securely" : "Pay $150 securely",
+      actionUrl: input.checkoutUrl,
+    }),
+    text: `${lines.join("\n")}\n\nSecure Stripe link: ${input.checkoutUrl}`,
+    tag: input.feeWaived ? "owner_kickoff_card_save" : "owner_kickoff_payment",
+  });
+}
+
 export async function notifyOwnerNewMissedCallLead(input: {
   account: AccountRuntimeConfig;
   leadId: string;

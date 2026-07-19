@@ -81,9 +81,20 @@ async function runWebhook({
   }),
   claim = { status: "claimed", attemptCount: 1 },
   subscriptionSnapshot = subscription(),
+  paymentSnapshot = {
+    id: "pi_setup_1",
+    customerId: "cus_1",
+    paymentMethodId: "pm_1",
+    status: "succeeded",
+    amount: 15000,
+    amountReceived: 15000,
+    amountRefunded: 0,
+    disputed: false,
+  },
   subscriptionError = null,
   subscriptionAccountId = "acct_1",
   customerAccountId = "acct_1",
+  paymentIntentAccountId = null,
   metadataAccountExists = true,
   updateError = null,
   emailError = null,
@@ -99,8 +110,10 @@ async function runWebhook({
     claims: [],
     resolvedSubscriptions: [],
     resolvedCustomers: [],
+    resolvedPaymentIntents: [],
     accountExists: [],
     retrievedSubscriptions: [],
+    retrievedPayments: [],
     updates: [],
     processed: [],
     ignored: [],
@@ -151,6 +164,10 @@ async function runWebhook({
         if (subscriptionError) throw subscriptionError;
         return subscriptionSnapshot;
       },
+      retrieveStripePaymentIntent: async (paymentIntentId) => {
+        calls.retrievedPayments.push(paymentIntentId);
+        return { ...paymentSnapshot, id: paymentIntentId };
+      },
     },
     "@/lib/supabase": {
       claimStripeEvent: async (input) => {
@@ -164,6 +181,10 @@ async function runWebhook({
       resolveAccountIdByStripeCustomerId: async (stripeCustomerId) => {
         calls.resolvedCustomers.push(stripeCustomerId);
         return customerAccountId;
+      },
+      resolveAccountIdBySetupFeePaymentIntentId: async (paymentIntentId) => {
+        calls.resolvedPaymentIntents.push(paymentIntentId);
+        return paymentIntentAccountId;
       },
       accountExists: async (accountId) => {
         calls.accountExists.push(accountId);
@@ -249,6 +270,7 @@ test("paid setup-fee Checkout marks only the setup fee as paid", async () => {
       accountId: "acct_1",
       update: {
         stripeCustomerId: "cus_1",
+        stripePaymentMethodId: "pm_1",
         setupFeeStatus: "paid",
         setupFeeCheckoutSessionId: "cs_setup_fee_1",
         setupFeePaymentIntentId: "pi_setup_1",
@@ -279,6 +301,7 @@ test("paid setup-fee Checkout without a customer still marks setup paid", async 
     {
       accountId: "acct_1",
       update: {
+        stripePaymentMethodId: "pm_1",
         setupFeeStatus: "paid",
         setupFeeCheckoutSessionId: "cs_setup_fee_customerless",
         setupFeePaymentIntentId: "pi_setup_customerless",
@@ -287,6 +310,44 @@ test("paid setup-fee Checkout without a customer still marks setup paid", async 
     },
   ]);
   assert.equal(calls.processed.length, 1);
+});
+
+test("full setup-fee refund is reflected from Stripe", async () => {
+  const { response, calls } = await runWebhook({
+    event: stripeEvent("charge.refunded", {
+      id: "ch_1",
+      customer: "cus_1",
+      payment_intent: "pi_setup_1",
+      amount: 15000,
+      amount_refunded: 15000,
+    }),
+    paymentIntentAccountId: "acct_1",
+    customerAccountId: null,
+    paymentSnapshot: {
+      id: "pi_setup_1", customerId: "cus_1", paymentMethodId: "pm_1", status: "succeeded",
+      amount: 15000, amountReceived: 15000, amountRefunded: 15000, disputed: false,
+    },
+  });
+  assert.equal(response.status, 200);
+  assert.equal(calls.updates.at(-1).update.setupFeeStatus, "refunded");
+  assert.equal(calls.updates.at(-1).update.setupFeeRefundedCents, 15000);
+});
+
+test("setup-fee dispute is visible without pretending it is a refund", async () => {
+  const { response, calls } = await runWebhook({
+    event: stripeEvent("charge.dispute.created", {
+      id: "dp_1", customer: "cus_1", payment_intent: "pi_setup_1", status: "needs_response",
+    }),
+    customerAccountId: null,
+    paymentIntentAccountId: "acct_1",
+    paymentSnapshot: {
+      id: "pi_setup_1", customerId: "cus_1", paymentMethodId: "pm_1", status: "succeeded",
+      amount: 15000, amountReceived: 15000, amountRefunded: 0, disputed: true,
+    },
+  });
+  assert.equal(response.status, 200);
+  assert.equal(calls.updates.at(-1).update.setupFeeStatus, "disputed");
+  assert.equal(calls.updates.at(-1).update.setupFeeDisputeStatus, "needs_response");
 });
 
 test("two concurrent copies leave only one processor owning the event", async () => {

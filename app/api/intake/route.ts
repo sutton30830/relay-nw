@@ -18,6 +18,7 @@ const BUSINESS_TYPES = new Set(["HVAC", "Plumbing", "Electrical", "Other"]);
 type SetupSubmission = {
   businessName: string;
   ownerName: string;
+  ownerEmail: string;
   phoneRaw: string;
   businessType: string;
   currentBusinessNumber: string;
@@ -64,6 +65,7 @@ function parseSetupForm(formData: FormData): SetupSubmission {
   return {
     businessName: readFormString(formData, "businessName"),
     ownerName: readFormString(formData, "ownerName"),
+    ownerEmail: readFormString(formData, "ownerEmail").toLowerCase(),
     phoneRaw: readFormString(formData, "phone"),
     businessType: readFormString(formData, "businessType"),
     currentBusinessNumber: readFormString(formData, "currentBusinessNumber"),
@@ -87,6 +89,8 @@ function validateSetupSubmission(submission: SetupSubmission) {
   if (
     !submission.businessName ||
     !submission.ownerName ||
+    !submission.ownerEmail ||
+    !/^\S+@\S+\.\S+$/.test(submission.ownerEmail) ||
     !ownerPhone ||
     !submission.currentBusinessNumber ||
     !BUSINESS_TYPES.has(submission.businessType)
@@ -97,6 +101,7 @@ function validateSetupSubmission(submission: SetupSubmission) {
   if (
     isTooLong(submission.businessName, MAX_FIELD_LENGTH) ||
     isTooLong(submission.ownerName, MAX_FIELD_LENGTH) ||
+    isTooLong(submission.ownerEmail, MAX_FIELD_LENGTH) ||
     isTooLong(submission.currentBusinessNumber, MAX_FIELD_LENGTH) ||
     isTooLong(submission.preferredCallbackNumber, MAX_FIELD_LENGTH) ||
     isTooLong(submission.notes, MAX_NOTES_LENGTH)
@@ -110,6 +115,7 @@ function validateSetupSubmission(submission: SetupSubmission) {
       "Relay NW setup request",
       `Business name: ${submission.businessName}`,
       `Owner name: ${submission.ownerName}`,
+      `Owner email: ${submission.ownerEmail}`,
       `Business type: ${submission.businessType}`,
       `Owner phone: ${submission.phoneRaw}`,
       `Current business number: ${submission.currentBusinessNumber}`,
@@ -165,7 +171,12 @@ export async function POST(request: Request) {
     // table, never into any tenant account's leads inbox.
     await createSetupRequest({
       name: setupLead.leadName,
+      businessName: submission.businessName,
+      ownerName: submission.ownerName,
+      ownerEmail: submission.ownerEmail,
       phone: setupLead.ownerPhone,
+      businessType: submission.businessType,
+      publicBusinessNumber: submission.currentBusinessNumber,
       message: setupLead.message,
       submitterHash: hash,
     });

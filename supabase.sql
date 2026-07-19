@@ -12,6 +12,7 @@ create table if not exists public.accounts (
   stripe_customer_id text,
   stripe_subscription_id text,
   stripe_price_id text,
+  stripe_payment_method_id text,
   stripe_subscription_status text,
   trial_ends_at timestamptz,
   current_period_end timestamptz,
@@ -20,6 +21,7 @@ create table if not exists public.accounts (
     onboarding_status in (
       'requirements_needed',
       'waiting_on_customer',
+      'ready_for_carrier',
       'carrier_review',
       'carrier_attention',
       'ready_for_live_test',
@@ -37,12 +39,15 @@ create table if not exists public.accounts (
   billing_attention_since timestamptz,
   billing_updated_at timestamptz,
   setup_fee_cents integer not null default 15000 check (setup_fee_cents >= 0),
-  setup_fee_status text not null default 'due' check (setup_fee_status in ('due', 'paid', 'waived', 'refunded')),
+  setup_fee_status text not null default 'due' check (setup_fee_status in ('due', 'paid', 'waived', 'partially_refunded', 'refunded', 'disputed', 'charged_back')),
   setup_fee_checkout_session_id text,
   setup_fee_payment_intent_id text,
   setup_fee_paid_at timestamptz,
   setup_fee_waived_at timestamptz,
   setup_fee_waiver_reason text,
+  setup_fee_refunded_at timestamptz,
+  setup_fee_refunded_cents integer not null default 0 check (setup_fee_refunded_cents >= 0),
+  setup_fee_dispute_status text,
   monthly_price_cents integer not null default 9900 check (monthly_price_cents >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -52,6 +57,7 @@ alter table public.accounts add column if not exists billing_status text not nul
 alter table public.accounts add column if not exists stripe_customer_id text;
 alter table public.accounts add column if not exists stripe_subscription_id text;
 alter table public.accounts add column if not exists stripe_price_id text;
+alter table public.accounts add column if not exists stripe_payment_method_id text;
 alter table public.accounts add column if not exists stripe_subscription_status text;
 alter table public.accounts add column if not exists trial_ends_at timestamptz;
 alter table public.accounts add column if not exists current_period_end timestamptz;
@@ -72,6 +78,9 @@ alter table public.accounts add column if not exists setup_fee_payment_intent_id
 alter table public.accounts add column if not exists setup_fee_paid_at timestamptz;
 alter table public.accounts add column if not exists setup_fee_waived_at timestamptz;
 alter table public.accounts add column if not exists setup_fee_waiver_reason text;
+alter table public.accounts add column if not exists setup_fee_refunded_at timestamptz;
+alter table public.accounts add column if not exists setup_fee_refunded_cents integer not null default 0;
+alter table public.accounts add column if not exists setup_fee_dispute_status text;
 alter table public.accounts add column if not exists monthly_price_cents integer not null default 9900;
 do $$
 begin
@@ -83,12 +92,14 @@ exception
 end $$;
 do $$
 begin
+  alter table public.accounts drop constraint if exists accounts_onboarding_status_check;
   alter table public.accounts
     add constraint accounts_onboarding_status_check
     check (
       onboarding_status in (
         'requirements_needed',
         'waiting_on_customer',
+        'ready_for_carrier',
         'carrier_review',
         'carrier_attention',
         'ready_for_live_test',
@@ -136,9 +147,10 @@ create unique index if not exists accounts_setup_fee_payment_intent_unique_idx
 
 do $$
 begin
+  alter table public.accounts drop constraint if exists accounts_setup_fee_status_check;
   alter table public.accounts
     add constraint accounts_setup_fee_status_check
-    check (setup_fee_status in ('due', 'paid', 'waived', 'refunded'));
+    check (setup_fee_status in ('due', 'paid', 'waived', 'partially_refunded', 'refunded', 'disputed', 'charged_back'));
 exception
   when duplicate_object then null;
 end $$;
@@ -153,7 +165,7 @@ set
   setup_fee_waived_at = coalesce(setup_fee_waived_at, now()),
   setup_fee_waiver_reason = coalesce(setup_fee_waiver_reason, 'Pre-commercial account backfill; review before customer billing.')
 where setup_fee_status = 'due'
-  and created_at < now();
+  and created_at < timestamptz '2026-07-01 00:00:00+00';
 
 -- Phase 6A lifecycle coherence backfill.
 -- Paid or previously activated accounts should not remain in customer-delay
@@ -253,6 +265,21 @@ create table if not exists public.account_settings (
   account_id uuid primary key references public.accounts(id) on delete cascade,
   business_name text not null,
   owner_email text,
+  owner_name text,
+  legal_business_name text,
+  public_business_number text,
+  business_type text,
+  business_industry text,
+  website_url text,
+  address_line_1 text,
+  address_line_2 text,
+  address_city text,
+  address_region text,
+  address_postal_code text,
+  address_country text not null default 'US',
+  business_hours jsonb,
+  implementation_notes text,
+  greeting_preference text not null default 'generated' check (greeting_preference in ('generated', 'recorded')),
   owner_phone_number text not null,
   intake_url text not null,
   scheduling_url text,
@@ -276,6 +303,21 @@ create table if not exists public.account_settings (
 );
 
 alter table public.account_settings add column if not exists owner_email text;
+alter table public.account_settings add column if not exists owner_name text;
+alter table public.account_settings add column if not exists legal_business_name text;
+alter table public.account_settings add column if not exists public_business_number text;
+alter table public.account_settings add column if not exists business_type text;
+alter table public.account_settings add column if not exists business_industry text;
+alter table public.account_settings add column if not exists website_url text;
+alter table public.account_settings add column if not exists address_line_1 text;
+alter table public.account_settings add column if not exists address_line_2 text;
+alter table public.account_settings add column if not exists address_city text;
+alter table public.account_settings add column if not exists address_region text;
+alter table public.account_settings add column if not exists address_postal_code text;
+alter table public.account_settings add column if not exists address_country text not null default 'US';
+alter table public.account_settings add column if not exists business_hours jsonb;
+alter table public.account_settings add column if not exists implementation_notes text;
+alter table public.account_settings add column if not exists greeting_preference text not null default 'generated';
 alter table public.account_settings add column if not exists quick_reply_templates text[];
 alter table public.account_settings add column if not exists typical_job_value_cents integer;
 alter table public.account_settings drop constraint if exists account_settings_typical_job_value_cents_nonnegative;
@@ -284,6 +326,32 @@ alter table public.account_settings
   check (typical_job_value_cents is null or typical_job_value_cents >= 0);
 
 alter table public.account_settings enable row level security;
+
+create table if not exists public.account_carrier_profiles (
+  account_id uuid primary key references public.accounts(id) on delete cascade,
+  status text not null default 'draft' check (status in ('draft', 'ready', 'submitted', 'in_progress', 'approved', 'needs_changes', 'rejected')),
+  has_ein boolean,
+  registration_type text,
+  registration_id_encrypted text,
+  registration_id_last4 text,
+  representative_first_name text,
+  representative_last_name text,
+  representative_title text,
+  representative_mobile text,
+  representative_email text,
+  messaging_use_case text,
+  opt_in_flow text,
+  sample_messages text[] not null default '{}',
+  privacy_policy_url text,
+  terms_url text,
+  twilio_brand_sid text,
+  twilio_campaign_sid text,
+  messaging_service_sid text,
+  status_detail text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table public.account_carrier_profiles enable row level security;
 
 create table if not exists public.account_phone_numbers (
   id uuid primary key default gen_random_uuid(),
@@ -702,9 +770,15 @@ alter table public.forwarding_health_checks enable row level security;
 create table if not exists public.setup_requests (
   id uuid primary key default gen_random_uuid(),
   name text,
+  business_name text,
+  owner_name text,
+  owner_email text,
   phone text not null,
+  business_type text,
+  public_business_number text,
   message text,
   status text not null default 'new' check (status in ('new', 'contacted', 'onboarded', 'closed')),
+  account_id uuid references public.accounts(id) on delete set null,
   created_at timestamptz not null default now()
 );
 
@@ -712,6 +786,12 @@ create index if not exists setup_requests_created_at_idx
   on public.setup_requests (created_at desc);
 
 alter table public.setup_requests add column if not exists submitter_hash text;
+alter table public.setup_requests add column if not exists business_name text;
+alter table public.setup_requests add column if not exists owner_name text;
+alter table public.setup_requests add column if not exists owner_email text;
+alter table public.setup_requests add column if not exists business_type text;
+alter table public.setup_requests add column if not exists public_business_number text;
+alter table public.setup_requests add column if not exists account_id uuid references public.accounts(id) on delete set null;
 
 create index if not exists setup_requests_submitter_created_at_idx
   on public.setup_requests (submitter_hash, created_at desc)
@@ -735,6 +815,11 @@ create policy deny_client_access on public.stripe_events
 
 drop policy if exists deny_client_access on public.account_settings;
 create policy deny_client_access on public.account_settings
+  as restrictive for all to anon, authenticated
+  using (false) with check (false);
+
+drop policy if exists deny_client_access on public.account_carrier_profiles;
+create policy deny_client_access on public.account_carrier_profiles
   as restrictive for all to anon, authenticated
   using (false) with check (false);
 

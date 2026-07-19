@@ -14,6 +14,8 @@ import {
 } from "@/lib/supabase";
 import { QUICK_REPLIES } from "@/app/leads/_constants";
 import { SmsToggle } from "./sms-toggle";
+import { GreetingRecorder } from "./greeting-recorder";
+import { isCustomerProfileComplete } from "@/lib/onboarding-profile";
 
 export const dynamic = "force-dynamic";
 
@@ -307,8 +309,14 @@ function BillingSection({
               ? `Paid${setupFeeDate ? ` ${setupFeeDate}` : ""}`
               : billing.setupFeeStatus === "waived"
                 ? "Waived"
+                : billing.setupFeeStatus === "partially_refunded"
+                  ? `Partially refunded ($${(billing.setupFeeRefundedCents / 100).toFixed(2)})`
                 : billing.setupFeeStatus === "refunded"
                   ? "Refunded"
+                  : billing.setupFeeStatus === "disputed"
+                    ? "Payment disputed"
+                    : billing.setupFeeStatus === "charged_back"
+                      ? "Charged back"
                   : "$150 due"}
           </dd>
         </div>
@@ -334,7 +342,15 @@ export default async function SettingsPage({
   ]);
   const setupReadiness = computeSetupReadiness({
     role,
-    hasProfile: Boolean(account.businessName && account.ownerPhoneNumber && account.twilioPhoneNumber),
+    hasProfile: isCustomerProfileComplete({
+      businessName: account.businessName,
+      ownerName: account.ownerName,
+      ownerEmail: account.ownerEmail,
+      ownerPhoneNumber: account.ownerPhoneNumber,
+      publicBusinessNumber: account.publicBusinessNumber,
+      businessType: account.businessType,
+      callMode: account.callMode,
+    }),
     callMode: account.callMode,
     smsEnabled: account.smsEnabled,
     a2pStatus: (["not_started", "in_progress", "approved", "rejected", "paused"].includes(a2pStatus ?? "")
@@ -432,11 +448,61 @@ export default async function SettingsPage({
             <Field label="Business name" hint="Used in texts and voicemail greetings.">
               <input className="field" name="business_name" required maxLength={120} defaultValue={account.businessName} />
             </Field>
+            <Field label="Legal business name" hint="Optional here; required later for carrier registration if different from the display name.">
+              <input className="field" name="legal_business_name" maxLength={160} defaultValue={account.legalBusinessName ?? ""} />
+            </Field>
+            <Field label="Owner or admin name" hint="The person Relay should contact during setup.">
+              <input className="field" name="owner_name" required maxLength={120} defaultValue={account.ownerName ?? ""} />
+            </Field>
             <Field label="Owner phone" hint="Where calls forward and Relay alerts are texted.">
               <input className="field" name="owner_phone_number" required defaultValue={account.ownerPhoneNumber} />
             </Field>
-            <Field label="Owner email" hint="Lead notifications and the weekly report.">
-              <input className="field" type="email" name="owner_email" defaultValue={account.ownerEmail ?? ""} />
+            <Field label="Notification email" hint="Lead notifications and reports. This does not change the sign-in email.">
+              <input className="field" type="email" name="owner_email" required defaultValue={account.ownerEmail ?? ""} />
+            </Field>
+            <p className="form-field__hint">Sign-in email: <strong>{session.email}</strong>. Login access is managed separately so a contact edit cannot lock anyone out.</p>
+            <Field label="Existing public business number" hint="The number customers call today. In forwarding mode, missed calls forward from this number to Relay.">
+              <input className="field" name="public_business_number" required defaultValue={account.publicBusinessNumber ?? ""} />
+            </Field>
+            <Field label="Business type" hint="Used to prepare carrier registration.">
+              <select className="field" name="business_type" required defaultValue={account.businessType ?? ""}>
+                <option value="" disabled>Choose a business type</option>
+                <option value="sole_proprietor">Sole proprietor</option>
+                <option value="llc">LLC</option>
+                <option value="corporation">Corporation</option>
+                <option value="partnership">Partnership</option>
+                <option value="nonprofit">Nonprofit</option>
+                <option value="other">Other</option>
+              </select>
+            </Field>
+            <Field label="Business industry" hint="For example: plumbing, electrical, HVAC, landscaping.">
+              <input className="field" name="business_industry" maxLength={80} defaultValue={account.businessIndustry ?? ""} />
+            </Field>
+            <Field label="Call mode" hint="Forwarding keeps the current public number. Direct makes the Relay number the public number.">
+              <select className="field" name="call_mode" required defaultValue={account.callMode}>
+                <option value="forwarding">Forward missed calls from my current number</option>
+                <option value="direct">Use the Relay number directly</option>
+              </select>
+            </Field>
+            <Field label="Website" hint="Optional now; a public website or online presence helps carrier registration.">
+              <input className="field" type="url" name="website_url" defaultValue={account.websiteUrl ?? ""} placeholder="https://" />
+            </Field>
+            <Field label="Business address" hint="Street address used for carrier registration.">
+              <input className="field" name="address_line_1" maxLength={160} defaultValue={account.addressLine1 ?? ""} placeholder="Street address" />
+            </Field>
+            <Field label="Address line 2">
+              <input className="field" name="address_line_2" maxLength={160} defaultValue={account.addressLine2 ?? ""} placeholder="Suite or unit" />
+            </Field>
+            <div className="lead-controls">
+              <input className="field" name="address_city" maxLength={100} defaultValue={account.addressCity ?? ""} placeholder="City" aria-label="City" />
+              <input className="field" name="address_region" maxLength={2} defaultValue={account.addressRegion ?? ""} placeholder="State" aria-label="State" />
+              <input className="field" name="address_postal_code" maxLength={20} defaultValue={account.addressPostalCode ?? ""} placeholder="ZIP" aria-label="ZIP code" />
+            </div>
+            <Field label="Business hours" hint="Plain language is fine, for example Mon-Fri 7am-5pm.">
+              <textarea className="field" name="business_hours" rows={3} maxLength={1000} defaultValue={typeof account.businessHours?.summary === "string" ? account.businessHours.summary : ""} />
+            </Field>
+            <Field label="Implementation notes" hint="Optional details Relay should know during setup.">
+              <textarea className="field" name="implementation_notes" rows={3} maxLength={2000} defaultValue={account.implementationNotes ?? ""} />
             </Field>
             <Field label="Scheduling link" hint="Optional. Included in texts when set (https://...).">
               <input className="field" name="scheduling_url" defaultValue={account.schedulingUrl ?? ""} />
@@ -485,11 +551,14 @@ export default async function SettingsPage({
             </Field>
 
             <p className="t-eyebrow settings-group-title">Voice</p>
-            <Field
-              label="Greeting recording URL"
-              hint="Optional audio file (https://... .mp3/.wav). When set, this recording plays to callers and the text greeting below is ignored."
-            >
-              <input className="field" name="missed_call_greeting_audio_url" defaultValue={account.missedCallGreetingAudioUrl ?? ""} placeholder="https://www.relay-nw.com/audio/greeting.mp3" />
+            <Field label="Greeting preference">
+              <select className="field" name="greeting_preference" defaultValue={account.greetingPreference}>
+                <option value="generated">Use a generated voice greeting</option>
+                <option value="recorded">Record my own greeting</option>
+              </select>
+            </Field>
+            <Field label="Recorded greeting" hint="Record, stop, then play it back. Relay converts it to a phone-ready WAV file.">
+              <GreetingRecorder initialUrl={account.missedCallGreetingAudioUrl} />
             </Field>
             <Field
               label="Voicemail greeting (text-to-speech)"

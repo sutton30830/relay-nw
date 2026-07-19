@@ -5,9 +5,15 @@ export type SetupRequestStatus = "new" | "contacted" | "onboarded" | "closed";
 export type SetupRequest = {
   id: string;
   name: string | null;
+  business_name: string | null;
+  owner_name: string | null;
+  owner_email: string | null;
   phone: string;
+  business_type: string | null;
+  public_business_number: string | null;
   message: string | null;
   status: SetupRequestStatus;
+  account_id: string | null;
   created_at: string;
 };
 
@@ -18,7 +24,12 @@ const SETUP_REQUEST_STATUSES = new Set<SetupRequestStatus>(["new", "contacted", 
 // leads inbox.
 export async function createSetupRequest(input: {
   name?: string | null;
+  businessName: string;
+  ownerName: string;
+  ownerEmail: string;
   phone: string;
+  businessType: string;
+  publicBusinessNumber: string;
   message?: string | null;
   submitterHash?: string | null;
 }) {
@@ -28,7 +39,12 @@ export async function createSetupRequest(input: {
 
   const { error } = await supabaseAdmin.from("setup_requests").insert({
     name: input.name ?? null,
+    business_name: input.businessName,
+    owner_name: input.ownerName,
+    owner_email: input.ownerEmail.trim().toLowerCase(),
     phone: input.phone,
+    business_type: input.businessType,
+    public_business_number: input.publicBusinessNumber,
     message: input.message ?? null,
     submitter_hash: input.submitterHash ?? null,
     status: "new",
@@ -40,7 +56,7 @@ export async function createSetupRequest(input: {
 export async function listSetupRequests(status?: SetupRequestStatus | "all") {
   let query = supabaseAdmin
     .from("setup_requests")
-    .select("id, name, phone, message, status, created_at")
+    .select("id, name, business_name, owner_name, owner_email, phone, business_type, public_business_number, message, status, account_id, created_at")
     .order("created_at", { ascending: false })
     .limit(100);
 
@@ -64,6 +80,24 @@ export async function updateSetupRequestStatus(id: string, status: SetupRequestS
     .update({ status })
     .eq("id", id);
 
+  throwIfSupabaseError(error);
+}
+
+export async function getSetupRequestById(id: string) {
+  const { data, error } = await supabaseAdmin
+    .from("setup_requests")
+    .select("id, name, business_name, owner_name, owner_email, phone, business_type, public_business_number, message, status, account_id, created_at")
+    .eq("id", id)
+    .maybeSingle();
+  throwIfSupabaseError(error);
+  return data as SetupRequest | null;
+}
+
+export async function markSetupRequestOnboarded(id: string, accountId: string) {
+  const { error } = await supabaseAdmin
+    .from("setup_requests")
+    .update({ status: "onboarded", account_id: accountId })
+    .eq("id", id);
   throwIfSupabaseError(error);
 }
 

@@ -46,6 +46,7 @@ export function getOpsLifecycle(input: OpsLifecycleInput): OpsLifecycle {
   else if (input.onboardingStatus === "carrier_review" || input.onboardingStatus === "carrier_attention") stage = "carrier_review";
   else if (input.onboardingStatus === "ready_to_activate") stage = "ready_to_activate";
   else if (input.onboardingStatus === "requirements_needed" || input.onboardingStatus === "waiting_on_customer") stage = "kickoff";
+  else if (input.onboardingStatus === "ready_for_carrier") stage = "setting_up";
   else stage = "setting_up";
 
   const copy: Record<OpsLifecycleStage, Omit<OpsLifecycle, "stage" | "daysInStage">> = {

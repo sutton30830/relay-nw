@@ -10,6 +10,8 @@ import {
   billingUpdateFromSubscription,
   getStripeEventIdentity,
   mapStripeSubscriptionStatus,
+  retrieveStripePaymentIntent,
+  retrieveStripeSetupIntent,
   retrieveStripeSubscription,
   stripeSubscriptionSnapshot,
   type StripeEvent,
@@ -25,6 +27,7 @@ import {
   getAccountConfigByAccountId,
   resolveAccountIdByStripeCustomerId,
   resolveAccountIdByStripeSubscriptionId,
+  resolveAccountIdBySetupFeePaymentIntentId,
   updateAccountBillingRecord,
 } from "@/lib/supabase";
 
@@ -32,12 +35,18 @@ export const dynamic = "force-dynamic";
 
 const SUPPORTED_STRIPE_EVENTS = new Set([
   "checkout.session.completed",
+  "checkout.session.expired",
   "customer.subscription.created",
   "customer.subscription.updated",
   "customer.subscription.deleted",
   "invoice.payment_failed",
   "invoice.payment_action_required",
   "invoice.paid",
+  "charge.refunded",
+  "refund.updated",
+  "charge.dispute.created",
+  "charge.dispute.closed",
+  "customer.deleted",
 ]);
 
 function sanitizedErrorCode(error: unknown) {
@@ -52,6 +61,7 @@ async function resolveStripeAccount(input: {
   stripeSubscriptionId: string | null;
   stripeCustomerId: string | null;
   metadataAccountId: string | null;
+  stripePaymentIntentId: string | null;
 }) {
   const bySubscription = await resolveAccountIdByStripeSubscriptionId(input.stripeSubscriptionId);
   if (bySubscription) {
@@ -62,6 +72,9 @@ async function resolveStripeAccount(input: {
   if (byCustomer) {
     return { accountId: byCustomer, method: "stored_customer" };
   }
+
+  const byPayment = await resolveAccountIdBySetupFeePaymentIntentId(input.stripePaymentIntentId);
+  if (byPayment) return { accountId: byPayment, method: "stored_setup_payment" };
 
   if (input.metadataAccountId && await accountExists(input.metadataAccountId)) {
     return { accountId: input.metadataAccountId, method: "metadata" };
@@ -270,6 +283,69 @@ export async function POST(request: Request) {
 
     const accountContext = { ...markContext, accountId: resolution.accountId };
 
+    if (identity.eventType === "customer.deleted") {
+      await updateAccountBillingRecord(resolution.accountId, {
+        stripeCustomerId: null,
+        stripeSubscriptionId: null,
+        stripePriceId: null,
+        stripeSubscriptionStatus: null,
+        billingStatus: "canceled",
+        cancelAtPeriodEnd: false,
+        canceledAt: new Date().toISOString(),
+      });
+      await markStripeEventProcessed(accountContext);
+      return Response.json({ received: true }, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    if (identity.eventType === "checkout.session.expired") {
+      const existing = await getAccountBillingRecord(resolution.accountId);
+      if (
+        checkoutChargeType(identity.object) === "setup_fee" &&
+        existing.setupFeeCheckoutSessionId === identity.object.id &&
+        existing.setupFeeStatus === "due"
+      ) {
+        await updateAccountBillingRecord(resolution.accountId, { setupFeeCheckoutSessionId: null });
+      }
+      await markStripeEventProcessed(accountContext);
+      return Response.json({ received: true }, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    if (
+      identity.eventType === "charge.refunded" ||
+      identity.eventType === "refund.updated" ||
+      identity.eventType === "charge.dispute.created" ||
+      identity.eventType === "charge.dispute.closed"
+    ) {
+      if (!identity.stripePaymentIntentId) {
+        await markStripeEventIgnored({ ...accountContext, reason: "setup_payment_intent_unavailable" });
+        return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
+      }
+      const payment = await retrieveStripePaymentIntent(identity.stripePaymentIntentId);
+      const disputeStatus = identity.eventType.startsWith("charge.dispute.")
+        ? typeof identity.object.status === "string" ? identity.object.status : identity.eventType.endsWith("created") ? "needs_response" : null
+        : null;
+      const chargedBack = identity.eventType === "charge.dispute.closed" && disputeStatus === "lost";
+      const disputed = identity.eventType === "charge.dispute.created" || payment.disputed;
+      const fullyRefunded = payment.amountRefunded >= Math.max(payment.amountReceived, payment.amount);
+      const setupFeeStatus = chargedBack
+        ? "charged_back" as const
+        : disputed
+          ? "disputed" as const
+          : fullyRefunded
+            ? "refunded" as const
+            : payment.amountRefunded > 0
+              ? "partially_refunded" as const
+              : "paid" as const;
+      await updateAccountBillingRecord(resolution.accountId, {
+        setupFeeStatus,
+        setupFeeRefundedCents: payment.amountRefunded,
+        setupFeeRefundedAt: payment.amountRefunded > 0 || chargedBack ? new Date().toISOString() : null,
+        setupFeeDisputeStatus: disputeStatus,
+      });
+      await markStripeEventProcessed(accountContext);
+      return Response.json({ received: true }, { headers: { "Cache-Control": "no-store" } });
+    }
+
     if (identity.eventType === "checkout.session.completed") {
       const association = getCheckoutAssociation(identity.object);
       if (checkoutChargeType(identity.object) === "setup_fee") {
@@ -284,11 +360,14 @@ export async function POST(request: Request) {
           setupFeePaymentIntentId: association.paymentIntentId,
           setupFeePaidAt: new Date().toISOString(),
         } as const;
+        const payment = association.paymentIntentId
+          ? await retrieveStripePaymentIntent(association.paymentIntentId)
+          : null;
         await updateAccountBillingRecord(
           resolution.accountId,
           association.customerId
-            ? { ...setupFeeUpdate, stripeCustomerId: association.customerId }
-            : setupFeeUpdate,
+            ? { ...setupFeeUpdate, stripeCustomerId: association.customerId, stripePaymentMethodId: payment?.paymentMethodId ?? null }
+            : { ...setupFeeUpdate, stripePaymentMethodId: payment?.paymentMethodId ?? null },
         );
         await markStripeEventProcessed({
           ...accountContext,
@@ -303,8 +382,14 @@ export async function POST(request: Request) {
           return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
         }
 
+        const setup = await retrieveStripeSetupIntent(association.setupIntentId);
+        if (!setup.paymentMethodId) {
+          await markStripeEventIgnored({ ...accountContext, reason: "save_card_missing_payment_method" });
+          return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
+        }
         await updateAccountBillingRecord(resolution.accountId, {
           stripeCustomerId: association.customerId,
+          stripePaymentMethodId: setup.paymentMethodId,
         });
         await markStripeEventProcessed({ ...accountContext, stripeCustomerId: association.customerId });
         return Response.json({ received: true }, { headers: { "Cache-Control": "no-store" } });

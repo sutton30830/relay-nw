@@ -37,6 +37,7 @@ function validForm(overrides = {}) {
   return new URLSearchParams({
     businessName: "Demo Plumbing",
     ownerName: "Alex Owner",
+    ownerEmail: "alex@example.com",
     phone: "(206) 555-0123",
     businessType: "Plumbing",
     currentBusinessNumber: "(206) 555-0100",

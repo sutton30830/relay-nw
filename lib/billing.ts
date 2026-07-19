@@ -5,6 +5,7 @@ export type AccountBillingStatus = "not_started" | "trialing" | "active" | "past
 export type AccountOnboardingStatus =
   | "requirements_needed"
   | "waiting_on_customer"
+  | "ready_for_carrier"
   | "carrier_review"
   | "carrier_attention"
   | "ready_for_live_test"
@@ -39,6 +40,7 @@ export type AccountBillingRecord = {
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
   stripePriceId: string | null;
+  stripePaymentMethodId: string | null;
   stripeSubscriptionStatus: StripeSubscriptionStatus | null;
   trialEndsAt: string | null;
   currentPeriodEnd: string | null;
@@ -52,12 +54,15 @@ export type AccountBillingRecord = {
   canceledAt: string | null;
   onboardingStatusUpdatedAt: string | null;
   setupFeeCents: number;
-  setupFeeStatus: "due" | "paid" | "waived" | "refunded";
+  setupFeeStatus: "due" | "paid" | "waived" | "partially_refunded" | "refunded" | "disputed" | "charged_back";
   setupFeeCheckoutSessionId: string | null;
   setupFeePaymentIntentId: string | null;
   setupFeePaidAt: string | null;
   setupFeeWaivedAt: string | null;
   setupFeeWaiverReason: string | null;
+  setupFeeRefundedAt: string | null;
+  setupFeeRefundedCents: number;
+  setupFeeDisputeStatus: string | null;
   monthlyPriceCents: number;
 };
 
@@ -124,6 +129,7 @@ const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   stripeCustomerId: null,
   stripeSubscriptionId: null,
   stripePriceId: null,
+  stripePaymentMethodId: null,
   stripeSubscriptionStatus: null,
   trialEndsAt: null,
   currentPeriodEnd: null,
@@ -144,6 +150,9 @@ const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   setupFeePaidAt: null,
   setupFeeWaivedAt: null,
   setupFeeWaiverReason: null,
+  setupFeeRefundedAt: null,
+  setupFeeRefundedCents: 0,
+  setupFeeDisputeStatus: null,
   monthlyPriceCents: 9900,
 };
 
@@ -158,7 +167,7 @@ export function isSetupFeeSettled(
   // Older callers and pre-commercial rows have no setup-fee field; preserve
   // their explicit pilot behavior. A prior paid activation also proves that
   // this one-time fee was already settled and must not be charged again.
-  return Boolean(firstPaidAt) || status == null || status === "paid" || status === "waived";
+  return Boolean(firstPaidAt) || status == null || status === "paid" || status === "waived" || status === "partially_refunded";
 }
 
 export function normalizeBillingStatus(value: string | null | undefined): AccountBillingStatus {
@@ -180,6 +189,7 @@ export function normalizeOnboardingStatus(value: string | null | undefined): Acc
   if (
     value === "requirements_needed" ||
     value === "waiting_on_customer" ||
+    value === "ready_for_carrier" ||
     value === "carrier_review" ||
     value === "carrier_attention" ||
     value === "ready_for_live_test" ||

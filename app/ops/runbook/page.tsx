@@ -5,9 +5,9 @@ export const dynamic = "force-dynamic";
 
 const JOBS = [
   ["Move a customer forward", "Start at Pipeline. Each card has one next step: kickoff, setup, carrier review, ready, or active. The day count is for operator context, not a promise to the customer."],
-  ["Handle money", "Collect the $150 kickoff fee, waive it with intent, then activate the $99 only when the customer is ready. Stripe is the source of truth for subscriptions; Relay records the decision and audit trail."],
+  ["Handle money", "Collect or waive the $150 kickoff fee, then start $99 billing from the saved card only when setup is ready. Stripe is the source of truth; refunds are real and daily reconciliation repairs missed events."],
   ["Track the customer", "Use Customers for the commercial ledger and open an account from any card. Keep diagnostics collapsed until a normal-language state points you there."],
-  ["Manage requests", "Requests are prospects, not leads. Review the intake, contact the owner, and move it through its small status set. Do not put prospect data in a customer inbox."],
+  ["Manage requests", "Requests are prospects, not leads. Accept and invite creates a separate customer tenant with the setup fee due; it never assigns a number or starts monthly billing."],
   ["Manage operators", "Team access is explicit. Super admins can invite, change roles, and revoke. Never revoke yourself, and never remove the last active super admin."],
 ];
 

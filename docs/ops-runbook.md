@@ -40,10 +40,12 @@ Run `npm run test:activation` locally before high-risk releases. This is determi
 ### Assisted Onboarding Queue
 
 - Open `/ops/setup-requests` as an active platform operator.
-- Move each request through `New`, `Contacted`, `Onboarded`, or `Closed`.
-- Provision real customer accounts with `npm run provision:account`; do not manually recreate the same rows from memory.
+- New requests must include the owner login email. `Accept and invite` creates a separate tenant, owner membership, and secure password-setup email in one audited action.
+- Acceptance leaves the `$150` setup fee due, assigns no Relay number, and starts no monthly billing. Never reuse an operator account as the customer account.
+- Use `Resend account invite` if delivery fails. Relay sends the custom password email through Resend so Supabase's hosted-email rate limit is not part of normal onboarding.
 - Verify every customer account with `npm run verify:account -- <slug>` before handing over access.
-- Use `/setup` with the owner for forwarding instructions, forwarding health checks, SMS test, and setup status.
+- The customer enters their display name, owner/admin identity, notification contact, public number, business type, call mode, hours, links, notes, greeting, and carrier registration details. A Relay/Twilio number is never customer-supplied profile data.
+- Assign an owned Twilio number from the account page after acceptance, or deliberately purchase one there. Purchasing creates a real Twilio charge.
 - When customer requirements are requested, use `/ops/billing` to start or reopen the customer-delay clock. This marks the account `waiting_on_customer` with a `requirements_due_at` 14 days out and records an audit event.
 - `/api/cron/onboarding-deadlines` handles day-3/day-7 reminders, pauses incomplete onboarding after day 14, and closes incomplete onboarding after day 30.
 - Carrier review and carrier attention are not customer-delay states; do not penalize the owner for carrier-caused delays.
@@ -53,12 +55,14 @@ Run `npm run test:activation` locally before high-risk releases. This is determi
 
 - New accounts start with a one-time `$150 setup fee` due. Existing pilot/house accounts are backfilled as explicitly waived by the Phase 7C migration.
 - A pilot waiver must be made from the selected account in `/ops/billing`, include a short reason, and remain visible in the account audit history. A waiver never starts monthly billing.
-- Monthly billing is `$99/month` and is allowed only after call capture and A2P registration are ready. The owner or operator may open Stripe Checkout only after the setup fee is paid or waived.
+- Monthly billing is `$99/month` and is allowed only after call capture and carrier registration are ready. `Start $99 billing` creates the subscription from the card saved during kickoff; it does not start from elapsed time.
 - Customer delay and carrier delay are separate: do not start the customer deadline clock for `carrier_review` or `carrier_attention`.
 - Standard monthly Checkout has no automatic trial. Use the existing bounded manual trial controls only for an intentional, audited exception.
 - Configure a separate Stripe one-time Price for `STRIPE_SETUP_FEE_PRICE_ID`. The existing `STRIPE_PRICE_ID` remains the recurring monthly Price.
-- The Stripe webhook must include `checkout.session.completed`; setup-fee sessions carry `metadata[charge_type]=setup_fee` and never mark a subscription active.
-- If setup-fee payment succeeds, confirm the account shows `setup_fee_status=paid`. If it is waived, confirm `setup_fee_status=waived` and the waiver reason. If monthly billing is active, confirm the subscription event separately.
+- Stripe webhooks are the immediate source for payments, cancellations, refunds, disputes, and deleted customers. `/api/cron/billing-reconciliation` re-reads all connected Stripe records daily as a repair path when an event is delayed or missed.
+- If setup-fee payment succeeds, confirm `paid`. A partial/full refund or dispute must appear after its Stripe event or after `Sync with Stripe`. Never change a payment to refunded only in Relay.
+- Only a super admin can issue a real setup-fee refund from Relay. Waivers and refunds are different actions and remain separately audited.
+- Customers manage payment methods, invoices, and cancellation through Stripe Customer Portal from Settings. A deleted or wrong-mode Stripe customer is cleared and presented as a relink path instead of an error loop.
 
 ### SMS Failed, Undelivered, or Not Sent
 
