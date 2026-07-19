@@ -230,6 +230,14 @@ test("setup fee is an explicit prerequisite for monthly activation billing", () 
   assert.deepEqual(waived, { ok: true });
 });
 
+test("an explicit refund or chargeback overrides a historical first payment", () => {
+  assert.equal(billing.isSetupFeeSettled("refunded", "2026-07-01T00:00:00.000Z"), false);
+  assert.equal(billing.isSetupFeeSettled("charged_back", "2026-07-01T00:00:00.000Z"), false);
+  assert.equal(billing.isSetupFeeSettled("disputed", "2026-07-01T00:00:00.000Z"), false);
+  assert.equal(billing.isSetupFeeSettled("partially_refunded", "2026-07-01T00:00:00.000Z"), true);
+  assert.equal(billing.isSetupFeeSettled(null, "2026-07-01T00:00:00.000Z"), true);
+});
+
 test("commercial lifecycle makes setup fee the next owner action", () => {
   const lifecycle = billing.computeBillingLifecycle({
     billing: billingRecord({ setupFeeStatus: "due" }),

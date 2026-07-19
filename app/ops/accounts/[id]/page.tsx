@@ -2,7 +2,7 @@ import Link from "next/link";
 import { OpsHeader } from "@/app/ops/_components/ops-header";
 import { Icon } from "@/components/icon";
 import { requirePlatformOperator } from "@/lib/auth";
-import { canApplyOperatorBillingOverride } from "@/lib/billing";
+import { canApplyOperatorBillingOverride, isSetupFeeSettled } from "@/lib/billing";
 import { daysUntil } from "@/lib/onboarding-deadlines";
 import { getOpsLifecycle } from "@/lib/ops-lifecycle";
 import {
@@ -175,8 +175,9 @@ export default async function OpsAccountPage({
   const canStartCustomerDelay = canMoveAccountToCustomerDelay(billing.onboardingStatus, billing);
 
   // Kickoff state, spelled out before any buttons.
-  const kickoffSettled = billing.setupFeeStatus === "paid" || billing.setupFeeStatus === "waived" ||
-    billing.setupFeeStatus === "partially_refunded" || Boolean(billing.firstPaidAt);
+  const kickoffSettled = isSetupFeeSettled(billing.setupFeeStatus, billing.firstPaidAt);
+  const kickoffCollectible = billing.setupFeeStatus === "due" || billing.setupFeeStatus === "refunded" ||
+    billing.setupFeeStatus === "charged_back";
   const kickoffState = billing.setupFeeStatus === "paid"
     ? "Paid"
     : billing.setupFeeStatus === "waived"
@@ -261,15 +262,15 @@ export default async function OpsAccountPage({
         <section className="panel setup-panel" aria-label="Kickoff fee">
           <div className="setup-panel__head">
             <p className="t-eyebrow">Kickoff · $150</p>
-            <h2>{kickoffState === "Due" ? "Collect the $150, or waive it deliberately." : `Setup fee: ${kickoffState.toLowerCase()}.`}</h2>
+            <h2>{kickoffCollectible ? "Collect the $150, or waive it deliberately." : `Setup fee: ${kickoffState.toLowerCase()}.`}</h2>
             <p className="setup-copy">Separate from the $99 monthly plan. Saving a card never starts monthly billing.</p>
           </div>
           {kickoffMessage ? (
             <div className={notices.kickoff === "failed" ? "intake-error settings-notice" : "settings-notice"} role="status">{kickoffMessage}</div>
           ) : null}
-          {kickoffState === "Due" ? (
+          {kickoffCollectible ? (
             <div className="ops-billing-actions">
-              <form action="/api/ops/kickoff" method="post"><input type="hidden" name="account_slug" value={summary.accountSlug} /><button className="btn btn-primary" name="action" value="send_invoice">Email $150 payment link</button></form>
+              <form action="/api/ops/kickoff" method="post"><input type="hidden" name="account_slug" value={summary.accountSlug} /><button className="btn btn-primary" name="action" value="send_invoice">{billing.setupFeeStatus === "due" ? "Email $150 payment link" : "Collect $150 again"}</button></form>
               <form action="/api/ops/kickoff" method="post"><input type="hidden" name="account_slug" value={summary.accountSlug} /><button className="btn btn-secondary" name="action" value="waive_save_card">Waive + email card link</button></form>
               <form action="/api/ops/kickoff" method="post"><input type="hidden" name="account_slug" value={summary.accountSlug} /><button className="btn btn-secondary" name="action" value="waive_entirely">Waive entirely</button></form>
             </div>
@@ -277,6 +278,8 @@ export default async function OpsAccountPage({
             <p className="setup-panel__note">
               {billing.setupFeeStatus === "waived"
                 ? "Waived — recorded in the audit trail."
+                : billing.setupFeeStatus === "disputed"
+                  ? "The payment is disputed in Stripe. Sync after Stripe resolves the dispute."
                 : `Settled${billing.firstPaidAt ? ` · first paid ${formatDate(billing.firstPaidAt)}` : ""}.`}
             </p>
           )}

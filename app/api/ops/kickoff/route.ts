@@ -77,7 +77,10 @@ export async function POST(request: Request) {
         ownerEmail: billingEmail,
         stripeCustomerId: account.stripeCustomerId,
         setupFeeCents: account.setupFeeCents,
-        idempotencyKey: `relay-kickoff-fee:${account.accountId}:${account.setupFeeCheckoutSessionId ?? "new"}`,
+        // A refund/chargeback must create a new Checkout attempt. Including
+        // the current state and its timestamp avoids Stripe returning the old,
+        // already-completed session while remaining stable across double-clicks.
+        idempotencyKey: `relay-kickoff-fee:${account.accountId}:${account.setupFeeStatus}:${account.setupFeeRefundedAt ?? account.setupFeeCheckoutSessionId ?? "new"}`,
       });
       if (!checkout.url) throw new Error("Stripe returned no setup-fee checkout URL.");
       await updateAccountBillingRecord(account.accountId, { setupFeeCheckoutSessionId: checkout.id });

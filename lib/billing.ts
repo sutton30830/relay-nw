@@ -164,10 +164,15 @@ export function isSetupFeeSettled(
   status: AccountBillingRecord["setupFeeStatus"] | null | undefined,
   firstPaidAt?: string | null,
 ) {
-  // Older callers and pre-commercial rows have no setup-fee field; preserve
-  // their explicit pilot behavior. A prior paid activation also proves that
-  // this one-time fee was already settled and must not be charged again.
-  return Boolean(firstPaidAt) || status == null || status === "paid" || status === "waived" || status === "partially_refunded";
+  // An explicit current Stripe state wins over historical payment facts. A
+  // fully refunded, disputed, or charged-back fee must not remain settled just
+  // because it was paid once. Older pre-commercial rows with no setup-fee
+  // field still preserve their prior paid-activation behavior.
+  if (status != null) {
+    return status === "paid" || status === "waived" || status === "partially_refunded";
+  }
+
+  return Boolean(firstPaidAt) || status == null;
 }
 
 export function normalizeBillingStatus(value: string | null | undefined): AccountBillingStatus {

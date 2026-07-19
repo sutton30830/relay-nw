@@ -146,7 +146,11 @@ function billingSummary(billing: AccountBillingRecord, lifecycle: BillingLifecyc
       : "Finish setup before restarting billing.";
   }
 
-  if (billing.setupFeeStatus === "due") {
+  if (
+    billing.setupFeeStatus === "due" ||
+    billing.setupFeeStatus === "refunded" ||
+    billing.setupFeeStatus === "charged_back"
+  ) {
     return "Pay the one-time $150 setup fee so Relay can finish configuring this account. Monthly billing starts only after A2P approval and activation.";
   }
 
@@ -303,9 +307,7 @@ function BillingSection({
         <div>
           <dt>Setup fee</dt>
           <dd>
-            {billing.firstPaidAt
-              ? "Settled through prior activation"
-              : billing.setupFeeStatus === "paid"
+            {billing.setupFeeStatus === "paid"
               ? `Paid${setupFeeDate ? ` ${setupFeeDate}` : ""}`
               : billing.setupFeeStatus === "waived"
                 ? "Waived"
@@ -317,7 +319,9 @@ function BillingSection({
                     ? "Payment disputed"
                     : billing.setupFeeStatus === "charged_back"
                       ? "Charged back"
-                  : "$150 due"}
+                  : billing.firstPaidAt
+                    ? "Settled through prior activation"
+                    : "$150 due"}
           </dd>
         </div>
       </dl>
