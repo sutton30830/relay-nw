@@ -5901,3 +5901,63 @@ code {
 .undo-toast__dismiss:hover {
   color: var(--panel);
 }
+
+/* Customer journey rail: five phases, whose turn, one glance. */
+.journey {
+  margin-bottom: 16px;
+}
+.journey__rail {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.journey__phase {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  border-top: 3px solid var(--line);
+  padding-top: 10px;
+}
+.journey__phase--done { border-top-color: var(--good); }
+.journey__phase--current { border-top-color: var(--brand); }
+.journey__marker {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 700;
+}
+.journey__phase--done .journey__marker { border-color: var(--good); background: var(--good-soft); color: var(--good); }
+.journey__phase--current .journey__marker { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); }
+.journey__label { font-size: 13px; font-weight: 700; }
+.journey__phase--upcoming .journey__label { color: var(--ink-4); font-weight: 600; }
+.journey__detail { color: var(--ink-4); font-size: 11.5px; line-height: 1.45; }
+.journey__phase--upcoming .journey__detail { display: none; }
+.journey__turn {
+  width: fit-content;
+  margin-top: 2px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  padding: 1px 8px;
+  color: var(--ink-3);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.journey__turn--you { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); }
+@media (max-width: 720px) {
+  .journey__rail { grid-template-columns: 1fr; gap: 6px; }
+  .journey__phase { grid-template-columns: auto 1fr; align-items: baseline; column-gap: 10px; border-top: 0; border-left: 3px solid var(--line); padding: 4px 0 4px 12px; }
+  .journey__phase--done { border-left-color: var(--good); }
+  .journey__phase--current { border-left-color: var(--brand); }
+  .journey__detail, .journey__turn { grid-column: 2; }
+  .journey__phase--done .journey__detail { display: none; }
+}

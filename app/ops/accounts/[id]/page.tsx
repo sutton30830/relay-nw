@@ -127,7 +127,9 @@ export default async function OpsAccountPage({
     billing_action?: string;
     onboarding?: string;
     carrier?: string;
+    carrier_profile?: string;
     number?: string;
+    profile?: string;
   }>;
 }) {
   const operator = await requirePlatformOperator();
@@ -401,13 +403,66 @@ export default async function OpsAccountPage({
           ) : null}
         </section>
 
+        {/* Concierge onboarding: Relay can enter the customer's details from the
+            setup call, so nothing waits on customer homework. */}
+        <section className="panel setup-panel" aria-label="Business details">
+          <div className="setup-panel__head">
+            <p className="t-eyebrow">Business details</p>
+            <h2>{runtime?.businessName ?? summary.businessName}</h2>
+            <p className="setup-copy">Enter or correct these with the customer on the phone. The customer sees the same data in their Settings.</p>
+          </div>
+          {notices.profile ? (
+            <div className={notices.profile === "saved" ? "settings-notice" : "intake-error settings-notice"} role="status">
+              {notices.profile === "saved" ? "Business details saved on the customer's behalf." : notices.profile === "invalid" ? "Check the business name, email, and URLs." : "Save failed — check logs."}
+            </div>
+          ) : null}
+          {operator.role !== "support" ? (
+            <details className="ops-manual" open={Boolean(notices.profile && notices.profile !== "saved")}>
+              <summary>Edit business details as Relay</summary>
+              <form action="/api/ops/profile" method="post" className="setup-panel__action">
+                <input type="hidden" name="account_slug" value={summary.accountSlug} />
+                <div className="lead-controls">
+                  <input className="field" name="business_name" required defaultValue={runtime?.businessName ?? summary.businessName} placeholder="Business display name" aria-label="Business display name" />
+                  <input className="field" name="owner_name" defaultValue={runtime?.ownerName ?? ""} placeholder="Owner / admin name" aria-label="Owner name" />
+                  <input className="field" name="business_type" defaultValue={runtime?.businessType ?? ""} placeholder="Business type (e.g. Plumbing)" aria-label="Business type" />
+                </div>
+                <div className="lead-controls">
+                  <input className="field" type="email" name="owner_email" defaultValue={runtime?.ownerEmail ?? summary.ownerEmail ?? ""} placeholder="Notification email" aria-label="Notification email" />
+                  <input className="field" name="owner_phone_number" defaultValue={runtime?.ownerPhoneNumber ?? ""} placeholder="Owner alert phone" aria-label="Owner alert phone" />
+                  <input className="field" name="public_business_number" defaultValue={runtime?.publicBusinessNumber ?? ""} placeholder="Existing public business number" aria-label="Public business number" />
+                </div>
+                <div className="lead-controls">
+                  <select className="field" name="call_mode" defaultValue={runtime?.callMode ?? "forwarding"} aria-label="Call mode">
+                    <option value="forwarding">Forwarding (keep their number)</option>
+                    <option value="direct">Direct (Relay number is public)</option>
+                  </select>
+                  <input className="field" name="scheduling_url" defaultValue={runtime?.schedulingUrl ?? ""} placeholder="Scheduling link (optional)" aria-label="Scheduling link" />
+                </div>
+                <button className="btn btn-primary" type="submit">Save for customer</button>
+                <p className="setup-panel__note">Audited as entered by Relay. Completing these finishes the customer&apos;s &ldquo;Your details&rdquo; phase.</p>
+              </form>
+            </details>
+          ) : null}
+        </section>
+
         <section className="panel setup-panel" aria-label="Carrier registration">
           <div className="setup-panel__head">
             <p className="t-eyebrow">Carrier registration</p>
-            <h2>{carrierProfile?.status ? carrierProfile.status.replaceAll("_", " ") : "Waiting on customer information"}</h2>
-            <p className="setup-copy">Customer-entered legal and consent information stays separate from the Relay number and billing records.</p>
+            <h2>{carrierProfile?.status ? carrierProfile.status.replaceAll("_", " ") : "Waiting on registration information"}</h2>
+            <p className="setup-copy">Legal and consent information stays separate from the Relay number and billing records. Relay can enter it with the customer.</p>
           </div>
           {notices.carrier ? <div className="settings-notice" role="status">Carrier status updated: {notices.carrier.replaceAll("_", " ")}.</div> : null}
+          {notices.carrier_profile ? (
+            <div className={notices.carrier_profile === "saved" ? "settings-notice" : "intake-error settings-notice"} role="status">
+              {notices.carrier_profile === "saved"
+                ? "Carrier registration information saved on the customer's behalf."
+                : notices.carrier_profile === "incomplete"
+                  ? "Missing required fields — representative, use case, consent flow, and at least two sample messages."
+                  : notices.carrier_profile === "registration_id_required"
+                    ? "An EIN registration number is required when the business has an EIN."
+                    : "Check the URLs — they must start with https://."}
+            </div>
+          ) : null}
           {carrierProfile ? (
             <dl className="webhook-event__meta">
               <div><dt>Business registration</dt><dd>{carrierProfile.hasEin ? `EIN ending ${carrierProfile.registrationIdLast4 ?? "not saved"}` : "Sole proprietor"}</dd></div>
@@ -415,6 +470,39 @@ export default async function OpsAccountPage({
               <div><dt>Consent flow</dt><dd>{carrierProfile.optInFlow ? "provided" : "missing"}</dd></div>
               <div><dt>Sample messages</dt><dd>{carrierProfile.sampleMessages.length}</dd></div>
             </dl>
+          ) : null}
+          {operator.role !== "support" ? (
+            <details className="ops-manual" open={Boolean(notices.carrier_profile && notices.carrier_profile !== "saved")}>
+              <summary>{carrierProfile ? "Edit registration information as Relay" : "Enter registration information as Relay"}</summary>
+              <form action="/api/ops/carrier-profile" method="post" className="setup-panel__action">
+                <input type="hidden" name="account_slug" value={summary.accountSlug} />
+                <div className="lead-controls">
+                  <select className="field" name="has_ein" defaultValue={carrierProfile?.hasEin === false ? "no" : "yes"} aria-label="Has EIN">
+                    <option value="yes">Business has an EIN</option>
+                    <option value="no">Sole proprietor (no EIN)</option>
+                  </select>
+                  <input className="field" name="registration_id" defaultValue="" placeholder={carrierProfile?.registrationIdLast4 ? `EIN on file (…${carrierProfile.registrationIdLast4}) — enter to replace` : "EIN (leave blank for sole proprietor)"} aria-label="EIN" />
+                </div>
+                <div className="lead-controls">
+                  <input className="field" name="representative_first_name" required defaultValue={carrierProfile?.representativeFirstName ?? runtime?.ownerName?.split(" ")[0] ?? ""} placeholder="Representative first name" aria-label="Representative first name" />
+                  <input className="field" name="representative_last_name" required defaultValue={carrierProfile?.representativeLastName ?? ""} placeholder="Last name" aria-label="Representative last name" />
+                  <input className="field" name="representative_title" defaultValue={carrierProfile?.representativeTitle ?? "Owner"} placeholder="Job title" aria-label="Representative title" />
+                </div>
+                <div className="lead-controls">
+                  <input className="field" name="representative_mobile" required defaultValue={carrierProfile?.representativeMobile ?? runtime?.ownerPhoneNumber ?? ""} placeholder="Mobile for verification" aria-label="Representative mobile" />
+                  <input className="field" type="email" name="representative_email" required defaultValue={carrierProfile?.representativeEmail ?? runtime?.ownerEmail ?? ""} placeholder="Representative email" aria-label="Representative email" />
+                </div>
+                <input className="field" name="messaging_use_case" required defaultValue={carrierProfile?.messagingUseCase ?? "Missed-call follow-up texts to customers who called this business and did not reach anyone."} aria-label="Messaging use case" />
+                <textarea className="field" name="opt_in_flow" required rows={2} defaultValue={carrierProfile?.optInFlow ?? "Customers call the business first; the reply text responds to their call. Every message includes STOP to opt out."} aria-label="Opt-in flow" />
+                <textarea className="field" name="sample_messages" required rows={3} defaultValue={carrierProfile?.sampleMessages?.join("\n") ?? "Sorry we missed your call — text us what you need and we'll get right back to you. Reply STOP to opt out.\nThanks for reaching out. I can call you shortly. Reply STOP to opt out."} aria-label="Sample messages (one per line)" />
+                <div className="lead-controls">
+                  <input className="field" type="url" name="privacy_policy_url" defaultValue={carrierProfile?.privacyPolicyUrl ?? ""} placeholder="Privacy policy URL (https://…)" aria-label="Privacy policy URL" />
+                  <input className="field" type="url" name="terms_url" defaultValue={carrierProfile?.termsUrl ?? ""} placeholder="Terms URL (https://…)" aria-label="Terms URL" />
+                </div>
+                <button className="btn btn-primary" type="submit">Save registration for customer</button>
+                <p className="setup-panel__note">Audited as entered by Relay. Marks the account ready for carrier submission.</p>
+              </form>
+            </details>
           ) : null}
           {operator.role !== "support" ? (
             <form action="/api/ops/carrier" method="post" className="setup-panel__action">

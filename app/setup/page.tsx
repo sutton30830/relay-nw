@@ -18,6 +18,7 @@ import {
 import { computeSetupReadiness, type A2pStatus } from "@/lib/readiness";
 import { formatRelativeAge } from "@/lib/report-metrics";
 import { isCustomerProfileComplete, missingCustomerProfileFields } from "@/lib/onboarding-profile";
+import { computeOwnerJourney } from "@/lib/owner-journey";
 
 export const dynamic = "force-dynamic";
 
@@ -194,6 +195,16 @@ export default async function SetupPage({
     lastRecoveredCallAt,
     forwardingLastPassedAt: forwardingHealth.lastPassedAt,
   });
+  const journey = computeOwnerJourney({
+    setupFeeStatus: billing.setupFeeStatus,
+    firstPaidAt: billing.firstPaidAt,
+    profileComplete: isProfileReady,
+    twilioNumberAssigned: Boolean(account.twilioPhoneNumber),
+    a2pStatus: carrierStatus,
+    billingStatus: billing.billingStatus,
+    activatedAt: billing.activatedAt,
+    callCaptureVerified: readiness.callCaptureReady,
+  });
   const billingReadiness = computeBillingReadiness({
     billing,
     setupReadiness: readiness,
@@ -220,6 +231,24 @@ export default async function SetupPage({
           title={account.businessName}
           subtitle="Connect your phone line, test missed-call forwarding, and make sure Relay can text from your number."
         />
+
+        {/* The journey: where you are, whose turn it is, in five phases. */}
+        <section className="journey" aria-label="Setup journey">
+          <ol className="journey__rail">
+            {journey.phases.map((phase, index) => (
+              <li key={phase.key} className={`journey__phase journey__phase--${phase.state}`} aria-current={phase.state === "current" ? "step" : undefined}>
+                <span className="journey__marker">{phase.state === "done" ? <Icon name="check" size={12} /> : index + 1}</span>
+                <span className="journey__label">{phase.label}</span>
+                <span className="journey__detail">{phase.detail}</span>
+                {phase.state === "current" && phase.turn !== "you" ? (
+                  <span className="journey__turn">Nothing needed from you</span>
+                ) : phase.state === "current" ? (
+                  <span className="journey__turn journey__turn--you">Your turn</span>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        </section>
 
         <section className={`readiness readiness--${readiness.state}`} aria-label="Relay status">
           <div className="readiness__main">
