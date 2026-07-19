@@ -526,11 +526,17 @@ export default async function OpsAccountPage({
               <p className="setup-copy">When Twilio&apos;s Trust Hub status changes, click the match here. Approve is what turns on texting and moves the customer forward.</p>
               <input className="field" name="status_detail" defaultValue={carrierProfile?.statusDetail ?? ""} placeholder="Owner-facing note (optional, shown to the customer)" />
               <div className="ops-billing-actions">
-                <button className="btn btn-secondary" name="action" value="submitted">Mark submitted</button>
-                <button className="btn btn-secondary" name="action" value="in_progress">In review</button>
-                <button className="btn btn-primary" name="action" value="approved">Approve</button>
-                <button className="btn btn-secondary" name="action" value="needs_changes">Needs changes</button>
-                <button className="btn btn-secondary" name="action" value="rejected">Rejected</button>
+                {([["submitted","Submitted"],["in_progress","In review"],["approved","Approved"],["needs_changes","Needs changes"],["rejected","Rejected"]] as const).map(([valueKey, label]) => (
+                  <button
+                    key={valueKey}
+                    className={`btn ${carrierProfile?.status === valueKey ? "btn-primary" : "btn-secondary"}`}
+                    name="action"
+                    value={valueKey}
+                    aria-pressed={carrierProfile?.status === valueKey}
+                  >
+                    {carrierProfile?.status === valueKey ? "✓ " : ""}{label}
+                  </button>
+                ))}
                 <button className="btn btn-secondary" name="action" value="ready_to_activate">Mark ready to activate (override)</button>
               </div>
             </form>
