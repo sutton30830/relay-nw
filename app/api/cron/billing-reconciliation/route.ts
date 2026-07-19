@@ -33,7 +33,7 @@ export async function GET(request: Request) {
 
   for (const summary of summaries) {
     const account = await getOpsBillingAccountBySlug(summary.accountSlug);
-    if (!account || (!account.setupFeePaymentIntentId && !account.stripeSubscriptionId)) continue;
+    if (!account || (!account.setupFeeCheckoutSessionId && !account.setupFeePaymentIntentId && !account.stripeSubscriptionId)) continue;
     try {
       const checked = await reconcileStripeBillingAccount(account);
       await recordAccountAuditEvents({
