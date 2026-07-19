@@ -28,6 +28,9 @@ export async function POST(request: Request) {
     approved: { profile: "approved", a2p: "approved", onboarding: "ready_for_live_test" },
     needs_changes: { profile: "needs_changes", a2p: "rejected", onboarding: "carrier_attention" },
     rejected: { profile: "rejected", a2p: "rejected", onboarding: "carrier_attention" },
+    // Operator override: skip straight to activatable when the operator has
+    // verified readiness out of band. Removes every go-live block.
+    ready_to_activate: { profile: "approved", a2p: "approved", onboarding: "ready_to_activate" },
   } as const;
   const next = mapping[action as keyof typeof mapping];
   if (!next) go(account.accountSlug, "invalid_action");

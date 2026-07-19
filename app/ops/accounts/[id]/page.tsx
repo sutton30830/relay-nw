@@ -438,6 +438,11 @@ export default async function OpsAccountPage({
                   </select>
                   <input className="field" name="scheduling_url" defaultValue={runtime?.schedulingUrl ?? ""} placeholder="Scheduling link (optional)" aria-label="Scheduling link" />
                 </div>
+                <div className="lead-controls">
+                  <input className="field" name="missed_call_voice_message" defaultValue={runtime?.missedCallVoiceMessage ?? ""} placeholder="Voicemail greeting (text-to-speech, optional)" aria-label="Voicemail greeting" />
+                  <input className="field" name="dial_timeout_seconds" type="number" min={5} max={60} defaultValue={runtime?.dialTimeoutSeconds ?? 18} aria-label="Ring seconds before voicemail" />
+                  <input className="field" name="voicemail_max_seconds" type="number" min={10} max={300} defaultValue={runtime?.voicemailMaxSeconds ?? 60} aria-label="Max voicemail seconds" />
+                </div>
                 <button className="btn btn-primary" type="submit">Save for customer</button>
                 <p className="setup-panel__note">Audited as entered by Relay. Completing these finishes the customer&apos;s &ldquo;Your details&rdquo; phase.</p>
               </form>
@@ -519,6 +524,7 @@ export default async function OpsAccountPage({
                 <button className="btn btn-primary" name="action" value="approved" disabled={!carrierProfile}>Approve</button>
                 <button className="btn btn-secondary" name="action" value="needs_changes" disabled={!carrierProfile}>Needs changes</button>
                 <button className="btn btn-secondary" name="action" value="rejected" disabled={!carrierProfile}>Rejected</button>
+                <button className="btn btn-secondary" name="action" value="ready_to_activate" disabled={!carrierProfile}>Mark ready to activate (override)</button>
               </div>
             </form>
           ) : null}

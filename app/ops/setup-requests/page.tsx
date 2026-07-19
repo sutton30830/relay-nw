@@ -75,6 +75,14 @@ function SetupRequestCard({ request, canAccept }: { request: SetupRequest; canAc
         </form>
       </div>
 
+      {/* The login email is the one field setup cannot proceed without — always
+          show it from the structured column, not just the parsed message. */}
+      <dl className="webhook-event__meta" style={{ marginTop: "var(--space-3)" }}>
+        <div>
+          <dt>Owner login email</dt>
+          <dd>{request.owner_email || "⚠ not provided — enter it below before accepting"}</dd>
+        </div>
+      </dl>
       {fields.length > 0 ? (
         <dl className="webhook-event__meta" style={{ marginTop: "var(--space-3)" }}>
           {fields.map((field) => (

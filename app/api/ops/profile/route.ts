@@ -57,6 +57,17 @@ export async function POST(request: Request) {
   if (ownerPhone) update.owner_phone_number = normalizePhoneNumber(ownerPhone);
   if (callMode === "forwarding" || callMode === "direct") update.call_mode = callMode;
 
+  const voiceMessage = value(form, "missed_call_voice_message", 600);
+  update.missed_call_voice_message = voiceMessage || null;
+  const dialTimeout = Number(value(form, "dial_timeout_seconds", 5));
+  if (Number.isInteger(dialTimeout) && dialTimeout >= 5 && dialTimeout <= 60) {
+    update.dial_timeout_seconds = dialTimeout;
+  }
+  const voicemailMax = Number(value(form, "voicemail_max_seconds", 5));
+  if (Number.isInteger(voicemailMax) && voicemailMax >= 10 && voicemailMax <= 300) {
+    update.voicemail_max_seconds = voicemailMax;
+  }
+
   try {
     await updateAccountSettings(account.accountId, update);
   } catch (error) {
