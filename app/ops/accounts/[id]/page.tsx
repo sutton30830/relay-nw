@@ -130,6 +130,7 @@ export default async function OpsAccountPage({
     carrier_profile?: string;
     number?: string;
     profile?: string;
+    stage_moved?: string;
   }>;
 }) {
   const operator = await requirePlatformOperator();
@@ -393,6 +394,27 @@ export default async function OpsAccountPage({
           </div>
           {onboardingMessage ? (
             <div className={notices.onboarding === "requested" || notices.onboarding === "reopened" ? "settings-notice" : "intake-error settings-notice"} role="status">{onboardingMessage}</div>
+          ) : null}
+          {notices.stage_moved ? (
+            <div className={notices.stage_moved === "saved" ? "settings-notice" : "intake-error settings-notice"} role="status">
+              {notices.stage_moved === "saved" ? "Stage updated." : "Stage change failed — pick a valid stage."}
+            </div>
+          ) : null}
+          {operator.role !== "support" ? (
+            <form action="/api/ops/stage" method="post" className="setup-panel__action">
+              <input type="hidden" name="account_slug" value={summary.accountSlug} />
+              <div className="lead-controls ops-trial-controls">
+                <select className="field" name="stage" defaultValue={lifecycle.stage} aria-label="Move to stage">
+                  <option value="kickoff">Kickoff</option>
+                  <option value="setting_up">Setting up</option>
+                  <option value="carrier_review">Carrier review</option>
+                  <option value="ready_to_activate">Ready</option>
+                  <option value="paused">Paused</option>
+                </select>
+                <button className="btn btn-secondary" type="submit">Move stage</button>
+              </div>
+              <p className="setup-panel__note">Active and Canceled move through Activate and Stripe, never manually.</p>
+            </form>
           ) : null}
           {canStartCustomerDelay ? (
             <form action="/api/ops/onboarding-deadlines" method="post" className="setup-panel__action">

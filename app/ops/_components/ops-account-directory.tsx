@@ -106,6 +106,17 @@ export function OpsAccountDirectory({
                 </Link>
               </div>
               <div className="lead-card__utility-actions">
+                <form action="/api/ops/stage" method="post" className="ops-stage-move">
+                  <input type="hidden" name="account_slug" value={account.accountSlug} />
+                  <select className="field" name="stage" defaultValue={lifecycle.stage} aria-label={`Move ${account.businessName} to stage`}>
+                    <option value="kickoff">Kickoff</option>
+                    <option value="setting_up">Setting up</option>
+                    <option value="carrier_review">Carrier review</option>
+                    <option value="ready_to_activate">Ready</option>
+                    <option value="paused">Paused</option>
+                  </select>
+                  <button className="btn btn-ghost btn-sm" type="submit">Move</button>
+                </form>
                 <Link className="btn btn-ghost btn-sm" href={`/ops/accounts/${encodeURIComponent(account.accountSlug)}#diagnostics`}>Diagnostics</Link>
               </div>
             </div>
