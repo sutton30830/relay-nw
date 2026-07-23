@@ -157,6 +157,22 @@ test("migration only transitions pre-live states and protects RPC execution", as
   assert.match(migration, /grant execute on function[\s\S]*to service_role/);
   assert.doesNotMatch(
     migration,
-    /billing_status\s*=|stripe_subscription_status\s*=|a2p_registration_status\s*=/,
+    /requirements_due_at|billing_status\s*=|stripe_subscription_status\s*=|a2p_registration_status\s*=/,
   );
+});
+
+test("repair migration removes the obsolete column reference and preserves RPC permissions", async () => {
+  const migration = await readFile(
+    new URL(
+      "../docs/migrations/2026-07-23-repair-missed-call-activation.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+
+  const functionDefinition = migration.split("commit;")[0];
+  assert.match(functionDefinition, /create or replace function public\.create_missed_call_lead_and_mark_live/);
+  assert.doesNotMatch(functionDefinition, /requirements_due_at/);
+  assert.match(functionDefinition, /revoke all on function[\s\S]*from public, anon, authenticated/);
+  assert.match(functionDefinition, /grant execute on function[\s\S]*to service_role/);
 });

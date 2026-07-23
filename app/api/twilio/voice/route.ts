@@ -21,6 +21,23 @@ import { dialForwardTwiml, forwardedMissedCallTwiml, twimlResponse } from "@/lib
 
 const VOICE_WEBHOOK_SOURCE = "twilio_voice";
 
+function errorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
 function callbackUrl(request: Request, path: string) {
   const url = new URL(request.url);
   const forwardedProto = request.headers.get("x-forwarded-proto");
@@ -125,7 +142,7 @@ async function handleForwardingMode(input: {
       }),
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown forwarding-mode error";
+    const message = errorMessage(error, "Unknown forwarding-mode error");
 
     await logWebhookEvent({
       accountId: input.account.accountId,
@@ -182,7 +199,7 @@ async function handleDirectMode(input: {
       }),
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown direct-mode voice error";
+    const message = errorMessage(error, "Unknown direct-mode voice error");
 
     console.error("Failed to record direct-mode voice call", {
       correlationId: input.correlationId,

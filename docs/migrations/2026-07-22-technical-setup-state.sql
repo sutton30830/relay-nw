@@ -163,8 +163,7 @@ begin
     update public.accounts
     set
       onboarding_status = 'live',
-      onboarding_status_updated_at = v_created_at,
-      requirements_due_at = null
+      onboarding_status_updated_at = v_created_at
     where id = p_account_id
       and onboarding_status in ('setting_up', 'waiting_for_forwarding');
 
