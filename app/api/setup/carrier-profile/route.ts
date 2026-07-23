@@ -4,7 +4,6 @@ import { sealProfileValue } from "@/lib/secure-field";
 import {
   getCarrierProfile,
   recordAccountAuditEvents,
-  updateAccountBillingRecord,
   upsertCarrierProfile,
 } from "@/lib/supabase";
 
@@ -55,7 +54,6 @@ export async function POST(request: Request) {
     terms_url: termsUrl || null,
     status_detail: null,
   });
-  await updateAccountBillingRecord(session.accountId, { onboardingStatus: "ready_for_carrier", requirementsDueAt: null });
   await recordAccountAuditEvents({
     accountId: session.accountId,
     actorUserId: session.userId,

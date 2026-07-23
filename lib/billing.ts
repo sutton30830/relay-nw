@@ -1,11 +1,20 @@
 import type { SetupReadiness } from "@/lib/readiness";
-import type { BillingPolicy } from "@/lib/customer-experience-contract";
+import {
+  canStartMonthlyBilling,
+  type BillingPolicy,
+  type TechnicalSetupStatus,
+} from "@/lib/customer-experience-contract";
 
 export type { BillingPolicy } from "@/lib/customer-experience-contract";
 
 export type AccountBillingStatus = "not_started" | "trialing" | "active" | "past_due" | "canceled" | "comped";
 
 export type AccountOnboardingStatus =
+  | "setting_up"
+  | "waiting_for_forwarding"
+  | "live"
+  | "paused"
+  | "closed"
   | "requirements_needed"
   | "waiting_on_customer"
   | "ready_for_carrier"
@@ -213,6 +222,11 @@ export function normalizeBillingPolicy(
 
 export function normalizeOnboardingStatus(value: string | null | undefined): AccountOnboardingStatus {
   if (
+    value === "setting_up" ||
+    value === "waiting_for_forwarding" ||
+    value === "live" ||
+    value === "paused" ||
+    value === "closed" ||
     value === "requirements_needed" ||
     value === "waiting_on_customer" ||
     value === "ready_for_carrier" ||
@@ -572,10 +586,10 @@ export function computeBillingLifecycle(input: {
 
 export function getBillingCheckoutEligibility(input: {
   billing: AccountBillingRecord | null | undefined;
-  setupReadiness: Pick<SetupReadiness, "callCaptureReady">;
+  technicalStatus: TechnicalSetupStatus;
 }): BillingCheckoutEligibility {
   const billing = input.billing ?? defaultBillingRecord();
-  const activationReady = isBillingActivationReady(input.setupReadiness);
+  const activationReady = canStartMonthlyBilling(input.technicalStatus);
   const billingStatus = normalizeBillingStatus(billing.billingStatus);
   const stripeStatus = normalizeStripeSubscriptionStatus(billing.stripeSubscriptionStatus);
 

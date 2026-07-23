@@ -4,7 +4,6 @@ import {
   getOpsBillingAccountBySlug,
   recordAccountAuditEvents,
   recordPlatformAuditEvent,
-  updateAccountBillingRecord,
   updateAccountSettings,
   upsertCarrierProfile,
 } from "@/lib/supabase";
@@ -23,14 +22,11 @@ export async function POST(request: Request) {
   const account = await getOpsBillingAccountBySlug(slug);
   if (!account) go(slug, "account_not_found");
   const mapping = {
-    submitted: { profile: "submitted", a2p: "in_progress", onboarding: "carrier_review" },
-    in_progress: { profile: "in_progress", a2p: "in_progress", onboarding: "carrier_review" },
-    approved: { profile: "approved", a2p: "approved", onboarding: "ready_for_live_test" },
-    needs_changes: { profile: "needs_changes", a2p: "rejected", onboarding: "carrier_attention" },
-    rejected: { profile: "rejected", a2p: "rejected", onboarding: "carrier_attention" },
-    // Operator override: skip straight to activatable when the operator has
-    // verified readiness out of band. Removes every go-live block.
-    ready_to_activate: { profile: "approved", a2p: "approved", onboarding: "ready_to_activate" },
+    submitted: { profile: "submitted", a2p: "in_progress" },
+    in_progress: { profile: "in_progress", a2p: "in_progress" },
+    approved: { profile: "approved", a2p: "approved" },
+    needs_changes: { profile: "needs_changes", a2p: "needs_attention" },
+    rejected: { profile: "rejected", a2p: "rejected" },
   } as const;
   const next = mapping[action as keyof typeof mapping];
   if (!next) go(account.accountSlug, "invalid_action");
@@ -43,7 +39,6 @@ export async function POST(request: Request) {
     messaging_service_sid: String(form.get("messaging_service_sid") ?? "").trim() || null,
   });
   await updateAccountSettings(account.accountId, { a2p_registration_status: next.a2p });
-  await updateAccountBillingRecord(account.accountId, { onboardingStatus: next.onboarding });
   const summary = `Carrier registration marked ${action.replaceAll("_", " ")}${detail ? ` — ${detail}` : ""}`;
   await recordAccountAuditEvents({ accountId: account.accountId, actorUserId: operator.userId, actorEmail: operator.email, events: [{ action: `carrier.${action}`, summary }] });
   await recordPlatformAuditEvent({ actorUserId: operator.userId, actorEmail: operator.email, targetAccountId: account.accountId, action: `carrier.${action}`, summary });

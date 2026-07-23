@@ -21,8 +21,13 @@ create table if not exists public.accounts (
   trial_ends_at timestamptz,
   current_period_end timestamptz,
   cancel_at_period_end boolean not null default false,
-  onboarding_status text not null default 'requirements_needed' check (
+  onboarding_status text not null default 'setting_up' check (
     onboarding_status in (
+      'setting_up',
+      'waiting_for_forwarding',
+      'live',
+      'paused',
+      'closed',
       'requirements_needed',
       'waiting_on_customer',
       'ready_for_carrier',
@@ -68,7 +73,8 @@ alter table public.accounts add column if not exists stripe_subscription_status 
 alter table public.accounts add column if not exists trial_ends_at timestamptz;
 alter table public.accounts add column if not exists current_period_end timestamptz;
 alter table public.accounts add column if not exists cancel_at_period_end boolean not null default false;
-alter table public.accounts add column if not exists onboarding_status text not null default 'requirements_needed';
+alter table public.accounts add column if not exists onboarding_status text not null default 'setting_up';
+alter table public.accounts alter column onboarding_status set default 'setting_up';
 alter table public.accounts add column if not exists onboarding_status_updated_at timestamptz;
 alter table public.accounts add column if not exists requirements_due_at timestamptz;
 alter table public.accounts add column if not exists activated_at timestamptz;
@@ -112,6 +118,11 @@ begin
     add constraint accounts_onboarding_status_check
     check (
       onboarding_status in (
+        'setting_up',
+        'waiting_for_forwarding',
+        'live',
+        'paused',
+        'closed',
         'requirements_needed',
         'waiting_on_customer',
         'ready_for_carrier',
@@ -198,43 +209,6 @@ set
   billing_policy_updated_at = coalesce(billing_policy_updated_at, setup_fee_waived_at, billing_updated_at, now())
 where setup_fee_status = 'waived'
   and billing_policy = 'standard';
-
--- Phase 6A lifecycle coherence backfill.
--- Paid or previously activated accounts should not remain in customer-delay
--- onboarding states. This correction is idempotent and only fills missing
--- durable dates; it never overwrites existing activation, first-paid, or
--- guarantee dates.
--- Rollback note: this is a semantic data correction. To roll back, restore the
--- affected account row values from a pre-migration export or database backup.
-update public.accounts
-set
-  onboarding_status = 'activated',
-  onboarding_status_updated_at = coalesce(onboarding_status_updated_at, billing_updated_at, now()),
-  requirements_due_at = null,
-  activated_at = coalesce(activated_at, first_paid_at, billing_updated_at, now()),
-  first_paid_at = case
-    when billing_status in ('active', 'trialing') then coalesce(first_paid_at, activated_at, billing_updated_at, now())
-    else first_paid_at
-  end,
-  guarantee_ends_at = case
-    when billing_status in ('active', 'trialing') and guarantee_ends_at is null then
-      coalesce(first_paid_at, activated_at, billing_updated_at, now()) + interval '30 days'
-    else guarantee_ends_at
-  end
-where
-  (
-    onboarding_status = 'activated' or
-    activated_at is not null or
-    first_paid_at is not null or
-    billing_status in ('active', 'trialing', 'comped')
-  )
-  and (
-    onboarding_status is distinct from 'activated' or
-    requirements_due_at is not null or
-    activated_at is null or
-    (billing_status in ('active', 'trialing') and first_paid_at is null) or
-    (billing_status in ('active', 'trialing') and guarantee_ends_at is null)
-  );
 
 alter table public.accounts enable row level security;
 
@@ -328,7 +302,7 @@ create table if not exists public.account_settings (
   typical_job_value_cents integer check (typical_job_value_cents is null or typical_job_value_cents >= 0),
   voicemail_transcription_enabled boolean not null default true,
   a2p_registration_status text not null default 'not_started' check (
-    a2p_registration_status in ('not_started', 'in_progress', 'approved', 'rejected', 'paused')
+    a2p_registration_status in ('not_started', 'in_progress', 'approved', 'needs_attention', 'rejected', 'paused')
   ),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -349,6 +323,19 @@ alter table public.account_settings add column if not exists address_postal_code
 alter table public.account_settings add column if not exists address_country text not null default 'US';
 alter table public.account_settings add column if not exists business_hours jsonb;
 alter table public.account_settings add column if not exists implementation_notes text;
+alter table public.account_settings drop constraint if exists account_settings_a2p_registration_status_check;
+alter table public.account_settings
+  add constraint account_settings_a2p_registration_status_check
+  check (
+    a2p_registration_status in (
+      'not_started',
+      'in_progress',
+      'approved',
+      'needs_attention',
+      'rejected',
+      'paused'
+    )
+  );
 alter table public.account_settings add column if not exists greeting_preference text not null default 'generated';
 alter table public.account_settings add column if not exists quick_reply_templates text[];
 alter table public.account_settings add column if not exists typical_job_value_cents integer;
@@ -628,6 +615,162 @@ create index if not exists leads_call_sid_idx on public.leads (call_sid) where c
 create index if not exists leads_deleted_at_idx on public.leads (deleted_at);
 
 alter table public.leads enable row level security;
+
+-- Phase 2 technical setup state. Positive readiness comes only from a real
+-- missed-call lead; billing, A2P, activation dates, and health checks are not
+-- technical go-live evidence.
+update public.accounts
+set
+  onboarding_status = 'paused',
+  onboarding_status_updated_at = coalesce(onboarding_status_updated_at, now())
+where onboarding_status = 'paused_incomplete';
+
+update public.accounts
+set
+  onboarding_status = 'closed',
+  onboarding_status_updated_at = coalesce(onboarding_status_updated_at, now())
+where onboarding_status = 'closed_incomplete';
+
+update public.accounts as account
+set
+  onboarding_status = 'live',
+  onboarding_status_updated_at = coalesce(
+    (
+      select min(lead.created_at)
+      from public.leads as lead
+      where lead.account_id = account.id
+        and lead.source = 'missed_call'
+        and lead.deleted_at is null
+    ),
+    account.onboarding_status_updated_at,
+    now()
+  )
+where account.onboarding_status not in ('paused', 'closed')
+  and exists (
+    select 1
+    from public.leads as lead
+    where lead.account_id = account.id
+      and lead.source = 'missed_call'
+      and lead.deleted_at is null
+  );
+
+update public.accounts as account
+set
+  onboarding_status = case
+    when settings.call_mode = 'forwarding'
+      and exists (
+        select 1
+        from public.account_phone_numbers as number
+        where number.account_id = account.id
+      )
+      then 'waiting_for_forwarding'
+    else 'setting_up'
+  end,
+  onboarding_status_updated_at = coalesce(account.onboarding_status_updated_at, now())
+from public.account_settings as settings
+where settings.account_id = account.id
+  and account.onboarding_status not in ('live', 'paused', 'closed');
+
+create or replace function public.create_missed_call_lead_and_mark_live(
+  p_account_id uuid,
+  p_call_sid text,
+  p_phone text,
+  p_message text,
+  p_twilio_signature_valid boolean
+)
+returns table (
+  inserted boolean,
+  lead_id uuid,
+  lead_created_at timestamptz,
+  became_live boolean
+)
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_lead_id uuid;
+  v_created_at timestamptz;
+  v_became_live boolean := false;
+  v_updated_rows integer := 0;
+begin
+  insert into public.leads (
+    account_id,
+    call_sid,
+    phone,
+    message,
+    sms_status,
+    source,
+    status
+  )
+  values (
+    p_account_id,
+    p_call_sid,
+    p_phone,
+    p_message,
+    'pending',
+    'missed_call',
+    'new'
+  )
+  on conflict (account_id, call_sid)
+    where account_id is not null and call_sid is not null
+    do nothing
+  returning id, created_at into v_lead_id, v_created_at;
+
+  if v_lead_id is null then
+    return query select false, null::uuid, null::timestamptz, false;
+    return;
+  end if;
+
+  if p_twilio_signature_valid then
+    update public.accounts
+    set
+      onboarding_status = 'live',
+      onboarding_status_updated_at = v_created_at,
+      requirements_due_at = null
+    where id = p_account_id
+      and onboarding_status in ('setting_up', 'waiting_for_forwarding');
+
+    get diagnostics v_updated_rows = row_count;
+    v_became_live := v_updated_rows > 0;
+
+    if v_became_live then
+      insert into public.account_audit_events (
+        account_id,
+        actor_user_id,
+        actor_email,
+        action,
+        summary
+      )
+      values (
+        p_account_id,
+        null,
+        null,
+        'onboarding.first_call_live',
+        'A signed, newly inserted real missed call marked call capture live.'
+      );
+    end if;
+  end if;
+
+  return query select true, v_lead_id, v_created_at, v_became_live;
+end;
+$$;
+
+revoke all on function public.create_missed_call_lead_and_mark_live(
+  uuid,
+  text,
+  text,
+  text,
+  boolean
+) from public, anon, authenticated;
+
+grant execute on function public.create_missed_call_lead_and_mark_live(
+  uuid,
+  text,
+  text,
+  text,
+  boolean
+) to service_role;
 
 create table if not exists public.webhook_events (
   id uuid primary key default gen_random_uuid(),

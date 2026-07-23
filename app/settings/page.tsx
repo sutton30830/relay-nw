@@ -4,27 +4,24 @@ import { PageHead } from "@/app/leads/_components/page-head";
 import { isRelayOperator, requireAccountUser } from "@/lib/auth";
 import { computeBillingLifecycle } from "@/lib/billing";
 import type { AccountBillingRecord, BillingLifecycleState } from "@/lib/billing";
-import { computeSetupReadiness, type A2pStatus } from "@/lib/readiness";
 import {
   getA2pRegistrationStatus,
   getAccountBillingRecord,
-  getAccountRecoveryStats,
-  getForwardingHealthSummary,
-  getLastRecoveredCallAt,
+  getAccountTechnicalSetupStatus,
 } from "@/lib/supabase";
+import { canStartMonthlyBilling } from "@/lib/customer-experience-contract";
 import { QUICK_REPLIES } from "@/app/leads/_constants";
 import { SmsToggle } from "./sms-toggle";
 import { GreetingRecorder } from "./greeting-recorder";
-import { isCustomerProfileComplete } from "@/lib/onboarding-profile";
 
 export const dynamic = "force-dynamic";
 
 const A2P_LABELS: Record<string, string> = {
-  not_started: "Not started — texting cannot be enabled yet",
-  in_progress: "In carrier review — usually takes a few days",
-  approved: "Approved — texting is carrier-registered",
-  rejected: "Rejected — contact Relay support",
-  paused: "Paused",
+  not_started: "Relay is preparing texting",
+  in_progress: "Relay is enabling texting",
+  approved: "Texting is available",
+  rejected: "Relay is resolving a texting issue",
+  paused: "Texting is unavailable",
 };
 
 function Field({
@@ -60,7 +57,7 @@ function centsToDollarInput(value: number | null) {
 }
 
 function billingStatusLabel(billing: AccountBillingRecord) {
-  if (billing.billingStatus === "comped") return "Comped";
+  if (billing.billingPolicy === "comped" || billing.billingStatus === "comped") return "Comped";
   if (billing.billingStatus === "past_due" && !billing.stripeSubscriptionId && billing.trialEndsAt) return "Trial ended";
   if (billing.billingStatus === "past_due") return "Past due";
   if (billing.billingStatus === "canceled") return "Canceled";
@@ -94,7 +91,7 @@ function billingHeadline(billing: AccountBillingRecord, lifecycle: BillingLifecy
     return trialDate ? `Trial ends ${trialDate}` : "Trial active";
   }
 
-  if (billing.billingStatus === "comped") return "Free account";
+  if (billing.billingPolicy === "comped" || billing.billingStatus === "comped") return "Free account";
   if (billing.billingStatus === "past_due" && !billing.stripeSubscriptionId && billing.trialEndsAt) return "Trial ended";
   if (billing.billingStatus === "past_due") return "Payment needs attention";
   if (billing.billingStatus === "canceled") return "Subscription canceled";
@@ -202,7 +199,7 @@ function BillingPrimaryAction({
     );
   }
 
-  if (billing.billingStatus === "comped") {
+  if (billing.billingPolicy === "comped" || billing.billingStatus === "comped") {
     return null;
   }
 
@@ -337,35 +334,15 @@ export default async function SettingsPage({
   const session = await requireAccountUser();
   const { account, role } = session;
   const params = await searchParams;
-  const [a2pStatus, billing, forwardingHealth, recovery, lastRecoveredCallAt] = await Promise.all([
+  const [a2pStatus, billing, technicalStatus] = await Promise.all([
     getA2pRegistrationStatus(session.accountId),
     getAccountBillingRecord(session.accountId),
-    getForwardingHealthSummary(session.accountId),
-    getAccountRecoveryStats(session.accountId, { since: null }),
-    getLastRecoveredCallAt(session.accountId),
+    getAccountTechnicalSetupStatus(session.accountId),
   ]);
-  const setupReadiness = computeSetupReadiness({
-    role,
-    hasProfile: isCustomerProfileComplete({
-      businessName: account.businessName,
-      ownerName: account.ownerName,
-      ownerEmail: account.ownerEmail,
-      ownerPhoneNumber: account.ownerPhoneNumber,
-      publicBusinessNumber: account.publicBusinessNumber,
-      businessType: account.businessType,
-      callMode: account.callMode,
-    }),
-    callMode: account.callMode,
-    smsEnabled: account.smsEnabled,
-    a2pStatus: (["not_started", "in_progress", "approved", "rejected", "paused"].includes(a2pStatus ?? "")
-      ? a2pStatus
-      : "unknown") as A2pStatus,
-    forwardingStatus: forwardingHealth.displayStatus,
-    hasRecoveredCall: recovery.missedCalls > 0,
-    lastRecoveredCallAt,
-    forwardingLastPassedAt: forwardingHealth.lastPassedAt,
+  const billingLifecycle = computeBillingLifecycle({
+    billing,
+    setupReadiness: { callCaptureReady: canStartMonthlyBilling(technicalStatus) },
   });
-  const billingLifecycle = computeBillingLifecycle({ billing, setupReadiness });
   const readOnly = role === "viewer";
 
   return (
@@ -397,7 +374,7 @@ export default async function SettingsPage({
               : params.error === "save_failed"
                 ? "Could not save settings. Try again."
                 : params.error === "a2p_not_approved"
-                  ? "Texting can't be enabled until this account's A2P registration is approved. Update the status with the provisioning script first."
+                  ? "Relay is still enabling automatic texting. Missed-call capture continues normally."
                   : "Please check the highlighted values and try again."}
           </div>
         ) : null}
@@ -440,7 +417,7 @@ export default async function SettingsPage({
             Relay number: <strong>{account.twilioPhoneNumber}</strong> · Mode: {account.callMode}
           </p>
           <p className="settings-section__meta">
-            Carrier registration: {A2P_LABELS[a2pStatus ?? ""] ?? "Unknown"}
+            {A2P_LABELS[a2pStatus ?? ""] ?? "Relay is checking texting availability"}
           </p>
         </section>
 
@@ -481,12 +458,6 @@ export default async function SettingsPage({
             </Field>
             <Field label="Business industry" hint="For example: plumbing, electrical, HVAC, landscaping.">
               <input className="field" name="business_industry" maxLength={80} defaultValue={account.businessIndustry ?? ""} />
-            </Field>
-            <Field label="Call mode" hint="Forwarding keeps the current public number. Direct makes the Relay number the public number.">
-              <select className="field" name="call_mode" required defaultValue={account.callMode}>
-                <option value="forwarding">Forward missed calls from my current number</option>
-                <option value="direct">Use the Relay number directly</option>
-              </select>
             </Field>
             <Field label="Website" hint="Optional now; a public website or online presence helps carrier registration.">
               <input className="field" type="url" name="website_url" defaultValue={account.websiteUrl ?? ""} placeholder="https://" />
@@ -531,7 +502,12 @@ export default async function SettingsPage({
             </Field>
 
             <p className="t-eyebrow settings-group-title">Messaging</p>
-            {role === "owner" ? <SmsToggle defaultEnabled={account.smsEnabled} /> : null}
+            {role === "owner" ? (
+              <SmsToggle
+                defaultEnabled={account.smsEnabled}
+                available={a2pStatus === "approved"}
+              />
+            ) : null}
             <Field
               label="Missed-call text"
               hint="Sent to callers you miss. Variables: {BUSINESS_NAME}, {INTAKE_URL}, {SCHEDULING_URL}. Leave blank for the default."

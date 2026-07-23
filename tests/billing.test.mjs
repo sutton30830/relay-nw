@@ -28,6 +28,9 @@ async function loadTsModule(path, mocks = {}) {
 
 const billing = await loadTsModule("lib/billing.ts", {
   "@/lib/readiness": {},
+  "@/lib/customer-experience-contract": {
+    canStartMonthlyBilling: (status) => status === "live",
+  },
 });
 
 const stripeBilling = await loadTsModule("lib/stripe-billing.ts", {
@@ -181,50 +184,55 @@ test("every simplified billing status has one unambiguous owner action", () => {
 });
 
 test("checkout eligibility allows only not started or fully canceled accounts", () => {
-  const ready = setupReadiness({ callCaptureReady: true, smsRegistrationReady: true });
-
   assert.deepEqual(
-    billing.getBillingCheckoutEligibility({ billing: billingRecord(), setupReadiness: ready }),
+    billing.getBillingCheckoutEligibility({ billing: billingRecord(), technicalStatus: "live" }),
     { ok: true },
   );
   assert.deepEqual(
     billing.getBillingCheckoutEligibility({
       billing: billingRecord({ billingStatus: "canceled", stripeSubscriptionStatus: "canceled" }),
-      setupReadiness: ready,
+      technicalStatus: "live",
     }),
     { ok: true },
   );
   assert.deepEqual(
     billing.getBillingCheckoutEligibility({
       billing: billingRecord({ billingStatus: "trialing", stripeSubscriptionId: null }),
-      setupReadiness: ready,
+      technicalStatus: "live",
     }),
     { ok: true },
   );
   assert.deepEqual(
     billing.getBillingCheckoutEligibility({
       billing: billingRecord({ billingStatus: "not_started", stripeSubscriptionStatus: "incomplete" }),
-      setupReadiness: ready,
+      technicalStatus: "live",
     }),
     { ok: false, reason: "subscription_incomplete" },
   );
   assert.deepEqual(
     billing.getBillingCheckoutEligibility({
       billing: billingRecord({ billingStatus: "past_due", stripeSubscriptionStatus: "past_due" }),
-      setupReadiness: ready,
+      technicalStatus: "live",
     }),
     { ok: false, reason: "past_due" },
+  );
+  assert.deepEqual(
+    billing.getBillingCheckoutEligibility({
+      billing: billingRecord(),
+      technicalStatus: "waiting_for_forwarding",
+    }),
+    { ok: false, reason: "setup_incomplete" },
   );
 });
 
 test("setup fee state does not gate monthly billing after call capture is live", () => {
   const due = billing.getBillingCheckoutEligibility({
     billing: billingRecord({ setupFeeStatus: "due" }),
-    setupReadiness: { callCaptureReady: true, smsRegistrationReady: true },
+    technicalStatus: "live",
   });
   const waived = billing.getBillingCheckoutEligibility({
     billing: billingRecord({ setupFeeStatus: "waived" }),
-    setupReadiness: { callCaptureReady: true, smsRegistrationReady: true },
+    technicalStatus: "live",
   });
 
   assert.deepEqual(due, { ok: true });

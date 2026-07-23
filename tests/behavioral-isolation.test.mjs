@@ -369,6 +369,44 @@ function createSupabaseFake(seed) {
         if (name === "lead_inbox_counts") {
           return rpcResult(leadInboxCounts(params));
         }
+        if (name === "create_missed_call_lead_and_mark_live") {
+          const leads = table("leads");
+          const duplicate = leads.find(
+            (lead) =>
+              lead.account_id === params.p_account_id &&
+              lead.call_sid === params.p_call_sid,
+          );
+
+          if (duplicate) {
+            return rpcResult([{
+              inserted: false,
+              lead_id: null,
+              lead_created_at: null,
+              became_live: false,
+            }]);
+          }
+
+          const createdAt = new Date().toISOString();
+          const leadId = randomUUID();
+          leads.push({
+            id: leadId,
+            created_at: createdAt,
+            account_id: params.p_account_id,
+            call_sid: params.p_call_sid,
+            phone: params.p_phone,
+            message: params.p_message,
+            sms_status: "pending",
+            source: "missed_call",
+            status: "new",
+          });
+
+          return rpcResult([{
+            inserted: true,
+            lead_id: leadId,
+            lead_created_at: createdAt,
+            became_live: false,
+          }]);
+        }
 
         throw new Error(`Unsupported rpc ${name}`);
       },
@@ -711,6 +749,7 @@ test("webhook resolution for number A and B writes rows under the resolved accou
     callSid: "CA_WEBHOOK_A",
     phone: "+15553330000",
     message: null,
+    twilioSignatureValid: true,
   });
   await messages.createInboundMessageIfNew({
     accountId: accountBResolution.account.accountId,

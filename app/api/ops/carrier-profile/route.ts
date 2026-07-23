@@ -6,7 +6,6 @@ import {
   getOpsAccountBySlug,
   recordAccountAuditEvents,
   recordPlatformAuditEvent,
-  updateAccountBillingRecord,
   upsertCarrierProfile,
 } from "@/lib/supabase";
 
@@ -72,8 +71,6 @@ export async function POST(request: Request) {
     terms_url: termsUrl || null,
     status_detail: null,
   });
-  await updateAccountBillingRecord(account.accountId, { onboardingStatus: "ready_for_carrier", requirementsDueAt: null });
-
   const summary = "Relay entered the carrier registration information with the customer";
   await recordAccountAuditEvents({
     accountId: account.accountId,

@@ -68,6 +68,7 @@ async function processDialStatus(input: {
   correlationId: string;
   dialCallStatus: string;
   requestSummary: ReturnType<typeof summarizeTwilioRequest>;
+  twilioSignatureValid: boolean;
 }) {
   console.info("Processing Twilio DialCallStatus", {
     correlationId: input.correlationId,
@@ -83,6 +84,7 @@ async function processDialStatus(input: {
       callerPhone: input.callerPhone,
       message: `Missed call. Dial status: ${input.dialCallStatus}.`,
       correlationId: input.correlationId,
+      twilioSignatureValid: input.twilioSignatureValid,
     });
 
     console.info("Handled direct-mode missed call", {
@@ -209,6 +211,7 @@ export async function POST(request: Request) {
       correlationId,
       dialCallStatus,
       requestSummary,
+      twilioSignatureValid: Boolean(validation.matchedUrl),
     });
 
     await logWebhookEvent({

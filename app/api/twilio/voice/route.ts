@@ -145,6 +145,7 @@ async function handleForwardingMode(input: {
   requestSummary: ReturnType<typeof summarizeTwilioRequest>;
   validation: ReturnType<typeof validateTwilioWebhook>;
   callerPhone: string;
+  twilioSignatureValid: boolean;
 }) {
   const callSid = input.payload.CallSid ?? "";
   const xml = missedCallTwiml(input.request, input.account);
@@ -166,6 +167,7 @@ async function handleForwardingMode(input: {
       callerPhone: input.callerPhone,
       message: null,
       correlationId: input.correlationId,
+      twilioSignatureValid: input.twilioSignatureValid,
     });
 
     console.info("Handled forwarded missed call", {
@@ -363,6 +365,7 @@ export async function POST(request: Request) {
       requestSummary,
       validation,
       callerPhone,
+      twilioSignatureValid: Boolean(validation.matchedUrl),
     });
   }
 

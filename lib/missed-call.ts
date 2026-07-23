@@ -89,6 +89,7 @@ export async function handleMissedCall(input: {
   callSid: string;
   message: string | null;
   correlationId?: string | null;
+  twilioSignatureValid?: boolean;
 }) {
   const callerPhone = normalizePhoneNumber(input.callerPhone);
   const callSid = input.callSid.trim();
@@ -104,6 +105,7 @@ export async function handleMissedCall(input: {
     callSid,
     phone: callerPhone,
     message: input.message,
+    twilioSignatureValid: input.twilioSignatureValid === true,
   });
 
   if (!leadResult.inserted || !leadResult.leadId) {

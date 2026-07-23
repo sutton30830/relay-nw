@@ -27,6 +27,9 @@ async function loadTsModule(path, mocks = {}) {
 
 const billingPolicy = await loadTsModule("lib/billing.ts", {
   "@/lib/readiness": {},
+  "@/lib/customer-experience-contract": {
+    canStartMonthlyBilling: (status) => status === "live",
+  },
 });
 
 function trialAccount(overrides = {}) {

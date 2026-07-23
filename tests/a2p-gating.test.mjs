@@ -139,40 +139,20 @@ test("owner enabling SMS with approved A2P persists sms_enabled true", async () 
   assert.equal(calls.updates.length, 1);
   assert.equal(calls.updates[0].update.sms_enabled, true);
   assert.equal(calls.updates[0].update.typical_job_value_cents, 25000);
-  assert.deepEqual(calls.billingUpdates, [
-    {
-      accountId: "acct-1",
-      update: {
-        onboardingStatus: "carrier_review",
-        requirementsDueAt: null,
-      },
-    },
-  ]);
+  assert.equal("call_mode" in calls.updates[0].update, false);
+  assert.deepEqual(calls.billingUpdates, []);
   assert.deepEqual(calls.redirects, ["/settings?saved=1"]);
 });
 
-test("complete business profile save clears stale customer requirements deadline", async () => {
+test("profile saves cannot advance technical setup state", async () => {
   const calls = await runSettingsPost({
     form: settingsForm(),
   });
 
-  assert.deepEqual(calls.billingLookups, ["acct-1"]);
-  assert.deepEqual(calls.billingUpdates, [
-    {
-      accountId: "acct-1",
-      update: {
-        onboardingStatus: "carrier_review",
-        requirementsDueAt: null,
-      },
-    },
-  ]);
+  assert.deepEqual(calls.billingLookups, []);
+  assert.deepEqual(calls.billingUpdates, []);
   assert.equal(calls.auditEvents.length, 1);
-  assert.deepEqual(calls.auditEvents[0].events, [
-    {
-      action: "onboarding.customer_requirements_completed",
-      summary: "Business profile completed; cleared the customer requirements deadline.",
-    },
-  ]);
+  assert.deepEqual(calls.auditEvents[0].events, []);
 });
 
 test("blank typical job value clears report estimates", async () => {

@@ -5,6 +5,7 @@ import type {
   AccountOnboardingStatus,
   StripeSubscriptionStatus,
 } from "@/lib/billing";
+import type { TechnicalSetupStatus } from "@/lib/customer-experience-contract";
 import { normalizePhoneNumber } from "@/lib/phone";
 import { isPlaceholderSupabaseConfig, shouldSkipDatabaseWrite, supabaseAdmin, throwIfSupabaseError } from "./client";
 
@@ -325,8 +326,30 @@ function normalizeAccountBillingPolicy(
   return "standard";
 }
 
+export function normalizeTechnicalSetupStatus(
+  value: string | null | undefined,
+): TechnicalSetupStatus {
+  if (
+    value === "setting_up" ||
+    value === "waiting_for_forwarding" ||
+    value === "live" ||
+    value === "paused" ||
+    value === "closed"
+  ) {
+    return value;
+  }
+  if (value === "paused_incomplete") return "paused";
+  if (value === "closed_incomplete") return "closed";
+  return "setting_up";
+}
+
 function normalizeAccountOnboardingStatus(value: string | null | undefined): AccountOnboardingStatus {
   if (
+    value === "setting_up" ||
+    value === "waiting_for_forwarding" ||
+    value === "live" ||
+    value === "paused" ||
+    value === "closed" ||
     value === "requirements_needed" ||
     value === "waiting_on_customer" ||
     value === "ready_for_carrier" ||
@@ -342,6 +365,23 @@ function normalizeAccountOnboardingStatus(value: string | null | undefined): Acc
   }
 
   return "requirements_needed";
+}
+
+export async function getAccountTechnicalSetupStatus(
+  accountId: string | null | undefined,
+): Promise<TechnicalSetupStatus> {
+  if (!accountId || isPlaceholderSupabaseConfig()) {
+    return "setting_up";
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("accounts")
+    .select("onboarding_status")
+    .eq("id", accountId)
+    .maybeSingle();
+
+  throwIfSupabaseError(error);
+  return normalizeTechnicalSetupStatus(data?.onboarding_status as string | null | undefined);
 }
 
 function normalizeAccountStripeSubscriptionStatus(value: string | null | undefined): StripeSubscriptionStatus | null {
@@ -491,6 +531,9 @@ export async function assignPrimaryAccountPhoneNumber(input: {
   label?: string;
 }) {
   const phoneNumber = normalizePhoneNumber(input.phoneNumber);
+  const previousPhoneNumber = normalizePhoneNumber(
+    await getPrimaryAccountPhoneNumber(input.accountId),
+  );
   const cleared = await supabaseAdmin.from("account_phone_numbers").update({ is_primary: false, updated_at: new Date().toISOString() }).eq("account_id", input.accountId).eq("is_primary", true);
   if (cleared.error) throw cleared.error;
   const { error } = await supabaseAdmin.from("account_phone_numbers").upsert({
@@ -502,6 +545,32 @@ export async function assignPrimaryAccountPhoneNumber(input: {
     updated_at: new Date().toISOString(),
   }, { onConflict: "phone_number" });
   if (error) throw error;
+
+  const numberChanged = previousPhoneNumber !== phoneNumber;
+  if (numberChanged) {
+    const { data: settings, error: settingsError } = await supabaseAdmin
+      .from("account_settings")
+      .select("call_mode")
+      .eq("account_id", input.accountId)
+      .maybeSingle();
+    if (settingsError) throw settingsError;
+
+    const nextStatus = settings?.call_mode === "forwarding"
+      ? "waiting_for_forwarding"
+      : "setting_up";
+    const { error: statusError } = await supabaseAdmin
+      .from("accounts")
+      .update({
+        onboarding_status: nextStatus,
+        onboarding_status_updated_at: new Date().toISOString(),
+        requirements_due_at: null,
+      })
+      .eq("id", input.accountId)
+      .not("onboarding_status", "in", '("paused","closed")');
+    if (statusError) throw statusError;
+  }
+
+  return { numberChanged, previousPhoneNumber: previousPhoneNumber || null };
 }
 
 export async function getAccountConfigByAccountId(accountId: string | null | undefined) {
@@ -1666,7 +1735,7 @@ export type AccountSettingsUpdate = Partial<{
   business_hours: Record<string, unknown> | null;
   implementation_notes: string | null;
   greeting_preference: "generated" | "recorded";
-  a2p_registration_status: "not_started" | "in_progress" | "approved" | "rejected" | "paused";
+  a2p_registration_status: "not_started" | "in_progress" | "approved" | "needs_attention" | "rejected" | "paused";
   call_mode: "direct" | "forwarding";
   owner_phone_number: string;
   scheduling_url: string | null;

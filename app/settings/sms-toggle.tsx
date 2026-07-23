@@ -4,12 +4,18 @@ import { useState } from "react";
 import { Icon } from "@/components/icon";
 
 // The single highest-stakes control in the product: it turns all customer
-// texting (and owner alerts) on or off, gated on carrier registration. It gets
+// texting on or off, gated on carrier registration. It gets
 // its own callout — separated from the routine fields — a real switch, and the
 // current state spelled out in words that update as you flip it. The native
 // checkbox is still the form control (name="sms_enabled"), so the settings form
 // submits exactly as before.
-export function SmsToggle({ defaultEnabled }: { defaultEnabled: boolean }) {
+export function SmsToggle({
+  defaultEnabled,
+  available,
+}: {
+  defaultEnabled: boolean;
+  available: boolean;
+}) {
   const [enabled, setEnabled] = useState(defaultEnabled);
 
   return (
@@ -21,8 +27,9 @@ export function SmsToggle({ defaultEnabled }: { defaultEnabled: boolean }) {
         <div>
           <p className="sms-switch__title">Automatic texting</p>
           <p className="sms-switch__note">
-            The master switch for every text — to customers and to you. It can only be turned on
-            once carrier (A2P) registration is approved.
+            {available
+              ? "Send an immediate follow-up when Relay catches a missed call."
+              : "Relay is enabling this for you. Calls and your inbox already work while texting is prepared."}
           </p>
         </div>
       </div>
@@ -37,6 +44,7 @@ export function SmsToggle({ defaultEnabled }: { defaultEnabled: boolean }) {
             name="sms_enabled"
             className="switch__input"
             checked={enabled}
+            disabled={!available}
             onChange={(event) => setEnabled(event.target.checked)}
             aria-label="Automatic texting"
           />
@@ -45,6 +53,9 @@ export function SmsToggle({ defaultEnabled }: { defaultEnabled: boolean }) {
           </span>
         </span>
       </label>
+      {!available ? (
+        <input type="hidden" name="sms_enabled" value={defaultEnabled ? "on" : "off"} />
+      ) : null}
     </section>
   );
 }

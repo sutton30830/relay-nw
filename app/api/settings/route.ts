@@ -2,12 +2,9 @@ import { redirect } from "next/navigation";
 import { requireAccountUser } from "@/lib/auth";
 import { normalizePhoneNumber } from "@/lib/phone";
 import { diffSettingsForAudit, type AuditableSettings } from "@/lib/audit";
-import { isCustomerProfileComplete } from "@/lib/onboarding-profile";
 import {
   getA2pRegistrationStatus,
-  getAccountBillingRecord,
   recordAccountAuditEvents,
-  updateAccountBillingRecord,
   updateAccountSettings,
   type AccountSettingsUpdate,
 } from "@/lib/supabase";
@@ -74,7 +71,6 @@ export async function POST(request: Request) {
   const addressPostalCode = readString(formData, "address_postal_code", 20);
   const businessHours = readString(formData, "business_hours", 1000);
   const implementationNotes = readString(formData, "implementation_notes", 2000);
-  const callMode = readString(formData, "call_mode", 20);
   const greetingPreference = readString(formData, "greeting_preference", 20);
   const schedulingUrl = readString(formData, "scheduling_url", 500);
   const smsTemplate = readString(formData, "sms_template", 600);
@@ -104,7 +100,6 @@ export async function POST(request: Request) {
     !ownerEmail ||
     !publicBusinessNumber ||
     !businessType ||
-    !["direct", "forwarding"].includes(callMode) ||
     !["generated", "recorded"].includes(greetingPreference) ||
     dialTimeout === null ||
     voicemailMax === null ||
@@ -146,7 +141,6 @@ export async function POST(request: Request) {
     address_country: "US",
     business_hours: businessHours ? { summary: businessHours } : null,
     implementation_notes: implementationNotes || null,
-    call_mode: callMode as "direct" | "forwarding",
     greeting_preference: greetingPreference as "generated" | "recorded",
     scheduling_url: schedulingUrl || null,
     sms_template: smsTemplate || null,
@@ -186,38 +180,6 @@ export async function POST(request: Request) {
     redirect("/settings?error=save_failed");
   }
 
-  const completedBusinessProfile = isCustomerProfileComplete({
-    businessName,
-    ownerName,
-    ownerEmail,
-    ownerPhoneNumber: ownerPhone,
-    publicBusinessNumber,
-    businessType,
-    callMode,
-  });
-  let clearedCustomerRequirements = false;
-
-  if (completedBusinessProfile) {
-    try {
-      const billing = await getAccountBillingRecord(session.accountId);
-      if (
-        billing &&
-        (billing.onboardingStatus === "requirements_needed" || billing.onboardingStatus === "waiting_on_customer")
-      ) {
-        await updateAccountBillingRecord(session.accountId, {
-          onboardingStatus: "carrier_review",
-          requirementsDueAt: null,
-        });
-        clearedCustomerRequirements = true;
-      }
-    } catch (error) {
-      console.warn("Could not clear completed customer requirements after settings save.", {
-        accountId: session.accountId,
-        error: error instanceof Error ? error.message : error,
-      });
-    }
-  }
-
   // Audit trail: record what actually changed, with the SMS master switch called
   // out explicitly. Non-fatal — a logging failure must not fail the save.
   const before: AuditableSettings = {
@@ -253,12 +215,6 @@ export async function POST(request: Request) {
   };
 
   const auditEvents = diffSettingsForAudit(before, after);
-  if (clearedCustomerRequirements) {
-    auditEvents.push({
-      action: "onboarding.customer_requirements_completed",
-      summary: "Business profile completed; cleared the customer requirements deadline.",
-    });
-  }
 
   await recordAccountAuditEvents({
     accountId: session.accountId,

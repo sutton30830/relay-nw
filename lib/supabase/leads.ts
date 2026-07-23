@@ -260,13 +260,53 @@ export async function createMissedCallLeadIfNew(input: {
   callSid: string;
   phone: string;
   message: string | null;
+  twilioSignatureValid: boolean;
 }) {
   const accountId = assertAccountId(input.accountId, "createMissedCallLeadIfNew");
 
   if (shouldSkipDatabaseWrite("missed call lead insert", input)) {
-    return { inserted: true, leadId: null, createdAt: null };
+    return { inserted: true, leadId: null, createdAt: null, becameLive: false };
   }
 
+  if (typeof supabaseAdmin.rpc === "function") {
+    const { data, error } = await supabaseAdmin.rpc(
+      "create_missed_call_lead_and_mark_live",
+      {
+        p_account_id: accountId,
+        p_call_sid: input.callSid,
+        p_phone: input.phone,
+        p_message: input.message,
+        p_twilio_signature_valid: input.twilioSignatureValid,
+      },
+    );
+
+    if (!error) {
+      const row = Array.isArray(data) ? data[0] : data;
+      return {
+        inserted: row?.inserted === true,
+        leadId: typeof row?.lead_id === "string" ? row.lead_id : null,
+        createdAt: typeof row?.lead_created_at === "string" ? row.lead_created_at : null,
+        becameLive: row?.became_live === true,
+      };
+    }
+
+    const migrationMissing =
+      error.code === "PGRST202" ||
+      error.code === "42883" ||
+      /schema cache|could not find the function|function .* does not exist/i.test(error.message);
+
+    if (!migrationMissing) {
+      throw error;
+    }
+
+    console.warn(
+      "Atomic missed-call activation function is missing. Apply the Phase 2 technical-setup migration.",
+      { accountId, error: error.message },
+    );
+  }
+
+  // Rolling-deploy fallback: preserve missed-call capture before the migration
+  // is installed, but never infer or write technical go-live non-atomically.
   const { data, error } = await supabaseAdmin
     .from("leads")
     .insert({
@@ -283,7 +323,7 @@ export async function createMissedCallLeadIfNew(input: {
 
   if (error) {
     if (error.code === "23505") {
-      return { inserted: false, leadId: null, createdAt: null };
+      return { inserted: false, leadId: null, createdAt: null, becameLive: false };
     }
 
     throw error;
@@ -293,6 +333,7 @@ export async function createMissedCallLeadIfNew(input: {
     inserted: Boolean(data?.id),
     leadId: data?.id ?? null,
     createdAt: (data?.created_at as string | undefined) ?? null,
+    becameLive: false,
   };
 }
 

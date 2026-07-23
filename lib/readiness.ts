@@ -40,7 +40,7 @@ export type SetupReadiness = {
   evidence: ReadinessEvidence;
 };
 
-export type A2pStatus = "not_started" | "in_progress" | "approved" | "rejected" | "paused" | "unknown";
+export type A2pStatus = "not_started" | "in_progress" | "approved" | "needs_attention" | "rejected" | "paused" | "unknown";
 export type ForwardingStatus = "passed" | "failed" | "pending" | "unknown";
 
 export type ReadinessSignals = {

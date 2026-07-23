@@ -106,7 +106,14 @@ test("billing foundation is account-scoped, Stripe-authoritative, and independen
   assert.match(sql, /monthly_price_cents integer not null default 9900/);
   assert.match(sql, /stripe_customer_id text/);
   assert.match(sql, /stripe_subscription_id text/);
-  assert.match(sql, /onboarding_status text not null default 'requirements_needed'/);
+  assert.match(sql, /onboarding_status text not null default 'setting_up'/);
+  assert.match(sql, /'waiting_for_forwarding'/);
+  assert.match(sql, /'live'/);
+  assert.match(sql, /create_missed_call_lead_and_mark_live/);
+  assert.match(sql, /on conflict \(account_id, call_sid\)/);
+  assert.match(sql, /onboarding\.first_call_live/);
+  assert.match(sql, /revoke all on function public\.create_missed_call_lead_and_mark_live/);
+  assert.match(sql, /grant execute on function public\.create_missed_call_lead_and_mark_live[\s\S]*to service_role/);
   assert.match(sql, /stripe_subscription_status text/);
   assert.match(sql, /current_period_end timestamptz/);
   assert.match(sql, /cancel_at_period_end boolean not null default false/);
@@ -123,6 +130,7 @@ test("billing foundation is account-scoped, Stripe-authoritative, and independen
   assert.match(sql, /accounts_stripe_customer_id_unique_idx/);
   assert.match(sql, /accounts_stripe_subscription_id_unique_idx/);
   assert.match(accountStore, /getAccountBillingRecord/);
+  assert.match(accountStore, /getAccountTechnicalSetupStatus/);
   assert.match(accountStore, /listAccountsForOnboardingDeadlineMaintenance/);
   assert.match(accountStore, /getOpsOnboardingAccountBySlug/);
   assert.match(accountStore, /canMoveAccountToCustomerDelay/);
@@ -148,9 +156,9 @@ test("billing foundation is account-scoped, Stripe-authoritative, and independen
   assert.match(onboardingDeadlinesTs, /ownerOnboardingDelayMessage/);
   assert.match(onboardingDeadlinesTs, /remind_day_3/);
   assert.match(onboardingDeadlinesTs, /paused_incomplete/);
-  assert.match(setupPageTsx, /computeBillingReadiness/);
-  assert.match(setupPageTsx, /ownerOnboardingDelayMessage/);
-  assert.match(setupPageTsx, /Billing activation/);
+  assert.match(setupPageTsx, /getAccountTechnicalSetupStatus\(accountId\)/);
+  assert.match(setupPageTsx, /technicalStatus === "live"/);
+  assert.doesNotMatch(setupPageTsx, /computeBillingReadiness|ownerOnboardingDelayMessage|Billing activation/);
   assert.match(verifyAccountScript, /deriveBillingVerification/);
   assert.doesNotMatch(missedCallTs, /billingStatus|stripe/i);
 });
@@ -178,7 +186,9 @@ test("stripe checkout and webhooks update account billing without gating missed-
   assert.match(billingCheckoutRouteTs, /getAccountBillingRecord/);
   assert.match(billingCheckoutRouteTs, /getBillingCheckoutEligibility/);
   assert.match(billingCheckoutRouteTs, /checkoutTrialPeriodDays/);
-  assert.match(billingCheckoutRouteTs, /computeSetupReadiness/);
+  assert.match(billingCheckoutRouteTs, /getAccountTechnicalSetupStatus/);
+  assert.match(billingCheckoutRouteTs, /technicalStatus/);
+  assert.doesNotMatch(billingCheckoutRouteTs, /computeSetupReadiness|getA2pRegistrationStatus|getForwardingHealthSummary/);
   assert.match(stripeBillingTs, /createStripePortalSession/);
   assert.match(stripeBillingTs, /billing_portal\/sessions/);
   assert.match(stripeBillingTs, /Idempotency-Key/);
@@ -697,20 +707,14 @@ test("selected account cookie cannot strand later sign-ins", () => {
   assert.match(authLogoutRouteTs, /supabase\.auth\.signOut\(\)/);
 });
 
-test("authenticated setup page exposes onboarding checks without creating a new tenant path", () => {
-  assert.match(setupPageTsx, /getForwardingHealthSummary\(accountId\)/);
+test("authenticated setup page presents one calls-first path without internal tests", () => {
+  assert.match(setupPageTsx, /getAccountTechnicalSetupStatus\(accountId\)/);
   assert.match(setupPageTsx, /getA2pRegistrationStatus\(accountId\)/);
-  // The forwarding + SMS checks are exposed through the unified Full-test panel.
-  assert.match(setupPageTsx, /FullTestPanel/);
-  assert.match(setupPageTsx, /Set up forwarding from your business number/);
-  assert.match(setupPageTsx, /function ReadinessFact/);
-  assert.match(setupPageTsx, /className="readiness__facts"/);
-  assert.doesNotMatch(setupPageTsx, /className="setup-metrics"/);
-  assert.ok(setupPageTsx.indexOf("className={`readiness readiness--") < setupPageTsx.indexOf("Get Relay ready for your next missed call."));
-  assert.ok(setupPageTsx.indexOf("Get Relay ready for your next missed call.") < setupPageTsx.indexOf("id=\"live-tests\""));
-  // Carrier-aware forwarding guidance; the codes live in lib/carriers (tested
-  // in carriers.test.mjs) and render through the CarrierForwarding component.
+  assert.match(setupPageTsx, /Turn on missed-call forwarding/);
+  assert.match(setupPageTsx, /Relay is preparing your line/);
+  assert.match(setupPageTsx, /Calls are live/);
   assert.match(setupPageTsx, /CarrierForwarding relayNumber=/);
+  assert.doesNotMatch(setupPageTsx, /FullTestPanel|ReadinessFact|live-tests|carrier-registration/);
   assert.doesNotMatch(setupPageTsx, /Guide the owner|The owner should|customer&apos;s carrier instructions/);
   assert.doesNotMatch(setupPageTsx, /provisionAccount|signUp|createUser/i);
 });

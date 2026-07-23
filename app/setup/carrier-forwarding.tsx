@@ -5,9 +5,8 @@ import { Icon } from "@/components/icon";
 import { CopyButton } from "@/app/copy-button";
 import { CARRIERS, getCarrierForwarding } from "@/lib/carriers";
 
-// Carrier-first forwarding setup: pick your carrier, get the exact codes. The
-// Full test below confirms it actually worked, so the codes are a starting
-// point, not a promise.
+// Carrier-first forwarding setup: pick a carrier and get the applicable codes.
+// Relay confirms call capture automatically once a real missed call arrives.
 export function CarrierForwarding({ relayNumber }: { relayNumber: string }) {
   const [carrierId, setCarrierId] = useState<string | null>(null);
   const forwarding = getCarrierForwarding(carrierId ?? "other", relayNumber);
@@ -34,7 +33,7 @@ export function CarrierForwarding({ relayNumber }: { relayNumber: string }) {
 
       {carrierId === null ? (
         <p className="setup-copy setup-copy--tight">
-          Not sure? Pick “Other” — the standard codes work on most carriers, and the test below will confirm it.
+          Not sure? Pick “Other” — the standard codes work on most carriers.
         </p>
       ) : (
         <>

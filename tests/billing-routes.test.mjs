@@ -27,6 +27,9 @@ async function loadTsModule(path, mocks) {
 
 const billing = await loadTsModule("lib/billing.ts", {
   "@/lib/readiness": {},
+  "@/lib/customer-experience-contract": {
+    canStartMonthlyBilling: (status) => status === "live",
+  },
 });
 
 function session(overrides = {}) {
@@ -111,10 +114,7 @@ async function runCheckout({
         calls.billingLookups.push(accountId);
         return accountBilling;
       },
-      getA2pRegistrationStatus: async () => "approved",
-      getAccountRecoveryStats: async () => ({ missedCalls: 1 }),
-      getForwardingHealthSummary: async () => ({ displayStatus: "passed", lastPassedAt: "2026-07-01T00:00:00.000Z" }),
-      getLastRecoveredCallAt: async () => "2026-07-01T00:00:00.000Z",
+      getAccountTechnicalSetupStatus: async () => callCaptureReady ? "live" : "waiting_for_forwarding",
     },
   });
 

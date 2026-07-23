@@ -27,8 +27,14 @@ export async function POST(request: Request) {
     const purchased = action === "purchase"
       ? await purchaseAndConfigureRelayNumber(phoneNumber)
       : await configureExistingRelayNumber(phoneNumber);
-    await assignPrimaryAccountPhoneNumber({ accountId: account.accountId, phoneNumber: purchased.phoneNumber, twilioSid: purchased.sid });
-    const summary = `Assigned Relay number ${purchased.phoneNumber}`;
+    const assignment = await assignPrimaryAccountPhoneNumber({
+      accountId: account.accountId,
+      phoneNumber: purchased.phoneNumber,
+      twilioSid: purchased.sid,
+    });
+    const summary = assignment.numberChanged
+      ? `Assigned Relay number ${purchased.phoneNumber}; call capture must be reconfirmed on the new routing configuration`
+      : `Confirmed Relay number ${purchased.phoneNumber}`;
     await recordAccountAuditEvents({ accountId: account.accountId, actorUserId: operator.userId, actorEmail: operator.email, events: [{ action: "provisioning.number_assigned", summary }] });
     await recordPlatformAuditEvent({ actorUserId: operator.userId, actorEmail: operator.email, targetAccountId: account.accountId, action: "provisioning.number_assigned", summary });
     go(account.accountSlug, "assigned");

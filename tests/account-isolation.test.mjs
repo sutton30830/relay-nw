@@ -41,8 +41,9 @@ test("authenticated lead, ops, recording, and transcription routes use session a
   assert.doesNotMatch(files.leadsPage, /getForwardingHealthSummary\(accountId\)/);
 
   assert.match(files.setupPage, /const session = await requireAccountUser\(\)/);
-  assert.match(files.setupPage, /const \{ account, accountId, role, membershipCount \} = session/);
-  assert.match(files.setupPage, /getForwardingHealthSummary\(accountId\)/);
+  assert.match(files.setupPage, /const \{ account, accountId, membershipCount \} = session/);
+  assert.match(files.setupPage, /getAccountTechnicalSetupStatus\(accountId\)/);
+  assert.doesNotMatch(files.setupPage, /getForwardingHealthSummary\(accountId\)/);
   assert.match(files.setupPage, /getA2pRegistrationStatus\(accountId\)/);
 
   // Ops pages authorize via the platform-operator gate and look accounts up by

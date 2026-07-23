@@ -1,15 +1,11 @@
 import { redirect } from "next/navigation";
 import { requirePlatformOperator } from "@/lib/auth";
 import { getBillingCheckoutEligibility } from "@/lib/billing";
-import { computeSetupReadiness, type A2pStatus } from "@/lib/readiness";
 import { createStripeCheckoutSession } from "@/lib/stripe-billing";
 import {
-  getA2pRegistrationStatus,
   getAccountBillingRecord,
-  getAccountRecoveryStats,
   getAccountConfigByAccountId,
-  getForwardingHealthSummary,
-  getLastRecoveredCallAt,
+  getAccountTechnicalSetupStatus,
   getOpsBillingAccountBySlug,
   recordPlatformAuditEvent,
 } from "@/lib/supabase";
@@ -32,27 +28,14 @@ export async function POST(request: Request) {
   const runtime = await getAccountConfigByAccountId(account.accountId);
   if (!runtime) redirectWith(account.accountSlug, "account_not_found");
 
-  const [forwardingHealth, a2pStatus, recovery, lastRecoveredCallAt, billing] = await Promise.all([
-    getForwardingHealthSummary(account.accountId),
-    getA2pRegistrationStatus(account.accountId),
-    getAccountRecoveryStats(account.accountId, { since: null }),
-    getLastRecoveredCallAt(account.accountId),
+  const [technicalStatus, billing] = await Promise.all([
+    getAccountTechnicalSetupStatus(account.accountId),
     getAccountBillingRecord(account.accountId),
   ]);
-  const setupReadiness = computeSetupReadiness({
-    role: "owner",
-    hasProfile: Boolean(runtime.businessName && runtime.ownerPhoneNumber && runtime.twilioPhoneNumber),
-    callMode: runtime.callMode,
-    smsEnabled: runtime.smsEnabled,
-    a2pStatus: (["not_started", "in_progress", "approved", "rejected", "paused"].includes(a2pStatus ?? "")
-      ? a2pStatus
-      : "unknown") as A2pStatus,
-    forwardingStatus: forwardingHealth.displayStatus,
-    hasRecoveredCall: recovery.missedCalls > 0,
-    lastRecoveredCallAt,
-    forwardingLastPassedAt: forwardingHealth.lastPassedAt,
+  const eligibility = getBillingCheckoutEligibility({
+    billing,
+    technicalStatus,
   });
-  const eligibility = getBillingCheckoutEligibility({ billing, setupReadiness });
   if (!eligibility.ok) redirectWith(account.accountSlug, eligibility.reason);
 
   let checkoutUrl: string;
