@@ -35,6 +35,7 @@ export async function POST(request: Request) {
   try {
     if (action === "waive_entirely") {
       await updateAccountBillingRecord(account.accountId, {
+        billingPolicy: "setup_fee_waived",
         setupFeeStatus: "waived",
         setupFeeWaivedAt: new Date().toISOString(),
         setupFeeWaiverReason: "Operator waived kickoff fee at kickoff.",
@@ -54,6 +55,7 @@ export async function POST(request: Request) {
       });
       if (!checkout.url) throw new Error("Stripe returned no card-save URL.");
       await updateAccountBillingRecord(account.accountId, {
+        billingPolicy: "setup_fee_waived",
         setupFeeStatus: "waived",
         setupFeeWaivedAt: new Date().toISOString(),
         setupFeeWaiverReason: "Operator waived kickoff fee and requested card on file.",

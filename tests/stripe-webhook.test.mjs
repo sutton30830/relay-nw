@@ -333,6 +333,50 @@ test("full setup-fee refund is reflected from Stripe", async () => {
   assert.equal(calls.updates.at(-1).update.setupFeeRefundedCents, 15000);
 });
 
+test("refund.created is authoritative for a setup-fee refund", async () => {
+  const { response, calls } = await runWebhook({
+    event: stripeEvent("refund.created", {
+      id: "re_1",
+      customer: "cus_1",
+      payment_intent: "pi_setup_1",
+      amount: 5000,
+      status: "succeeded",
+    }),
+    paymentIntentAccountId: "acct_1",
+    customerAccountId: null,
+    paymentSnapshot: {
+      id: "pi_setup_1", customerId: "cus_1", paymentMethodId: "pm_1", status: "succeeded",
+      amount: 15000, amountReceived: 15000, amountRefunded: 5000, disputed: false,
+    },
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(calls.updates.at(-1).update.setupFeeStatus, "partially_refunded");
+  assert.equal(calls.updates.at(-1).update.setupFeeRefundedCents, 5000);
+});
+
+test("refund.failed preserves the PaymentIntent's actual payment state", async () => {
+  const { response, calls } = await runWebhook({
+    event: stripeEvent("refund.failed", {
+      id: "re_failed",
+      customer: "cus_1",
+      payment_intent: "pi_setup_1",
+      amount: 15000,
+      status: "failed",
+    }),
+    paymentIntentAccountId: "acct_1",
+    customerAccountId: null,
+    paymentSnapshot: {
+      id: "pi_setup_1", customerId: "cus_1", paymentMethodId: "pm_1", status: "succeeded",
+      amount: 15000, amountReceived: 15000, amountRefunded: 0, disputed: false,
+    },
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(calls.updates.at(-1).update.setupFeeStatus, "paid");
+  assert.equal(calls.updates.at(-1).update.setupFeeRefundedCents, 0);
+});
+
 test("setup-fee dispute is visible without pretending it is a refund", async () => {
   const { response, calls } = await runWebhook({
     event: stripeEvent("charge.dispute.created", {

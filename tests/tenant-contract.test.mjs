@@ -98,8 +98,10 @@ test("account users can bind Supabase Auth users to accounts", () => {
   assert.match(sql, /account_users_email_idx/);
 });
 
-test("billing foundation is account-scoped and activation-based", () => {
+test("billing foundation is account-scoped, Stripe-authoritative, and independent from A2P", () => {
   assert.match(sql, /billing_status text not null default 'not_started'/);
+  assert.match(sql, /billing_policy text not null default 'standard'/);
+  assert.match(sql, /billing_policy in \('standard', 'setup_fee_waived', 'comped'\)/);
   assert.match(sql, /setup_fee_status text not null default 'due'/);
   assert.match(sql, /monthly_price_cents integer not null default 9900/);
   assert.match(sql, /stripe_customer_id text/);
@@ -139,7 +141,8 @@ test("billing foundation is account-scoped and activation-based", () => {
   assert.match(billingTs, /ownerAction/);
   assert.match(billingTs, /canApplyOperatorBillingOverride/);
   assert.match(billingTs, /normalizeOperatorTrialDays/);
-  assert.match(billingTs, /callCaptureReady && readiness\.smsRegistrationReady/);
+  assert.match(billingTs, /return readiness\.callCaptureReady/);
+  assert.doesNotMatch(billingTs, /callCaptureReady && readiness\.smsRegistrationReady/);
   assert.match(onboardingDeadlinesTs, /defaultRequirementsDueAt/);
   assert.match(onboardingDeadlinesTs, /chooseOnboardingDeadlineAction/);
   assert.match(onboardingDeadlinesTs, /ownerOnboardingDelayMessage/);

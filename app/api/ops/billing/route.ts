@@ -88,18 +88,21 @@ export async function POST(request: Request) {
   try {
     if (action === "waive_setup_fee") {
       await updateAccountBillingRecord(account.accountId, {
+        billingPolicy: "setup_fee_waived",
         setupFeeStatus: "waived",
         setupFeeWaivedAt: new Date().toISOString(),
         setupFeeWaiverReason: waiverReason || "Pilot waiver; operator did not provide a reason.",
       });
     } else if (action === "require_setup_fee") {
       await updateAccountBillingRecord(account.accountId, {
+        billingPolicy: "standard",
         setupFeeStatus: "due",
         setupFeeWaivedAt: null,
         setupFeeWaiverReason: null,
       });
     } else if (action === "comp") {
       await updateAccountBillingRecord(account.accountId, {
+        billingPolicy: "comped",
         billingStatus: "comped",
         trialEndsAt: null,
         cancelAtPeriodEnd: false,
@@ -107,6 +110,7 @@ export async function POST(request: Request) {
       });
     } else if (action === "uncomp" || action === "end_trial_now") {
       await updateAccountBillingRecord(account.accountId, {
+        ...(action === "uncomp" ? { billingPolicy: "standard" as const } : {}),
         billingStatus: "not_started",
         trialEndsAt: null,
         cancelAtPeriodEnd: false,

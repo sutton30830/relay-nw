@@ -43,7 +43,9 @@ const SUPPORTED_STRIPE_EVENTS = new Set([
   "invoice.payment_action_required",
   "invoice.paid",
   "charge.refunded",
+  "refund.created",
   "refund.updated",
+  "refund.failed",
   "charge.dispute.created",
   "charge.dispute.closed",
   "customer.deleted",
@@ -312,7 +314,9 @@ export async function POST(request: Request) {
 
     if (
       identity.eventType === "charge.refunded" ||
+      identity.eventType === "refund.created" ||
       identity.eventType === "refund.updated" ||
+      identity.eventType === "refund.failed" ||
       identity.eventType === "charge.dispute.created" ||
       identity.eventType === "charge.dispute.closed"
     ) {

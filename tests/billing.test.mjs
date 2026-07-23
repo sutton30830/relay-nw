@@ -55,6 +55,7 @@ function setupReadiness(overrides = {}) {
 function billingRecord(overrides = {}) {
   return {
     billingStatus: "not_started",
+    billingPolicy: "standard",
     stripeCustomerId: null,
     stripeSubscriptionId: null,
     stripePriceId: null,
@@ -64,18 +65,18 @@ function billingRecord(overrides = {}) {
   };
 }
 
-test("billing waits while setup is not activation-ready", () => {
+test("billing is ready when call capture is live even while A2P is pending", () => {
   const state = billing.computeBillingReadiness({
     billing: billingRecord(),
     setupReadiness: setupReadiness({ callCaptureReady: true, smsRegistrationReady: false }),
   });
 
-  assert.equal(state.state, "setup_not_billable");
-  assert.equal(state.activationReady, false);
-  assert.equal(state.label, "Setup first");
+  assert.equal(state.state, "ready_to_start_billing");
+  assert.equal(state.activationReady, true);
+  assert.equal(state.label, "Ready to bill");
 });
 
-test("account becomes ready to bill only after call capture and texting registration are ready", () => {
+test("account becomes ready to bill after call capture is ready", () => {
   const state = billing.computeBillingReadiness({
     billing: billingRecord(),
     setupReadiness: setupReadiness({ callCaptureReady: true, smsRegistrationReady: true }),
@@ -99,7 +100,7 @@ test("billing lifecycle derives ready_to_activate when calls and carrier registr
   assert.equal(state.carrierDelay, false);
 });
 
-test("effective onboarding treats paid or activated accounts as activated", () => {
+test("billing facts do not rewrite technical onboarding state", () => {
   const activatedDate = billing.computeBillingLifecycle({
     billing: billingRecord({
       billingStatus: "canceled",
@@ -118,10 +119,10 @@ test("effective onboarding treats paid or activated accounts as activated", () =
     setupReadiness: setupReadiness({ callCaptureReady: false, smsRegistrationReady: false }),
   });
 
-  assert.equal(activatedDate.onboardingStatus, "activated");
-  assert.equal(activatedDate.customerDelay, false);
-  assert.equal(activeBilling.onboardingStatus, "activated");
-  assert.equal(activeBilling.customerDelay, false);
+  assert.equal(activatedDate.onboardingStatus, "waiting_on_customer");
+  assert.equal(activatedDate.customerDelay, true);
+  assert.equal(activeBilling.onboardingStatus, "waiting_on_customer");
+  assert.equal(activeBilling.customerDelay, true);
 });
 
 test("sms pause does not change billing eligibility once infrastructure is ready", () => {
@@ -135,18 +136,18 @@ test("sms pause does not change billing eligibility once infrastructure is ready
   assert.equal(state.ownerAction, "start_billing");
 });
 
-test("customer delay and carrier delay are distinct billing lifecycle states", () => {
+test("technical delay labels remain independent from billing", () => {
   const waitingOnCustomer = billing.computeBillingLifecycle({
     billing: billingRecord({ onboardingStatus: "waiting_on_customer" }),
     setupReadiness: setupReadiness({ callCaptureReady: false, smsRegistrationReady: false }),
   });
   const carrierReview = billing.computeBillingLifecycle({
     billing: billingRecord({ onboardingStatus: "carrier_review" }),
-    setupReadiness: setupReadiness({ callCaptureReady: true, smsRegistrationReady: false }),
+    setupReadiness: setupReadiness({ callCaptureReady: false, smsRegistrationReady: false }),
   });
   const carrierAttention = billing.computeBillingLifecycle({
     billing: billingRecord({ onboardingStatus: "carrier_attention" }),
-    setupReadiness: setupReadiness({ callCaptureReady: true, smsRegistrationReady: false }),
+    setupReadiness: setupReadiness({ callCaptureReady: false, smsRegistrationReady: false }),
   });
 
   assert.equal(waitingOnCustomer.customerDelay, true);
@@ -216,7 +217,7 @@ test("checkout eligibility allows only not started or fully canceled accounts", 
   );
 });
 
-test("setup fee is an explicit prerequisite for monthly activation billing", () => {
+test("setup fee state does not gate monthly billing after call capture is live", () => {
   const due = billing.getBillingCheckoutEligibility({
     billing: billingRecord({ setupFeeStatus: "due" }),
     setupReadiness: { callCaptureReady: true, smsRegistrationReady: true },
@@ -226,7 +227,7 @@ test("setup fee is an explicit prerequisite for monthly activation billing", () 
     setupReadiness: { callCaptureReady: true, smsRegistrationReady: true },
   });
 
-  assert.deepEqual(due, { ok: false, reason: "setup_fee_required" });
+  assert.deepEqual(due, { ok: true });
   assert.deepEqual(waived, { ok: true });
 });
 
@@ -238,17 +239,17 @@ test("an explicit refund or chargeback overrides a historical first payment", ()
   assert.equal(billing.isSetupFeeSettled(null, "2026-07-01T00:00:00.000Z"), true);
 });
 
-test("commercial lifecycle makes setup fee the next owner action", () => {
+test("setup fee remains separately observable without taking over technical setup", () => {
   const lifecycle = billing.computeBillingLifecycle({
     billing: billingRecord({ setupFeeStatus: "due" }),
     setupReadiness: { callCaptureReady: false, smsRegistrationReady: false },
   });
 
-  assert.equal(lifecycle.ownerAction, "pay_setup_fee");
-  assert.equal(lifecycle.label, "Setup fee due");
+  assert.equal(lifecycle.ownerAction, "finish_setup");
+  assert.equal(lifecycle.label, "Waiting on customer");
 });
 
-test("activation and first paid dates are durable lifecycle facts", () => {
+test("activation and first-paid dates do not override technical onboarding", () => {
   const state = billing.computeBillingLifecycle({
     billing: billingRecord({
       billingStatus: "canceled",
@@ -260,7 +261,7 @@ test("activation and first paid dates are durable lifecycle facts", () => {
     setupReadiness: setupReadiness({ callCaptureReady: false, smsRegistrationReady: false }),
   });
 
-  assert.equal(state.onboardingStatus, "activated");
+  assert.equal(state.onboardingStatus, "waiting_on_customer");
   assert.equal(state.ownerAction, "finish_setup");
 });
 
@@ -483,7 +484,7 @@ test("stripe subscription snapshots read period end from subscription items", ()
   assert.equal(snapshot.currentPeriodEnd, "2026-08-17T00:00:00.000Z");
 });
 
-test("paid stripe subscription update activates onboarding and clears stale customer deadline", () => {
+test("paid Stripe subscription update changes billing without rewriting onboarding", () => {
   const update = stripeBilling.billingUpdateFromSubscription(
     "acct_123",
     {
@@ -499,9 +500,9 @@ test("paid stripe subscription update activates onboarding and clears stale cust
   );
 
   assert.equal(update.billingStatus, "active");
-  assert.equal(update.onboardingStatus, "activated");
-  assert.equal(update.requirementsDueAt, null);
-  assert.equal(update.activatedAt, "2026-07-17T00:00:00.000Z");
+  assert.equal(update.onboardingStatus, undefined);
+  assert.equal(update.requirementsDueAt, undefined);
+  assert.equal(update.activatedAt, undefined);
   assert.equal(update.firstPaidAt, "2026-07-17T00:00:00.000Z");
   assert.equal(update.guaranteeEndsAt, "2026-08-16T00:00:00.000Z");
 });

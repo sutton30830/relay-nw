@@ -17,7 +17,9 @@ export const requiredStripeWebhookEvents = [
   "invoice.paid",
   "checkout.session.expired",
   "charge.refunded",
+  "refund.created",
   "refund.updated",
+  "refund.failed",
   "charge.dispute.created",
   "charge.dispute.closed",
   "customer.deleted",
@@ -226,6 +228,9 @@ function verifyPortal(configurations, checks) {
   const activeConfigs = Array.isArray(configurations?.data)
     ? configurations.data.filter((config) => config?.active === true)
     : [];
+  const activeConfig =
+    activeConfigs.find((config) => config?.is_default === true) ??
+    activeConfigs[0];
 
   addCheck(
     checks,
@@ -234,6 +239,44 @@ function verifyPortal(configurations, checks) {
     activeConfigs.length > 0
       ? `${activeConfigs.length} active Stripe Customer Portal configuration(s) found.`
       : "No active Stripe Customer Portal configuration found. Configure Portal before launch.",
+  );
+
+  if (!activeConfig) return;
+
+  const features = activeConfig.features ?? {};
+  const cancellation = features.subscription_cancel;
+
+  addCheck(
+    checks,
+    features.payment_method_update?.enabled === true,
+    "Portal payment methods",
+    features.payment_method_update?.enabled === true
+      ? "Customers can update payment methods in Stripe."
+      : "Enable payment method updates in the Stripe Customer Portal.",
+  );
+  addCheck(
+    checks,
+    features.invoice_history?.enabled === true,
+    "Portal invoice history",
+    features.invoice_history?.enabled === true
+      ? "Customers can view invoice history in Stripe."
+      : "Enable invoice history in the Stripe Customer Portal.",
+  );
+  addCheck(
+    checks,
+    cancellation?.enabled === true && cancellation?.mode === "at_period_end",
+    "Portal cancellation",
+    cancellation?.enabled === true && cancellation?.mode === "at_period_end"
+      ? "Customers can cancel at the end of the billing period."
+      : "Enable end-of-period subscription cancellation in the Stripe Customer Portal.",
+  );
+  addCheck(
+    checks,
+    cancellation?.cancellation_reason?.enabled === true,
+    "Portal cancellation reasons",
+    cancellation?.cancellation_reason?.enabled === true
+      ? "Stripe collects a cancellation reason."
+      : "Enable cancellation reason collection in the Stripe Customer Portal.",
   );
 }
 

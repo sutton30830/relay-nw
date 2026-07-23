@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "@/lib/env";
-import type { AccountBillingStatus, AccountOnboardingStatus, StripeSubscriptionStatus } from "@/lib/billing";
+import type { AccountBillingStatus, StripeSubscriptionStatus } from "@/lib/billing";
 
 export type StripeCheckoutSessionInput = {
   accountId: string;
@@ -56,12 +56,9 @@ export type StripeBillingUpdate = {
   stripeSubscriptionId?: string | null;
   stripePriceId?: string | null;
   stripeSubscriptionStatus?: StripeSubscriptionStatus | null;
-  onboardingStatus?: AccountOnboardingStatus;
   trialEndsAt?: string | null;
   currentPeriodEnd?: string | null;
   cancelAtPeriodEnd?: boolean;
-  requirementsDueAt?: string | null;
-  activatedAt?: string | null;
   firstPaidAt?: string | null;
   guaranteeEndsAt?: string | null;
   billingAttentionSince?: string | null;
@@ -879,9 +876,6 @@ export function billingUpdateFromSubscription(
     trialEndsAt: subscription.trialEndsAt,
     currentPeriodEnd: subscription.currentPeriodEnd,
     cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-    onboardingStatus: isPaid ? "activated" : undefined,
-    requirementsDueAt: isPaid ? null : undefined,
-    activatedAt: isPaid ? nowIso : undefined,
     firstPaidAt: isPaid ? nowIso : undefined,
     guaranteeEndsAt: isPaid ? new Date(Date.parse(nowIso) + 30 * 24 * 60 * 60 * 1000).toISOString() : undefined,
     billingAttentionSince: billingStatus === "past_due" ? nowIso : null,

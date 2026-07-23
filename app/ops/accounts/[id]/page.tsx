@@ -76,7 +76,7 @@ function billingActionNotice(status: string | undefined) {
   if (status === "setup_fee_already_paid") return "Not changed. A paid setup fee cannot be overwritten.";
   if (status === "override_blocked") return "Not changed. Stripe has a live subscription, so Stripe remains the source of truth.";
   if (status === "setup_fee_required") return "Monthly billing is blocked until the setup fee is paid or waived.";
-  if (status === "setup_incomplete") return "Monthly billing is blocked until call capture and carrier approval are complete.";
+  if (status === "setup_incomplete") return "Monthly billing is blocked until a real missed call reaches Relay.";
   if (status === "past_due") return "Monthly billing is past due; use the Billing Portal instead of starting another subscription.";
   if (status === "already_active") return "An active subscription already exists.";
   if (status === "subscription_incomplete") return "Stripe has an incomplete subscription; resolve it before retrying.";
@@ -178,7 +178,11 @@ export default async function OpsAccountPage({
   const canStartCustomerDelay = canMoveAccountToCustomerDelay(billing.onboardingStatus, billing);
 
   // Kickoff state, spelled out before any buttons.
-  const kickoffSettled = isSetupFeeSettled(billing.setupFeeStatus, billing.firstPaidAt);
+  const kickoffSettled = isSetupFeeSettled(
+    billing.setupFeeStatus,
+    billing.firstPaidAt,
+    billing.billingPolicy,
+  );
   const kickoffCollectible = billing.setupFeeStatus === "due" || billing.setupFeeStatus === "refunded" ||
     billing.setupFeeStatus === "charged_back";
   const kickoffState = billing.setupFeeStatus === "paid"

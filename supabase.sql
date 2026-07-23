@@ -9,6 +9,10 @@ create table if not exists public.accounts (
   billing_status text not null default 'not_started' check (
     billing_status in ('not_started', 'trialing', 'active', 'past_due', 'canceled', 'comped')
   ),
+  billing_policy text not null default 'standard' check (
+    billing_policy in ('standard', 'setup_fee_waived', 'comped')
+  ),
+  billing_policy_updated_at timestamptz,
   stripe_customer_id text,
   stripe_subscription_id text,
   stripe_price_id text,
@@ -54,6 +58,8 @@ create table if not exists public.accounts (
 );
 
 alter table public.accounts add column if not exists billing_status text not null default 'not_started';
+alter table public.accounts add column if not exists billing_policy text not null default 'standard';
+alter table public.accounts add column if not exists billing_policy_updated_at timestamptz;
 alter table public.accounts add column if not exists stripe_customer_id text;
 alter table public.accounts add column if not exists stripe_subscription_id text;
 alter table public.accounts add column if not exists stripe_price_id text;
@@ -87,6 +93,15 @@ begin
   alter table public.accounts
     add constraint accounts_billing_status_check
     check (billing_status in ('not_started', 'trialing', 'active', 'past_due', 'canceled', 'comped'));
+exception
+  when duplicate_object then null;
+end $$;
+do $$
+begin
+  alter table public.accounts drop constraint if exists accounts_billing_policy_check;
+  alter table public.accounts
+    add constraint accounts_billing_policy_check
+    check (billing_policy in ('standard', 'setup_fee_waived', 'comped'));
 exception
   when duplicate_object then null;
 end $$;
@@ -166,6 +181,23 @@ set
   setup_fee_waiver_reason = coalesce(setup_fee_waiver_reason, 'Pre-commercial account backfill; review before customer billing.')
 where setup_fee_status = 'due'
   and created_at < timestamptz '2026-07-01 00:00:00+00';
+
+-- Phase 1 Stripe-authority boundary. Relay exceptions are policy, not Stripe
+-- payment/subscription states. Legacy mixed-purpose values remain as rolling-
+-- deploy compatibility shadows until the later cleanup phase.
+update public.accounts
+set
+  billing_policy = 'comped',
+  billing_policy_updated_at = coalesce(billing_policy_updated_at, billing_updated_at, now())
+where billing_status = 'comped'
+  and billing_policy is distinct from 'comped';
+
+update public.accounts
+set
+  billing_policy = 'setup_fee_waived',
+  billing_policy_updated_at = coalesce(billing_policy_updated_at, setup_fee_waived_at, billing_updated_at, now())
+where setup_fee_status = 'waived'
+  and billing_policy = 'standard';
 
 -- Phase 6A lifecycle coherence backfill.
 -- Paid or previously activated accounts should not remain in customer-delay

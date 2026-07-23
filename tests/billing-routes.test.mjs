@@ -358,13 +358,12 @@ test("Checkout honors the selected account's remaining app-level trial", async (
   assert.equal(calls.checkoutInputs[0].trialPeriodDays, 12);
 });
 
-test("activation Checkout is blocked until the setup fee is paid or waived", async () => {
+test("activation Checkout is independent from setup-fee collection", async () => {
   const calls = await runCheckout({
     accountBilling: billingRecord({ setupFeeStatus: "due" }),
   });
 
-  assert.deepEqual(calls.checkoutInputs, []);
-  assert.deepEqual(calls.redirects, ["/settings?billing=setup_fee_required#billing"]);
+  assert.equal(calls.checkoutInputs.length, 1);
 });
 
 test("standard activation Checkout does not add a Stripe trial", async () => {
@@ -383,6 +382,7 @@ test("operator can manually comp an account without a live Stripe subscription",
     {
       accountId: "acct-1",
       update: {
+        billingPolicy: "comped",
         billingStatus: "comped",
         trialEndsAt: null,
         cancelAtPeriodEnd: false,

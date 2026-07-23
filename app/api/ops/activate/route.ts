@@ -43,7 +43,7 @@ export async function POST(request: Request) {
   }
   const days = Math.min(90, Math.max(7, Number(form.get("trial_days") ?? 30) || 30));
   const update = action === "comp"
-    ? { billingStatus: "comped" as const, onboardingStatus: "activated" as const, activatedAt: new Date().toISOString(), billingAttentionSince: null }
+    ? { billingPolicy: "comped" as const, billingStatus: "comped" as const, onboardingStatus: "activated" as const, activatedAt: new Date().toISOString(), billingAttentionSince: null }
     : action === "trial"
       ? { billingStatus: "trialing" as const, onboardingStatus: "activated" as const, activatedAt: new Date().toISOString(), trialEndsAt: addTrialDays({ days }), billingAttentionSince: null }
       : null;

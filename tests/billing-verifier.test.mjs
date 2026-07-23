@@ -46,7 +46,22 @@ function fetchMock(overrides = {}) {
       recurring: null,
     },
     "/v1/billing_portal/configurations?active=true&limit=10": {
-      data: [{ id: "bpc_123", active: true }],
+      data: [
+        {
+          id: "bpc_123",
+          active: true,
+          is_default: true,
+          features: {
+            payment_method_update: { enabled: true },
+            invoice_history: { enabled: true },
+            subscription_cancel: {
+              enabled: true,
+              mode: "at_period_end",
+              cancellation_reason: { enabled: true },
+            },
+          },
+        },
+      ],
     },
     "/v1/webhook_endpoints?limit=100": {
       data: [
@@ -111,6 +126,10 @@ test("billing verifier passes for the expected Stripe price, portal, and webhook
     "Stripe setup-fee price amount",
     "Stripe setup-fee price mode",
     "Customer Portal configuration",
+    "Portal payment methods",
+    "Portal invoice history",
+    "Portal cancellation",
+    "Portal cancellation reasons",
     "Stripe webhook endpoint",
     "Stripe webhook events",
   ]);
@@ -163,6 +182,36 @@ test("billing verifier blocks when Customer Portal has no active configuration",
 
   assert.equal(result.ok, false);
   assert.match(result.checks.find((check) => check.label === "Customer Portal configuration")?.detail ?? "", /No active/);
+});
+
+test("billing verifier blocks a portal that hides customer billing controls", async () => {
+  const fetchImpl = fetchMock({
+    "/v1/billing_portal/configurations?active=true&limit=10": {
+      data: [
+        {
+          id: "bpc_123",
+          active: true,
+          is_default: true,
+          features: {
+            payment_method_update: { enabled: false },
+            invoice_history: { enabled: false },
+            subscription_cancel: {
+              enabled: true,
+              mode: "immediately",
+              cancellation_reason: { enabled: false },
+            },
+          },
+        },
+      ],
+    },
+  });
+  const result = await verifyBillingConfig({ env: baseEnv, fetchImpl });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.checks.find((check) => check.label === "Portal payment methods")?.ok, false);
+  assert.equal(result.checks.find((check) => check.label === "Portal invoice history")?.ok, false);
+  assert.equal(result.checks.find((check) => check.label === "Portal cancellation")?.ok, false);
+  assert.equal(result.checks.find((check) => check.label === "Portal cancellation reasons")?.ok, false);
 });
 
 test("billing verifier blocks when the production webhook is missing required events", async () => {

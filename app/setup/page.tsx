@@ -105,7 +105,7 @@ function BillingAction({ billingReadiness, role }: { billingReadiness: BillingRe
         <button className="btn btn-primary" type="submit">
           Pay $150 setup fee
         </button>
-        <p>Monthly billing starts only after A2P approval and activation. Missed-call capture is not interrupted by billing.</p>
+        <p>The setup fee is separate from monthly billing. Texting approval does not delay call capture or monthly billing.</p>
       </form>
     );
   }
@@ -121,7 +121,7 @@ function BillingAction({ billingReadiness, role }: { billingReadiness: BillingRe
   if (!billingReadiness.activationReady) {
     return (
       <p className="setup-panel__note">
-        Finish call capture and carrier texting setup before starting billing.
+        Confirm that a real missed call reaches Relay before starting billing.
       </p>
     );
   }

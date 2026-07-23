@@ -1,4 +1,7 @@
 import type { SetupReadiness } from "@/lib/readiness";
+import type { BillingPolicy } from "@/lib/customer-experience-contract";
+
+export type { BillingPolicy } from "@/lib/customer-experience-contract";
 
 export type AccountBillingStatus = "not_started" | "trialing" | "active" | "past_due" | "canceled" | "comped";
 
@@ -36,6 +39,7 @@ export type BillingOwnerAction =
 
 export type AccountBillingRecord = {
   billingStatus: AccountBillingStatus;
+  billingPolicy: BillingPolicy;
   onboardingStatus: AccountOnboardingStatus;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
@@ -125,6 +129,7 @@ export const BILLING_TRIAL_EXPIRY_ACTION = "billing.trial.expired";
 
 const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   billingStatus: "not_started",
+  billingPolicy: "setup_fee_waived",
   onboardingStatus: "requirements_needed",
   stripeCustomerId: null,
   stripeSubscriptionId: null,
@@ -163,7 +168,11 @@ export function defaultBillingRecord(): AccountBillingRecord {
 export function isSetupFeeSettled(
   status: AccountBillingRecord["setupFeeStatus"] | null | undefined,
   firstPaidAt?: string | null,
+  policy: BillingPolicy = "standard",
 ) {
+  if (policy === "setup_fee_waived" || policy === "comped") {
+    return true;
+  }
   // An explicit current Stripe state wins over historical payment facts. A
   // fully refunded, disputed, or charged-back fee must not remain settled just
   // because it was paid once. Older pre-commercial rows with no setup-fee
@@ -188,6 +197,18 @@ export function normalizeBillingStatus(value: string | null | undefined): Accoun
   }
 
   return "not_started";
+}
+
+export function normalizeBillingPolicy(
+  value: string | null | undefined,
+  legacy?: Pick<AccountBillingRecord, "billingStatus" | "setupFeeStatus">,
+): BillingPolicy {
+  if (value === "standard" || value === "setup_fee_waived" || value === "comped") {
+    return value;
+  }
+  if (legacy?.billingStatus === "comped") return "comped";
+  if (legacy?.setupFeeStatus === "waived") return "setup_fee_waived";
+  return "standard";
 }
 
 export function normalizeOnboardingStatus(value: string | null | undefined): AccountOnboardingStatus {
@@ -226,8 +247,8 @@ export function normalizeStripeSubscriptionStatus(value: string | null | undefin
   return null;
 }
 
-export function isBillingActivationReady(readiness: Pick<SetupReadiness, "callCaptureReady" | "smsRegistrationReady">) {
-  return readiness.callCaptureReady && readiness.smsRegistrationReady;
+export function isBillingActivationReady(readiness: Pick<SetupReadiness, "callCaptureReady">) {
+  return readiness.callCaptureReady;
 }
 
 function formatBillingLifecycleDate(value: string | null) {
@@ -250,11 +271,13 @@ function trialSummary(trialEndsAt: string | null) {
 
 export function computeBillingReadiness(input: {
   billing: AccountBillingRecord | null | undefined;
-  setupReadiness: Pick<SetupReadiness, "callCaptureReady" | "smsRegistrationReady">;
+  setupReadiness: Pick<SetupReadiness, "callCaptureReady">;
 }): BillingReadiness {
   const lifecycle = computeBillingLifecycle(input);
   const billing = input.billing ?? defaultBillingRecord();
-  const billingStatus = normalizeBillingStatus(billing.billingStatus);
+  const billingStatus = billing.billingPolicy === "comped"
+    ? "comped"
+    : normalizeBillingStatus(billing.billingStatus);
 
   if (billingStatus === "active") {
     if (billing.cancelAtPeriodEnd) {
@@ -330,20 +353,6 @@ export function computeBillingReadiness(input: {
     };
   }
 
-  if (!isSetupFeeSettled(billing.setupFeeStatus, billing.firstPaidAt)) {
-    return {
-      state: "setup_not_billable",
-      activationReady: lifecycle.activationReady,
-      billingStatus,
-      onboardingStatus: lifecycle.onboardingStatus,
-      ownerAction: "pay_setup_fee",
-      label: "Setup fee due",
-      headline: "Start with the setup fee.",
-      summary: "Pay the one-time setup fee so Relay can finish configuring this account. Monthly billing starts only after carrier approval and activation.",
-      tone: "warn",
-    };
-  }
-
   if (lifecycle.activationReady) {
     return {
       state: "ready_to_start_billing",
@@ -353,7 +362,7 @@ export function computeBillingReadiness(input: {
       ownerAction: lifecycle.ownerAction,
       label: "Ready to bill",
       headline: "Relay is ready for activation billing.",
-      summary: "Call capture and carrier texting are ready. Start billing when the customer is handed off.",
+      summary: "Call capture is live. Start billing when the customer is handed off.",
       tone: "warn",
     };
   }
@@ -366,7 +375,7 @@ export function computeBillingReadiness(input: {
     ownerAction: lifecycle.ownerAction,
     label: "Setup first",
     headline: "Billing should wait.",
-    summary: "Finish call capture and carrier texting approval before charging this account.",
+    summary: "Finish call capture before charging this account.",
     tone: "neutral",
   };
 }
@@ -376,16 +385,8 @@ export function deriveEffectiveOnboardingStatus(input: {
   activationReady: boolean;
 }): AccountOnboardingStatus {
   const current = normalizeOnboardingStatus(input.billing.onboardingStatus);
-  const billingStatus = normalizeBillingStatus(input.billing.billingStatus);
 
-  if (
-    current === "activated" ||
-    input.billing.activatedAt ||
-    input.billing.firstPaidAt ||
-    billingStatus === "active" ||
-    billingStatus === "trialing" ||
-    billingStatus === "comped"
-  ) {
+  if (current === "activated") {
     return "activated";
   }
 
@@ -412,15 +413,6 @@ function actionFor(input: {
 }): BillingOwnerAction {
   if (input.billingStatus === "comped") {
     return "none";
-  }
-
-  if (
-    !isSetupFeeSettled(input.setupFeeStatus, input.firstPaidAt) &&
-    input.billingStatus !== "active" &&
-    input.billingStatus !== "trialing" &&
-    input.billingStatus !== "past_due"
-  ) {
-    return "pay_setup_fee";
   }
 
   if (input.billingStatus === "active" || input.billingStatus === "trialing") {
@@ -456,11 +448,13 @@ function actionFor(input: {
 
 export function computeBillingLifecycle(input: {
   billing: AccountBillingRecord | null | undefined;
-  setupReadiness: Pick<SetupReadiness, "callCaptureReady" | "smsRegistrationReady">;
+  setupReadiness: Pick<SetupReadiness, "callCaptureReady">;
 }): BillingLifecycleState {
   const billing = input.billing ?? defaultBillingRecord();
   const activationReady = isBillingActivationReady(input.setupReadiness);
-  const billingStatus = normalizeBillingStatus(billing.billingStatus);
+  const billingStatus = billing.billingPolicy === "comped"
+    ? "comped"
+    : normalizeBillingStatus(billing.billingStatus);
   const onboardingStatus = deriveEffectiveOnboardingStatus({ billing, activationReady });
   const ownerAction = actionFor({
     billingStatus,
@@ -547,21 +541,6 @@ export function computeBillingLifecycle(input: {
     };
   }
 
-  if (!isSetupFeeSettled(billing.setupFeeStatus, billing.firstPaidAt)) {
-    return {
-      activationReady,
-      billingStatus,
-      onboardingStatus,
-      ownerAction,
-      customerDelay,
-      carrierDelay,
-      label: "Setup fee due",
-      headline: "Start with the setup fee.",
-      summary: "Pay the one-time setup fee so Relay can finish configuring this account. Monthly billing starts only after carrier approval and activation.",
-      tone: "warn",
-    };
-  }
-
   if (activationReady) {
     return {
       activationReady,
@@ -572,7 +551,7 @@ export function computeBillingLifecycle(input: {
       carrierDelay,
       label: "Ready to bill",
       headline: "Ready for activation billing.",
-      summary: "Call capture and carrier texting are ready. Start billing when the customer is handed off.",
+      summary: "Call capture is live. Start billing when the customer is handed off.",
       tone: "warn",
     };
   }
@@ -586,16 +565,14 @@ export function computeBillingLifecycle(input: {
     carrierDelay,
     label: customerDelay ? "Waiting on customer" : carrierDelay ? "Carrier review" : "Setup first",
     headline: "Billing should wait.",
-    summary: carrierDelay
-      ? "Carrier registration is still moving. Do not start monthly billing until activation is ready."
-      : "Finish setup before charging this account.",
+    summary: "Finish call capture before charging this account.",
     tone: "neutral",
   };
 }
 
 export function getBillingCheckoutEligibility(input: {
   billing: AccountBillingRecord | null | undefined;
-  setupReadiness: Pick<SetupReadiness, "callCaptureReady" | "smsRegistrationReady">;
+  setupReadiness: Pick<SetupReadiness, "callCaptureReady">;
 }): BillingCheckoutEligibility {
   const billing = input.billing ?? defaultBillingRecord();
   const activationReady = isBillingActivationReady(input.setupReadiness);
@@ -604,10 +581,6 @@ export function getBillingCheckoutEligibility(input: {
 
   if (!activationReady) {
     return { ok: false, reason: "setup_incomplete" };
-  }
-
-  if (!isSetupFeeSettled(billing.setupFeeStatus, billing.firstPaidAt)) {
-    return { ok: false, reason: "setup_fee_required" };
   }
 
   if (billingStatus === "active" || stripeStatus === "active" || stripeStatus === "trialing") {

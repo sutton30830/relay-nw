@@ -126,7 +126,7 @@ function billingSummary(billing: AccountBillingRecord, lifecycle: BillingLifecyc
     return "Your trial is active. Start billing any time.";
   }
 
-  if (billing.billingStatus === "comped") {
+  if (billing.billingPolicy === "comped" || billing.billingStatus === "comped") {
     return "Relay isn't charging this account.";
   }
 
@@ -151,7 +151,7 @@ function billingSummary(billing: AccountBillingRecord, lifecycle: BillingLifecyc
     billing.setupFeeStatus === "refunded" ||
     billing.setupFeeStatus === "charged_back"
   ) {
-    return "Pay the one-time $150 setup fee so Relay can finish configuring this account. Monthly billing starts only after A2P approval and activation.";
+    return "The one-time $150 setup fee is due. Monthly billing can begin once missed-call capture is live; texting approval is separate.";
   }
 
   return lifecycle.summary;
@@ -405,7 +405,7 @@ export default async function SettingsPage({
           <div className="intake-error settings-notice" role="alert">
             <Icon name="info" size={14} />
             {params.billing === "setup_incomplete"
-              ? "Finish call routing and carrier registration before starting billing."
+              ? "Confirm that a real missed call reaches Relay before starting billing."
               : params.billing === "already_active"
                 ? "This account already has an active subscription. Manage it here instead."
                 : params.billing === "past_due" || params.billing === "subscription_incomplete"
