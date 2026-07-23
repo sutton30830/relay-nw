@@ -125,12 +125,10 @@ type AccountBillingRow = {
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   stripe_price_id: string | null;
-  stripe_payment_method_id: string | null;
   stripe_subscription_status: string | null;
   trial_ends_at: string | null;
   current_period_end: string | null;
   cancel_at_period_end: boolean | null;
-  requirements_due_at: string | null;
   activated_at: string | null;
   first_paid_at: string | null;
   guarantee_ends_at: string | null;
@@ -199,37 +197,6 @@ export type StripeEventRow = {
   processed_at: string | null;
 };
 
-export type OnboardingDeadlineAccount = {
-  accountId: string;
-  accountSlug: string;
-  businessName: string;
-  ownerEmail: string | null;
-  onboardingStatus: AccountOnboardingStatus;
-  requirementsDueAt: string | null;
-  onboardingStatusUpdatedAt: string | null;
-};
-
-export type BillingTrialExpiryAccount = {
-  accountId: string;
-  accountSlug: string;
-  businessName: string;
-  ownerEmail: string | null;
-  billingStatus: AccountBillingStatus;
-  stripeSubscriptionId: string | null;
-  trialEndsAt: string | null;
-};
-
-export type OpsOnboardingAccount = {
-  accountId: string;
-  accountSlug: string;
-  businessName: string;
-  onboardingStatus: AccountOnboardingStatus;
-  requirementsDueAt: string | null;
-  activatedAt: string | null;
-  firstPaidAt: string | null;
-  guaranteeEndsAt: string | null;
-};
-
 export type OpsBillingAccount = AccountBillingRecord & {
   accountId: string;
   accountSlug: string;
@@ -245,7 +212,6 @@ export type OpsAccountSummary = {
   billingStatus: AccountBillingStatus;
   onboardingStatus: AccountOnboardingStatus;
   stripeSubscriptionStatus: StripeSubscriptionStatus | null;
-  requirementsDueAt: string | null;
   activatedAt: string | null;
   firstPaidAt: string | null;
   cancelAtPeriodEnd: boolean;
@@ -257,18 +223,16 @@ export type OpsAccountSummary = {
 
 const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   billingStatus: "not_started",
-  billingPolicy: "setup_fee_waived",
-  onboardingStatus: "requirements_needed",
+  billingPolicy: "standard",
+  onboardingStatus: "setting_up",
   stripeCustomerId: null,
   stripeSubscriptionId: null,
   stripePriceId: null,
-  stripePaymentMethodId: null,
   stripeSubscriptionStatus: null,
   trialEndsAt: null,
   currentPeriodEnd: null,
   cancelAtPeriodEnd: false,
   canceledAt: null,
-  requirementsDueAt: null,
   activatedAt: null,
   firstPaidAt: null,
   guaranteeEndsAt: null,
@@ -276,7 +240,7 @@ const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   billingUpdatedAt: null,
   onboardingStatusUpdatedAt: null,
   setupFeeCents: 15000,
-  setupFeeStatus: "waived",
+  setupFeeStatus: "due",
   setupFeeCheckoutSessionId: null,
   setupFeePaymentIntentId: null,
   setupFeePaidAt: null,
@@ -349,22 +313,16 @@ function normalizeAccountOnboardingStatus(value: string | null | undefined): Acc
     value === "waiting_for_forwarding" ||
     value === "live" ||
     value === "paused" ||
-    value === "closed" ||
-    value === "requirements_needed" ||
-    value === "waiting_on_customer" ||
-    value === "ready_for_carrier" ||
-    value === "carrier_review" ||
-    value === "carrier_attention" ||
-    value === "ready_for_live_test" ||
-    value === "ready_to_activate" ||
-    value === "activated" ||
-    value === "paused_incomplete" ||
-    value === "closed_incomplete"
+    value === "closed"
   ) {
     return value;
   }
+  if (value === "paused_incomplete") return "paused";
+  if (value === "closed_incomplete") return "closed";
+  if (value === "activated" || value === "ready_to_activate") return "live";
+  if (value === "waiting_on_customer") return "waiting_for_forwarding";
 
-  return "requirements_needed";
+  return "setting_up";
 }
 
 export async function getAccountTechnicalSetupStatus(
@@ -407,7 +365,7 @@ function normalizeSetupFeeStatus(value: string | null | undefined): AccountBilli
     value === "partially_refunded" || value === "refunded" ||
     value === "disputed" || value === "charged_back"
   ) return value;
-  return "waived";
+  return "due";
 }
 
 const ACCOUNT_SETTINGS_SELECT =
@@ -563,7 +521,6 @@ export async function assignPrimaryAccountPhoneNumber(input: {
       .update({
         onboarding_status: nextStatus,
         onboarding_status_updated_at: new Date().toISOString(),
-        requirements_due_at: null,
       })
       .eq("id", input.accountId)
       .not("onboarding_status", "in", '("paused","closed")');
@@ -659,7 +616,7 @@ export async function getAccountBillingRecord(accountId: string | null | undefin
   let { data, error } = await supabaseAdmin
     .from("accounts")
     .select(
-      "billing_status, billing_policy, billing_policy_updated_at, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_payment_method_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, requirements_due_at, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, canceled_at, onboarding_status_updated_at, setup_fee_cents, setup_fee_status, setup_fee_checkout_session_id, setup_fee_payment_intent_id, setup_fee_paid_at, setup_fee_waived_at, setup_fee_waiver_reason, setup_fee_refunded_at, setup_fee_refunded_cents, setup_fee_dispute_status, monthly_price_cents",
+      "billing_status, billing_policy, billing_policy_updated_at, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, canceled_at, onboarding_status_updated_at, setup_fee_cents, setup_fee_status, setup_fee_checkout_session_id, setup_fee_payment_intent_id, setup_fee_paid_at, setup_fee_waived_at, setup_fee_waiver_reason, setup_fee_refunded_at, setup_fee_refunded_cents, setup_fee_dispute_status, monthly_price_cents",
     )
     .eq("id", accountId)
     .maybeSingle();
@@ -669,7 +626,7 @@ export async function getAccountBillingRecord(accountId: string | null | undefin
     ({ data, error } = await supabaseAdmin
       .from("accounts")
       .select(
-        "billing_status, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_payment_method_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, requirements_due_at, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, canceled_at, onboarding_status_updated_at, setup_fee_cents, setup_fee_status, setup_fee_checkout_session_id, setup_fee_payment_intent_id, setup_fee_paid_at, setup_fee_waived_at, setup_fee_waiver_reason, setup_fee_refunded_at, setup_fee_refunded_cents, setup_fee_dispute_status, monthly_price_cents",
+        "billing_status, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, canceled_at, onboarding_status_updated_at, setup_fee_cents, setup_fee_status, setup_fee_checkout_session_id, setup_fee_payment_intent_id, setup_fee_paid_at, setup_fee_waived_at, setup_fee_waiver_reason, setup_fee_refunded_at, setup_fee_refunded_cents, setup_fee_dispute_status, monthly_price_cents",
       )
       .eq("id", accountId)
       .maybeSingle());
@@ -705,12 +662,10 @@ export async function getAccountBillingRecord(accountId: string | null | undefin
     stripeCustomerId: row.stripe_customer_id,
     stripeSubscriptionId: row.stripe_subscription_id,
     stripePriceId: row.stripe_price_id,
-    stripePaymentMethodId: row.stripe_payment_method_id,
     stripeSubscriptionStatus: normalizeAccountStripeSubscriptionStatus(row.stripe_subscription_status),
     trialEndsAt: row.trial_ends_at,
     currentPeriodEnd: row.current_period_end,
     cancelAtPeriodEnd: Boolean(row.cancel_at_period_end),
-    requirementsDueAt: row.requirements_due_at,
     activatedAt: row.activated_at,
     firstPaidAt: row.first_paid_at,
     guaranteeEndsAt: row.guarantee_ends_at,
@@ -785,12 +740,10 @@ export async function updateAccountBillingRecord(
   if (update.stripeCustomerId !== undefined) payload.stripe_customer_id = update.stripeCustomerId;
   if (update.stripeSubscriptionId !== undefined) payload.stripe_subscription_id = update.stripeSubscriptionId;
   if (update.stripePriceId !== undefined) payload.stripe_price_id = update.stripePriceId;
-  if (update.stripePaymentMethodId !== undefined) payload.stripe_payment_method_id = update.stripePaymentMethodId;
   if (update.stripeSubscriptionStatus !== undefined) payload.stripe_subscription_status = update.stripeSubscriptionStatus;
   if (update.trialEndsAt !== undefined) payload.trial_ends_at = update.trialEndsAt;
   if (update.currentPeriodEnd !== undefined) payload.current_period_end = update.currentPeriodEnd;
   if (update.cancelAtPeriodEnd !== undefined) payload.cancel_at_period_end = update.cancelAtPeriodEnd;
-  if (update.requirementsDueAt !== undefined) payload.requirements_due_at = update.requirementsDueAt;
   // These dates are lifecycle facts, not current subscription settings. Once
   // written, cancellation, restart, or SMS pause must not reset them.
   if (update.activatedAt !== undefined && !durableDates?.activated_at && update.activatedAt) {
@@ -824,6 +777,53 @@ export async function updateAccountBillingRecord(
   if (error) {
     throwIfSupabaseError(error);
   }
+}
+
+export async function updateAccountTechnicalSetupStatus(
+  inputAccountId: string,
+  status: TechnicalSetupStatus,
+) {
+  const accountId = assertAccountIdForAccountStore(
+    inputAccountId,
+    "updateAccountTechnicalSetupStatus",
+  );
+
+  if (shouldSkipDatabaseWrite("technical setup status", { accountId, status })) return;
+
+  const { error } = await supabaseAdmin
+    .from("accounts")
+    .update({
+      onboarding_status: status,
+      onboarding_status_updated_at: new Date().toISOString(),
+    })
+    .eq("id", accountId);
+
+  throwIfSupabaseError(error);
+}
+
+export async function setAccountBillingPolicy(input: {
+  accountId: string;
+  policy: AccountBillingRecord["billingPolicy"];
+  reason: string;
+  actorUserId: string;
+  actorEmail: string | null;
+}) {
+  const accountId = assertAccountIdForAccountStore(
+    input.accountId,
+    "setAccountBillingPolicy",
+  );
+
+  if (shouldSkipDatabaseWrite("billing policy", input)) return;
+
+  const { error } = await supabaseAdmin.rpc("set_account_billing_policy", {
+    p_account_id: accountId,
+    p_policy: input.policy,
+    p_reason: input.reason.trim(),
+    p_actor_user_id: input.actorUserId,
+    p_actor_email: input.actorEmail,
+  });
+
+  throwIfSupabaseError(error);
 }
 
 function sanitizeStripeEventText(value: string | null | undefined) {
@@ -1093,111 +1093,6 @@ export async function getRecentStripeEventsForAccount(inputAccountId: string, li
   return (data ?? []) as StripeEventRow[];
 }
 
-export async function listAccountsForOnboardingDeadlineMaintenance(): Promise<OnboardingDeadlineAccount[]> {
-  if (isPlaceholderSupabaseConfig()) {
-    return [];
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from("accounts")
-    .select("id, slug, name, onboarding_status, requirements_due_at, onboarding_status_updated_at, account_settings(owner_email, business_name)")
-    .in("onboarding_status", ["waiting_on_customer", "paused_incomplete"])
-    .not("requirements_due_at", "is", null)
-    .order("requirements_due_at", { ascending: true })
-    .limit(250);
-
-  if (error) {
-    if (
-      error.message.includes("onboarding_status") ||
-      error.message.includes("requirements_due_at") ||
-      error.message.includes("account_settings")
-    ) {
-      console.warn("Account onboarding lifecycle columns are missing. Run supabase.sql before enabling deadline maintenance.");
-      return [];
-    }
-
-    throwIfSupabaseError(error);
-  }
-
-  return (data ?? []).map((row: Record<string, unknown>) => {
-    const settingsRaw = row.account_settings;
-    const settings = Array.isArray(settingsRaw) ? settingsRaw[0] : settingsRaw;
-    const settingsRecord = settings && typeof settings === "object" ? settings as Record<string, unknown> : null;
-
-    return {
-      accountId: String(row.id),
-      accountSlug: String(row.slug),
-      businessName:
-        typeof settingsRecord?.business_name === "string" && settingsRecord.business_name.trim()
-          ? settingsRecord.business_name
-          : String(row.name),
-      ownerEmail:
-        typeof settingsRecord?.owner_email === "string" && settingsRecord.owner_email.trim()
-          ? settingsRecord.owner_email
-          : null,
-      onboardingStatus: normalizeAccountOnboardingStatus(row.onboarding_status as string | null | undefined),
-      requirementsDueAt: typeof row.requirements_due_at === "string" ? row.requirements_due_at : null,
-      onboardingStatusUpdatedAt:
-        typeof row.onboarding_status_updated_at === "string" ? row.onboarding_status_updated_at : null,
-    };
-  });
-}
-
-export async function listAccountsForBillingTrialExpiry(nowIso = new Date().toISOString()): Promise<BillingTrialExpiryAccount[]> {
-  if (isPlaceholderSupabaseConfig()) {
-    return [];
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from("accounts")
-    .select("id, slug, name, billing_status, stripe_subscription_id, trial_ends_at, account_settings(owner_email, business_name)")
-    .eq("billing_status", "trialing")
-    .is("stripe_subscription_id", null)
-    .not("trial_ends_at", "is", null)
-    .lte("trial_ends_at", nowIso)
-    .order("trial_ends_at", { ascending: true })
-    .limit(250);
-
-  if (error) {
-    if (
-      error.message.includes("billing_status") ||
-      error.message.includes("stripe_subscription_id") ||
-      error.message.includes("trial_ends_at") ||
-      error.message.includes("account_settings")
-    ) {
-      console.warn("Account billing lifecycle columns are missing. Run supabase.sql before enabling trial expiry maintenance.");
-      return [];
-    }
-
-    throwIfSupabaseError(error);
-  }
-
-  return (data ?? []).map((row: Record<string, unknown>) => {
-    const settingsRaw = row.account_settings;
-    const settings = Array.isArray(settingsRaw) ? settingsRaw[0] : settingsRaw;
-    const settingsRecord = settings && typeof settings === "object" ? settings as Record<string, unknown> : null;
-
-    return {
-      accountId: String(row.id),
-      accountSlug: String(row.slug),
-      businessName:
-        typeof settingsRecord?.business_name === "string" && settingsRecord.business_name.trim()
-          ? settingsRecord.business_name
-          : String(row.name),
-      ownerEmail:
-        typeof settingsRecord?.owner_email === "string" && settingsRecord.owner_email.trim()
-          ? settingsRecord.owner_email
-          : null,
-      billingStatus: normalizeAccountBillingStatus(row.billing_status as string | null | undefined),
-      stripeSubscriptionId:
-        typeof row.stripe_subscription_id === "string" && row.stripe_subscription_id.trim()
-          ? row.stripe_subscription_id
-          : null,
-      trialEndsAt: typeof row.trial_ends_at === "string" ? row.trial_ends_at : null,
-    };
-  });
-}
-
 export async function hasAccountAuditAction(accountId: string, action: string): Promise<boolean> {
   const assertedAccountId = assertAccountIdForAccountStore(accountId, "hasAccountAuditAction");
 
@@ -1215,7 +1110,7 @@ export async function hasAccountAuditAction(accountId: string, action: string): 
 
   if (error) {
     if (error.message.includes("account_audit_events")) {
-      console.warn("Account audit events table is missing. Onboarding deadline reminders may repeat until supabase.sql is applied.");
+      console.warn("Account audit events table is missing. Apply supabase.sql to restore account auditing.");
       return false;
     }
 
@@ -1249,7 +1144,6 @@ function mapOpsAccountSummary(row: Record<string, unknown>): OpsAccountSummary {
     stripeSubscriptionStatus: normalizeAccountStripeSubscriptionStatus(
       row.stripe_subscription_status as string | null | undefined,
     ),
-    requirementsDueAt: typeof row.requirements_due_at === "string" ? row.requirements_due_at : null,
     activatedAt: typeof row.activated_at === "string" ? row.activated_at : null,
     firstPaidAt: typeof row.first_paid_at === "string" ? row.first_paid_at : null,
     cancelAtPeriodEnd: Boolean(row.cancel_at_period_end),
@@ -1267,7 +1161,7 @@ export async function listOpsAccounts(query = ""): Promise<OpsAccountSummary[]> 
   let request = supabaseAdmin
     .from("accounts")
     .select(
-      "id, slug, name, status, billing_status, onboarding_status, stripe_subscription_status, requirements_due_at, activated_at, first_paid_at, cancel_at_period_end, current_period_end, billing_updated_at, updated_at, canceled_at, account_settings(owner_email, business_name)",
+      "id, slug, name, status, billing_status, onboarding_status, stripe_subscription_status, activated_at, first_paid_at, cancel_at_period_end, current_period_end, billing_updated_at, updated_at, canceled_at, account_settings(owner_email, business_name)",
     )
     .order("updated_at", { ascending: false })
     .limit(250);
@@ -1297,7 +1191,7 @@ export async function getOpsAccountBySlug(slug: string): Promise<OpsAccountSumma
   const { data, error } = await supabaseAdmin
     .from("accounts")
     .select(
-      "id, slug, name, status, billing_status, onboarding_status, stripe_subscription_status, requirements_due_at, activated_at, first_paid_at, cancel_at_period_end, current_period_end, billing_updated_at, updated_at, canceled_at, account_settings(owner_email, business_name)",
+      "id, slug, name, status, billing_status, onboarding_status, stripe_subscription_status, activated_at, first_paid_at, cancel_at_period_end, current_period_end, billing_updated_at, updated_at, canceled_at, account_settings(owner_email, business_name)",
     )
     .eq("slug", normalizedSlug)
     .maybeSingle();
@@ -1314,44 +1208,6 @@ export async function getOpsAccountBySlug(slug: string): Promise<OpsAccountSumma
   return data ? mapOpsAccountSummary(data as Record<string, unknown>) : null;
 }
 
-export async function getOpsOnboardingAccountBySlug(slug: string): Promise<OpsOnboardingAccount | null> {
-  const normalizedSlug = slug.trim();
-  if (!normalizedSlug || isPlaceholderSupabaseConfig()) {
-    return null;
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from("accounts")
-    .select("id, slug, name, onboarding_status, requirements_due_at, activated_at, first_paid_at, guarantee_ends_at")
-    .eq("slug", normalizedSlug)
-    .maybeSingle();
-
-  if (error) {
-    if (
-      error.message.includes("onboarding_status") ||
-      error.message.includes("requirements_due_at")
-    ) {
-      console.warn("Account onboarding lifecycle columns are missing. Run supabase.sql before using operator onboarding controls.");
-      return null;
-    }
-
-    throwIfSupabaseError(error);
-  }
-
-  if (!data) return null;
-
-  return {
-    accountId: String(data.id),
-    accountSlug: String(data.slug),
-    businessName: String(data.name),
-    onboardingStatus: normalizeAccountOnboardingStatus(data.onboarding_status as string | null | undefined),
-    requirementsDueAt: typeof data.requirements_due_at === "string" ? data.requirements_due_at : null,
-    activatedAt: typeof data.activated_at === "string" ? data.activated_at : null,
-    firstPaidAt: typeof data.first_paid_at === "string" ? data.first_paid_at : null,
-    guaranteeEndsAt: typeof data.guarantee_ends_at === "string" ? data.guarantee_ends_at : null,
-  };
-}
-
 export async function getOpsBillingAccountBySlug(slug: string): Promise<OpsBillingAccount | null> {
   const normalizedSlug = slug.trim();
   if (!normalizedSlug || isPlaceholderSupabaseConfig()) {
@@ -1361,7 +1217,7 @@ export async function getOpsBillingAccountBySlug(slug: string): Promise<OpsBilli
   let { data, error } = await supabaseAdmin
     .from("accounts")
     .select(
-      "id, slug, name, billing_status, billing_policy, billing_policy_updated_at, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_payment_method_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, requirements_due_at, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, canceled_at, onboarding_status_updated_at, setup_fee_cents, setup_fee_status, setup_fee_checkout_session_id, setup_fee_payment_intent_id, setup_fee_paid_at, setup_fee_waived_at, setup_fee_waiver_reason, setup_fee_refunded_at, setup_fee_refunded_cents, setup_fee_dispute_status, monthly_price_cents",
+      "id, slug, name, billing_status, billing_policy, billing_policy_updated_at, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, canceled_at, onboarding_status_updated_at, setup_fee_cents, setup_fee_status, setup_fee_checkout_session_id, setup_fee_payment_intent_id, setup_fee_paid_at, setup_fee_waived_at, setup_fee_waiver_reason, setup_fee_refunded_at, setup_fee_refunded_cents, setup_fee_dispute_status, monthly_price_cents",
     )
     .eq("slug", normalizedSlug)
     .maybeSingle();
@@ -1371,7 +1227,7 @@ export async function getOpsBillingAccountBySlug(slug: string): Promise<OpsBilli
     ({ data, error } = await supabaseAdmin
       .from("accounts")
       .select(
-        "id, slug, name, billing_status, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_payment_method_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, requirements_due_at, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, canceled_at, onboarding_status_updated_at, setup_fee_cents, setup_fee_status, setup_fee_checkout_session_id, setup_fee_payment_intent_id, setup_fee_paid_at, setup_fee_waived_at, setup_fee_waiver_reason, setup_fee_refunded_at, setup_fee_refunded_cents, setup_fee_dispute_status, monthly_price_cents",
+        "id, slug, name, billing_status, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, canceled_at, onboarding_status_updated_at, setup_fee_cents, setup_fee_status, setup_fee_checkout_session_id, setup_fee_payment_intent_id, setup_fee_paid_at, setup_fee_waived_at, setup_fee_waiver_reason, setup_fee_refunded_at, setup_fee_refunded_cents, setup_fee_dispute_status, monthly_price_cents",
       )
       .eq("slug", normalizedSlug)
       .maybeSingle());
@@ -1407,12 +1263,10 @@ export async function getOpsBillingAccountBySlug(slug: string): Promise<OpsBilli
     stripeCustomerId: typeof data.stripe_customer_id === "string" ? data.stripe_customer_id : null,
     stripeSubscriptionId: typeof data.stripe_subscription_id === "string" ? data.stripe_subscription_id : null,
     stripePriceId: typeof data.stripe_price_id === "string" ? data.stripe_price_id : null,
-    stripePaymentMethodId: typeof data.stripe_payment_method_id === "string" ? data.stripe_payment_method_id : null,
     stripeSubscriptionStatus: normalizeAccountStripeSubscriptionStatus(data.stripe_subscription_status as string | null | undefined),
     trialEndsAt: typeof data.trial_ends_at === "string" ? data.trial_ends_at : null,
     currentPeriodEnd: typeof data.current_period_end === "string" ? data.current_period_end : null,
     cancelAtPeriodEnd: Boolean(data.cancel_at_period_end),
-    requirementsDueAt: typeof data.requirements_due_at === "string" ? data.requirements_due_at : null,
     activatedAt: typeof data.activated_at === "string" ? data.activated_at : null,
     firstPaidAt: typeof data.first_paid_at === "string" ? data.first_paid_at : null,
     guaranteeEndsAt: typeof data.guarantee_ends_at === "string" ? data.guarantee_ends_at : null,
@@ -1433,67 +1287,6 @@ export async function getOpsBillingAccountBySlug(slug: string): Promise<OpsBilli
     setupFeeDisputeStatus: typeof data.setup_fee_dispute_status === "string" ? data.setup_fee_dispute_status : null,
     monthlyPriceCents: Number(data.monthly_price_cents ?? 9900),
   };
-}
-
-export function canMoveAccountToCustomerDelay(
-  status: AccountOnboardingStatus,
-  lifecycleDates?: {
-    activatedAt?: string | null;
-    firstPaidAt?: string | null;
-    guaranteeEndsAt?: string | null;
-  },
-) {
-  if (lifecycleDates?.activatedAt || lifecycleDates?.firstPaidAt || lifecycleDates?.guaranteeEndsAt) {
-    return false;
-  }
-
-  return (
-    status === "requirements_needed" ||
-    status === "waiting_on_customer" ||
-    status === "paused_incomplete" ||
-    status === "closed_incomplete"
-  );
-}
-
-export async function markAccountRequirementsRequested(input: {
-  accountId: string;
-  nowIso?: string;
-  actorUserId?: string | null;
-  actorEmail?: string | null;
-  previousOnboardingStatus?: AccountOnboardingStatus | null;
-}) {
-  const accountId = assertAccountIdForAccountStore(input.accountId, "markAccountRequirementsRequested");
-  const now = input.nowIso ? new Date(input.nowIso) : new Date();
-  const requirementsDueAt = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
-  const previousStatus = input.previousOnboardingStatus ?? null;
-
-  await updateAccountBillingRecord(accountId, {
-    onboardingStatus: "waiting_on_customer",
-    requirementsDueAt,
-  });
-
-  if (!shouldSkipDatabaseWrite("account audit event", input)) {
-    const { error } = await supabaseAdmin.from("account_audit_events").insert({
-      account_id: accountId,
-      actor_user_id: input.actorUserId ?? null,
-      actor_email: input.actorEmail ?? null,
-      action: previousStatus === "paused_incomplete" || previousStatus === "closed_incomplete"
-        ? "onboarding.requirements_reopened"
-        : "onboarding.requirements_requested",
-      summary: previousStatus === "paused_incomplete" || previousStatus === "closed_incomplete"
-        ? `Reopened customer requirements from ${previousStatus}; due ${requirementsDueAt}. Durable activation and guarantee dates were not reset.`
-        : `Requested customer requirements; due ${requirementsDueAt}.`,
-    });
-
-    if (error) {
-      console.warn("Could not record customer requirements audit event.", {
-        accountId,
-        error: error.message,
-      });
-    }
-  }
-
-  return { requirementsDueAt };
 }
 
 export async function resolveAccountByTwilioNumber(phoneNumber: string | null | undefined) {

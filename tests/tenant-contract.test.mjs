@@ -5,7 +5,6 @@ import test from "node:test";
 const sql = await readFile(new URL("../supabase.sql", import.meta.url), "utf8");
 const envTs = await readFile(new URL("../lib/env.ts", import.meta.url), "utf8");
 const billingTs = await readFile(new URL("../lib/billing.ts", import.meta.url), "utf8");
-const onboardingDeadlinesTs = await readFile(new URL("../lib/onboarding-deadlines.ts", import.meta.url), "utf8");
 const stripeBillingTs = await readFile(new URL("../lib/stripe-billing.ts", import.meta.url), "utf8");
 const twilioTs = await readFile(new URL("../lib/twilio.ts", import.meta.url), "utf8");
 const twimlTs = await readFile(new URL("../lib/twiml.ts", import.meta.url), "utf8");
@@ -56,11 +55,8 @@ const opsHeaderTsx = await readFile(new URL("../app/ops/_components/ops-header.t
 const opsAccountPageTsx = await readFile(new URL("../app/ops/accounts/[id]/page.tsx", import.meta.url), "utf8");
 const opsAccountDirectoryTsx = await readFile(new URL("../app/ops/_components/ops-account-directory.tsx", import.meta.url), "utf8");
 const opsSetupRequestsRouteTs = await readFile(new URL("../app/api/ops/setup-requests/route.ts", import.meta.url), "utf8");
-const opsOnboardingDeadlinesRouteTs = await readFile(new URL("../app/api/ops/onboarding-deadlines/route.ts", import.meta.url), "utf8");
 const opsBillingRouteTs = await readFile(new URL("../app/api/ops/billing/route.ts", import.meta.url), "utf8");
 const emailTestRouteTs = await readFile(new URL("../app/api/email-test/start/route.ts", import.meta.url), "utf8");
-const onboardingDeadlinesCronTs = await readFile(new URL("../app/api/cron/onboarding-deadlines/route.ts", import.meta.url), "utf8");
-const billingTrialsCronTs = await readFile(new URL("../app/api/cron/billing-trials/route.ts", import.meta.url), "utf8");
 const privacyPageTsx = await readFile(new URL("../app/privacy/page.tsx", import.meta.url), "utf8");
 const termsPageTsx = await readFile(new URL("../app/terms/page.tsx", import.meta.url), "utf8");
 const opsRunbookMd = await readFile(new URL("../docs/ops-runbook.md", import.meta.url), "utf8");
@@ -72,7 +68,6 @@ const packageJson = await readFile(new URL("../package.json", import.meta.url), 
 const verifyAccountScript = await readFile(new URL("../scripts/verify-account.mjs", import.meta.url), "utf8");
 const verifyBillingScript = await readFile(new URL("../scripts/verify-billing.mjs", import.meta.url), "utf8");
 const verifyLaunchScript = await readFile(new URL("../scripts/verify-launch.mjs", import.meta.url), "utf8");
-const verifyBillingControlsScript = await readFile(new URL("../scripts/verify-billing-controls.mjs", import.meta.url), "utf8");
 const backfillAccountIdsScript = await readFile(new URL("../scripts/backfill-account-ids.mjs", import.meta.url), "utf8");
 const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
 const vercelJson = await readFile(new URL("../vercel.json", import.meta.url), "utf8");
@@ -131,10 +126,6 @@ test("billing foundation is account-scoped, Stripe-authoritative, and independen
   assert.match(sql, /accounts_stripe_subscription_id_unique_idx/);
   assert.match(accountStore, /getAccountBillingRecord/);
   assert.match(accountStore, /getAccountTechnicalSetupStatus/);
-  assert.match(accountStore, /listAccountsForOnboardingDeadlineMaintenance/);
-  assert.match(accountStore, /getOpsOnboardingAccountBySlug/);
-  assert.match(accountStore, /canMoveAccountToCustomerDelay/);
-  assert.match(accountStore, /markAccountRequirementsRequested/);
   assert.match(accountStore, /hasAccountAuditAction/);
   assert.match(accountStore, /claimStripeEvent/);
   assert.match(accountStore, /markStripeEventProcessed/);
@@ -144,18 +135,10 @@ test("billing foundation is account-scoped, Stripe-authoritative, and independen
   assert.match(accountStore, /getOpsBillingAccountBySlug/);
   assert.match(accountStore, /processing_started_at\.lt/);
   assert.match(accountStore, /Account billing lifecycle columns are missing/);
-  assert.match(billingTs, /isBillingActivationReady/);
   assert.match(billingTs, /computeBillingLifecycle/);
   assert.match(billingTs, /ownerAction/);
   assert.match(billingTs, /canApplyOperatorBillingOverride/);
-  assert.match(billingTs, /normalizeOperatorTrialDays/);
-  assert.match(billingTs, /return readiness\.callCaptureReady/);
-  assert.doesNotMatch(billingTs, /callCaptureReady && readiness\.smsRegistrationReady/);
-  assert.match(onboardingDeadlinesTs, /defaultRequirementsDueAt/);
-  assert.match(onboardingDeadlinesTs, /chooseOnboardingDeadlineAction/);
-  assert.match(onboardingDeadlinesTs, /ownerOnboardingDelayMessage/);
-  assert.match(onboardingDeadlinesTs, /remind_day_3/);
-  assert.match(onboardingDeadlinesTs, /paused_incomplete/);
+  assert.match(billingTs, /canStartMonthlyBilling\(input\.technicalStatus\)/);
   assert.match(setupPageTsx, /getAccountTechnicalSetupStatus\(accountId\)/);
   assert.match(setupPageTsx, /technicalStatus === "live"/);
   assert.doesNotMatch(setupPageTsx, /computeBillingReadiness|ownerOnboardingDelayMessage|Billing activation/);
@@ -168,15 +151,14 @@ test("stripe checkout and webhooks update account billing without gating missed-
   assert.match(envTs, /STRIPE_WEBHOOK_SECRET/);
   assert.match(envTs, /STRIPE_PRICE_ID/);
   assert.match(envTs, /STRIPE_SETUP_FEE_PRICE_ID/);
-  assert.match(envTs, /STRIPE_TRIAL_DAYS/);
+  assert.doesNotMatch(envTs, /STRIPE_TRIAL_DAYS/);
   assert.match(accountStore, /updateAccountBillingRecord/);
 
   assert.match(stripeBillingTs, /verifyStripeWebhookSignature/);
   assert.match(stripeBillingTs, /timingSafeEqual/);
   assert.match(stripeBillingTs, /metadataAccountId/);
   assert.match(stripeBillingTs, /mapStripeSubscriptionStatus/);
-  assert.match(stripeBillingTs, /checkoutTrialPeriodDays/);
-  assert.match(stripeBillingTs, /subscription_data\[trial_period_days\]/);
+  assert.doesNotMatch(stripeBillingTs, /checkoutTrialPeriodDays|subscription_data\[trial_period_days\]/);
   assert.match(stripeBillingTs, /retrieveStripeSubscription/);
   assert.match(stripeBillingTs, /billingUpdateFromSubscription/);
 
@@ -185,7 +167,7 @@ test("stripe checkout and webhooks update account billing without gating missed-
   assert.match(billingCheckoutRouteTs, /createStripeCheckoutSession/);
   assert.match(billingCheckoutRouteTs, /getAccountBillingRecord/);
   assert.match(billingCheckoutRouteTs, /getBillingCheckoutEligibility/);
-  assert.match(billingCheckoutRouteTs, /checkoutTrialPeriodDays/);
+  assert.doesNotMatch(billingCheckoutRouteTs, /checkoutTrialPeriodDays|trialPeriodDays/);
   assert.match(billingCheckoutRouteTs, /getAccountTechnicalSetupStatus/);
   assert.match(billingCheckoutRouteTs, /technicalStatus/);
   assert.doesNotMatch(billingCheckoutRouteTs, /computeSetupReadiness|getA2pRegistrationStatus|getForwardingHealthSummary/);
@@ -203,7 +185,7 @@ test("stripe checkout and webhooks update account billing without gating missed-
   assert.match(settingsPageTsx, /Trial ends/);
   assert.match(settingsPageTsx, /Free account/);
   assert.match(settingsPageTsx, /Relay isn't charging this account/);
-  assert.match(settingsPageTsx, /Missed-call capture is never interrupted by billing/);
+  assert.match(settingsPageTsx, /Monthly billing can begin once missed-call capture is live; texting approval is separate/);
   assert.match(emailTs, /notifyOwnerBillingPaymentFailed/);
   assert.match(emailTs, /notifyOwnerSubscriptionScheduledToEnd/);
   assert.match(emailTs, /notifyOwnerBillingRecovered/);
@@ -288,15 +270,19 @@ test("ops runbook is authenticated and covers failure visibility plus retention"
   assert.match(opsAccountPageTsx, /getRecentStripeEventsForAccount/);
   assert.match(opsAccountPageTsx, /Stripe webhook processing/);
   assert.match(opsAccountPageTsx, /failedCount/);
-  assert.match(opsAccountPageTsx, /Operator billing controls/);
+  assert.match(opsAccountPageTsx, /Operator billing exceptions/);
   assert.match(opsAccountPageTsx, /Comp account/);
-  assert.match(opsAccountPageTsx, /Grant trial/);
+  assert.match(opsAccountPageTsx, /billing\.billingPolicy === "comped"/);
+  assert.match(opsAccountPageTsx, /billing\.billingPolicy === "setup_fee_waived"/);
+  assert.match(opsAccountPageTsx, /effectiveBillingStatus/);
+  assert.doesNotMatch(opsAccountPageTsx, /Monthly billing is blocked until the setup fee/);
+  assert.doesNotMatch(opsAccountPageTsx, /Grant trial|Start \$99 billing|Waive \+ email card link/);
   assert.match(opsAccountPageTsx, /canApplyOperatorBillingOverride/);
-  assert.match(opsBillingRouteTs, /requirePlatformOperator/);
+  assert.match(opsBillingRouteTs, /requirePlatformOperatorWrite/);
   assert.match(opsBillingRouteTs, /getOpsBillingAccountBySlug/);
   assert.match(opsBillingRouteTs, /canApplyOperatorBillingOverride/);
-  assert.match(opsBillingRouteTs, /updateAccountBillingRecord/);
-  assert.match(opsBillingRouteTs, /recordAccountAuditEvents/);
+  assert.match(opsBillingRouteTs, /setAccountBillingPolicy/);
+  assert.doesNotMatch(opsBillingRouteTs, /updateAccountBillingRecord|recordAccountAuditEvents|grant_trial/);
   assert.match(verifyAccountScript, /Stripe event ledger healthy/);
   assert.match(opsRunbookPageTsx, /Requests are prospects, not leads/);
   assert.match(opsRunbookPageTsx, /Stripe is the source of truth/);
@@ -309,33 +295,17 @@ test("ops runbook is authenticated and covers failure visibility plus retention"
   assert.match(opsRunbookMd, /Backup, Restore, and Deletion/);
   assert.match(opsRunbookMd, /npm run verify:billing/);
   assert.match(opsRunbookMd, /npm run verify:launch -- <slug>/);
-  assert.match(opsRunbookMd, /npm run verify:billing-controls -- <scratch-slug>/);
-  assert.match(opsRunbookMd, /--billing-controls <scratch-slug>/);
-  assert.match(opsRunbookMd, /refuses non-scratch slugs/);
-  assert.match(opsRunbookMd, /comp, uncomp, trial grant, and app-trial expiry/);
+  assert.doesNotMatch(opsRunbookMd, /verify:billing-controls|app-trial expiry/);
   assert.match(opsRunbookMd, /Stripe prices are the `\$99\/month` recurring plan and the `\$150` one-time setup fee/);
-  assert.match(opsRunbookMd, /\/api\/cron\/onboarding-deadlines/);
-  assert.match(opsRunbookMd, /\/ops\/billing.*customer-delay clock/);
-  assert.match(opsRunbookMd, /Carrier review and carrier attention are not customer-delay states/);
   assert.match(opsRunbookMd, /Relay Operations surface/);
   assert.match(opsRunbookMd, /platform_operators/);
   assert.match(opsRunbookMd, /srlowry21@gmail\.com/);
 });
 
-test("app-level trials expire through a secured billing cron without disabling capture", () => {
-  assert.match(billingTs, /BILLING_TRIAL_EXPIRY_ACTION/);
-  assert.match(billingTs, /chooseBillingTrialExpiryAction/);
-  assert.match(accountStore, /listAccountsForBillingTrialExpiry/);
-  assert.match(emailTs, /notifyOwnerBillingTrialExpired/);
-  assert.match(billingTrialsCronTs, /CRON_SECRET/);
-  assert.match(billingTrialsCronTs, /listAccountsForBillingTrialExpiry/);
-  assert.match(billingTrialsCronTs, /chooseBillingTrialExpiryAction/);
-  assert.match(billingTrialsCronTs, /billingStatus: "past_due"/);
-  assert.match(billingTrialsCronTs, /notifyOwnerBillingTrialExpired/);
-  assert.match(billingTrialsCronTs, /notifyAdminOperationalIssue/);
-  assert.match(billingTrialsCronTs, /recordAccountAuditEvents/);
-  assert.doesNotMatch(billingTrialsCronTs, /missed-call|missedCall|createLead|deleteLead/);
-  assert.match(vercelJson, /\/api\/cron\/billing-trials/);
+test("app-managed trial controls and cron are removed", () => {
+  assert.doesNotMatch(vercelJson, /\/api\/cron\/billing-trials/);
+  assert.doesNotMatch(opsAccountPageTsx, /Grant trial|Extend trial|End trial now/);
+  assert.doesNotMatch(opsBillingRouteTs, /grant_trial|extend_trial|end_trial_now/);
 });
 
 test("assisted onboarding setup requests are operator-only and status tracked", () => {
@@ -348,53 +318,30 @@ test("assisted onboarding setup requests are operator-only and status tracked", 
   assert.match(opsSetupRequestsPageTsx, /Contacted/);
   assert.match(opsSetupRequestsPageTsx, /Onboarded/);
   assert.match(opsSetupRequestsPageTsx, /Closed/);
-  assert.match(opsSetupRequestsRouteTs, /requirePlatformOperator\(\)/);
+  assert.match(opsSetupRequestsRouteTs, /requirePlatformOperator/);
   assert.match(opsSetupRequestsRouteTs, /updateSetupRequestStatus\(id, status\)/);
   assert.match(setupRequestsTs, /export type SetupRequestStatus = "new" \| "contacted" \| "onboarded" \| "closed"/);
   assert.match(setupRequestsTs, /\.from\("setup_requests"\)[\s\S]*\.update\(\{ status \}\)/);
-  assert.match(opsAccountPageTsx, /Start \/ reopen the 14-day customer clock/);
-  assert.match(opsAccountPageTsx, /never for carrier review/);
-  assert.match(opsAccountPageTsx, /canMoveAccountToCustomerDelay/);
-  assert.match(opsOnboardingDeadlinesRouteTs, /requirePlatformOperator\(\)/);
-  assert.match(opsOnboardingDeadlinesRouteTs, /getOpsOnboardingAccountBySlug/);
-  assert.match(opsOnboardingDeadlinesRouteTs, /canMoveAccountToCustomerDelay/);
-  assert.match(opsOnboardingDeadlinesRouteTs, /markAccountRequirementsRequested/);
-  assert.match(onboardingDeadlinesCronTs, /CRON_SECRET/);
-  assert.match(onboardingDeadlinesCronTs, /chooseOnboardingDeadlineAction/);
-  assert.match(onboardingDeadlinesCronTs, /notifyOwnerOnboardingRequirementsReminder/);
-  assert.match(onboardingDeadlinesCronTs, /notifyOwnerOnboardingPaused/);
-  assert.match(onboardingDeadlinesCronTs, /recordAccountAuditEvents/);
-  assert.match(onboardingDeadlinesCronTs, /continue|for \(const account of accounts\)/);
-  assert.match(vercelJson, /\/api\/cron\/onboarding-deadlines/);
 });
 
 test("launch certification verifies account readiness without mutating state", () => {
   assert.match(packageJson, /"verify:launch": "node scripts\/verify-launch\.mjs"/);
-  assert.match(packageJson, /"verify:billing-controls": "node scripts\/verify-billing-controls\.mjs"/);
+  assert.doesNotMatch(packageJson, /verify:billing-controls/);
   assert.match(verifyLaunchScript, /analyzeLaunchCertification/);
   assert.match(verifyLaunchScript, /verifyLaunchCertification/);
   assert.match(verifyLaunchScript, /verifyBillingConfig/);
-  assert.match(verifyLaunchScript, /--billing-controls/);
-  assert.match(verifyLaunchScript, /runBillingControlsRehearsal/);
+  assert.doesNotMatch(verifyLaunchScript, /--billing-controls|runBillingControlsRehearsal/);
   assert.match(verifyLaunchScript, /call capture readiness/);
   assert.match(verifyLaunchScript, /A2P\/SMS registration readiness/);
   assert.match(verifyLaunchScript, /automatic SMS mode/);
   assert.match(verifyLaunchScript, /paused by owner choice/);
   assert.match(verifyLaunchScript, /Checkout allowed/);
   assert.match(verifyLaunchScript, /Customer Portal available/);
-  assert.match(verifyLaunchScript, /customer_delay/);
-  assert.match(verifyLaunchScript, /carrier_delay/);
+  assert.match(verifyLaunchScript, /service_hold/);
+  assert.match(verifyLaunchScript, /Blocked by call setup/);
   assert.doesNotMatch(verifyLaunchScript, /\.insert\(/);
   assert.doesNotMatch(verifyLaunchScript, /\.update\(/);
   assert.doesNotMatch(verifyLaunchScript, /\.delete\(/);
-  assert.match(verifyBillingControlsScript, /isScratchBillingSlug/);
-  assert.match(verifyBillingControlsScript, /Refusing to mutate a non-scratch account/);
-  assert.match(verifyBillingControlsScript, /live Stripe subscription/);
-  assert.match(verifyBillingControlsScript, /billing\.operator\.comp/);
-  assert.match(verifyBillingControlsScript, /billing\.operator\.grant_trial/);
-  assert.match(verifyBillingControlsScript, /billing\.trial\.expired/);
-  assert.match(verifyBillingControlsScript, /restoreOriginal/);
-  assert.match(verifyBillingControlsScript, /Call capture remains on/);
 });
 
 test("ops pages share the same internal tool actions", () => {
@@ -424,10 +371,9 @@ test("ops pages share the same internal tool actions", () => {
 
 test("customer setup docs describe current assisted provisioning flow", () => {
   assert.match(customerSetupMd, /\/ops\/setup-requests/);
-  assert.match(customerSetupMd, /npm run provision:account/);
   assert.match(customerSetupMd, /npm run verify:account -- <slug>/);
-  assert.match(customerSetupMd, /Live · Auto-text paused/);
-  assert.match(customerSetupMd, /owner can sign in with email\/password/);
+  assert.match(customerSetupMd, /The customer does not run an app-generated test/);
+  assert.match(customerSetupMd, /first valid, signed, real/);
   assert.doesNotMatch(customerSetupMd, /LEADS_PASSWORD|lead inbox password|Vercel production environment variables/);
 });
 
@@ -625,7 +571,6 @@ test("Supabase Auth fails closed and refreshes sessions in middleware", () => {
   assert.match(middlewareTs, /"\/leads\/:path\*"/);
   assert.match(middlewareTs, /"\/setup\/:path\*"/);
   assert.match(middlewareTs, /"\/api\/leads\/:path\*"/);
-  assert.match(middlewareTs, /"\/api\/sms-test\/:path\*"/);
   assert.doesNotMatch(middlewareTs, /\/api\/twilio/);
   assert.doesNotMatch(middlewareTs, /\/api\/intake/);
   assert.doesNotMatch(middlewareTs, /\/\(\(\?!_next\/static/);
@@ -770,7 +715,6 @@ test("business-owned tables carry account_id", () => {
     "public.webhook_events",
     "public.opt_outs",
     "public.inbound_messages",
-    "public.forwarding_health_checks",
   ]) {
     assert.match(sql, new RegExp(`alter table ${table.replace(".", "\\.")} add column if not exists account_id`));
   }
@@ -781,7 +725,6 @@ test("business-owned account_id columns are enforced after backfill", () => {
     "public.leads",
     "public.opt_outs",
     "public.inbound_messages",
-    "public.forwarding_health_checks",
   ]) {
     assert.match(sql, new RegExp(`alter table ${table.replace(".", "\\.")} alter column account_id set not null`));
   }
@@ -796,7 +739,6 @@ test("account_id backfill has dry-run apply script and runbook", () => {
   assert.match(backfillAccountIdsScript, /"leads"/);
   assert.match(backfillAccountIdsScript, /"opt_outs"/);
   assert.match(backfillAccountIdsScript, /"inbound_messages"/);
-  assert.match(backfillAccountIdsScript, /"forwarding_health_checks"/);
   assert.match(backfillAccountIdsScript, /--apply/);
   assert.match(backfillAccountIdsScript, /webhook_events/);
   assert.match(readme, /deploy the code that always writes `account_id`/);

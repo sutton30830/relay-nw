@@ -84,12 +84,12 @@ async function runWebhook({
   paymentSnapshot = {
     id: "pi_setup_1",
     customerId: "cus_1",
-    paymentMethodId: "pm_1",
     status: "succeeded",
     amount: 15000,
     amountReceived: 15000,
     amountRefunded: 0,
     disputed: false,
+    disputeStatus: null,
   },
   subscriptionError = null,
   subscriptionAccountId = "acct_1",
@@ -103,6 +103,10 @@ async function runWebhook({
   existingBilling = {
     billingAttentionSince: null,
     cancelAtPeriodEnd: false,
+    setupFeePaymentIntentId: "pi_setup_1",
+    setupFeeStatus: "paid",
+    setupFeeDisputeStatus: null,
+    setupFeeRefundedAt: null,
   },
   stripeSecretKey = "sk_test_example",
 } = {}) {
@@ -270,7 +274,6 @@ test("paid setup-fee Checkout marks only the setup fee as paid", async () => {
       accountId: "acct_1",
       update: {
         stripeCustomerId: "cus_1",
-        stripePaymentMethodId: "pm_1",
         setupFeeStatus: "paid",
         setupFeeCheckoutSessionId: "cs_setup_fee_1",
         setupFeePaymentIntentId: "pi_setup_1",
@@ -301,7 +304,6 @@ test("paid setup-fee Checkout without a customer still marks setup paid", async 
     {
       accountId: "acct_1",
       update: {
-        stripePaymentMethodId: "pm_1",
         setupFeeStatus: "paid",
         setupFeeCheckoutSessionId: "cs_setup_fee_customerless",
         setupFeePaymentIntentId: "pi_setup_customerless",
@@ -324,7 +326,7 @@ test("full setup-fee refund is reflected from Stripe", async () => {
     paymentIntentAccountId: "acct_1",
     customerAccountId: null,
     paymentSnapshot: {
-      id: "pi_setup_1", customerId: "cus_1", paymentMethodId: "pm_1", status: "succeeded",
+      id: "pi_setup_1", customerId: "cus_1", status: "succeeded",
       amount: 15000, amountReceived: 15000, amountRefunded: 15000, disputed: false,
     },
   });
@@ -345,7 +347,7 @@ test("refund.created is authoritative for a setup-fee refund", async () => {
     paymentIntentAccountId: "acct_1",
     customerAccountId: null,
     paymentSnapshot: {
-      id: "pi_setup_1", customerId: "cus_1", paymentMethodId: "pm_1", status: "succeeded",
+      id: "pi_setup_1", customerId: "cus_1", status: "succeeded",
       amount: 15000, amountReceived: 15000, amountRefunded: 5000, disputed: false,
     },
   });
@@ -367,7 +369,7 @@ test("refund.failed preserves the PaymentIntent's actual payment state", async (
     paymentIntentAccountId: "acct_1",
     customerAccountId: null,
     paymentSnapshot: {
-      id: "pi_setup_1", customerId: "cus_1", paymentMethodId: "pm_1", status: "succeeded",
+      id: "pi_setup_1", customerId: "cus_1", status: "succeeded",
       amount: 15000, amountReceived: 15000, amountRefunded: 0, disputed: false,
     },
   });
@@ -385,13 +387,50 @@ test("setup-fee dispute is visible without pretending it is a refund", async () 
     customerAccountId: null,
     paymentIntentAccountId: "acct_1",
     paymentSnapshot: {
-      id: "pi_setup_1", customerId: "cus_1", paymentMethodId: "pm_1", status: "succeeded",
+      id: "pi_setup_1", customerId: "cus_1", status: "succeeded",
       amount: 15000, amountReceived: 15000, amountRefunded: 0, disputed: true,
     },
   });
   assert.equal(response.status, 200);
   assert.equal(calls.updates.at(-1).update.setupFeeStatus, "disputed");
   assert.equal(calls.updates.at(-1).update.setupFeeDisputeStatus, "needs_response");
+});
+
+test("monthly refund does not alter setup-fee state", async () => {
+  const { response, calls } = await runWebhook({
+    event: stripeEvent("charge.refunded", {
+      id: "ch_monthly",
+      customer: "cus_1",
+      payment_intent: "pi_monthly_1",
+      amount: 9900,
+      amount_refunded: 9900,
+    }),
+    subscriptionAccountId: null,
+    customerAccountId: "acct_1",
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls.updates, []);
+  assert.deepEqual(calls.retrievedPayments, []);
+  assert.equal(calls.ignored[0].reason, "non_setup_fee_payment_intent");
+});
+
+test("monthly dispute does not alter setup-fee state", async () => {
+  const { response, calls } = await runWebhook({
+    event: stripeEvent("charge.dispute.created", {
+      id: "dp_monthly",
+      customer: "cus_1",
+      payment_intent: "pi_monthly_1",
+      status: "needs_response",
+    }),
+    subscriptionAccountId: null,
+    customerAccountId: "acct_1",
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls.updates, []);
+  assert.deepEqual(calls.retrievedPayments, []);
+  assert.equal(calls.ignored[0].reason, "non_setup_fee_payment_intent");
 });
 
 test("two concurrent copies leave only one processor owning the event", async () => {
@@ -475,7 +514,12 @@ test("billing_attention_since is preserved across repeated failed-payment events
 
 test("invoice.paid after past due restores active state from current subscription", async () => {
   const { response, calls } = await runWebhook({
-    event: stripeEvent("invoice.paid", invoiceObject({ paid: true, status: "paid" })),
+    event: stripeEvent("invoice.paid", invoiceObject({
+      paid: true,
+      status: "paid",
+      amount_paid: 9900,
+      status_transitions: { paid_at: 1_800_000_000 },
+    })),
     subscriptionSnapshot: subscription({ status: "active" }),
     existingBilling: {
       billingAttentionSince: "2026-07-01T00:00:00.000Z",
@@ -486,8 +530,26 @@ test("invoice.paid after past due restores active state from current subscriptio
   assert.equal(response.status, 200);
   assert.equal(calls.updates[0].update.billingStatus, "active");
   assert.equal(calls.updates[0].update.billingAttentionSince, null);
+  assert.equal(calls.updates[0].update.firstPaidAt, "2027-01-15T08:00:00.000Z");
+  assert.equal(calls.updates[0].update.guaranteeEndsAt, "2027-02-14T08:00:00.000Z");
   assert.equal(calls.ownerEmails.length, 1);
   assert.equal(calls.ownerEmails[0].type, "billing_recovered");
+});
+
+test("zero-dollar invoice.paid does not establish first paid or guarantee dates", async () => {
+  const { response, calls } = await runWebhook({
+    event: stripeEvent("invoice.paid", invoiceObject({
+      paid: true,
+      status: "paid",
+      amount_paid: 0,
+      status_transitions: { paid_at: 1_800_000_000 },
+    })),
+    subscriptionSnapshot: subscription({ status: "trialing" }),
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(calls.updates[0].update.firstPaidAt, undefined);
+  assert.equal(calls.updates[0].update.guaranteeEndsAt, undefined);
 });
 
 test("subscription scheduled to cancel notifies the owner without canceling service early", async () => {

@@ -16,7 +16,7 @@ export default async function OpsPage({
     q?: string;
     account?: string;
     view?: string;
-    stage?: "all" | "kickoff" | "setting_up" | "carrier_review" | "ready_to_activate" | "active" | "canceled";
+    stage?: "all" | "setting_up" | "live" | "active" | "paused" | "closed" | "canceled";
   }>;
 }) {
   const operator = await requirePlatformOperator();

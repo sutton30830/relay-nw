@@ -1,5 +1,4 @@
 import type { LeadPatch, TranscribeResponse, TranscribeResult } from "./_types";
-import type { ForwardingHealthSummary } from "@/lib/forwarding-health";
 import type { OutboundMessage } from "@/lib/supabase";
 import { humanVoicemailError } from "./_utils";
 
@@ -33,31 +32,6 @@ export async function sendLeadReply(id: string, body: string): Promise<SendReply
     return { ok: false, error: "Could not reach Relay. Check your connection and try again." };
   }
 }
-
-export type ForwardingHealthResponse = ForwardingHealthSummary & {
-  healthCheckId?: string;
-  error?: string;
-};
-
-export type SmsTestStatus =
-  | "accepted"
-  | "queued"
-  | "sending"
-  | "sent"
-  | "delivered"
-  | "failed"
-  | "undelivered";
-
-export type SmsTestResponse = {
-  messageSid?: string;
-  status?: SmsTestStatus;
-  toLast4?: string | null;
-  error?: string;
-  detail?: string;
-  errorCode?: number | null;
-  errorMessage?: string | null;
-  dateUpdated?: string | null;
-};
 
 export async function patchLead(id: string, body: LeadPatch) {
   try {
@@ -120,50 +94,4 @@ export async function requestVoicemailSummary(id: string): Promise<TranscribeRes
       error: "Relay could not reach the transcription service. Try again in a minute.",
     };
   }
-}
-
-export async function fetchForwardingHealthStatus() {
-  const response = await fetch("/api/health-check/status", { cache: "no-store" });
-  const data = await response.json().catch(() => null) as ForwardingHealthResponse | null;
-
-  if (!response.ok || !data) {
-    throw new Error(data?.error ?? "Unable to load forwarding health status.");
-  }
-
-  return data;
-}
-
-export async function startForwardingHealthCheck() {
-  const response = await fetch("/api/health-check/start", { method: "POST", cache: "no-store" });
-  const data = await response.json().catch(() => null) as ForwardingHealthResponse | null;
-
-  if (!response.ok || !data) {
-    throw new Error(data?.error ?? "Unable to start forwarding health check.");
-  }
-
-  return data;
-}
-
-export async function startSmsTest() {
-  const response = await fetch("/api/sms-test/start", { method: "POST", cache: "no-store" });
-  const data = await response.json().catch(() => null) as SmsTestResponse | null;
-
-  if (!response.ok || !data) {
-    throw new Error(data?.error ?? "Unable to send SMS test.");
-  }
-
-  return data;
-}
-
-export async function fetchSmsTestStatus(messageSid: string) {
-  const response = await fetch(`/api/sms-test/status?messageSid=${encodeURIComponent(messageSid)}`, {
-    cache: "no-store",
-  });
-  const data = await response.json().catch(() => null) as SmsTestResponse | null;
-
-  if (!response.ok || !data) {
-    throw new Error(data?.error ?? "Unable to load SMS test status.");
-  }
-
-  return data;
 }

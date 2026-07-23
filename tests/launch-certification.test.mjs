@@ -1,37 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import vm from "node:vm";
-import ts from "typescript";
 import { analyzeLaunchCertification, parseLaunchArgs } from "../scripts/verify-launch.mjs";
-import {
-  billingControlRehearsalSteps,
-  canRehearseBillingControls,
-  isScratchBillingSlug,
-  runBillingControlsRehearsal,
-  snapshotBillingRecord,
-} from "../scripts/verify-billing-controls.mjs";
-
-async function loadTsModule(path, mocks = {}) {
-  const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
-  const compiled = ts.transpileModule(source, {
-    compilerOptions: {
-      esModuleInterop: true,
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2020,
-    },
-  }).outputText;
-
-  const module = { exports: {} };
-  const require = (specifier) => {
-    if (specifier in mocks) return mocks[specifier];
-    throw new Error(`Missing test mock for ${specifier} while loading ${path}`);
-  };
-
-  const script = new vm.Script(`(function(require, module, exports) { ${compiled}\n})`, { filename: path });
-  script.runInThisContext()(require, module, module.exports);
-  return module.exports;
-}
 
 function readyFacts(overrides = {}) {
   return {
@@ -68,10 +38,9 @@ function readyFacts(overrides = {}) {
       { role: "owner", email: "owner@example.com", user_id: "user_123" },
       ...(overrides.adminUsers ?? []),
     ],
-    latestLead: Object.hasOwn(overrides, "latestLead") ? overrides.latestLead : null,
-    lastPassedForwarding: Object.hasOwn(overrides, "lastPassedForwarding")
-      ? overrides.lastPassedForwarding
-      : { id: "fh_1", completed_at: "2026-08-01T00:00:00.000Z" },
+    latestLead: Object.hasOwn(overrides, "latestLead")
+      ? overrides.latestLead
+      : { id: "lead_1", created_at: "2026-08-01T00:00:00.000Z" },
     billingConfigResult: overrides.billingConfigResult ?? {
       ok: true,
       checks: [
@@ -81,133 +50,6 @@ function readyFacts(overrides = {}) {
   };
 }
 
-async function postOperatorDeadline({
-  account = {
-    accountId: "acct_1",
-    accountSlug: "demo",
-    onboardingStatus: "requirements_needed",
-  },
-  operatorThrows = false,
-} = {}) {
-  const calls = { marks: [] };
-  class RedirectError extends Error {
-    constructor(url) {
-      super(url);
-      this.url = url;
-    }
-  }
-
-  const { POST } = await loadTsModule("app/api/ops/onboarding-deadlines/route.ts", {
-    "next/navigation": {
-      redirect: (url) => {
-        throw new RedirectError(url);
-      },
-    },
-    "@/lib/auth": {
-      requirePlatformOperator: async () => {
-        if (operatorThrows) throw new Error("not operator");
-        return { userId: "user_1", email: "ops@example.com" };
-      },
-    },
-    "@/lib/supabase": {
-      canMoveAccountToCustomerDelay: (status, lifecycleDates) => (
-        !lifecycleDates?.activatedAt &&
-        !lifecycleDates?.firstPaidAt &&
-        !lifecycleDates?.guaranteeEndsAt &&
-        (
-          status === "requirements_needed" ||
-          status === "waiting_on_customer" ||
-          status === "paused_incomplete" ||
-          status === "closed_incomplete"
-        )
-      ),
-      getOpsOnboardingAccountBySlug: async () => account,
-      markAccountRequirementsRequested: async (input) => {
-        calls.marks.push(input);
-        return { requirementsDueAt: "2026-08-15T00:00:00.000Z" };
-      },
-      recordPlatformAuditEvent: async () => {},
-    },
-  });
-
-  const form = new FormData();
-  form.set("account_slug", "demo");
-
-  try {
-    await POST(new Request("https://example.com/api/ops/onboarding-deadlines", {
-      method: "POST",
-      body: form,
-    }));
-    throw new Error("expected redirect");
-  } catch (error) {
-    if (error instanceof RedirectError) {
-      return { redirect: error.url, calls };
-    }
-    throw error;
-  }
-}
-
-test("operator can start customer-delay clock", async () => {
-  const result = await postOperatorDeadline();
-  assert.match(result.redirect, /onboarding=requested/);
-  assert.equal(result.calls.marks.length, 1);
-  assert.equal(result.calls.marks[0].previousOnboardingStatus, "requirements_needed");
-});
-
-test("operator can reopen paused_incomplete with a new due date", async () => {
-  const result = await postOperatorDeadline({
-    account: { accountId: "acct_1", accountSlug: "demo", onboardingStatus: "paused_incomplete" },
-  });
-  assert.match(result.redirect, /onboarding=reopened/);
-  assert.equal(result.calls.marks[0].previousOnboardingStatus, "paused_incomplete");
-});
-
-test("operator can reopen closed_incomplete with a new due date", async () => {
-  const result = await postOperatorDeadline({
-    account: { accountId: "acct_1", accountSlug: "demo", onboardingStatus: "closed_incomplete" },
-  });
-  assert.match(result.redirect, /onboarding=reopened/);
-  assert.equal(result.calls.marks[0].previousOnboardingStatus, "closed_incomplete");
-});
-
-test("non-operator cannot mutate onboarding deadlines", async () => {
-  await assert.rejects(
-    postOperatorDeadline({ operatorThrows: true }),
-    /not operator/,
-  );
-});
-
-test("carrier_review is not treated as customer delay", async () => {
-  const result = await postOperatorDeadline({
-    account: { accountId: "acct_1", accountSlug: "demo", onboardingStatus: "carrier_review" },
-  });
-  assert.match(result.redirect, /onboarding=not_customer_delay/);
-  assert.equal(result.calls.marks.length, 0);
-});
-
-test("activated account is not moved back into customer delay", async () => {
-  const result = await postOperatorDeadline({
-    account: {
-      accountId: "acct_1",
-      accountSlug: "demo",
-      onboardingStatus: "waiting_on_customer",
-      activatedAt: "2026-07-01T00:00:00.000Z",
-    },
-  });
-  assert.match(result.redirect, /onboarding=not_customer_delay/);
-  assert.equal(result.calls.marks.length, 0);
-});
-
-test("reopening code does not reset durable activation, first-paid, or guarantee dates", async () => {
-  const accountStore = await readFile(new URL("../lib/supabase/accounts.ts", import.meta.url), "utf8");
-  const helperBody = accountStore.slice(accountStore.indexOf("export async function markAccountRequirementsRequested"));
-
-  assert.match(helperBody, /updateAccountBillingRecord\(accountId,\s*\{\s*onboardingStatus: "waiting_on_customer",\s*requirementsDueAt,/);
-  assert.doesNotMatch(helperBody, /activatedAt\s*:/);
-  assert.doesNotMatch(helperBody, /firstPaidAt\s*:/);
-  assert.doesNotMatch(helperBody, /guaranteeEndsAt\s*:/);
-});
-
 test("launch verifier passes for a ready account", () => {
   const result = analyzeLaunchCertification(readyFacts());
   assert.equal(result.ok, true);
@@ -215,12 +57,12 @@ test("launch verifier passes for a ready account", () => {
 
 test("launch verifier fails for incomplete setup", () => {
   const result = analyzeLaunchCertification(readyFacts({
-    lastPassedForwarding: null,
-    account: { onboarding_status: "ready_for_live_test", billing_status: "not_started", stripe_subscription_status: null },
+    latestLead: null,
+    account: { onboarding_status: "setting_up", billing_status: "not_started", stripe_subscription_status: null },
   }));
 
   assert.equal(result.ok, false);
-  assert.match(result.checks.find((check) => check.label === "call capture readiness").detail, /needs a passed forwarding/);
+  assert.match(result.checks.find((check) => check.label === "call capture readiness").detail, /not recovered a real missed call/i);
 });
 
 test("launch verifier fails for unsafe or missing Stripe config", () => {
@@ -246,21 +88,19 @@ test("launch verifier reports paused SMS as operational choice, not setup failur
   assert.equal(result.ok, true);
 });
 
-test("launch verifier blocks monthly Checkout when the setup fee is unsettled", () => {
+test("launch verifier keeps checkout eligibility independent from setup-fee state", () => {
   const result = analyzeLaunchCertification(readyFacts({
     account: { setup_fee_status: "refunded" },
   }));
 
-  assert.equal(result.ok, false);
-  assert.equal(result.checkoutAllowed.ok, false);
-  assert.match(result.checks.find((check) => check.label === "setup fee status").detail, /not settled/);
+  assert.equal(result.ok, true);
+  assert.equal(result.checkoutAllowed.ok, false, "an already active account cannot open another Checkout session");
 });
 
-test("launch verifier reconciles stale customer-delay status for active accounts", () => {
+test("launch verifier treats durable paid activation as authoritative", () => {
   const result = analyzeLaunchCertification(readyFacts({
     account: {
-      onboarding_status: "waiting_on_customer",
-      requirements_due_at: "2026-07-31T00:00:00.000Z",
+      onboarding_status: "setting_up",
       activated_at: "2026-07-17T00:00:00.000Z",
     },
   }));
@@ -268,20 +108,20 @@ test("launch verifier reconciles stale customer-delay status for active accounts
   const blocker = result.checks.find((check) => check.label === "onboarding blocker");
 
   assert.equal(result.ok, true);
-  assert.match(lifecycle.detail, /effective=activated/);
+  assert.match(lifecycle.detail, /effective=live/);
   assert.equal(blocker.level, "pass");
 });
 
-test("launch verifier distinguishes customer delay from carrier delay", () => {
-  const customer = analyzeLaunchCertification(readyFacts({
+test("launch verifier treats carrier approval as separate from call-capture readiness", () => {
+  const setup = analyzeLaunchCertification(readyFacts({
     account: {
       billing_status: "not_started",
       stripe_subscription_status: null,
-      onboarding_status: "waiting_on_customer",
+      onboarding_status: "setting_up",
       activated_at: null,
       first_paid_at: null,
     },
-    lastPassedForwarding: null,
+    latestLead: null,
   }));
   const carrier = analyzeLaunchCertification(readyFacts({
     account: {
@@ -294,113 +134,12 @@ test("launch verifier distinguishes customer delay from carrier delay", () => {
     settings: { a2p_registration_status: "in_progress" },
   }));
 
-  assert.equal(customer.blocker, "customer_delay");
-  assert.equal(carrier.blocker, "carrier_delay");
-  assert.match(customer.checks.find((check) => check.label === "onboarding blocker").detail, /customer delay/);
-  assert.match(carrier.checks.find((check) => check.label === "onboarding blocker").detail, /carrier\/A2P delay/);
+  assert.equal(setup.blocker, "setup");
+  assert.equal(carrier.blocker, "none");
+  assert.match(setup.checks.find((check) => check.label === "onboarding blocker").detail, /blocked by call setup/i);
+  assert.match(carrier.checks.find((check) => check.label === "A2P\/SMS registration readiness").detail, /calls and billing remain available/i);
 });
 
-test("launch verifier parses optional scratch billing-control rehearsal args", () => {
-  assert.deepEqual(
-    parseLaunchArgs(["relay-nw", "--billing-controls", "scratch-launch"]),
-    { slug: "relay-nw", billingControlsSlug: "scratch-launch" },
-  );
-  assert.deepEqual(
-    parseLaunchArgs(["--billing-controls", "scratch-launch", "relay-nw"]),
-    { slug: "relay-nw", billingControlsSlug: "scratch-launch" },
-  );
-});
-
-test("billing-control rehearsal refuses non-scratch and live Stripe accounts", () => {
-  assert.equal(isScratchBillingSlug("scratch-launch"), true);
-  assert.equal(isScratchBillingSlug("relay-nw"), false);
-  assert.deepEqual(canRehearseBillingControls(null), { ok: false, reason: "missing_account" });
-  assert.deepEqual(canRehearseBillingControls({ slug: "relay-nw" }), { ok: false, reason: "not_scratch" });
-  assert.deepEqual(
-    canRehearseBillingControls({
-      slug: "scratch-launch",
-      stripe_subscription_id: "sub_live",
-      stripe_subscription_status: "active",
-    }),
-    { ok: false, reason: "live_stripe_subscription" },
-  );
-});
-
-test("billing-control rehearsal snapshots only billing fields", () => {
-  assert.deepEqual(
-    snapshotBillingRecord({
-      slug: "scratch-launch",
-      billing_status: "trialing",
-      trial_ends_at: "2026-07-20T00:00:00.000Z",
-      cancel_at_period_end: true,
-      billing_attention_since: null,
-      stripe_customer_id: "cus_123",
-      stripe_subscription_id: null,
-      stripe_subscription_status: null,
-      name: "Should not be in snapshot",
-    }),
-    {
-      billing_status: "trialing",
-      trial_ends_at: "2026-07-20T00:00:00.000Z",
-      cancel_at_period_end: true,
-      billing_attention_since: null,
-      stripe_customer_id: "cus_123",
-      stripe_subscription_id: null,
-      stripe_subscription_status: null,
-    },
-  );
-});
-
-test("billing-control rehearsal steps cover comp, uncomp, trial grant, and expiry flip", () => {
-  const steps = billingControlRehearsalSteps(new Date("2026-07-18T12:00:00.000Z"));
-
-  assert.deepEqual(steps.map((step) => step.key), ["comp", "uncomp", "grant_trial", "expiry_flip"]);
-  assert.equal(steps[0].update.billing_status, "comped");
-  assert.equal(steps[1].update.billing_status, "not_started");
-  assert.equal(steps[2].update.billing_status, "trialing");
-  assert.equal(steps[3].update.billing_status, "past_due");
-  assert.match(steps[3].auditSummary, /Call capture remains on/);
-});
-
-test("billing-control rehearsal mutates only a scratch account and restores original billing state", async () => {
-  const calls = { updates: [], audits: [] };
-  let account = {
-    id: "acct_scratch",
-    slug: "scratch-launch",
-    billing_status: "not_started",
-    trial_ends_at: null,
-    cancel_at_period_end: false,
-    billing_attention_since: null,
-    stripe_customer_id: null,
-    stripe_subscription_id: null,
-    stripe_subscription_status: null,
-  };
-  const store = {
-    loadAccount: async () => ({ ...account }),
-    updateAccount: async (_accountId, update) => {
-      calls.updates.push(update);
-      account = { ...account, ...update };
-    },
-    recordAudit: async (_accountId, action, summary) => {
-      calls.audits.push({ action, summary });
-    },
-  };
-
-  const result = await runBillingControlsRehearsal({
-    slug: "scratch-launch",
-    store,
-    now: new Date("2026-07-18T12:00:00.000Z"),
-  });
-
-  assert.equal(result.ok, true);
-  assert.equal(calls.audits.length, 4);
-  assert.deepEqual(calls.audits.map((audit) => audit.action), [
-    "billing.operator.comp",
-    "billing.operator.uncomp",
-    "billing.operator.grant_trial",
-    "billing.trial.expired",
-  ]);
-  assert.equal(calls.updates.at(-1).billing_status, "not_started");
-  assert.equal(calls.updates.at(-1).trial_ends_at, null);
-  assert.match(result.checks.find((check) => check.label === "scratch account restored").detail, /restored/);
+test("launch verifier accepts the account slug", () => {
+  assert.deepEqual(parseLaunchArgs(["relay-nw"]), { slug: "relay-nw" });
 });

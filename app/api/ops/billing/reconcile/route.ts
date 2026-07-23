@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { requirePlatformOperator } from "@/lib/auth";
+import { requirePlatformOperatorWrite } from "@/lib/auth";
 import { reconcileStripeBillingAccount } from "@/lib/billing-reconciliation";
 import {
   getOpsBillingAccountBySlug,
@@ -12,7 +12,7 @@ function go(slug: string, result: string): never {
 }
 
 export async function POST(request: Request) {
-  const operator = await requirePlatformOperator();
+  const operator = await requirePlatformOperatorWrite();
   const form = await request.formData();
   const slug = String(form.get("account_slug") ?? "").trim();
   if (!slug) redirect("/ops");

@@ -30,7 +30,6 @@ const files = {
   callsStore: await source("lib/supabase/calls.ts"),
   webhooksStore: await source("lib/supabase/webhooks.ts"),
   voicemailsStore: await source("lib/supabase/voicemails.ts"),
-  healthChecksStore: await source("lib/supabase/health-checks.ts"),
   tenantStore: await source("lib/supabase/tenant.ts"),
 };
 
@@ -38,12 +37,10 @@ test("authenticated lead, ops, recording, and transcription routes use session a
   assert.match(files.leadsPage, /const session = await requireAccountUser\(\)/);
   assert.match(files.leadsPage, /const \{ account, accountId, membershipCount \} = session/);
   assert.match(files.leadsPage, /getLeadInboxPageForAccount\(accountId/);
-  assert.doesNotMatch(files.leadsPage, /getForwardingHealthSummary\(accountId\)/);
 
   assert.match(files.setupPage, /const session = await requireAccountUser\(\)/);
   assert.match(files.setupPage, /const \{ account, accountId, membershipCount \} = session/);
   assert.match(files.setupPage, /getAccountTechnicalSetupStatus\(accountId\)/);
-  assert.doesNotMatch(files.setupPage, /getForwardingHealthSummary\(accountId\)/);
   assert.match(files.setupPage, /getA2pRegistrationStatus\(accountId\)/);
 
   // Ops pages authorize via the platform-operator gate and look accounts up by
@@ -120,7 +117,7 @@ test("lead queries and mutations filter by account_id when an account is supplie
   assert.doesNotMatch(files.leadsStore, /export async function getLeads\(/);
 });
 
-test("recordings, messages, calls, health checks, and webhook debug reads are account scoped", () => {
+test("recordings, messages, calls, and webhook debug reads are account scoped", () => {
   assert.match(files.voicemailsStore, /\.eq\("recording_sid", recordingSid\)\s*\.eq\("account_id", accountId\)/);
   assert.match(files.voicemailsStore, /\.eq\("id", id\)\s*\.eq\("account_id", accountId\)/);
   assert.match(files.voicemailsStore, /\.eq\("call_sid", input\.callSid\)\s*\.eq\("account_id", accountId\)/);
@@ -136,16 +133,12 @@ test("recordings, messages, calls, health checks, and webhook debug reads are ac
   assert.match(files.webhooksStore, /account_id: input\.accountId \?\? null/);
   assert.doesNotMatch(files.webhooksStore, /export async function getRecentWebhookEvents\(/);
 
-  assert.match(files.healthChecksStore, /\.eq\("account_id", accountId\)\s*\.eq\("status", "pending"\)/);
-  assert.match(files.healthChecksStore, /\.eq\("id", input\.id\)\s*\.eq\("account_id", accountId\)/);
-
   for (const store of [
     files.leadsStore,
     files.messagesStore,
     files.callsStore,
     files.webhooksStore,
     files.voicemailsStore,
-    files.healthChecksStore,
   ]) {
     assert.doesNotMatch(store, /\.match\([^)]*\?\s*\{\s*account_id:/);
   }

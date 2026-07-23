@@ -1,105 +1,84 @@
-# Relay NW Customer Setup Checklist
+# Relay Customer Setup
 
-Use this checklist for every early customer. Relay NW is multi-account in the database and auth layer, but onboarding is still assisted by an operator until fully self-serve setup ships.
+Relay onboarding has two customer-visible phases. Billing is separate.
 
-## 1. Track the Setup Request
+## Phase 1: Get calls live
 
-1. Open `/ops/setup-requests` from the Relay NW house account.
-2. Filter for `New` requests.
-3. Contact the prospect and mark the request `Contacted`.
-4. When their account is live, mark the request `Onboarded`.
-5. If they are not a fit or stop responding, mark the request `Closed`.
+Relay needs:
 
-Do not create sales inquiries as tenant leads. The public intake form writes to `setup_requests`, not a customer's missed-call inbox.
+- Business display name
+- Owner login email
+- Owner phone number
+- Call mode (`forwarding` or `direct`)
+- Existing public business number only for forwarding accounts
 
-## 2. Collect the Basics
+Most of this arrives through the public intake request. Do not ask the customer
+to enter it again.
 
-- Business name for SMS and greeting copy.
-- Existing public business phone number.
-- Owner email for Supabase Auth.
-- Owner phone number for call-back links and forwarded replies.
-- Relay NW Twilio recovery number.
-- Public intake form URL.
-- Call mode: `forwarding` for most early customers, `direct` only when the Twilio number is their public number.
-- Custom greeting audio URL, if they recorded one.
+### Operator steps
 
-## 3. Provision the Account
+1. Accept the request in `/ops/setup-requests`.
+2. Provision the account and owner login.
+3. Assign the account's Relay/Twilio number.
+4. Configure the Twilio voice and messaging webhooks.
+5. For forwarding accounts, help the customer enable conditional forwarding
+   using the instructions on `/setup`.
 
-Provision the account with the script so account-scoped rows stay consistent:
+The customer does not run an app-generated test. The first valid, signed, real
+missed call that creates a new CRM lead automatically marks call capture
+`live`.
 
-```bash
-npm run provision:account
-```
+Confirm:
 
-The script should create or update the account, account settings, account phone number, and owner account-user row. After provisioning, create or invite the owner through Supabase Auth if needed.
+- The missed call appears once in `/leads`.
+- Voicemail is attached when the caller leaves one.
+- `/setup` says calls are live.
+- Duplicate or unsigned webhooks do not change setup state.
 
-Then verify:
+Automatic texting may still be unavailable. That does not block calls, CRM
+access, or monthly billing.
 
-```bash
-npm run verify:account -- <slug>
-```
+## Phase 2: Enable texting
 
-Treat verification output as the source of truth:
+Relay collects registration details directly from the customer and completes
+A2P registration in Twilio. Do not send the customer through an in-app carrier
+questionnaire.
 
-- `Live · Auto-text on` means calls and automatic texting are ready.
-- `Live · Auto-text paused` means call capture is ready, but the owner intentionally paused automatic texting.
-- `Calls ready · Texting not ready` means call capture can be tested, but texting needs A2P/configuration attention.
-- `Setup needed` means routing or core configuration is incomplete.
+The customer sees only a calm texting status:
 
-## 4. Configure Twilio
+- Relay is preparing or enabling texting.
+- Texting is available.
+- Relay is resolving a texting issue.
+- Texting is unavailable.
 
-On the customer's Relay NW Twilio phone number:
+Only A2P status `approved` permits the owner to turn automatic texting on.
+Approval never turns texting on automatically.
 
-- Voice webhook: `APP_BASE_URL/api/twilio/voice`
-- Voice method: `POST`
-- Messaging webhook: `APP_BASE_URL/api/twilio/sms`
-- Messaging method: `POST`
+## Billing
 
-Confirm the number is present in `account_phone_numbers` for the correct account. If A2P 10DLC is not approved yet, calls and voicemail can still be tested, but outbound SMS should not be treated as production-ready.
+Billing is not an onboarding phase:
 
-## 5. Configure Conditional Call Forwarding
+- Setup costs $150 once unless Relay explicitly waives it.
+- Service costs $99 per month unless Relay explicitly comps the account.
+- Monthly Checkout becomes available when call capture is `live`; A2P and the
+  setup-fee state do not secretly block it.
+- Customers use Stripe Customer Portal from Settings to change payment
+  methods, view invoices, update billing details, and cancel.
+- A scheduled cancellation remains active through the paid period.
+- Failed payments show a clear Manage billing action without automatically
+  disabling missed-call capture.
+- Customers request refunds from Relay. Operators issue approved refunds in
+  Stripe; Relay displays the result only after Stripe confirms it.
 
-The customer usually keeps their existing number. Their carrier forwards missed, busy, or unreachable calls to the Relay NW recovery number.
+## Handoff
 
-Use `/setup` with the owner so the app can show carrier-aware forwarding guidance and run the listening test. Carrier codes vary, and carrier apps, landlines, VoIP providers, and regional carriers may use different steps.
+Before handoff:
 
-For many US mobile carriers, these are useful starting points:
-
-- No answer: `*61*RELAY_NUMBER#`
-- Busy: `*67*RELAY_NUMBER#`
-- Unreachable: `*62*RELAY_NUMBER#`
-
-Replace `RELAY_NUMBER` with the Relay NW recovery number, including `1` for US numbers.
-
-## 6. Run One Real Test
-
-Test with the customer watching:
-
-1. Run `npm run verify:account -- <slug>` before the call.
-2. In `/setup`, start the forwarding/listening test.
-3. Call the customer's existing number from a separate phone.
-4. Do not answer.
-5. Confirm the call forwards to Relay NW.
-6. Confirm the greeting plays and discloses recording.
-7. Leave a short voicemail.
-8. Confirm the lead appears in `/leads`.
-9. Confirm the voicemail appears on the lead.
-10. Confirm SMS status is visible on the lead.
-11. Reply to the SMS, if texting is approved/on, and confirm the owner receives the forwarded reply.
-12. Open `/ops` and confirm the call, recording, SMS status, and inbound reply events are visible.
-
-If A2P is pending or automatic texting is paused, the lead should still appear in the inbox, but callers should not receive an automatic text.
-
-## 7. Go-Live Check
-
-Before charging for a live account:
-
-- Account verification passes or only warns that automatic texting is intentionally paused.
-- A2P 10DLC registration is approved before promising automatic SMS.
-- One missed-call test succeeds.
-- One voicemail recording test succeeds.
-- One inbound SMS reply test succeeds when texting is on.
-- `/ops` shows enough detail to explain the test call.
-- The owner can sign in with email/password and knows how to reset their password.
-- The owner understands automatic SMS can be paused without turning off call capture.
-- The owner understands callers who hang up before forwarding reaches Relay NW may not be captured.
+1. Run `npm run verify:account -- <slug>`.
+2. Run `npm run verify:launch -- <slug>`.
+3. Confirm one real missed call reached the CRM.
+4. Confirm the owner can sign in and understands `/leads`, `/setup`, and
+   `/settings`.
+5. Explain that call capture works independently from automatic texting.
+6. Explain the $150 one-time fee, $99 monthly price, Stripe billing controls,
+   and refund-support path.

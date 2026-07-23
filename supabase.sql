@@ -16,7 +16,6 @@ create table if not exists public.accounts (
   stripe_customer_id text,
   stripe_subscription_id text,
   stripe_price_id text,
-  stripe_payment_method_id text,
   stripe_subscription_status text,
   trial_ends_at timestamptz,
   current_period_end timestamptz,
@@ -27,21 +26,10 @@ create table if not exists public.accounts (
       'waiting_for_forwarding',
       'live',
       'paused',
-      'closed',
-      'requirements_needed',
-      'waiting_on_customer',
-      'ready_for_carrier',
-      'carrier_review',
-      'carrier_attention',
-      'ready_for_live_test',
-      'ready_to_activate',
-      'activated',
-      'paused_incomplete',
-      'closed_incomplete'
+      'closed'
     )
   ),
   onboarding_status_updated_at timestamptz,
-  requirements_due_at timestamptz,
   activated_at timestamptz,
   first_paid_at timestamptz,
   guarantee_ends_at timestamptz,
@@ -68,7 +56,6 @@ alter table public.accounts add column if not exists billing_policy_updated_at t
 alter table public.accounts add column if not exists stripe_customer_id text;
 alter table public.accounts add column if not exists stripe_subscription_id text;
 alter table public.accounts add column if not exists stripe_price_id text;
-alter table public.accounts add column if not exists stripe_payment_method_id text;
 alter table public.accounts add column if not exists stripe_subscription_status text;
 alter table public.accounts add column if not exists trial_ends_at timestamptz;
 alter table public.accounts add column if not exists current_period_end timestamptz;
@@ -76,7 +63,6 @@ alter table public.accounts add column if not exists cancel_at_period_end boolea
 alter table public.accounts add column if not exists onboarding_status text not null default 'setting_up';
 alter table public.accounts alter column onboarding_status set default 'setting_up';
 alter table public.accounts add column if not exists onboarding_status_updated_at timestamptz;
-alter table public.accounts add column if not exists requirements_due_at timestamptz;
 alter table public.accounts add column if not exists activated_at timestamptz;
 alter table public.accounts add column if not exists first_paid_at timestamptz;
 alter table public.accounts add column if not exists guarantee_ends_at timestamptz;
@@ -94,6 +80,8 @@ alter table public.accounts add column if not exists setup_fee_refunded_at times
 alter table public.accounts add column if not exists setup_fee_refunded_cents integer not null default 0;
 alter table public.accounts add column if not exists setup_fee_dispute_status text;
 alter table public.accounts add column if not exists monthly_price_cents integer not null default 9900;
+alter table public.accounts drop column if exists requirements_due_at;
+alter table public.accounts drop column if exists stripe_payment_method_id;
 do $$
 begin
   alter table public.accounts
@@ -113,6 +101,21 @@ exception
 end $$;
 do $$
 begin
+  update public.accounts
+  set onboarding_status = case
+    when onboarding_status in ('activated', 'ready_to_activate') then 'live'
+    when onboarding_status = 'waiting_on_customer' then 'waiting_for_forwarding'
+    when onboarding_status = 'paused_incomplete' then 'paused'
+    when onboarding_status = 'closed_incomplete' then 'closed'
+    when onboarding_status in (
+      'requirements_needed',
+      'ready_for_carrier',
+      'carrier_review',
+      'carrier_attention',
+      'ready_for_live_test'
+    ) then 'setting_up'
+    else onboarding_status
+  end;
   alter table public.accounts drop constraint if exists accounts_onboarding_status_check;
   alter table public.accounts
     add constraint accounts_onboarding_status_check
@@ -122,17 +125,7 @@ begin
         'waiting_for_forwarding',
         'live',
         'paused',
-        'closed',
-        'requirements_needed',
-        'waiting_on_customer',
-        'ready_for_carrier',
-        'carrier_review',
-        'carrier_attention',
-        'ready_for_live_test',
-        'ready_to_activate',
-        'activated',
-        'paused_incomplete',
-        'closed_incomplete'
+        'closed'
       )
     );
 exception
@@ -349,20 +342,6 @@ alter table public.account_settings enable row level security;
 create table if not exists public.account_carrier_profiles (
   account_id uuid primary key references public.accounts(id) on delete cascade,
   status text not null default 'draft' check (status in ('draft', 'ready', 'submitted', 'in_progress', 'approved', 'needs_changes', 'rejected')),
-  has_ein boolean,
-  registration_type text,
-  registration_id_encrypted text,
-  registration_id_last4 text,
-  representative_first_name text,
-  representative_last_name text,
-  representative_title text,
-  representative_mobile text,
-  representative_email text,
-  messaging_use_case text,
-  opt_in_flow text,
-  sample_messages text[] not null default '{}',
-  privacy_policy_url text,
-  terms_url text,
   twilio_brand_sid text,
   twilio_campaign_sid text,
   messaging_service_sid text,
@@ -370,6 +349,21 @@ create table if not exists public.account_carrier_profiles (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+alter table if exists public.account_carrier_profiles
+  drop column if exists has_ein,
+  drop column if exists registration_type,
+  drop column if exists registration_id_encrypted,
+  drop column if exists registration_id_last4,
+  drop column if exists representative_first_name,
+  drop column if exists representative_last_name,
+  drop column if exists representative_title,
+  drop column if exists representative_mobile,
+  drop column if exists representative_email,
+  drop column if exists messaging_use_case,
+  drop column if exists opt_in_flow,
+  drop column if exists sample_messages,
+  drop column if exists privacy_policy_url,
+  drop column if exists terms_url;
 alter table public.account_carrier_profiles enable row level security;
 
 create table if not exists public.account_phone_numbers (
@@ -427,6 +421,117 @@ create table if not exists public.account_audit_events (
 create index if not exists account_audit_events_account_created_at_idx
   on public.account_audit_events (account_id, created_at desc);
 alter table public.account_audit_events enable row level security;
+
+-- Relay-owned billing exceptions are policy, not fake Stripe state. Change
+-- the policy and create its required audit event atomically.
+create or replace function public.set_account_billing_policy(
+  p_account_id uuid,
+  p_policy text,
+  p_reason text,
+  p_actor_user_id uuid,
+  p_actor_email text
+)
+returns table (
+  previous_policy text,
+  current_policy text
+)
+language plpgsql
+security invoker
+set search_path = public
+as $function$
+declare
+  v_previous_policy text;
+  v_stripe_status text;
+  v_setup_fee_status text;
+  v_reason text := trim(coalesce(p_reason, ''));
+begin
+  if p_policy not in ('standard', 'setup_fee_waived', 'comped') then
+    raise exception 'Unsupported billing policy';
+  end if;
+
+  if length(v_reason) < 5 then
+    raise exception 'A meaningful billing-policy reason is required';
+  end if;
+
+  select
+    billing_policy,
+    stripe_subscription_status,
+    setup_fee_status
+  into
+    v_previous_policy,
+    v_stripe_status,
+    v_setup_fee_status
+  from public.accounts
+  where id = p_account_id
+  for update;
+
+  if not found then
+    raise exception 'Account not found';
+  end if;
+
+  if p_policy = 'comped'
+    and v_stripe_status in (
+      'incomplete',
+      'trialing',
+      'active',
+      'past_due',
+      'unpaid',
+      'paused'
+    )
+  then
+    raise exception 'Cancel or finish the Stripe subscription before comping';
+  end if;
+
+  if p_policy = 'setup_fee_waived'
+    and v_setup_fee_status in ('paid', 'partially_refunded')
+  then
+    raise exception 'A paid setup fee cannot be reclassified as waived';
+  end if;
+
+  update public.accounts
+  set
+    billing_policy = p_policy,
+    billing_policy_updated_at = now()
+  where id = p_account_id;
+
+  insert into public.account_audit_events (
+    account_id,
+    actor_user_id,
+    actor_email,
+    action,
+    summary
+  )
+  values (
+    p_account_id,
+    p_actor_user_id,
+    nullif(trim(coalesce(p_actor_email, '')), ''),
+    'billing.policy.' || p_policy,
+    v_reason
+  );
+
+  return query select v_previous_policy, p_policy;
+end;
+$function$;
+
+revoke all
+on function public.set_account_billing_policy(
+  uuid,
+  text,
+  text,
+  uuid,
+  text
+)
+from public, anon, authenticated;
+
+grant execute
+on function public.set_account_billing_policy(
+  uuid,
+  text,
+  text,
+  uuid,
+  text
+)
+to service_role;
 
 -- Phase 7A platform Operations authorization.
 -- Operations access is intentionally separate from account_users membership.
@@ -726,8 +831,7 @@ begin
     update public.accounts
     set
       onboarding_status = 'live',
-      onboarding_status_updated_at = v_created_at,
-      requirements_due_at = null
+      onboarding_status_updated_at = v_created_at
     where id = p_account_id
       and onboarding_status in ('setting_up', 'waiting_for_forwarding');
 
@@ -897,47 +1001,7 @@ create index if not exists messages_twilio_message_sid_idx on public.messages (t
 
 alter table public.messages enable row level security;
 
-create table if not exists public.forwarding_health_checks (
-  id uuid primary key default gen_random_uuid(),
-  account_id uuid not null references public.accounts(id),
-  phone_number_tested text not null,
-  status text not null check (status in ('pending', 'passed', 'failed', 'timeout', 'error')),
-  started_at timestamptz not null default now(),
-  completed_at timestamptz,
-  outbound_twilio_call_sid text,
-  inbound_twilio_call_sid text,
-  failure_reason text check (
-    failure_reason is null
-    or failure_reason in (
-      'no_forwarded_call_received',
-      'twilio_outbound_failed',
-      'webhook_error',
-      'rate_limited',
-      'unknown_error'
-    )
-  ),
-  raw_event_summary jsonb,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-alter table public.forwarding_health_checks add column if not exists account_id uuid references public.accounts(id);
-alter table public.forwarding_health_checks alter column account_id set not null;
-create index if not exists forwarding_health_checks_created_at_idx
-  on public.forwarding_health_checks (created_at desc);
-create index if not exists forwarding_health_checks_account_created_at_idx
-  on public.forwarding_health_checks (account_id, created_at desc);
-create index if not exists forwarding_health_checks_account_status_completed_at_idx
-  on public.forwarding_health_checks (account_id, status, completed_at desc)
-  where completed_at is not null;
-create index if not exists forwarding_health_checks_pending_started_at_idx
-  on public.forwarding_health_checks (started_at desc)
-  where status = 'pending';
-create index if not exists forwarding_health_checks_account_pending_started_at_idx
-  on public.forwarding_health_checks (account_id, started_at desc)
-  where status = 'pending';
-
-alter table public.forwarding_health_checks enable row level security;
+drop table if exists public.forwarding_health_checks;
 
 -- Marketing setup requests from the public intake form. Deliberately separate
 -- from leads: leads are customer conversations owned by a tenant account;
@@ -1040,11 +1104,6 @@ create policy deny_client_access on public.calls
 
 drop policy if exists deny_client_access on public.messages;
 create policy deny_client_access on public.messages
-  as restrictive for all to anon, authenticated
-  using (false) with check (false);
-
-drop policy if exists deny_client_access on public.forwarding_health_checks;
-create policy deny_client_access on public.forwarding_health_checks
   as restrictive for all to anon, authenticated
   using (false) with check (false);
 

@@ -2157,176 +2157,6 @@ code {
   line-height: 1.35;
 }
 
-.forwarding-health {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
-  padding: 14px 15px;
-}
-
-.sms-health {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
-  padding: 14px 15px;
-}
-
-.sms-health__main {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 12px;
-}
-
-.sms-health__icon {
-  display: grid;
-  width: 38px;
-  height: 38px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: 10px;
-  background: var(--good-soft);
-  color: var(--good);
-}
-
-.sms-health__title {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin: 4px 0 3px;
-  color: var(--ink);
-  font-size: 16px;
-  letter-spacing: 0;
-}
-
-.sms-health__title > span:last-child {
-  color: var(--ink-2);
-  font-weight: 650;
-}
-
-.sms-health__status {
-  display: inline-flex;
-  min-height: 24px;
-  align-items: center;
-  border-radius: 999px;
-  padding: 0 9px;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.sms-health__status--good {
-  background: var(--good-soft);
-  color: var(--good);
-}
-
-.sms-health__status--pending {
-  background: var(--warn-soft);
-  color: var(--warn);
-}
-
-.sms-health__status--bad {
-  background: var(--danger-soft);
-  color: var(--danger);
-}
-
-.sms-health__status--unknown {
-  background: var(--paper-2);
-  color: var(--ink-3);
-}
-
-.sms-health__note {
-  margin: 0;
-  color: var(--ink-3);
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.health-action-btn {
-  width: 176px;
-  justify-content: center;
-}
-
-.health-action-btn svg {
-  flex: 0 0 auto;
-}
-
-.forwarding-health__main {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 12px;
-}
-
-.forwarding-health__icon {
-  display: grid;
-  width: 38px;
-  height: 38px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: 10px;
-  background: var(--brand-soft);
-  color: var(--brand);
-}
-
-.forwarding-health__title {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin: 4px 0 3px;
-  color: var(--ink);
-  font-size: 16px;
-  letter-spacing: 0;
-}
-
-.forwarding-health__status {
-  display: inline-flex;
-  min-height: 24px;
-  align-items: center;
-  border-radius: 999px;
-  padding: 0 9px;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.forwarding-health__status--passed {
-  background: var(--good-soft);
-  color: var(--good);
-}
-
-.forwarding-health__status--pending {
-  background: var(--warn-soft);
-  color: var(--warn);
-}
-
-.forwarding-health__status--failed {
-  background: var(--danger-soft);
-  color: var(--danger);
-}
-
-.forwarding-health__status--unknown {
-  background: var(--paper-2);
-  color: var(--ink-3);
-}
-
-.forwarding-health__note {
-  margin: 0;
-  color: var(--ink-3);
-  font-size: 13px;
-  line-height: 1.4;
-}
-
 .filters {
   display: flex;
   align-items: center;
@@ -3205,6 +3035,15 @@ code {
 .settings-billing__action {
   white-space: nowrap;
 }
+.settings-billing__actions {
+  display: grid;
+  justify-items: stretch;
+  gap: 6px;
+}
+.settings-billing__charge-copy {
+  margin-top: 8px;
+  font-weight: 700;
+}
 .settings-billing__reassurance {
   margin-top: 8px;
 }
@@ -3231,6 +3070,17 @@ code {
 .settings-billing__facts dd {
   margin: 0;
   color: var(--ink);
+  font-weight: 800;
+}
+.settings-billing__facts .settings-billing__secondary-action {
+  margin-top: 10px;
+  font-weight: 400;
+}
+.settings-billing__support {
+  margin-top: 14px;
+}
+.settings-billing__support a {
+  color: var(--accent);
   font-weight: 800;
 }
 .settings-form {
@@ -3836,68 +3686,6 @@ code {
 .carrier-note > svg {
   margin-top: 2px;
   flex-shrink: 0;
-}
-
-.setup-panel--tests {
-  display: grid;
-  gap: 0;
-}
-
-.setup-panel--tests .forwarding-health,
-.setup-panel--tests .sms-health {
-  border-width: 0;
-  border-top-width: 1px;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-/* Combined Full-test verdict above the individual leg cards. */
-.full-test__verdict {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  border-left: 4px solid var(--line);
-  background: var(--panel-2);
-}
-.full-test__count {
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  font-size: 13px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink-3);
-}
-.full-test__headline {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 700;
-}
-.full-test__detail {
-  margin: 2px 0 0;
-  color: var(--ink-4);
-  font-size: 12.5px;
-}
-.full-test__verdict--verified {
-  border-left-color: var(--good);
-  background: color-mix(in oklab, var(--good-soft) 45%, var(--panel));
-}
-.full-test__verdict--verified .full-test__count {
-  color: var(--good);
-  border-color: color-mix(in oklab, var(--good) 35%, var(--line));
-}
-.full-test__verdict--attention {
-  border-left-color: var(--danger);
-  background: color-mix(in oklab, var(--danger-soft) 40%, var(--panel));
-}
-.full-test__verdict--running {
-  border-left-color: var(--brand);
 }
 
 .priority-badge {
@@ -4926,20 +4714,6 @@ code {
     padding: 12px 14px;
   }
 
-  .sms-health,
-  .forwarding-health {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 12px;
-    margin-bottom: 14px;
-    padding: 13px;
-  }
-
-  .health-action-btn {
-    width: 100%;
-    justify-content: center;
-  }
-
   .readiness__facts,
   .setup-grid,
   .setup-details {
@@ -5174,6 +4948,10 @@ code {
   }
 
   .settings-billing__action {
+    width: 100%;
+  }
+
+  .settings-billing__actions .btn {
     width: 100%;
   }
 

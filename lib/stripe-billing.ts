@@ -1,6 +1,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "@/lib/env";
-import type { AccountBillingStatus, StripeSubscriptionStatus } from "@/lib/billing";
+import type {
+  AccountBillingRecord,
+  AccountBillingStatus,
+  StripeSubscriptionStatus,
+} from "@/lib/billing";
 
 export type StripeCheckoutSessionInput = {
   accountId: string;
@@ -8,12 +12,18 @@ export type StripeCheckoutSessionInput = {
   ownerEmail: string | null;
   stripeCustomerId: string | null;
   idempotencyKey: string;
-  trialPeriodDays?: number;
 };
 
 export type StripeCheckoutSession = {
   id: string;
   url: string;
+};
+
+export type StripeCheckoutSessionSnapshot = {
+  id: string;
+  url: string | null;
+  status: string | null;
+  paymentStatus: string | null;
 };
 
 export type StripeSetupFeeCheckoutSessionInput = {
@@ -25,14 +35,6 @@ export type StripeSetupFeeCheckoutSessionInput = {
   idempotencyKey: string;
 };
 
-export type StripeSaveCardCheckoutSessionInput = {
-  accountId: string;
-  accountSlug: string;
-  ownerEmail: string | null;
-  stripeCustomerId: string | null;
-  idempotencyKey: string;
-};
-
 export type StripePortalSessionInput = {
   stripeCustomerId: string;
   returnUrl: string;
@@ -41,12 +43,6 @@ export type StripePortalSessionInput = {
 export type StripePortalSession = {
   id: string;
   url: string;
-};
-
-export type StripeSubscriptionCreation = {
-  subscription: StripeSubscriptionSnapshot;
-  paymentActionRequired: boolean;
-  hostedInvoiceUrl: string | null;
 };
 
 export type StripeBillingUpdate = {
@@ -92,12 +88,12 @@ export type StripeEventIdentity = {
 export type StripePaymentIntentSnapshot = {
   id: string;
   customerId: string | null;
-  paymentMethodId: string | null;
   status: string | null;
   amount: number;
   amountReceived: number;
   amountRefunded: number;
   disputed: boolean;
+  disputeStatus: string | null;
 };
 
 export type StripeSetupCheckoutSnapshot = {
@@ -135,15 +131,18 @@ function paymentIntentSnapshot(body: Record<string, unknown>): StripePaymentInte
   const charge = body.latest_charge && typeof body.latest_charge === "object"
     ? body.latest_charge as Record<string, unknown>
     : null;
+  const dispute = charge?.dispute && typeof charge.dispute === "object"
+    ? charge.dispute as Record<string, unknown>
+    : null;
   return {
     id,
     customerId: stringValue(body.customer),
-    paymentMethodId: stringValue(body.payment_method),
     status: stringValue(body.status),
     amount: numberValue(body.amount) ?? 0,
     amountReceived: numberValue(body.amount_received) ?? 0,
     amountRefunded: charge ? numberValue(charge.amount_refunded) ?? 0 : 0,
     disputed: charge?.disputed === true,
+    disputeStatus: dispute ? stringValue(dispute.status) : null,
   };
 }
 
@@ -276,12 +275,12 @@ export function assertStripeWebhookConfigured() {
 export function mapStripeSubscriptionStatus(status: string | null | undefined): AccountBillingStatus {
   if (status === "active") return "active";
   if (status === "trialing") return "trialing";
-  if (status === "canceled") return "canceled";
+  if (status === "canceled" || status === "incomplete_expired") return "canceled";
   if (
     status === "past_due" ||
     status === "unpaid" ||
     status === "incomplete" ||
-    status === "incomplete_expired"
+    status === "paused"
   ) {
     return "past_due";
   }
@@ -289,40 +288,13 @@ export function mapStripeSubscriptionStatus(status: string | null | undefined): 
   return "not_started";
 }
 
-export function checkoutTrialPeriodDays(input: {
-  billingStatus: AccountBillingStatus;
-  trialEndsAt?: string | null;
-  defaultTrialDays?: number;
-  now?: Date;
-}) {
-  const now = input.now ?? new Date();
-  const defaultTrialDays = Math.max(1, Math.round(input.defaultTrialDays ?? env.stripeTrialDays ?? 30));
-
-  if (input.billingStatus !== "trialing") {
-    return defaultTrialDays;
-  }
-
-  if (!input.trialEndsAt) {
-    return defaultTrialDays;
-  }
-
-  const trialEndsAt = new Date(input.trialEndsAt);
-  if (!Number.isFinite(trialEndsAt.getTime())) {
-    return defaultTrialDays;
-  }
-
-  const remainingDays = Math.ceil((trialEndsAt.getTime() - now.getTime()) / DAY_MS);
-
-  return Math.max(0, remainingDays);
-}
-
 export async function createStripeCheckoutSession(
   input: StripeCheckoutSessionInput,
 ): Promise<StripeCheckoutSession> {
   assertStripeCheckoutConfigured();
 
-  const successUrl = `${env.appBaseUrl}/setup?billing=success`;
-  const cancelUrl = `${env.appBaseUrl}/setup?billing=canceled`;
+  const successUrl = `${env.appBaseUrl}/settings?billing=success#billing`;
+  const cancelUrl = `${env.appBaseUrl}/settings?billing=canceled#billing`;
   const params = new URLSearchParams({
     mode: "subscription",
     client_reference_id: input.accountId,
@@ -335,10 +307,6 @@ export async function createStripeCheckoutSession(
     "subscription_data[metadata][account_id]": input.accountId,
     "subscription_data[metadata][account_slug]": input.accountSlug,
   });
-
-  if (input.trialPeriodDays && input.trialPeriodDays > 0) {
-    params.set("subscription_data[trial_period_days]", String(Math.round(input.trialPeriodDays)));
-  }
 
   if (input.stripeCustomerId) {
     params.set("customer", input.stripeCustomerId);
@@ -453,7 +421,7 @@ export async function createStripeSetupFeeCheckoutSession(
 export async function retrieveStripeSetupCheckoutSession(sessionId: string): Promise<StripeSetupCheckoutSnapshot> {
   assertStripeSetupFeeConfigured();
   const response = await fetch(
-    `${STRIPE_API_BASE}/checkout/sessions/${encodeURIComponent(sessionId)}?expand[]=payment_intent.latest_charge`,
+    `${STRIPE_API_BASE}/checkout/sessions/${encodeURIComponent(sessionId)}?expand[]=payment_intent.latest_charge.dispute`,
     { headers: { Authorization: `Bearer ${env.stripeSecretKey}` } },
   );
   const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
@@ -490,46 +458,35 @@ export async function retrieveStripeSetupCheckoutSession(sessionId: string): Pro
   };
 }
 
-export async function createStripeSaveCardCheckoutSession(
-  input: StripeSaveCardCheckoutSessionInput,
-): Promise<StripeCheckoutSession> {
-  assertStripeCheckoutConfigured();
+export async function retrieveStripeCheckoutSession(
+  sessionId: string,
+): Promise<StripeCheckoutSessionSnapshot> {
+  if (!env.stripeSecretKey) {
+    throw new Error("Stripe checkout retrieval is not configured. Set STRIPE_SECRET_KEY.");
+  }
 
-  const params = new URLSearchParams({
-    mode: "setup",
-    client_reference_id: input.accountId,
-    success_url: `${env.appBaseUrl}/ops?account=${encodeURIComponent(input.accountSlug)}&kickoff=card_saved`,
-    cancel_url: `${env.appBaseUrl}/ops?account=${encodeURIComponent(input.accountSlug)}&kickoff=canceled`,
-    "metadata[account_id]": input.accountId,
-    "metadata[account_slug]": input.accountSlug,
-    "metadata[charge_type]": "save_card",
-    "setup_intent_data[metadata][account_id]": input.accountId,
-    "setup_intent_data[metadata][charge_type]": "save_card",
-  });
-
-  if (input.stripeCustomerId) params.set("customer", input.stripeCustomerId);
-  else if (input.ownerEmail) params.set("customer_email", input.ownerEmail);
-
-  const response = await fetch(`${STRIPE_API_BASE}/checkout/sessions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.stripeSecretKey}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-      "Idempotency-Key": input.idempotencyKey,
-    },
-    body: params,
-  });
+  const response = await fetch(
+    `${STRIPE_API_BASE}/checkout/sessions/${encodeURIComponent(sessionId)}`,
+    { headers: { Authorization: `Bearer ${env.stripeSecretKey}` } },
+  );
   const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+
   if (!response.ok) {
     const message = typeof body.error === "object" && body.error
       ? stringValue((body.error as Record<string, unknown>).message)
       : null;
-    throw new Error(message ?? `Stripe save-card checkout failed with status ${response.status}`);
+    throw new Error(message ?? `Stripe checkout lookup failed with status ${response.status}`);
   }
+
   const id = stringValue(body.id);
-  const url = stringValue(body.url);
-  if (!id || !url) throw new Error("Stripe save-card checkout did not return a redirect URL.");
-  return { id, url };
+  if (!id) throw new Error("Stripe checkout lookup returned no session ID.");
+
+  return {
+    id,
+    url: stringValue(body.url),
+    status: stringValue(body.status),
+    paymentStatus: stringValue(body.payment_status),
+  };
 }
 
 export async function createStripePortalSession(
@@ -607,7 +564,7 @@ export async function retrieveStripePaymentIntent(
   paymentIntentId: string,
 ): Promise<StripePaymentIntentSnapshot> {
   if (!env.stripeSecretKey) throw new Error("Stripe payment retrieval is not configured. Set STRIPE_SECRET_KEY.");
-  const params = new URLSearchParams({ "expand[]": "latest_charge" });
+  const params = new URLSearchParams({ "expand[]": "latest_charge.dispute" });
   const response = await fetch(
     `${STRIPE_API_BASE}/payment_intents/${encodeURIComponent(paymentIntentId)}?${params}`,
     { headers: { Authorization: `Bearer ${env.stripeSecretKey}` } },
@@ -620,25 +577,6 @@ export async function retrieveStripePaymentIntent(
     throw new Error(message ?? `Stripe payment retrieval failed with status ${response.status}`);
   }
   return paymentIntentSnapshot(body);
-}
-
-export async function retrieveStripeSetupIntent(setupIntentId: string) {
-  if (!env.stripeSecretKey) throw new Error("Stripe card setup retrieval is not configured. Set STRIPE_SECRET_KEY.");
-  const response = await fetch(`${STRIPE_API_BASE}/setup_intents/${encodeURIComponent(setupIntentId)}`, {
-    headers: { Authorization: `Bearer ${env.stripeSecretKey}` },
-  });
-  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!response.ok) {
-    const message = typeof body.error === "object" && body.error
-      ? stringValue((body.error as Record<string, unknown>).message) : null;
-    throw new Error(message ?? `Stripe card setup retrieval failed with status ${response.status}`);
-  }
-  return {
-    id: stringValue(body.id),
-    customerId: stringValue(body.customer),
-    paymentMethodId: stringValue(body.payment_method),
-    status: stringValue(body.status),
-  };
 }
 
 export async function createStripeRefund(input: {
@@ -676,84 +614,60 @@ export async function createStripeRefund(input: {
   return { id, status: stringValue(body.status), amount: numberValue(body.amount) ?? 0 };
 }
 
-export async function createStripeSubscriptionFromSavedCard(input: {
-  accountId: string;
-  accountSlug: string;
-  customerId: string;
-  paymentMethodId: string;
-  idempotencyKey: string;
-  trialDays?: number | null;
-}): Promise<StripeSubscriptionCreation> {
-  assertStripeCheckoutConfigured();
-  const customerParams = new URLSearchParams({
-    "invoice_settings[default_payment_method]": input.paymentMethodId,
-  });
-  const customerResponse = await fetch(`${STRIPE_API_BASE}/customers/${encodeURIComponent(input.customerId)}`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${env.stripeSecretKey}`, "Content-Type": "application/x-www-form-urlencoded" },
-    body: customerParams,
-  });
-  const customerBody = (await customerResponse.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!customerResponse.ok) {
-    const message = typeof customerBody.error === "object" && customerBody.error
-      ? stringValue((customerBody.error as Record<string, unknown>).message) : null;
-    throw new Error(message ?? `Stripe customer payment method update failed with status ${customerResponse.status}`);
-  }
-  const params = new URLSearchParams({
-    customer: input.customerId,
-    "items[0][price]": env.stripePriceId!,
-    default_payment_method: input.paymentMethodId,
-    payment_behavior: "default_incomplete",
-    "payment_settings[save_default_payment_method]": "on_subscription",
-    "metadata[account_id]": input.accountId,
-    "metadata[account_slug]": input.accountSlug,
-    "expand[]": "latest_invoice.payment_intent",
-  });
-  if (input.trialDays && input.trialDays > 0) params.set("trial_period_days", String(Math.round(input.trialDays)));
-  const response = await fetch(`${STRIPE_API_BASE}/subscriptions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.stripeSecretKey}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-      "Idempotency-Key": input.idempotencyKey,
-    },
-    body: params,
-  });
-  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!response.ok) {
-    const message = typeof body.error === "object" && body.error
-      ? stringValue((body.error as Record<string, unknown>).message) : null;
-    throw new Error(message ?? `Stripe subscription creation failed with status ${response.status}`);
-  }
-  const invoice = body.latest_invoice && typeof body.latest_invoice === "object"
-    ? body.latest_invoice as Record<string, unknown> : null;
-  const paymentIntent = invoice?.payment_intent && typeof invoice.payment_intent === "object"
-    ? invoice.payment_intent as Record<string, unknown> : null;
-  const paymentStatus = paymentIntent ? stringValue(paymentIntent.status) : null;
+export function setupFeeStateFromPayment(payment: StripePaymentIntentSnapshot): Pick<
+  AccountBillingRecord,
+  "setupFeeStatus" | "setupFeeRefundedCents" | "setupFeeDisputeStatus"
+> {
+  const fullyRefunded = payment.amountRefunded >= Math.max(payment.amountReceived, payment.amount);
+  const disputeStatus = payment.disputeStatus ?? null;
+  const unresolvedDispute = disputeStatus !== null &&
+    disputeStatus !== "won" &&
+    disputeStatus !== "lost";
   return {
-    subscription: stripeSubscriptionSnapshot(body),
-    paymentActionRequired: paymentStatus === "requires_action" || paymentStatus === "requires_payment_method",
-    hostedInvoiceUrl: invoice ? stringValue(invoice.hosted_invoice_url) : null,
+    setupFeeStatus: disputeStatus === "lost"
+      ? "charged_back"
+      : unresolvedDispute || (payment.disputed && disputeStatus !== "won")
+        ? "disputed"
+        : fullyRefunded
+          ? "refunded"
+          : payment.amountRefunded > 0
+            ? "partially_refunded"
+            : payment.status === "succeeded"
+              ? "paid"
+              : "due",
+    setupFeeRefundedCents: payment.amountRefunded,
+    setupFeeDisputeStatus: disputeStatus,
   };
 }
 
-export function setupFeeStateFromPayment(payment: StripePaymentIntentSnapshot): Pick<
-  import("@/lib/billing").AccountBillingRecord,
-  "setupFeeStatus" | "setupFeeRefundedCents"
-> {
-  const fullyRefunded = payment.amountRefunded >= Math.max(payment.amountReceived, payment.amount);
-  return {
-    setupFeeStatus: payment.disputed
-      ? "disputed"
-      : fullyRefunded
-        ? "refunded"
-        : payment.amountRefunded > 0
-          ? "partially_refunded"
-          : payment.status === "succeeded"
-            ? "paid"
-            : "due",
-    setupFeeRefundedCents: payment.amountRefunded,
-  };
+export function reconcileSetupFeeStateFromPayment(
+  payment: StripePaymentIntentSnapshot,
+  current: Pick<AccountBillingRecord, "setupFeeStatus" | "setupFeeDisputeStatus">,
+): Pick<AccountBillingRecord, "setupFeeStatus" | "setupFeeRefundedCents" | "setupFeeDisputeStatus"> {
+  const state = setupFeeStateFromPayment(payment);
+  const hasExplicitResolution = payment.disputeStatus === "won" || payment.disputeStatus === "lost";
+
+  if (!hasExplicitResolution && current.setupFeeStatus === "charged_back") {
+    return {
+      ...state,
+      setupFeeStatus: "charged_back",
+      setupFeeDisputeStatus: payment.disputeStatus ?? current.setupFeeDisputeStatus,
+    };
+  }
+
+  if (
+    !hasExplicitResolution &&
+    current.setupFeeStatus === "disputed" &&
+    !payment.disputeStatus
+  ) {
+    return {
+      ...state,
+      setupFeeStatus: "disputed",
+      setupFeeDisputeStatus: current.setupFeeDisputeStatus,
+    };
+  }
+
+  return state;
 }
 
 export function verifyStripeWebhookSignature(
@@ -860,11 +774,10 @@ function normalizeStripeSubscriptionStatus(value: string | null | undefined): St
 export function billingUpdateFromSubscription(
   accountId: string,
   subscription: StripeSubscriptionSnapshot,
-  options: { nowIso?: string; paid?: boolean } = {},
+  options: { nowIso?: string } = {},
 ): StripeBillingUpdate {
   const nowIso = options.nowIso ?? new Date().toISOString();
   const billingStatus = mapStripeSubscriptionStatus(subscription.status);
-  const isPaid = options.paid === true || billingStatus === "active" || billingStatus === "trialing";
 
   return {
     accountId,
@@ -876,9 +789,25 @@ export function billingUpdateFromSubscription(
     trialEndsAt: subscription.trialEndsAt,
     currentPeriodEnd: subscription.currentPeriodEnd,
     cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-    firstPaidAt: isPaid ? nowIso : undefined,
-    guaranteeEndsAt: isPaid ? new Date(Date.parse(nowIso) + 30 * 24 * 60 * 60 * 1000).toISOString() : undefined,
     billingAttentionSince: billingStatus === "past_due" ? nowIso : null,
+  };
+}
+
+export function billingDatesFromPaidInvoice(
+  invoice: Record<string, unknown>,
+): Pick<StripeBillingUpdate, "firstPaidAt" | "guaranteeEndsAt"> | null {
+  if (invoice.paid !== true && invoice.status !== "paid") return null;
+  if ((numberValue(invoice.amount_paid) ?? 0) <= 0) return null;
+
+  const transitions = invoice.status_transitions && typeof invoice.status_transitions === "object"
+    ? invoice.status_transitions as Record<string, unknown>
+    : null;
+  const firstPaidAt = transitions ? unixSecondsToIso(transitions.paid_at) : null;
+  if (!firstPaidAt) return null;
+
+  return {
+    firstPaidAt,
+    guaranteeEndsAt: new Date(Date.parse(firstPaidAt) + 30 * DAY_MS).toISOString(),
   };
 }
 

@@ -12,12 +12,14 @@ const module = { exports: {} };
 new vm.Script(`(function(module, exports) { ${compiled}\n})`).runInThisContext()(module, module.exports);
 const { getOpsLifecycle } = module.exports;
 
-test("ops lifecycle uses plain-language stages", () => {
-  assert.equal(getOpsLifecycle({ onboardingStatus: "carrier_review", billingStatus: "not_started" }).stage, "carrier_review");
-  assert.equal(getOpsLifecycle({ onboardingStatus: "carrier_review", billingStatus: "not_started" }).label, "Carrier review");
-  assert.equal(getOpsLifecycle({ onboardingStatus: "ready_to_activate", billingStatus: "not_started" }).primaryAction, "Activate");
+test("ops lifecycle reduces legacy setup detail to setting up", () => {
+  assert.equal(getOpsLifecycle({ onboardingStatus: "carrier_review", billingStatus: "not_started" }).stage, "setting_up");
+  assert.equal(getOpsLifecycle({ onboardingStatus: "ready_to_activate", billingStatus: "not_started" }).stage, "setting_up");
+  assert.equal(getOpsLifecycle({ onboardingStatus: "setting_up", billingStatus: "not_started" }).label, "Setting up");
+  assert.equal(getOpsLifecycle({ onboardingStatus: "live", billingStatus: "not_started" }).stage, "live");
   assert.equal(getOpsLifecycle({ onboardingStatus: "activated", billingStatus: "active" }).stage, "active");
-  assert.equal(getOpsLifecycle({ onboardingStatus: "activated", billingStatus: "canceled" }).stage, "canceled");
+  assert.equal(getOpsLifecycle({ onboardingStatus: "paused", billingStatus: "not_started" }).stage, "paused");
+  assert.equal(getOpsLifecycle({ onboardingStatus: "closed", billingStatus: "not_started" }).stage, "closed");
 });
 
 test("scheduled cancellation is visible even while Stripe still reports active", () => {

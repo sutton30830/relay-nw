@@ -9,14 +9,6 @@
       "schedule": "30 15 * * *"
     },
     {
-      "path": "/api/cron/onboarding-deadlines",
-      "schedule": "45 15 * * *"
-    },
-    {
-      "path": "/api/cron/billing-trials",
-      "schedule": "0 16 * * *"
-    },
-    {
       "path": "/api/cron/billing-reconciliation",
       "schedule": "15 16 * * *"
     }

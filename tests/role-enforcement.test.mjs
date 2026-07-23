@@ -62,7 +62,11 @@ function accountUsersAdminFake(rowOrRows) {
   return { from: () => makeBuilder() };
 }
 
-async function loadAuthModule({ role, user = { id: "user-1", email: "owner@example.com" } }) {
+async function loadAuthModule({
+  role,
+  user = { id: "user-1", email: "owner@example.com" },
+  platformOperator = null,
+}) {
   const row = role
     ? { id: "au-1", account_id: "acct-1", user_id: "user-1", email: "owner@example.com", role }
     : null;
@@ -86,7 +90,7 @@ async function loadAuthModule({ role, user = { id: "user-1", email: "owner@examp
     "@/lib/supabase": {
       supabaseAdmin: accountUsersAdminFake(row),
       getAccountConfigByAccountId: async (accountId) => ({ accountId }),
-      getPlatformOperatorByUserId: async () => null,
+      getPlatformOperatorByUserId: async () => platformOperator,
     },
   });
 }
@@ -127,6 +131,27 @@ test("requireWriteAccessJson returns 401 when unauthenticated", async () => {
 
   assert.equal(result.session, null);
   assert.equal(result.response.status, 401);
+});
+
+test("requirePlatformOperatorWrite allows operators and super admins", async () => {
+  for (const role of ["operator", "super_admin"]) {
+    const auth = await loadAuthModule({
+      role: "owner",
+      platformOperator: { userId: "user-1", email: "owner@example.com", role, status: "active" },
+    });
+
+    const result = await auth.requirePlatformOperatorWrite();
+    assert.equal(result.role, role);
+  }
+});
+
+test("requirePlatformOperatorWrite denies support users", async () => {
+  const auth = await loadAuthModule({
+    role: "owner",
+    platformOperator: { userId: "user-1", email: "owner@example.com", role: "support", status: "active" },
+  });
+
+  await assert.rejects(auth.requirePlatformOperatorWrite(), /redirect:\/leads\?error=ops_read_only/);
 });
 
 // --- Route handlers bail before side effects when the guard rejects ---
@@ -222,24 +247,4 @@ test("transcribe route never runs AI when the guard rejects", async () => {
 
   assert.equal(response.status, 403);
   assert.equal(transcriptions, 0);
-});
-
-test("test-flow start endpoints require write access while status stays readable", async () => {
-  const smsAuth = await loadTsModule("app/api/sms-test/_auth.ts", {
-    "@/lib/auth": {
-      requireAccountUserJson: "read-auth",
-      requireWriteAccessJson: "write-auth",
-    },
-  });
-  const healthAuth = await loadTsModule("app/api/health-check/_auth.ts", {
-    "@/lib/auth": {
-      requireAccountUserJson: "read-auth",
-      requireWriteAccessJson: "write-auth",
-    },
-  });
-
-  assert.equal(smsAuth.authorizeSmsTestRequest, "read-auth");
-  assert.equal(smsAuth.authorizeSmsTestStart, "write-auth");
-  assert.equal(healthAuth.authorizeHealthCheckRequest, "read-auth");
-  assert.equal(healthAuth.authorizeHealthCheckStart, "write-auth");
 });

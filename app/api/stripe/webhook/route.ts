@@ -7,11 +7,12 @@ import {
 } from "@/lib/email";
 import {
   assertStripeWebhookConfigured,
+  billingDatesFromPaidInvoice,
   billingUpdateFromSubscription,
   getStripeEventIdentity,
   mapStripeSubscriptionStatus,
+  reconcileSetupFeeStateFromPayment,
   retrieveStripePaymentIntent,
-  retrieveStripeSetupIntent,
   retrieveStripeSubscription,
   stripeSubscriptionSnapshot,
   type StripeEvent,
@@ -101,17 +102,11 @@ async function currentSubscriptionFor(input: {
   return null;
 }
 
-function isInvoicePaid(object: Record<string, unknown>) {
-  return object.paid === true || object.status === "paid";
-}
-
 function getCheckoutAssociation(object: Record<string, unknown>) {
   const customerId = typeof object.customer === "string" ? object.customer : null;
   const subscriptionId = typeof object.subscription === "string" ? object.subscription : null;
   const paymentIntentId = typeof object.payment_intent === "string" ? object.payment_intent : null;
-  const setupIntentId = typeof object.setup_intent === "string" ? object.setup_intent : null;
-
-  return { customerId, subscriptionId, paymentIntentId, setupIntentId };
+  return { customerId, subscriptionId, paymentIntentId };
 }
 
 function checkoutChargeType(object: Record<string, unknown>) {
@@ -324,27 +319,32 @@ export async function POST(request: Request) {
         await markStripeEventIgnored({ ...accountContext, reason: "setup_payment_intent_unavailable" });
         return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
       }
+
+      const existing = await getAccountBillingRecord(resolution.accountId);
+      if (identity.stripePaymentIntentId !== existing.setupFeePaymentIntentId) {
+        await markStripeEventIgnored({ ...accountContext, reason: "non_setup_fee_payment_intent" });
+        return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
+      }
+
       const payment = await retrieveStripePaymentIntent(identity.stripePaymentIntentId);
-      const disputeStatus = identity.eventType.startsWith("charge.dispute.")
+      const eventDisputeStatus = identity.eventType.startsWith("charge.dispute.")
         ? typeof identity.object.status === "string" ? identity.object.status : identity.eventType.endsWith("created") ? "needs_response" : null
         : null;
-      const chargedBack = identity.eventType === "charge.dispute.closed" && disputeStatus === "lost";
-      const disputed = identity.eventType === "charge.dispute.created" || payment.disputed;
-      const fullyRefunded = payment.amountRefunded >= Math.max(payment.amountReceived, payment.amount);
-      const setupFeeStatus = chargedBack
-        ? "charged_back" as const
-        : disputed
-          ? "disputed" as const
-          : fullyRefunded
-            ? "refunded" as const
-            : payment.amountRefunded > 0
-              ? "partially_refunded" as const
-              : "paid" as const;
+      const setupFeeState = reconcileSetupFeeStateFromPayment(
+        {
+          ...payment,
+          disputeStatus: eventDisputeStatus ?? payment.disputeStatus,
+          disputed: identity.eventType === "charge.dispute.created" || payment.disputed,
+        },
+        existing,
+      );
+      const hasFinancialLoss = setupFeeState.setupFeeRefundedCents > 0 ||
+        setupFeeState.setupFeeStatus === "charged_back";
       await updateAccountBillingRecord(resolution.accountId, {
-        setupFeeStatus,
-        setupFeeRefundedCents: payment.amountRefunded,
-        setupFeeRefundedAt: payment.amountRefunded > 0 || chargedBack ? new Date().toISOString() : null,
-        setupFeeDisputeStatus: disputeStatus,
+        ...setupFeeState,
+        setupFeeRefundedAt: hasFinancialLoss
+          ? existing.setupFeeRefundedAt ?? identity.eventCreatedAt ?? new Date().toISOString()
+          : existing.setupFeeRefundedAt,
       });
       await markStripeEventProcessed(accountContext);
       return Response.json({ received: true }, { headers: { "Cache-Control": "no-store" } });
@@ -364,38 +364,16 @@ export async function POST(request: Request) {
           setupFeePaymentIntentId: association.paymentIntentId,
           setupFeePaidAt: new Date().toISOString(),
         } as const;
-        const payment = association.paymentIntentId
-          ? await retrieveStripePaymentIntent(association.paymentIntentId)
-          : null;
         await updateAccountBillingRecord(
           resolution.accountId,
           association.customerId
-            ? { ...setupFeeUpdate, stripeCustomerId: association.customerId, stripePaymentMethodId: payment?.paymentMethodId ?? null }
-            : { ...setupFeeUpdate, stripePaymentMethodId: payment?.paymentMethodId ?? null },
+            ? { ...setupFeeUpdate, stripeCustomerId: association.customerId }
+            : setupFeeUpdate,
         );
         await markStripeEventProcessed({
           ...accountContext,
           stripeCustomerId: association.customerId,
         });
-        return Response.json({ received: true }, { headers: { "Cache-Control": "no-store" } });
-      }
-
-      if (checkoutChargeType(identity.object) === "save_card") {
-        if (!association.customerId || !association.setupIntentId) {
-          await markStripeEventIgnored({ ...accountContext, reason: "save_card_missing_customer_or_setup_intent" });
-          return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
-        }
-
-        const setup = await retrieveStripeSetupIntent(association.setupIntentId);
-        if (!setup.paymentMethodId) {
-          await markStripeEventIgnored({ ...accountContext, reason: "save_card_missing_payment_method" });
-          return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
-        }
-        await updateAccountBillingRecord(resolution.accountId, {
-          stripeCustomerId: association.customerId,
-          stripePaymentMethodId: setup.paymentMethodId,
-        });
-        await markStripeEventProcessed({ ...accountContext, stripeCustomerId: association.customerId });
         return Response.json({ received: true }, { headers: { "Cache-Control": "no-store" } });
       }
 
@@ -429,8 +407,10 @@ export async function POST(request: Request) {
     }
 
     const existingBilling = await getAccountBillingRecord(resolution.accountId);
-    const paid = identity.eventType === "invoice.paid" && isInvoicePaid(identity.object);
-    const update = billingUpdateFromSubscription(resolution.accountId, subscription, { paid });
+    const update = billingUpdateFromSubscription(resolution.accountId, subscription);
+    const paidInvoiceDates = identity.eventType === "invoice.paid"
+      ? billingDatesFromPaidInvoice(identity.object)
+      : null;
     const eventStatus = identity.eventType === "customer.subscription.deleted"
       ? "canceled"
       : identity.eventType === "invoice.payment_failed" || identity.eventType === "invoice.payment_action_required"
@@ -439,6 +419,7 @@ export async function POST(request: Request) {
 
     await updateAccountBillingRecord(resolution.accountId, {
       ...update,
+      ...(paidInvoiceDates ?? {}),
       billingStatus: eventStatus,
       billingAttentionSince: eventStatus === "past_due"
         ? existingBilling.billingAttentionSince ?? new Date().toISOString()

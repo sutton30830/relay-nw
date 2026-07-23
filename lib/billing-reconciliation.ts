@@ -1,9 +1,9 @@
 import {
   billingUpdateFromSubscription,
+  reconcileSetupFeeStateFromPayment,
   retrieveStripePaymentIntent,
   retrieveStripeSetupCheckoutSession,
   retrieveStripeSubscription,
-  setupFeeStateFromPayment,
 } from "@/lib/stripe-billing";
 import { updateAccountBillingRecord, type OpsBillingAccount } from "@/lib/supabase";
 
@@ -16,15 +16,14 @@ export async function reconcileStripeBillingAccount(account: OpsBillingAccount) 
     const checkout = await retrieveStripeSetupCheckoutSession(account.setupFeeCheckoutSessionId);
     const payment = checkout.paymentIntent;
     if (payment) {
-      const state = setupFeeStateFromPayment(payment);
+      const state = reconcileSetupFeeStateFromPayment(payment, account);
       await updateAccountBillingRecord(account.accountId, {
         ...state,
         stripeCustomerId: checkout.customerId ?? payment.customerId ?? account.stripeCustomerId,
-        stripePaymentMethodId: payment.paymentMethodId ?? account.stripePaymentMethodId,
         setupFeePaymentIntentId: payment.id,
-        setupFeeRefundedAt: state.setupFeeRefundedCents > 0
+        setupFeeRefundedAt: state.setupFeeRefundedCents > 0 || state.setupFeeStatus === "charged_back"
           ? account.setupFeeRefundedAt ?? new Date().toISOString()
-          : null,
+          : account.setupFeeRefundedAt,
       });
       setupPaymentIntentId = payment.id;
       setupFeeChecked = true;
@@ -33,14 +32,13 @@ export async function reconcileStripeBillingAccount(account: OpsBillingAccount) 
 
   if (setupPaymentIntentId && !setupFeeChecked) {
     const payment = await retrieveStripePaymentIntent(setupPaymentIntentId);
-    const state = setupFeeStateFromPayment(payment);
+    const state = reconcileSetupFeeStateFromPayment(payment, account);
     await updateAccountBillingRecord(account.accountId, {
       ...state,
       stripeCustomerId: payment.customerId ?? account.stripeCustomerId,
-      stripePaymentMethodId: payment.paymentMethodId ?? account.stripePaymentMethodId,
-      setupFeeRefundedAt: state.setupFeeRefundedCents > 0
+      setupFeeRefundedAt: state.setupFeeRefundedCents > 0 || state.setupFeeStatus === "charged_back"
         ? account.setupFeeRefundedAt ?? new Date().toISOString()
-        : null,
+        : account.setupFeeRefundedAt,
     });
     setupFeeChecked = true;
   }

@@ -1,11 +1,10 @@
 import { redirect } from "next/navigation";
-import { requirePlatformOperator } from "@/lib/auth";
+import { requirePlatformOperatorWrite } from "@/lib/auth";
 import { notifyOwnerKickoffPayment } from "@/lib/email";
-import { createStripeSaveCardCheckoutSession, createStripeSetupFeeCheckoutSession } from "@/lib/stripe-billing";
+import { createStripeSetupFeeCheckoutSession } from "@/lib/stripe-billing";
 import {
   getAccountConfigByAccountId,
   getOpsBillingAccountBySlug,
-  recordAccountAuditEvents,
   recordPlatformAuditEvent,
   updateAccountBillingRecord,
 } from "@/lib/supabase";
@@ -19,7 +18,7 @@ function resultResponse(request: Request, slug: string, result: string) {
 }
 
 export async function POST(request: Request) {
-  const operator = await requirePlatformOperator();
+  const operator = await requirePlatformOperatorWrite();
   const form = await request.formData();
   const slug = String(form.get("account_slug") ?? "").trim();
   const action = String(form.get("action") ?? "").trim();
@@ -33,45 +32,6 @@ export async function POST(request: Request) {
   if (!billingEmail) go(account.accountSlug, "owner_email_missing");
 
   try {
-    if (action === "waive_entirely") {
-      await updateAccountBillingRecord(account.accountId, {
-        billingPolicy: "setup_fee_waived",
-        setupFeeStatus: "waived",
-        setupFeeWaivedAt: new Date().toISOString(),
-        setupFeeWaiverReason: "Operator waived kickoff fee at kickoff.",
-      });
-      await recordAccountAuditEvents({ accountId: account.accountId, actorUserId: operator.userId, actorEmail: operator.email, events: [{ action: "billing.kickoff.waived", summary: "Waived $150 kickoff fee entirely" }] });
-      await recordPlatformAuditEvent({ actorUserId: operator.userId, actorEmail: operator.email, targetAccountId: account.accountId, action: "billing.kickoff.waived", summary: "Waived $150 kickoff fee entirely" });
-      return resultResponse(request, account.accountSlug, "waived");
-    }
-
-    if (action === "waive_save_card") {
-      const checkout = await createStripeSaveCardCheckoutSession({
-        accountId: account.accountId,
-        accountSlug: account.accountSlug,
-        ownerEmail: billingEmail,
-        stripeCustomerId: account.stripeCustomerId,
-        idempotencyKey: `relay-kickoff-card:${account.accountId}:${account.stripeCustomerId ?? "new"}`,
-      });
-      if (!checkout.url) throw new Error("Stripe returned no card-save URL.");
-      await updateAccountBillingRecord(account.accountId, {
-        billingPolicy: "setup_fee_waived",
-        setupFeeStatus: "waived",
-        setupFeeWaivedAt: new Date().toISOString(),
-        setupFeeWaiverReason: "Operator waived kickoff fee and requested card on file.",
-        setupFeeCheckoutSessionId: checkout.id,
-      });
-      const delivery = await notifyOwnerKickoffPayment({
-        to: billingEmail,
-        businessName: runtime.businessName,
-        checkoutUrl: checkout.url,
-        feeWaived: true,
-      });
-      if (!delivery.sent) throw new Error("Card-save email was not delivered.");
-      await recordPlatformAuditEvent({ actorUserId: operator.userId, actorEmail: operator.email, targetAccountId: account.accountId, action: "billing.kickoff.card_save_started", summary: "Waived $150 kickoff fee and started card-on-file setup" });
-      return resultResponse(request, account.accountSlug, "card_link_sent");
-    }
-
     if (action === "send_invoice") {
       const checkout = await createStripeSetupFeeCheckoutSession({
         accountId: account.accountId,

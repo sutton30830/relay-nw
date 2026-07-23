@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { requirePlatformOperator } from "@/lib/auth";
+import { requirePlatformOperatorWrite } from "@/lib/auth";
 import { sendCustomerPasswordInvite } from "@/lib/customer-invitations";
 import { env } from "@/lib/env";
 import {
@@ -32,7 +32,7 @@ function resultResponse(request: Request, result: string) {
 }
 
 export async function POST(request: Request) {
-  const operator = await requirePlatformOperator();
+  const operator = await requirePlatformOperatorWrite();
   const formData = await request.formData();
   const id = readString(formData, "id", 80);
   const action = readString(formData, "action", 40) || "status";

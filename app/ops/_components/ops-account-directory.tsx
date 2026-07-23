@@ -4,11 +4,11 @@ import { getOpsLifecycle, type OpsLifecycleStage } from "@/lib/ops-lifecycle";
 
 const FILTERS: Array<{ key: OpsLifecycleStage | "all"; label: string }> = [
   { key: "all", label: "All" },
-  { key: "kickoff", label: "Kickoff" },
   { key: "setting_up", label: "Setting up" },
-  { key: "carrier_review", label: "Carrier review" },
-  { key: "ready_to_activate", label: "Ready" },
+  { key: "live", label: "Live" },
   { key: "active", label: "Active" },
+  { key: "paused", label: "Paused" },
+  { key: "closed", label: "Closed" },
   { key: "canceled", label: "Canceled" },
 ];
 
@@ -18,9 +18,19 @@ function formatDays(days: number | null) {
 
 function tone(stage: OpsLifecycleStage, billingStatus: string) {
   if (billingStatus === "past_due") return "lead-card--attention";
-  if (stage === "ready_to_activate") return "lead-card--fast";
+  if (stage === "live") return "lead-card--fast";
   if (stage === "active") return "lead-card--good";
   return "";
+}
+
+function stagePillTone(stage: OpsLifecycleStage) {
+  if (stage === "active") return "booked";
+  if (stage === "live") return "new";
+  return "contacted";
+}
+
+function manuallySettableStage(stage: OpsLifecycleStage) {
+  return stage === "setting_up" || stage === "paused" || stage === "closed" ? stage : "";
 }
 
 export function OpsAccountDirectory({
@@ -93,7 +103,7 @@ export function OpsAccountDirectory({
                 <h2 className="lead-card__name">{account.businessName}</h2>
                 <p className="lead-card__meta"><span>{lifecycle.label}</span><span>{formatDays(lifecycle.daysInStage)}</span><span>{account.ownerEmail ?? "Owner not set"}</span></p>
               </div>
-              <span className={`lead-card__status-pill lead-card__status-pill--${lifecycle.stage === "active" ? "booked" : lifecycle.stage === "ready_to_activate" ? "new" : "contacted"}`}>{lifecycle.label}</span>
+              <span className={`lead-card__status-pill lead-card__status-pill--${stagePillTone(lifecycle.stage)}`}>{lifecycle.label}</span>
             </div>
             <section className="lead-card__request lead-card__request--summary">
               <div className="lead-card__request-label">Next step</div>
@@ -108,12 +118,11 @@ export function OpsAccountDirectory({
               <div className="lead-card__utility-actions">
                 <form action="/api/ops/stage" method="post" className="ops-stage-move">
                   <input type="hidden" name="account_slug" value={account.accountSlug} />
-                  <select className="field" name="stage" defaultValue={lifecycle.stage} aria-label={`Move ${account.businessName} to stage`}>
-                    <option value="kickoff">Kickoff</option>
+                  <select className="field" name="stage" defaultValue={manuallySettableStage(lifecycle.stage)} aria-label={`Move ${account.businessName} to stage`}>
+                    <option value="" disabled>Move manually…</option>
                     <option value="setting_up">Setting up</option>
-                    <option value="carrier_review">Carrier review</option>
-                    <option value="ready_to_activate">Ready</option>
                     <option value="paused">Paused</option>
+                    <option value="closed">Closed</option>
                   </select>
                   <button className="btn btn-ghost btn-sm" type="submit">Move</button>
                 </form>

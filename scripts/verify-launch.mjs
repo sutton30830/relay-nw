@@ -3,12 +3,9 @@ import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import { verifyBillingConfig } from "./verify-billing.mjs";
-import { runBillingControlsRehearsal } from "./verify-billing-controls.mjs";
 
 const READY_A2P_STATUSES = new Set(["approved"]);
 const ACTIVE_BILLING_STATUSES = new Set(["active", "trialing", "comped"]);
-const CUSTOMER_DELAY_STATUSES = new Set(["requirements_needed", "waiting_on_customer", "paused_incomplete", "closed_incomplete"]);
-const CARRIER_DELAY_STATUSES = new Set(["carrier_review", "carrier_attention"]);
 const BLOCKING_STRIPE_STATUS_FOR_ACTIVE = new Set(["canceled", "unpaid", "past_due", "incomplete_expired"]);
 
 function parseDotenvLine(line) {
@@ -87,53 +84,32 @@ function statusLine(check) {
 
 export function parseLaunchArgs(argv) {
   let slug = "";
-  let billingControlsSlug = "";
 
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === "--billing-controls") {
-      billingControlsSlug = argv[index + 1]?.trim() ?? "";
-      index += 1;
-      continue;
-    }
-
+  for (const arg of argv) {
     if (!arg?.startsWith("--") && !slug) {
       slug = arg.trim();
     }
   }
 
-  return {
-    slug,
-    billingControlsSlug,
-  };
+  return { slug };
 }
 
 function firstRow(rows) {
   return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
 }
 
-function deriveCallCaptureReady({ settings, latestLead, lastPassedForwarding }) {
+function deriveCallCaptureReady({ settings, latestLead }) {
   if (!settings) return { ready: false, detail: "Missing account_settings." };
-  if (settings.call_mode === "direct") {
-    return latestLead
-      ? { ready: true, detail: `Direct mode has a recovered lead from ${latestLead.created_at}.` }
-      : { ready: false, detail: "Direct mode needs one real missed-call test in the inbox." };
-  }
-
-  return lastPassedForwarding
-    ? { ready: true, detail: `Forwarding passed at ${lastPassedForwarding.completed_at}.` }
-    : { ready: false, detail: "Forwarding mode needs a passed forwarding health check." };
+  return latestLead
+    ? { ready: true, detail: `A real missed call was recovered at ${latestLead.created_at}.` }
+    : { ready: false, detail: "Relay has not recovered a real missed call yet." };
 }
 
 function deriveCheckoutAllowed({ account, activationReady }) {
   const billingStatus = account?.billing_status ?? "not_started";
   const stripeStatus = account?.stripe_subscription_status ?? null;
-  const setupFeeStatus = account?.setup_fee_status ?? "waived";
 
-  if (!activationReady) return { ok: false, detail: "Checkout is blocked until call capture and A2P/SMS registration are ready." };
-  if (!account?.first_paid_at && setupFeeStatus !== "paid" && setupFeeStatus !== "waived") {
-    return { ok: false, detail: `Checkout is blocked until the one-time setup fee is paid or waived (status=${setupFeeStatus}).` };
-  }
+  if (!activationReady) return { ok: false, detail: "Checkout is blocked until call capture is live." };
   if (billingStatus === "active" || billingStatus === "trialing" || stripeStatus === "active" || stripeStatus === "trialing") {
     return { ok: false, detail: "Checkout should be blocked because billing is already active/trialing." };
   }
@@ -149,31 +125,16 @@ function deriveCheckoutAllowed({ account, activationReady }) {
 }
 
 function deriveEffectiveOnboardingStatus(account, activationReady) {
-  const status = account?.onboarding_status ?? "requirements_needed";
-  const billingStatus = account?.billing_status ?? "not_started";
-
-  if (
-    status === "activated" ||
-    account?.activated_at ||
-    account?.first_paid_at ||
-    billingStatus === "active" ||
-    billingStatus === "trialing" ||
-    billingStatus === "comped"
-  ) {
-    return "activated";
-  }
-
-  if (status === "paused_incomplete" || status === "closed_incomplete") return status;
-  if (activationReady) return "ready_to_activate";
-  return status;
+  const status = account?.onboarding_status ?? "setting_up";
+  if (status === "paused" || status === "closed") return status;
+  if (activationReady) return "live";
+  return status === "waiting_for_forwarding" ? status : "setting_up";
 }
 
 function onboardingBlocker(account, activationReady) {
   const status = deriveEffectiveOnboardingStatus(account, activationReady);
-  if (CUSTOMER_DELAY_STATUSES.has(status)) return "customer_delay";
-  if (CARRIER_DELAY_STATUSES.has(status)) return "carrier_delay";
-  if (status === "ready_for_live_test") return "setup";
-  if (status === "ready_to_activate" || status === "activated") return "none";
+  if (status === "paused" || status === "closed") return "service_hold";
+  if (status === "live") return "none";
   return "setup";
 }
 
@@ -184,7 +145,6 @@ export function analyzeLaunchCertification(input) {
     primaryNumber,
     adminUsers = [],
     latestLead,
-    lastPassedForwarding,
     billingConfigResult,
   } = input;
   const checks = [];
@@ -227,9 +187,9 @@ export function analyzeLaunchCertification(input) {
       : "No owner/admin membership rows.",
   );
 
-  const callCapture = deriveCallCaptureReady({ settings, latestLead, lastPassedForwarding });
+  const callCapture = deriveCallCaptureReady({ settings, latestLead });
   const smsRegistrationReady = READY_A2P_STATUSES.has(settings?.a2p_registration_status ?? "not_started");
-  const activationReady = callCapture.ready && smsRegistrationReady;
+  const activationReady = callCapture.ready;
   const effectiveOnboardingStatus = deriveEffectiveOnboardingStatus(account, activationReady);
   const checkoutAllowed = deriveCheckoutAllowed({ account, activationReady });
   const blocker = onboardingBlocker(account, activationReady);
@@ -239,7 +199,7 @@ export function analyzeLaunchCertification(input) {
     checks,
     true,
     "onboarding lifecycle",
-    `onboarding_status=${account.onboarding_status ?? "requirements_needed"}, effective=${effectiveOnboardingStatus}, requirements_due_at=${account.requirements_due_at ?? "none"}, activated_at=${account.activated_at ?? "none"}, first_paid_at=${account.first_paid_at ?? "none"}, guarantee_ends_at=${account.guarantee_ends_at ?? "none"}.`,
+    `onboarding_status=${account.onboarding_status ?? "setting_up"}, effective=${effectiveOnboardingStatus}, activated_at=${account.activated_at ?? "none"}, first_paid_at=${account.first_paid_at ?? "none"}, guarantee_ends_at=${account.guarantee_ends_at ?? "none"}.`,
   );
 
   addCheck(checks, callCapture.ready, "call capture readiness", callCapture.detail);
@@ -249,7 +209,8 @@ export function analyzeLaunchCertification(input) {
     "A2P/SMS registration readiness",
     smsRegistrationReady
       ? "Carrier registration is approved."
-      : `a2p_registration_status=${settings?.a2p_registration_status ?? "missing"}.`,
+      : `a2p_registration_status=${settings?.a2p_registration_status ?? "missing"}; calls and billing remain available.`,
+    smsRegistrationReady ? "pass" : "warn",
   );
   addCheck(
     checks,
@@ -264,7 +225,7 @@ export function analyzeLaunchCertification(input) {
     checks,
     activationReady,
     "activation readiness",
-    activationReady ? "Call capture and carrier texting approval are ready." : "Do not charge or hand off as activated yet.",
+    activationReady ? "Call capture is live; monthly billing may begin." : "A real missed call must reach the CRM before monthly billing begins.",
   );
   addCheck(
     checks,
@@ -272,11 +233,9 @@ export function analyzeLaunchCertification(input) {
     "onboarding blocker",
     blocker === "none"
       ? `effective_onboarding_status=${effectiveOnboardingStatus}.`
-      : blocker === "customer_delay"
-        ? `Blocked by customer delay: effective_onboarding_status=${effectiveOnboardingStatus}.`
-        : blocker === "carrier_delay"
-          ? `Blocked by carrier/A2P delay: effective_onboarding_status=${effectiveOnboardingStatus}.`
-          : `Blocked by setup: effective_onboarding_status=${effectiveOnboardingStatus}.`,
+      : blocker === "service_hold"
+        ? `Service is ${effectiveOnboardingStatus}.`
+        : `Blocked by call setup: effective_onboarding_status=${effectiveOnboardingStatus}.`,
     blocker === "none" ? "pass" : "warn",
   );
   addCheck(
@@ -288,16 +247,18 @@ export function analyzeLaunchCertification(input) {
   );
   addCheck(
     checks,
-    Boolean(account.first_paid_at) || setupFeeStatus === "paid" || setupFeeStatus === "waived",
+    setupFeeStatus === "paid" || setupFeeStatus === "waived" || setupFeeStatus === "partially_refunded",
     "setup fee status",
-    account.first_paid_at
-      ? "The one-time setup fee was settled before the first paid activation."
-      : setupFeeStatus === "paid"
+    setupFeeStatus === "paid"
       ? "The one-time setup fee is paid."
       : setupFeeStatus === "waived"
         ? "The one-time setup fee is explicitly waived."
-        : `The one-time setup fee is not settled (status=${setupFeeStatus}).`,
-    account.first_paid_at || setupFeeStatus === "paid" || setupFeeStatus === "waived" ? "pass" : "fail",
+        : setupFeeStatus === "partially_refunded"
+          ? "The one-time setup fee was paid and partially refunded."
+          : `The one-time setup fee is independently unresolved (status=${setupFeeStatus}); this does not block monthly Checkout.`,
+    setupFeeStatus === "paid" || setupFeeStatus === "waived" || setupFeeStatus === "partially_refunded"
+      ? "pass"
+      : "warn",
   );
 
   const dangerousStripeDisagreement =
@@ -363,7 +324,7 @@ async function loadAccountFacts(supabase, slug) {
   const account = await maybeSingle(
     supabase
       .from("accounts")
-      .select("id, slug, name, status, billing_status, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, requirements_due_at, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, setup_fee_status, setup_fee_paid_at, setup_fee_waived_at")
+      .select("id, slug, name, status, billing_status, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, setup_fee_status, setup_fee_paid_at, setup_fee_waived_at")
       .eq("slug", slug),
     "account lookup",
   );
@@ -372,7 +333,7 @@ async function loadAccountFacts(supabase, slug) {
     return { account: null };
   }
 
-  const [settings, phoneNumbers, adminUsers, leads, lastPassedForwardingRows] = await Promise.all([
+  const [settings, phoneNumbers, adminUsers, leads] = await Promise.all([
     maybeSingle(
       supabase
         .from("account_settings")
@@ -401,19 +362,10 @@ async function loadAccountFacts(supabase, slug) {
         .from("leads")
         .select("id, created_at, phone")
         .eq("account_id", account.id)
+        .eq("source", "missed_call")
         .order("created_at", { ascending: false })
         .limit(1),
       "latest lead lookup",
-    ),
-    selectRows(
-      supabase
-        .from("forwarding_health_checks")
-        .select("id, completed_at")
-        .eq("account_id", account.id)
-        .eq("status", "passed")
-        .order("completed_at", { ascending: false })
-        .limit(1),
-      "forwarding health lookup",
     ),
   ]);
 
@@ -423,7 +375,6 @@ async function loadAccountFacts(supabase, slug) {
     primaryNumber: phoneNumbers.find((row) => row.is_primary) ?? null,
     adminUsers,
     latestLead: firstRow(leads),
-    lastPassedForwarding: firstRow(lastPassedForwardingRows),
   };
 }
 
@@ -455,9 +406,9 @@ export async function verifyLaunchCertification({
 async function main() {
   await loadLocalEnv();
 
-  const { slug, billingControlsSlug } = parseLaunchArgs(process.argv.slice(2));
+  const { slug } = parseLaunchArgs(process.argv.slice(2));
   if (!slug) {
-    console.error("Usage: npm run verify:launch -- <slug> [--billing-controls <scratch-slug>]");
+    console.error("Usage: npm run verify:launch -- <slug>");
     process.exit(1);
   }
 
@@ -469,25 +420,6 @@ async function main() {
     console.log(statusLine(check));
   }
 
-  if (billingControlsSlug) {
-    console.log("");
-    console.log(`Billing-control scratch rehearsal: ${billingControlsSlug}`);
-    const billingControls = await runBillingControlsRehearsal({ slug: billingControlsSlug });
-    for (const check of billingControls.checks) {
-      console.log(statusLine(check));
-    }
-    addCheck(
-      result.checks,
-      billingControls.ok,
-      "Billing-control scratch rehearsal",
-      billingControls.ok
-        ? `Scratch billing controls passed for ${billingControlsSlug}.`
-        : `Scratch billing controls failed for ${billingControlsSlug}.`,
-    );
-    if (!billingControls.ok) {
-      result.ok = false;
-    }
-  }
   console.log("");
 
   if (!result.ok) {

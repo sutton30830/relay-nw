@@ -17,14 +17,6 @@ export type SmsStatus =
   | "skipped_recent"
   | null;
 export type VoicemailTranscriptionStatus = "pending" | "processing" | "completed" | "failed" | null;
-export type ForwardingHealthCheckStatus = "pending" | "passed" | "failed" | "timeout" | "error";
-export type ForwardingHealthCheckFailureReason =
-  | "no_forwarded_call_received"
-  | "twilio_outbound_failed"
-  | "webhook_error"
-  | "rate_limited"
-  | "unknown_error"
-  | null;
 export type WebhookEventSource =
   | "twilio_voice"
   | "twilio_dial_status"
@@ -66,20 +58,6 @@ export type OutboundMessage = {
   created_at: string;
 };
 
-export type ForwardingHealthCheck = {
-  id: string;
-  account_id?: string | null;
-  phone_number_tested: string;
-  status: ForwardingHealthCheckStatus;
-  started_at: string;
-  completed_at: string | null;
-  outbound_twilio_call_sid: string | null;
-  inbound_twilio_call_sid: string | null;
-  failure_reason: ForwardingHealthCheckFailureReason;
-  raw_event_summary: Record<string, unknown> | null;
-  created_at: string;
-  updated_at: string;
-};
 
 export type Lead = {
   id: string;

@@ -1,30 +1,24 @@
 import { redirect } from "next/navigation";
-import { requirePlatformOperator } from "@/lib/auth";
+import { requirePlatformOperatorWrite } from "@/lib/auth";
+import type { TechnicalSetupStatus } from "@/lib/customer-experience-contract";
 import {
   getOpsAccountBySlug,
   recordAccountAuditEvents,
   recordPlatformAuditEvent,
-  updateAccountBillingRecord,
+  updateAccountTechnicalSetupStatus,
 } from "@/lib/supabase";
 
-// Move a customer between pipeline stages, the way an owner moves a lead
-// between categories. Stage is derived from onboarding_status, so each stage
-// maps to its representative status. Money-driven stages (active, canceled)
-// are deliberately excluded — those move via Activate and Stripe.
+// Operators can set only explicit technical holds and reopen setup. A signed
+// missed call marks an account live; Stripe derives active and canceled.
 
-import type { AccountOnboardingStatus } from "@/lib/billing";
-
-const STAGE_TO_STATUS: Record<string, { status: AccountOnboardingStatus; label: string }> = {
-  kickoff: { status: "requirements_needed", label: "Kickoff" },
-  setting_up: { status: "ready_for_carrier", label: "Setting up" },
-  carrier_review: { status: "carrier_review", label: "Carrier review" },
-  ready_to_activate: { status: "ready_to_activate", label: "Ready" },
-  paused: { status: "paused_incomplete", label: "Paused" },
+const STAGE_TO_STATUS: Record<string, { status: TechnicalSetupStatus; label: string }> = {
+  setting_up: { status: "setting_up", label: "Setting up" },
+  paused: { status: "paused", label: "Paused" },
+  closed: { status: "closed", label: "Closed" },
 };
 
 export async function POST(request: Request) {
-  const operator = await requirePlatformOperator();
-  if (operator.role === "support") redirect("/ops");
+  const operator = await requirePlatformOperatorWrite();
   const form = await request.formData();
   const slug = String(form.get("account_slug") ?? "").trim().slice(0, 80);
   const stage = String(form.get("stage") ?? "").trim().slice(0, 40);
@@ -37,7 +31,7 @@ export async function POST(request: Request) {
   if (!target) redirect(`/ops/accounts/${encodeURIComponent(slug)}?stage_moved=invalid`);
 
   try {
-    await updateAccountBillingRecord(account.accountId, { onboardingStatus: target.status });
+    await updateAccountTechnicalSetupStatus(account.accountId, target.status);
   } catch (error) {
     console.error("Ops stage move failed", {
       accountId: account.accountId,

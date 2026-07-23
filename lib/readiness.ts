@@ -21,9 +21,7 @@ export type ReadinessCheck = {
 
 export type ReadinessAction = { label: string; href: string } | null;
 
-// The freshest proof the pipeline actually works: a real recovered call beats a
-// forwarding test (it exercises the whole path), and both carry a timestamp so
-// the UI can show how recently Relay was confirmed working.
+// The only proof that Relay is working is a real recovered call.
 export type ReadinessEvidence = { label: string; at: string } | null;
 
 export type SetupReadiness = {
@@ -41,40 +39,24 @@ export type SetupReadiness = {
 };
 
 export type A2pStatus = "not_started" | "in_progress" | "approved" | "needs_attention" | "rejected" | "paused" | "unknown";
-export type ForwardingStatus = "passed" | "failed" | "pending" | "unknown";
 
 export type ReadinessSignals = {
   role: "owner" | "admin" | "viewer";
   hasProfile: boolean;
-  callMode: "direct" | "forwarding";
   smsEnabled: boolean;
   a2pStatus: A2pStatus;
-  forwardingStatus: ForwardingStatus;
   // At least one real missed call has flowed all the way into the inbox — the
   // only proof that the pipeline works end-to-end.
   hasRecoveredCall: boolean;
-  // Timestamps behind the proof, for showing how recently Relay was confirmed
+  // Timestamp behind the proof, for showing how recently Relay was confirmed
   // working. Null when there's no such evidence yet.
   lastRecoveredCallAt: string | null;
-  forwardingLastPassedAt: string | null;
 };
 
-// The freshest evidence wins; a real recovered call outranks a forwarding test
-// at the same time because it exercises the entire pipeline.
 function pickEvidence(signals: ReadinessSignals): ReadinessEvidence {
-  const candidates: Array<{ label: string; at: string; rank: number }> = [];
-  if (signals.lastRecoveredCallAt) {
-    candidates.push({ label: "Caught a real missed call", at: signals.lastRecoveredCallAt, rank: 1 });
-  }
-  if (signals.forwardingLastPassedAt) {
-    candidates.push({ label: "Forwarding test passed", at: signals.forwardingLastPassedAt, rank: 0 });
-  }
-  candidates.sort((a, b) => {
-    const timeDiff = new Date(b.at).getTime() - new Date(a.at).getTime();
-    return timeDiff !== 0 ? timeDiff : b.rank - a.rank;
-  });
-  const best = candidates[0];
-  return best ? { label: best.label, at: best.at } : null;
+  return signals.lastRecoveredCallAt
+    ? { label: "Caught a real missed call", at: signals.lastRecoveredCallAt }
+    : null;
 }
 
 const STATE_LABELS: Record<OperatingState, string> = {
@@ -116,30 +98,14 @@ function carrierCheck(signals: ReadinessSignals): ReadinessCheck {
 }
 
 function routingCheck(signals: ReadinessSignals): ReadinessCheck {
-  if (signals.callMode === "direct") {
-    return {
-      key: "routing",
-      label: "Call routing",
-      status: signals.hasRecoveredCall ? "ok" : "pending",
-      detail: signals.hasRecoveredCall
-        ? "A real missed call has reached your inbox."
-        : "Make a test missed call to your Relay number to confirm routing.",
-    };
-  }
-
-  const status: ReadinessCheckStatus =
-    signals.forwardingStatus === "passed"
-      ? "ok"
-      : signals.forwardingStatus === "failed"
-        ? "blocked"
-        : "pending";
-  const detail =
-    signals.forwardingStatus === "passed"
-      ? "Forwarding test passed — missed calls reach Relay."
-      : signals.forwardingStatus === "failed"
-        ? "The last forwarding test failed. Re-check your carrier codes and run it again."
-        : "Run a forwarding test: start listening, then call your business number and let it ring out.";
-  return { key: "routing", label: "Call forwarding", status, detail };
+  return {
+    key: "routing",
+    label: "Call routing",
+    status: signals.hasRecoveredCall ? "ok" : "pending",
+    detail: signals.hasRecoveredCall
+      ? "A real missed call has reached your inbox."
+      : "Relay will confirm this automatically after the first real missed call.",
+  };
 }
 
 // Texting has two gates: carrier registration must be ready, then the owner
@@ -189,20 +155,8 @@ function pickNextAction(signals: ReadinessSignals, checks: Record<ReadinessCheck
       ? { label: "Complete your business profile", href: "/settings" }
       : { label: "Ask an owner to finish the profile", href: "/settings" };
   }
-  // The test actions scroll to the live-tests tool at the bottom of Setup, where
-  // the actual "Start listening" control lives — a plain /setup link would just
-  // reload the page the owner is already on.
-  if (signals.callMode === "forwarding" && signals.forwardingStatus === "failed") {
-    return { label: "Re-run the forwarding test", href: "/setup#live-tests" };
-  }
-  if (signals.callMode === "forwarding" && checks.routing.status !== "ok") {
-    return { label: "Run a forwarding test", href: "/setup#live-tests" };
-  }
-  if (signals.callMode === "direct" && !signals.hasRecoveredCall) {
-    return { label: "Make a test missed call", href: "/setup#live-tests" };
-  }
   if (signals.a2pStatus === "rejected" || signals.a2pStatus === "paused") {
-    return { label: "Resolve carrier registration", href: "/setup#live-tests" };
+    return { label: "Resolve carrier registration", href: "/settings" };
   }
   return null;
 }

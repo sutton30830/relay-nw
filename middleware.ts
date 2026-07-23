@@ -55,8 +55,6 @@ export const config = {
     "/api/auth/update-password",
     "/api/leads/:path*",
     "/api/recordings/:path*",
-    "/api/health-check/:path*",
     "/api/email-test/:path*",
-    "/api/sms-test/:path*",
   ],
 };

@@ -9,7 +9,6 @@ import {
   getAccountBillingRecord,
   getAccountTechnicalSetupStatus,
 } from "@/lib/supabase";
-import { canStartMonthlyBilling } from "@/lib/customer-experience-contract";
 import { QUICK_REPLIES } from "@/app/leads/_constants";
 import { SmsToggle } from "./sms-toggle";
 import { GreetingRecorder } from "./greeting-recorder";
@@ -20,6 +19,7 @@ const A2P_LABELS: Record<string, string> = {
   not_started: "Relay is preparing texting",
   in_progress: "Relay is enabling texting",
   approved: "Texting is available",
+  needs_attention: "Relay is resolving a texting issue",
   rejected: "Relay is resolving a texting issue",
   paused: "Texting is unavailable",
 };
@@ -221,13 +221,72 @@ function BillingPrimaryAction({
     return (
       <form action="/api/billing/portal" method="post">
         <button className="btn btn-primary settings-billing__action" type="submit">
-          {lifecycle.ownerAction === "update_payment" ? "Update payment" : "Manage billing"}
+          Manage billing
         </button>
       </form>
     );
   }
 
   return <p className="settings-section__meta">Contact Relay support to resolve billing.</p>;
+}
+
+function BillingActions({
+  billing,
+  lifecycle,
+  role,
+}: {
+  billing: AccountBillingRecord;
+  lifecycle: BillingLifecycleState;
+  role: string;
+}) {
+  const primaryUsesPortal =
+    lifecycle.ownerAction === "manage_billing" ||
+    lifecycle.ownerAction === "update_payment";
+  const canOpenPortal =
+    role === "owner" &&
+    Boolean(billing.stripeCustomerId) &&
+    !primaryUsesPortal;
+
+  return (
+    <div className="settings-billing__actions">
+      <BillingPrimaryAction billing={billing} lifecycle={lifecycle} role={role} />
+      {canOpenPortal ? (
+        <form action="/api/billing/portal" method="post">
+          <button className="btn btn-ghost" type="submit">
+            Manage billing
+          </button>
+        </form>
+      ) : null}
+    </div>
+  );
+}
+
+function SetupFeeAction({
+  billing,
+  role,
+}: {
+  billing: AccountBillingRecord;
+  role: string;
+}) {
+  const feeIsDue =
+    billing.billingPolicy === "standard" &&
+    (billing.setupFeeStatus === "due" ||
+      billing.setupFeeStatus === "refunded" ||
+      billing.setupFeeStatus === "charged_back");
+
+  if (!feeIsDue) return null;
+
+  if (role !== "owner") {
+    return <span className="settings-section__meta">The account owner can pay this fee.</span>;
+  }
+
+  return (
+    <form action="/api/billing/setup-fee" method="post">
+      <button className="btn btn-secondary" type="submit">
+        Pay setup fee
+      </button>
+    </form>
+  );
 }
 
 function BillingSection({
@@ -246,6 +305,9 @@ function BillingSection({
   const showPaymentWarning = billing.billingStatus === "past_due";
   const showCancelWarning = billing.cancelAtPeriodEnd && billing.billingStatus !== "canceled";
   const setupFeeDate = formatBillingDate(billing.setupFeePaidAt ?? billing.setupFeeWaivedAt);
+  const canRequestRefund =
+    role === "owner" &&
+    (billing.setupFeeStatus === "paid" || billing.setupFeeStatus === "partially_refunded");
 
   return (
     <section id="billing" className="panel settings-section settings-billing">
@@ -255,13 +317,24 @@ function BillingSection({
           <h2 className="settings-billing__plan">Current plan: $99/month</h2>
           <p className="settings-section__lead">{billingHeadline(billing, lifecycle)}</p>
           <p className="settings-section__meta">{billingSummary(billing, lifecycle)}</p>
+          {lifecycle.ownerAction === "start_billing" ||
+          lifecycle.ownerAction === "restart_subscription" ? (
+            <p className="settings-section__meta settings-billing__charge-copy">
+              Stripe Checkout will charge $99 now, then $99 monthly until canceled.
+            </p>
+          ) : null}
+          {billing.stripeCustomerId ? (
+            <p className="settings-section__meta">
+              Stripe securely handles payment methods, invoices, billing details, and cancellation.
+            </p>
+          ) : null}
           {billing.billingStatus !== "active" || billing.cancelAtPeriodEnd ? (
             <p className="settings-section__meta settings-billing__reassurance">
-              Missed-call capture is never interrupted by billing.
+              A failed payment does not immediately interrupt missed-call capture.
             </p>
           ) : null}
         </div>
-        <BillingPrimaryAction billing={billing} lifecycle={lifecycle} role={role} />
+        <BillingActions billing={billing} lifecycle={lifecycle} role={role} />
       </div>
 
       {showPaymentWarning ? (
@@ -320,8 +393,21 @@ function BillingSection({
                     ? "Settled through prior activation"
                     : "$150 due"}
           </dd>
+          <dd className="settings-billing__secondary-action">
+            <SetupFeeAction billing={billing} role={role} />
+          </dd>
         </div>
       </dl>
+
+      {canRequestRefund ? (
+        <p className="settings-section__meta settings-billing__support">
+          Need help with a charge?{" "}
+          <a href="mailto:relaynw@gmail.com?subject=Relay%20billing%20or%20refund%20request">
+            Contact Relay about billing or a refund
+          </a>
+          . Refund status updates here only after Stripe confirms it.
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -341,7 +427,7 @@ export default async function SettingsPage({
   ]);
   const billingLifecycle = computeBillingLifecycle({
     billing,
-    setupReadiness: { callCaptureReady: canStartMonthlyBilling(technicalStatus) },
+    technicalStatus,
   });
   const readOnly = role === "viewer";
 
@@ -429,11 +515,8 @@ export default async function SettingsPage({
             <Field label="Business name" hint="Used in texts and voicemail greetings.">
               <input className="field" name="business_name" required maxLength={120} defaultValue={account.businessName} />
             </Field>
-            <Field label="Legal business name" hint="Optional here; required later for carrier registration if different from the display name.">
-              <input className="field" name="legal_business_name" maxLength={160} defaultValue={account.legalBusinessName ?? ""} />
-            </Field>
-            <Field label="Owner or admin name" hint="The person Relay should contact during setup.">
-              <input className="field" name="owner_name" required maxLength={120} defaultValue={account.ownerName ?? ""} />
+            <Field label="Owner or admin name" hint="Optional contact name.">
+              <input className="field" name="owner_name" maxLength={120} defaultValue={account.ownerName ?? ""} />
             </Field>
             <Field label="Owner phone" hint="Where calls forward and Relay alerts are texted.">
               <input className="field" name="owner_phone_number" required defaultValue={account.ownerPhoneNumber} />
@@ -442,42 +525,21 @@ export default async function SettingsPage({
               <input className="field" type="email" name="owner_email" required defaultValue={account.ownerEmail ?? ""} />
             </Field>
             <p className="form-field__hint">Sign-in email: <strong>{session.email}</strong>. Login access is managed separately so a contact edit cannot lock anyone out.</p>
-            <Field label="Existing public business number" hint="The number customers call today. In forwarding mode, missed calls forward from this number to Relay.">
-              <input className="field" name="public_business_number" required defaultValue={account.publicBusinessNumber ?? ""} />
+            <Field
+              label="Existing public business number"
+              hint={account.callMode === "forwarding"
+                ? "Required for forwarding instructions. This is the number customers call today."
+                : "Optional in direct mode because customers call the Relay number."}
+            >
+              <input
+                className="field"
+                name="public_business_number"
+                required={account.callMode === "forwarding"}
+                defaultValue={account.publicBusinessNumber ?? ""}
+              />
             </Field>
-            <Field label="Business type" hint="Used to prepare carrier registration.">
-              <select className="field" name="business_type" required defaultValue={account.businessType ?? ""}>
-                <option value="" disabled>Choose a business type</option>
-                <option value="sole_proprietor">Sole proprietor</option>
-                <option value="llc">LLC</option>
-                <option value="corporation">Corporation</option>
-                <option value="partnership">Partnership</option>
-                <option value="nonprofit">Nonprofit</option>
-                <option value="other">Other</option>
-              </select>
-            </Field>
-            <Field label="Business industry" hint="For example: plumbing, electrical, HVAC, landscaping.">
-              <input className="field" name="business_industry" maxLength={80} defaultValue={account.businessIndustry ?? ""} />
-            </Field>
-            <Field label="Website" hint="Optional now; a public website or online presence helps carrier registration.">
-              <input className="field" type="url" name="website_url" defaultValue={account.websiteUrl ?? ""} placeholder="https://" />
-            </Field>
-            <Field label="Business address" hint="Street address used for carrier registration.">
-              <input className="field" name="address_line_1" maxLength={160} defaultValue={account.addressLine1 ?? ""} placeholder="Street address" />
-            </Field>
-            <Field label="Address line 2">
-              <input className="field" name="address_line_2" maxLength={160} defaultValue={account.addressLine2 ?? ""} placeholder="Suite or unit" />
-            </Field>
-            <div className="lead-controls">
-              <input className="field" name="address_city" maxLength={100} defaultValue={account.addressCity ?? ""} placeholder="City" aria-label="City" />
-              <input className="field" name="address_region" maxLength={2} defaultValue={account.addressRegion ?? ""} placeholder="State" aria-label="State" />
-              <input className="field" name="address_postal_code" maxLength={20} defaultValue={account.addressPostalCode ?? ""} placeholder="ZIP" aria-label="ZIP code" />
-            </div>
             <Field label="Business hours" hint="Plain language is fine, for example Mon-Fri 7am-5pm.">
               <textarea className="field" name="business_hours" rows={3} maxLength={1000} defaultValue={typeof account.businessHours?.summary === "string" ? account.businessHours.summary : ""} />
-            </Field>
-            <Field label="Implementation notes" hint="Optional details Relay should know during setup.">
-              <textarea className="field" name="implementation_notes" rows={3} maxLength={2000} defaultValue={account.implementationNotes ?? ""} />
             </Field>
             <Field label="Scheduling link" hint="Optional. Included in texts when set (https://...).">
               <input className="field" name="scheduling_url" defaultValue={account.schedulingUrl ?? ""} />

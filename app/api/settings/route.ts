@@ -95,11 +95,9 @@ export async function POST(request: Request) {
 
   if (
     !businessName ||
-    !ownerName ||
     !ownerPhone ||
     !ownerEmail ||
-    !publicBusinessNumber ||
-    !businessType ||
+    (session.account.callMode === "forwarding" && !publicBusinessNumber) ||
     !["generated", "recorded"].includes(greetingPreference) ||
     dialTimeout === null ||
     voicemailMax === null ||
@@ -127,20 +125,9 @@ export async function POST(request: Request) {
     business_name: businessName,
     owner_phone_number: ownerPhone,
     owner_email: ownerEmail || null,
-    owner_name: ownerName,
-    legal_business_name: legalBusinessName || null,
-    public_business_number: publicBusinessNumber,
-    business_type: businessType,
-    business_industry: businessIndustry || null,
-    website_url: websiteUrl || null,
-    address_line_1: addressLine1 || null,
-    address_line_2: addressLine2 || null,
-    address_city: addressCity || null,
-    address_region: addressRegion || null,
-    address_postal_code: addressPostalCode || null,
-    address_country: "US",
+    owner_name: ownerName || null,
+    public_business_number: publicBusinessNumber || null,
     business_hours: businessHours ? { summary: businessHours } : null,
-    implementation_notes: implementationNotes || null,
     greeting_preference: greetingPreference as "generated" | "recorded",
     scheduling_url: schedulingUrl || null,
     sms_template: smsTemplate || null,
@@ -151,6 +138,34 @@ export async function POST(request: Request) {
     voicemail_max_seconds: voicemailMax,
     missed_call_sms_cooldown_hours: cooldownHours,
     typical_job_value_cents: typicalJobValueCents,
+    // These fields are operator-owned carrier-registration facts. Preserve
+    // customer edit compatibility for older clients without showing an A2P
+    // questionnaire in Settings.
+    ...(formData.has("legal_business_name")
+      ? { legal_business_name: legalBusinessName || null }
+      : {}),
+    ...(formData.has("business_type")
+      ? { business_type: businessType || null }
+      : {}),
+    ...(formData.has("business_industry")
+      ? { business_industry: businessIndustry || null }
+      : {}),
+    ...(formData.has("website_url")
+      ? { website_url: websiteUrl || null }
+      : {}),
+    ...(formData.has("address_line_1")
+      ? {
+          address_line_1: addressLine1 || null,
+          address_line_2: addressLine2 || null,
+          address_city: addressCity || null,
+          address_region: addressRegion || null,
+          address_postal_code: addressPostalCode || null,
+          address_country: "US",
+        }
+      : {}),
+    ...(formData.has("implementation_notes")
+      ? { implementation_notes: implementationNotes || null }
+      : {}),
   };
 
   // Only the owner can flip texting on/off — it is the compliance-sensitive switch.

@@ -61,7 +61,6 @@ function billingRecord(overrides = {}) {
     trialEndsAt: null,
     currentPeriodEnd: null,
     cancelAtPeriodEnd: false,
-    requirementsDueAt: null,
     activatedAt: null,
     firstPaidAt: null,
     guaranteeEndsAt: null,
@@ -81,7 +80,6 @@ async function runCheckout({
   const calls = {
     billingLookups: [],
     checkoutInputs: [],
-    trialInputs: [],
     redirects: [],
   };
 
@@ -100,10 +98,6 @@ async function runCheckout({
       computeSetupReadiness: () => ({ callCaptureReady, smsRegistrationReady }),
     },
     "@/lib/stripe-billing": {
-      checkoutTrialPeriodDays: (input) => {
-        calls.trialInputs.push(input);
-        return input.billingStatus === "trialing" ? 12 : 30;
-      },
       createStripeCheckoutSession: async (input) => {
         calls.checkoutInputs.push(input);
         return { id: "cs_test_123", url: "https://checkout.stripe.test/session" };
@@ -184,12 +178,12 @@ async function runPortal({
 async function runOpsBillingOverride({
   authSession = { userId: "user-1", email: "ops@example.com" },
   accountBilling = billingRecord({ accountId: "acct-1", accountSlug: "demo", businessName: "Demo Plumbing" }),
-  form = { account_slug: "demo", action: "comp" },
+  form = { account_slug: "demo", action: "comp", reason: "Approved pilot exception" },
 } = {}) {
   const calls = {
     lookups: [],
-    updates: [],
-    audits: [],
+    policies: [],
+    platformAudits: [],
     redirects: [],
   };
 
@@ -201,7 +195,7 @@ async function runOpsBillingOverride({
       },
     },
     "@/lib/auth": {
-      requirePlatformOperator: async () => authSession,
+      requirePlatformOperatorWrite: async () => authSession,
     },
     "@/lib/billing": billing,
     "@/lib/supabase": {
@@ -209,13 +203,12 @@ async function runOpsBillingOverride({
         calls.lookups.push(slug);
         return accountBilling;
       },
-      updateAccountBillingRecord: async (accountId, update) => {
-        calls.updates.push({ accountId, update });
+      setAccountBillingPolicy: async (input) => {
+        calls.policies.push(input);
       },
-      recordAccountAuditEvents: async (input) => {
-        calls.audits.push(input);
+      recordPlatformAuditEvent: async (input) => {
+        calls.platformAudits.push(input);
       },
-      recordPlatformAuditEvent: async () => {},
     },
   });
 
@@ -264,7 +257,6 @@ test("selected account determines the Stripe customer used for Checkout", async 
   assert.equal(calls.checkoutInputs.length, 1);
   assert.equal(calls.checkoutInputs[0].accountId, "acct-b");
   assert.equal(calls.checkoutInputs[0].stripeCustomerId, "cus_tenant_b");
-  assert.equal(calls.checkoutInputs[0].trialPeriodDays, 0);
 });
 
 test("active subscription cannot create duplicate Checkout", async () => {
@@ -341,23 +333,6 @@ test("double Checkout submission uses the same deterministic Stripe idempotency 
   assert.equal(first.checkoutInputs[0].idempotencyKey, second.checkoutInputs[0].idempotencyKey);
 });
 
-test("Checkout honors the selected account's remaining app-level trial", async () => {
-  const calls = await runCheckout({
-    accountBilling: billingRecord({
-      billingStatus: "trialing",
-      trialEndsAt: "2026-08-01T00:00:00.000Z",
-    }),
-  });
-
-  assert.deepEqual(calls.trialInputs, [
-    {
-      billingStatus: "trialing",
-      trialEndsAt: "2026-08-01T00:00:00.000Z",
-    },
-  ]);
-  assert.equal(calls.checkoutInputs[0].trialPeriodDays, 12);
-});
-
 test("activation Checkout is independent from setup-fee collection", async () => {
   const calls = await runCheckout({
     accountBilling: billingRecord({ setupFeeStatus: "due" }),
@@ -366,33 +341,31 @@ test("activation Checkout is independent from setup-fee collection", async () =>
   assert.equal(calls.checkoutInputs.length, 1);
 });
 
-test("standard activation Checkout does not add a Stripe trial", async () => {
+test("standard activation Checkout does not add app-managed billing fields", async () => {
   const calls = await runCheckout({
     accountBilling: billingRecord({ setupFeeStatus: "waived" }),
   });
 
-  assert.equal(calls.checkoutInputs[0].trialPeriodDays, 0);
+  assert.deepEqual(
+    Object.keys(calls.checkoutInputs[0]).sort(),
+    ["accountId", "accountSlug", "idempotencyKey", "ownerEmail", "stripeCustomerId"].sort(),
+  );
 });
 
 test("operator can manually comp an account without a live Stripe subscription", async () => {
   const calls = await runOpsBillingOverride();
 
   assert.deepEqual(calls.lookups, ["demo"]);
-  assert.deepEqual(calls.updates, [
+  assert.deepEqual(calls.policies, [
     {
       accountId: "acct-1",
-      update: {
-        billingPolicy: "comped",
-        billingStatus: "comped",
-        trialEndsAt: null,
-        cancelAtPeriodEnd: false,
-        billingAttentionSince: null,
-      },
+      policy: "comped",
+      reason: "Approved pilot exception",
+      actorUserId: "user-1",
+      actorEmail: "ops@example.com",
     },
   ]);
-  assert.equal(calls.audits.length, 1);
-  assert.equal(calls.audits[0].accountId, "acct-1");
-  assert.equal(calls.audits[0].events[0].action, "billing.operator.comp");
+  assert.equal(calls.platformAudits[0].action, "billing.operator.comp");
   assert.equal(calls.redirects.at(-1), "/ops/accounts/demo?billing_action=comp");
 });
 
@@ -404,12 +377,12 @@ test("operator can waive a setup fee for a selected pilot account and audit the 
       businessName: "Demo Plumbing",
       setupFeeStatus: "due",
     }),
-    form: { account_slug: "demo", action: "waive_setup_fee", waiver_reason: "Pilot customer" },
+    form: { account_slug: "demo", action: "waive_setup_fee", reason: "Pilot customer" },
   });
 
-  assert.equal(calls.updates[0].update.setupFeeStatus, "waived");
-  assert.equal(calls.updates[0].update.setupFeeWaiverReason, "Pilot customer");
-  assert.equal(calls.audits[0].events[0].action, "billing.operator.waive_setup_fee");
+  assert.equal(calls.policies[0].policy, "setup_fee_waived");
+  assert.equal(calls.policies[0].reason, "Pilot customer");
+  assert.equal(calls.platformAudits[0].action, "billing.operator.waive_setup_fee");
   assert.equal(calls.redirects.at(-1), "/ops/accounts/demo?billing_action=waive_setup_fee");
 });
 
@@ -421,54 +394,29 @@ test("operator cannot overwrite a paid setup fee", async () => {
       businessName: "Demo Plumbing",
       setupFeeStatus: "paid",
     }),
-    form: { account_slug: "demo", action: "require_setup_fee" },
+    form: { account_slug: "demo", action: "require_setup_fee", reason: "Correcting pilot terms" },
   });
 
-  assert.deepEqual(calls.updates, []);
-  assert.deepEqual(calls.audits, []);
+  assert.deepEqual(calls.policies, []);
   assert.equal(calls.redirects.at(-1), "/ops/accounts/demo?billing_action=setup_fee_already_paid");
 });
 
-test("operator can grant a bounded manual trial", async () => {
+test("operator cannot grant an app-managed trial", async () => {
   const calls = await runOpsBillingOverride({
-    form: { account_slug: "demo", action: "grant_trial", trial_days: "120" },
+    form: { account_slug: "demo", action: "grant_trial", reason: "No longer supported" },
   });
 
-  assert.equal(calls.updates.length, 1);
-  assert.equal(calls.updates[0].update.billingStatus, "trialing");
-  assert.match(calls.updates[0].update.trialEndsAt, /^\d{4}-\d{2}-\d{2}T/);
-  assert.equal(calls.updates[0].update.cancelAtPeriodEnd, false);
-  assert.equal(calls.audits[0].events[0].summary, "Granted 90-day trial");
-  assert.equal(calls.redirects.at(-1), "/ops/accounts/demo?billing_action=grant_trial");
+  assert.deepEqual(calls.policies, []);
+  assert.equal(calls.redirects.at(-1), "/ops/accounts/demo?billing_action=invalid_action");
 });
 
-test("operator can end a manual trial without mutating durable lifecycle dates", async () => {
+test("operator requires a meaningful exception reason", async () => {
   const calls = await runOpsBillingOverride({
-    accountBilling: billingRecord({
-      accountId: "acct-1",
-      accountSlug: "demo",
-      businessName: "Demo Plumbing",
-      billingStatus: "trialing",
-      trialEndsAt: "2026-08-01T00:00:00.000Z",
-      activatedAt: "2026-07-01T00:00:00.000Z",
-      firstPaidAt: "2026-07-02T00:00:00.000Z",
-      guaranteeEndsAt: "2026-08-01T00:00:00.000Z",
-    }),
-    form: { account_slug: "demo", action: "end_trial_now" },
+    form: { account_slug: "demo", action: "uncomp", reason: "no" },
   });
 
-  assert.deepEqual(calls.updates, [
-    {
-      accountId: "acct-1",
-      update: {
-        billingStatus: "not_started",
-        trialEndsAt: null,
-        cancelAtPeriodEnd: false,
-        billingAttentionSince: null,
-      },
-    },
-  ]);
-  assert.equal(calls.audits[0].events[0].action, "billing.operator.end_trial_now");
+  assert.deepEqual(calls.policies, []);
+  assert.equal(calls.redirects.at(-1), "/ops/accounts/demo?billing_action=reason_required");
 });
 
 test("operator billing override refuses active Stripe subscriptions", async () => {
@@ -483,7 +431,6 @@ test("operator billing override refuses active Stripe subscriptions", async () =
     }),
   });
 
-  assert.deepEqual(calls.updates, []);
-  assert.deepEqual(calls.audits, []);
+  assert.deepEqual(calls.policies, []);
   assert.equal(calls.redirects.at(-1), "/ops/accounts/demo?billing_action=override_blocked");
 });

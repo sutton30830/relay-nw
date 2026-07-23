@@ -24,7 +24,19 @@ test("customer profile completion never depends on a Relay-assigned number", () 
   assert.equal(isCustomerProfileComplete(complete), true);
 });
 
-test("customer profile reports the exact missing owner-supplied fields", () => {
+test("forwarding requires the public number but not cosmetic profile fields", () => {
   const profile = { ...complete, ownerName: null, publicBusinessNumber: "" };
-  assert.deepEqual(missingCustomerProfileFields(profile), ["Owner or admin name", "Existing public business number"]);
+  assert.deepEqual(missingCustomerProfileFields(profile), ["Existing public business number"]);
+});
+
+test("direct mode does not require an existing public number", () => {
+  const profile = {
+    ...complete,
+    callMode: "direct",
+    ownerName: null,
+    businessType: null,
+    publicBusinessNumber: null,
+  };
+
+  assert.equal(isCustomerProfileComplete(profile), true);
 });

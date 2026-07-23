@@ -400,6 +400,22 @@ export async function requirePlatformOperator() {
   return operator;
 }
 
+/**
+ * Platform support users may inspect Operations, but only operators and
+ * super-admins may make changes. Keep this separate from the read gate so a
+ * new mutating operations route cannot accidentally grant support write
+ * access merely by checking that the user is a platform operator.
+ */
+export async function requirePlatformOperatorWrite() {
+  const operator = await requirePlatformOperator();
+
+  if (operator.role === "support") {
+    redirect("/leads?error=ops_read_only");
+  }
+
+  return operator;
+}
+
 export async function requirePlatformOperatorJson() {
   const operator = await getPlatformOperatorSession();
 

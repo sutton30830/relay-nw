@@ -9,7 +9,7 @@ Relay NW supports two call flows:
 
 In both modes, Relay NW saves the missed call in an account-scoped Supabase inbox and sends one automatic SMS only when the account is configured, A2P is approved, and the owner has automatic texting turned on.
 
-The product is multi-account at the data and auth layer, but early customers are still onboarded by an operator with the provisioning and verification scripts. The auth foundation supports one Supabase user belonging to multiple accounts and a simple owner-facing account switcher. Billing has an account-scoped status foundation plus Stripe Checkout/webhook sync, but billing enforcement is intentionally not complete yet.
+The product is multi-account at the data and auth layer, while early customers are still onboarded by a Relay operator. Stripe Checkout, Customer Portal, signed webhooks, and reconciliation own customer billing. Relay keeps technical setup, A2P status, and commercial exceptions independent.
 
 ## Day-One Setup Checklist
 
@@ -25,10 +25,11 @@ The product is multi-account at the data and auth layer, but early customers are
 10. In Twilio, configure the account's phone number Voice webhook to `APP_BASE_URL/api/twilio/voice`.
 11. In Twilio, configure the account's phone number Messaging webhook to `APP_BASE_URL/api/twilio/sms`.
 12. Use HTTP `POST` for both Twilio webhooks.
-13. For `CALL_MODE=direct`, make a real test call from a separate phone and let the owner's phone ring without answering.
-14. For `CALL_MODE=forwarding`, configure the owner's existing number to forward busy/no-answer calls to the Relay NW recovery number, then make a missed-call test to the existing number.
-15. Confirm the caller receives the SMS when texting is approved/on and the lead appears in `/leads`.
-16. Reply to the SMS and confirm the owner receives the forwarded reply.
+13. For `CALL_MODE=forwarding`, help the customer enable conditional forwarding from their existing number to Relay.
+14. Confirm the first real missed call appears once in `/leads` and automatically marks call capture live.
+15. Complete A2P registration in Twilio; keep automatic texting off until approved.
+16. Confirm the caller receives SMS only when texting is approved and enabled.
+17. Explain the $150 setup fee, $99 monthly plan, and Stripe-hosted billing controls.
 
 For the customer-by-customer onboarding checklist, see `docs/customer-setup.md`.
 
@@ -63,7 +64,7 @@ For the customer-by-customer onboarding checklist, see `docs/customer-setup.md`.
 - `/leads` Supabase-authenticated lead inbox
 - `/login` owner email/password sign-in, with setup/reset and magic-link fallback
 - `/account/password` authenticated password setup/reset page
-- `/setup` authenticated owner setup/status checklist
+- `/setup` authenticated call setup/status page
 - `/settings` authenticated account settings
 - `/reports` authenticated owner reporting
 - `/ops` authenticated operational webhook/debug page
@@ -77,11 +78,9 @@ For the customer-by-customer onboarding checklist, see `docs/customer-setup.md`.
 - `/api/twilio/recording` Twilio voicemail recording callback
 - `/api/twilio/sms` Twilio inbound SMS webhook
 - `/api/twilio/sms-status` Twilio outbound SMS delivery callback
-- `/api/health-check/start` authenticated forwarding listening-window trigger
-- `/api/health-check/status` authenticated forwarding health status
-- `/api/health-check/expire-pending` authenticated pending health check cleanup
-- `/api/sms-test/start` authenticated owner-only SMS test trigger
-- `/api/sms-test/status` authenticated Twilio SMS test status lookup
+- `/api/billing/checkout` owner-only Stripe subscription Checkout
+- `/api/billing/portal` owner-only Stripe Customer Portal
+- `/api/stripe/webhook` signed Stripe billing synchronization
 
 ## Environment Variables
 
@@ -156,12 +155,11 @@ The schema includes:
 - `webhook_events`: basic Twilio webhook logs for debugging
 - `opt_outs`: phone numbers that replied STOP/UNSUBSCRIBE/CANCEL/END/QUIT
 - `inbound_messages`: deduped inbound SMS replies from customers
-- `forwarding_health_checks`: controlled forwarding listening windows and sanitized results
 
 `leads.call_sid` is unique when present. This prevents Twilio retries from creating duplicate missed-call leads or sending duplicate SMS messages.
 `leads.twilio_message_sid` is unique when present. This lets SMS delivery callbacks update the matching lead.
 
-The forwarding health check table is created by the latest `supabase.sql`. Apply that SQL in Supabase before using the Start listening button. To test forwarding, click Start listening, then call the owner number from a separate personal phone and let it go unanswered. Pending health checks also expire opportunistically when the leads inbox or start/status API is loaded. If you want scheduled cleanup later, wire Vercel Cron to `POST /api/health-check/expire-pending` with the same leads-session protection or a dedicated cron secret.
+Relay does not use synthetic forwarding or SMS tests. A valid signed missed call that creates a new lead is the proof that call capture is live.
 
 ### Tenant Account ID Backfill
 
@@ -171,7 +169,7 @@ Before applying the latest `supabase.sql` constraints to an existing database, d
 npm run backfill:account-ids -- --slug=relay-nw
 ```
 
-If the dry run reports NULL rows in `leads`, `opt_outs`, `inbound_messages`, or `forwarding_health_checks`, backfill them to the house account:
+If the dry run reports NULL rows in `leads`, `opt_outs`, or `inbound_messages`, backfill them to the house account:
 
 ```bash
 npm run backfill:account-ids -- --slug=relay-nw --apply
@@ -302,7 +300,7 @@ The simplest deployment path is Vercel:
 7. Set Twilio's Voice webhook to `https://relay-nw.vercel.app/api/twilio/voice`.
 8. Set Twilio's Messaging webhook to `https://relay-nw.vercel.app/api/twilio/sms`.
 9. Set Stripe's webhook endpoint to `https://relay-nw.vercel.app/api/stripe/webhook`.
-10. Set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `STRIPE_PRICE_ID` before using Checkout. `STRIPE_TRIAL_DAYS` defaults to `30`.
+10. Set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID`, and `STRIPE_SETUP_FEE_PRICE_ID` before using Checkout.
 11. Keep `ALLOW_UNSIGNED_TWILIO_WEBHOOKS` unset or `false` in production.
 
 ## Security Notes
@@ -324,9 +322,7 @@ The simplest deployment path is Vercel:
 
 ## Not In V1
 
-- Billing enforcement and customer portal
 - CRM automation
 - Shared inbox
-- Business-hours logic
 - Scheduling engine
-- User accounts
+- Fully self-serve signup and provisioning

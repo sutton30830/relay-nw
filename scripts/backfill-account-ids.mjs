@@ -6,7 +6,6 @@ const BACKFILL_TABLES = [
   "leads",
   "opt_outs",
   "inbound_messages",
-  "forwarding_health_checks",
 ];
 
 const NULL_ALLOWED_TABLES = [

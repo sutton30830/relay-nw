@@ -3,10 +3,7 @@ import {
   assertTenantAccount,
   type AccountRuntimeConfig,
   type TenantAccountRuntimeConfig,
-  findPendingForwardingHealthCheck,
   logWebhookEvent,
-  markForwardingHealthCheckFailed,
-  markForwardingHealthCheckPassed,
   resolveAccountByTwilioNumber,
   upsertCall,
   resolveAccountSafely,
@@ -73,68 +70,6 @@ function validationLogNote(input: {
   }
 
   return input.smsStatus ? `Forwarding mode SMS status: ${input.smsStatus}` : null;
-}
-
-async function handleForwardingHealthCheck(input: {
-  account: TenantAccountRuntimeConfig;
-  payload: Record<string, string>;
-  correlationId: string;
-  requestSummary: ReturnType<typeof summarizeTwilioRequest>;
-}) {
-  const healthCheck = await findPendingForwardingHealthCheck(input.account.accountId);
-
-  if (!healthCheck) {
-    return null;
-  }
-
-  console.info("inbound_forwarded_call_detected", {
-    healthCheckId: healthCheck.id,
-    correlationId: input.correlationId,
-    ...input.requestSummary,
-  });
-
-  try {
-    await markForwardingHealthCheckPassed({
-      accountId: input.account.accountId,
-      id: healthCheck.id,
-      inboundTwilioCallSid: input.payload.CallSid ?? null,
-      rawEventSummary: {
-        callSid: input.payload.CallSid ?? null,
-        fromLast4: input.requestSummary.fromLast4,
-        toLast4: input.requestSummary.toLast4,
-        callMode: input.requestSummary.callMode,
-      },
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown health check webhook error";
-    await markForwardingHealthCheckFailed({
-      accountId: input.account.accountId,
-      id: healthCheck.id,
-      failureReason: "webhook_error",
-      rawEventSummary: {
-        message,
-        callSid: input.payload.CallSid ?? null,
-      },
-    });
-  }
-
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Say voice="Polly.Joanna-Neural">Relay forwarding health check passed. Goodbye.</Say>
-  <Hangup />
-</Response>`;
-
-  await logWebhookEvent({
-    accountId: input.account.accountId,
-    source: VOICE_WEBHOOK_SOURCE,
-    correlationId: input.correlationId,
-    payload: input.payload,
-    responseStatus: 200,
-    responseBody: xml,
-    error: `Forwarding health check matched: ${healthCheck.id}`,
-  });
-
-  return twimlResponse(xml);
 }
 
 async function handleForwardingMode(input: {
@@ -341,20 +276,6 @@ export async function POST(request: Request) {
 
   const account = assertTenantAccount(accountResolution.account, "voice webhook");
   const callerPhone = payload.From || account.twilioPhoneNumber;
-
-  const healthCheckResponse =
-    account.callMode === "forwarding"
-      ? await handleForwardingHealthCheck({
-          account,
-          payload,
-          correlationId,
-          requestSummary,
-        })
-      : null;
-
-  if (healthCheckResponse) {
-    return healthCheckResponse;
-  }
 
   if (account.callMode === "forwarding") {
     return handleForwardingMode({

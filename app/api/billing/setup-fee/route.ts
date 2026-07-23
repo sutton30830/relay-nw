@@ -1,7 +1,11 @@
 import { redirect } from "next/navigation";
 import { requireAccountUser } from "@/lib/auth";
+import { isSetupFeeSettled } from "@/lib/billing";
 import { env } from "@/lib/env";
-import { createStripeSetupFeeCheckoutSession } from "@/lib/stripe-billing";
+import {
+  createStripeSetupFeeCheckoutSession,
+  retrieveStripeCheckoutSession,
+} from "@/lib/stripe-billing";
 import { getAccountBillingRecord, updateAccountBillingRecord } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +20,13 @@ export async function POST() {
   if (session.role !== "owner") billingRedirect("forbidden");
 
   const billing = await getAccountBillingRecord(session.accountId);
-  if (billing.firstPaidAt || billing.setupFeeStatus === "paid" || billing.setupFeeStatus === "waived") {
+  if (
+    isSetupFeeSettled(
+      billing.setupFeeStatus,
+      billing.firstPaidAt,
+      billing.billingPolicy,
+    )
+  ) {
     billingRedirect("setup_fee_settled");
   }
 
@@ -30,22 +40,43 @@ export async function POST() {
   let checkoutUrl: string;
 
   try {
-    const checkout = await createStripeSetupFeeCheckoutSession({
-      accountId: session.accountId,
-      accountSlug: session.account.accountSlug,
-      ownerEmail: session.account.ownerEmail ?? session.email,
-      stripeCustomerId: billing.stripeCustomerId,
-      setupFeeCents: billing.setupFeeCents,
-      idempotencyKey,
-    });
+    let existingUrl: string | null = null;
 
-    // Store the session before redirecting so a double-click or abandoned
-    // checkout is visible to operators and reuses the same Stripe idempotency
-    // identity on retry.
-    await updateAccountBillingRecord(session.accountId, {
-      setupFeeCheckoutSessionId: checkout.id,
-    });
-    checkoutUrl = checkout.url;
+    if (billing.setupFeeCheckoutSessionId) {
+      try {
+        const existing = await retrieveStripeCheckoutSession(
+          billing.setupFeeCheckoutSessionId,
+        );
+        if (
+          existing.status === "open" &&
+          existing.paymentStatus !== "paid" &&
+          existing.url
+        ) {
+          existingUrl = existing.url;
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!/no such checkout|resource_missing/i.test(message)) throw error;
+      }
+    }
+
+    if (existingUrl) {
+      checkoutUrl = existingUrl;
+    } else {
+      const checkout = await createStripeSetupFeeCheckoutSession({
+        accountId: session.accountId,
+        accountSlug: session.account.accountSlug,
+        ownerEmail: session.account.ownerEmail ?? session.email,
+        stripeCustomerId: billing.stripeCustomerId,
+        setupFeeCents: billing.setupFeeCents,
+        idempotencyKey,
+      });
+
+      await updateAccountBillingRecord(session.accountId, {
+        setupFeeCheckoutSessionId: checkout.id,
+      });
+      checkoutUrl = checkout.url;
+    }
   } catch (error) {
     console.error("Stripe setup-fee checkout creation failed", {
       accountId: session.accountId,

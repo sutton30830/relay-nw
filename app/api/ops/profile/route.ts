@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { requirePlatformOperator } from "@/lib/auth";
+import { requirePlatformOperatorWrite } from "@/lib/auth";
 import { normalizePhoneNumber } from "@/lib/phone";
 import {
   getOpsAccountBySlug,
@@ -19,7 +19,7 @@ function value(form: FormData, key: string, max = 200) {
 }
 
 export async function POST(request: Request) {
-  const operator = await requirePlatformOperator();
+  const operator = await requirePlatformOperatorWrite();
   const form = await request.formData();
   const slug = value(form, "account_slug", 80);
   if (!slug) redirect("/ops");

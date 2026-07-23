@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { requirePlatformOperator } from "@/lib/auth";
+import { requirePlatformOperatorWrite } from "@/lib/auth";
 import { configureExistingRelayNumber, purchaseAndConfigureRelayNumber } from "@/lib/twilio";
 import {
   assignPrimaryAccountPhoneNumber,
@@ -13,7 +13,7 @@ function go(slug: string, value: string): never {
 }
 
 export async function POST(request: Request) {
-  const operator = await requirePlatformOperator();
+  const operator = await requirePlatformOperatorWrite();
   if (operator.role === "support") redirect("/ops?error=forbidden");
   const form = await request.formData();
   const slug = String(form.get("account_slug") ?? "").trim();

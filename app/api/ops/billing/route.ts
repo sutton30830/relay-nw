@@ -1,36 +1,29 @@
 import { redirect } from "next/navigation";
-import { requirePlatformOperator } from "@/lib/auth";
-import {
-  addTrialDays,
-  canApplyOperatorBillingOverride,
-  normalizeOperatorTrialDays,
-  type OperatorBillingOverrideAction,
-} from "@/lib/billing";
+import { requirePlatformOperatorWrite } from "@/lib/auth";
+import { canApplyOperatorBillingOverride } from "@/lib/billing";
 import {
   getOpsBillingAccountBySlug,
   recordPlatformAuditEvent,
-  recordAccountAuditEvents,
-  updateAccountBillingRecord,
+  setAccountBillingPolicy,
 } from "@/lib/supabase";
 
-const VALID_ACTIONS = new Set<OperatorBillingOverrideAction>([
+const VALID_ACTIONS = new Set([
   "comp",
   "uncomp",
-  "grant_trial",
-  "extend_trial",
-  "end_trial_now",
   "waive_setup_fee",
   "require_setup_fee",
 ]);
+
+type OperatorBillingPolicyAction = "comp" | "uncomp" | "waive_setup_fee" | "require_setup_fee";
 
 function readString(formData: FormData, key: string, maxLength = 120) {
   return String(formData.get(key) ?? "").trim().slice(0, maxLength);
 }
 
-function readAction(formData: FormData): OperatorBillingOverrideAction | null {
+function readAction(formData: FormData): OperatorBillingPolicyAction | null {
   const action = readString(formData, "action", 40);
-  return VALID_ACTIONS.has(action as OperatorBillingOverrideAction)
-    ? action as OperatorBillingOverrideAction
+  return VALID_ACTIONS.has(action as OperatorBillingPolicyAction)
+    ? action as OperatorBillingPolicyAction
     : null;
 }
 
@@ -41,18 +34,22 @@ function redirectWith(status: string, accountSlug?: string) {
   redirect(`/ops?billing_action=${encodeURIComponent(status)}`);
 }
 
-function actionSummary(action: OperatorBillingOverrideAction, days?: number) {
+function actionSummary(action: OperatorBillingPolicyAction) {
   if (action === "comp") return "Comped account";
-  if (action === "uncomp") return "Removed comp and reset account to not started";
-  if (action === "grant_trial") return `Granted ${days ?? 30}-day trial`;
-  if (action === "extend_trial") return `Extended trial by ${days ?? 30} days`;
+  if (action === "uncomp") return "Removed comp";
   if (action === "waive_setup_fee") return "Waived the one-time setup fee for this account";
   if (action === "require_setup_fee") return "Restored the one-time setup fee requirement";
-  return "Ended manual trial";
+  return "Updated billing policy";
+}
+
+function policyFor(action: OperatorBillingPolicyAction) {
+  if (action === "comp") return "comped" as const;
+  if (action === "waive_setup_fee") return "setup_fee_waived" as const;
+  return "standard" as const;
 }
 
 export async function POST(request: Request) {
-  const session = await requirePlatformOperator();
+  const session = await requirePlatformOperatorWrite();
   const formData = await request.formData();
   const accountSlug = readString(formData, "account_slug", 80);
   const action = readAction(formData);
@@ -81,71 +78,32 @@ export async function POST(request: Request) {
     return redirectWith("setup_fee_already_paid", account.accountSlug);
   }
 
-  const days = normalizeOperatorTrialDays(readString(formData, "trial_days", 8));
-  const waiverReason = readString(formData, "waiver_reason", 240);
-  const auditSummary = actionSummary(action, days);
+  const reason = readString(formData, "reason", 240);
+  if (reason.length < 5) {
+    return redirectWith("reason_required", account.accountSlug);
+  }
+
+  const auditSummary = actionSummary(action);
 
   try {
-    if (action === "waive_setup_fee") {
-      await updateAccountBillingRecord(account.accountId, {
-        billingPolicy: "setup_fee_waived",
-        setupFeeStatus: "waived",
-        setupFeeWaivedAt: new Date().toISOString(),
-        setupFeeWaiverReason: waiverReason || "Pilot waiver; operator did not provide a reason.",
-      });
-    } else if (action === "require_setup_fee") {
-      await updateAccountBillingRecord(account.accountId, {
-        billingPolicy: "standard",
-        setupFeeStatus: "due",
-        setupFeeWaivedAt: null,
-        setupFeeWaiverReason: null,
-      });
-    } else if (action === "comp") {
-      await updateAccountBillingRecord(account.accountId, {
-        billingPolicy: "comped",
-        billingStatus: "comped",
-        trialEndsAt: null,
-        cancelAtPeriodEnd: false,
-        billingAttentionSince: null,
-      });
-    } else if (action === "uncomp" || action === "end_trial_now") {
-      await updateAccountBillingRecord(account.accountId, {
-        ...(action === "uncomp" ? { billingPolicy: "standard" as const } : {}),
-        billingStatus: "not_started",
-        trialEndsAt: null,
-        cancelAtPeriodEnd: false,
-        billingAttentionSince: null,
-      });
-    } else {
-      await updateAccountBillingRecord(account.accountId, {
-        billingStatus: "trialing",
-        trialEndsAt: addTrialDays({
-          trialEndsAt: action === "extend_trial" ? account.trialEndsAt : null,
-          days,
-        }),
-        cancelAtPeriodEnd: false,
-        billingAttentionSince: null,
-      });
-    }
-
-    await recordAccountAuditEvents({
+    await setAccountBillingPolicy({
       accountId: account.accountId,
+      policy: policyFor(action),
+      reason,
       actorUserId: session.userId,
       actorEmail: session.email,
-      events: [
-        {
-          action: `billing.operator.${action}`,
-          summary: auditSummary,
-        },
-      ],
     });
-    await recordPlatformAuditEvent({
+
+    // The policy helper writes the required account audit record atomically.
+    // This platform record is useful context, but must never turn a completed
+    // commercial exception into an apparent failure.
+    void recordPlatformAuditEvent({
       actorUserId: session.userId,
       actorEmail: session.email,
       targetAccountId: account.accountId,
       action: `billing.operator.${action}`,
       summary: auditSummary,
-    });
+    }).catch((error) => console.error("Platform billing audit failed", error));
   } catch (error) {
     console.error("Operator billing override failed", {
       accountSlug: account.accountSlug,
