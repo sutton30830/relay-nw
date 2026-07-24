@@ -4,6 +4,9 @@ import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
 
+// Phase 0 compatibility coverage. Runtime billing routes still use technical
+// call readiness until the Stripe-owned delayed-trial flow ships in Phase 1.
+
 async function loadTsModule(path, mocks) {
   const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
   const compiled = ts.transpileModule(source, {

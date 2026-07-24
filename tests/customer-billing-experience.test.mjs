@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+// Phase 0 compatibility coverage. Customer billing copy remains unchanged
+// until Phase 1 can replace the Checkout flow and presentation together.
+
 const settings = await readFile(
   new URL("../app/settings/page.tsx", import.meta.url),
   "utf8",

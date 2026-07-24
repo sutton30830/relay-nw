@@ -55,6 +55,91 @@ export const STRIPE_SUBSCRIPTION_STATUSES = [
 
 export type StripeSubscriptionStatus = (typeof STRIPE_SUBSCRIPTION_STATUSES)[number];
 
+// Phase 0 commercial target. These terms are intentionally pure and are not
+// wired into Checkout or Operations until the matching implementation phases.
+export const COMMERCIAL_OFFERS = ["standard", "founding_pilot"] as const;
+
+export type CommercialOffer = (typeof COMMERCIAL_OFFERS)[number];
+
+export const OPERATIONS_BLOCKERS = ["none", "relay", "customer", "carrier"] as const;
+
+export type OperationsBlocker = (typeof OPERATIONS_BLOCKERS)[number];
+
+export const STANDARD_TRIAL_DAYS = 14;
+export const FOUNDING_PILOT_TRIAL_DAYS = 30;
+export const STANDARD_SETUP_FEE_CENTS = 15_000;
+
+export type SetupFeeTreatment = "required" | "waived";
+
+export type CommercialTerms = {
+  setupFeeCents: number;
+  setupFeeTreatment: SetupFeeTreatment;
+  trialDays: number;
+};
+
+export function commercialTermsForOffer(offer: CommercialOffer): CommercialTerms {
+  if (offer === "founding_pilot") {
+    return {
+      setupFeeCents: STANDARD_SETUP_FEE_CENTS,
+      setupFeeTreatment: "waived",
+      trialDays: FOUNDING_PILOT_TRIAL_DAYS,
+    };
+  }
+
+  return {
+    setupFeeCents: STANDARD_SETUP_FEE_CENTS,
+    setupFeeTreatment: "required",
+    trialDays: STANDARD_TRIAL_DAYS,
+  };
+}
+
+export function isAutomaticTextBackActive(input: {
+  technicalStatus: TechnicalSetupStatus;
+  a2pStatus: A2pRegistrationStatus;
+  smsEnabled: boolean;
+}) {
+  return (
+    input.technicalStatus === "live" &&
+    input.a2pStatus === "approved" &&
+    input.smsEnabled
+  );
+}
+
+// The approved Phase 0 target starts a Stripe-owned trial only when the paid
+// outcome is working and nobody is still blocking activation. Call capture by
+// itself remains useful technical progress, but is not the $99 activation bar.
+export function canStartMonthlyTrial(input: {
+  technicalStatus: TechnicalSetupStatus;
+  a2pStatus: A2pRegistrationStatus;
+  smsEnabled: boolean;
+  blockedBy: OperationsBlocker;
+}) {
+  return input.blockedBy === "none" && isAutomaticTextBackActive(input);
+}
+
+export const BILLING_FACT_AUTHORITIES = {
+  payment_method: "stripe",
+  setup_fee_payment: "stripe",
+  subscription: "stripe",
+  trial: "stripe",
+  invoice: "stripe",
+  refund: "stripe",
+  dispute: "stripe",
+  retry: "stripe",
+  cancellation: "stripe",
+  setup_fee_waiver: "relay",
+  comped_service: "relay",
+  technical_setup: "relay",
+  operations_blocker: "relay",
+} as const;
+
+export type BillingFact = keyof typeof BILLING_FACT_AUTHORITIES;
+export type BillingFactAuthority = (typeof BILLING_FACT_AUTHORITIES)[BillingFact];
+
+export function authorityForBillingFact(fact: BillingFact): BillingFactAuthority {
+  return BILLING_FACT_AUTHORITIES[fact];
+}
+
 export type CustomerSetupView =
   | "relay_setting_up"
   | "forwarding_action_required"
@@ -91,8 +176,9 @@ export function shouldMarkTechnicalSetupLive(input: {
   );
 }
 
-// Monthly billing may begin once call capture is live. Setup-fee and A2P
-// states are intentionally not inputs and therefore cannot become hidden gates.
+// Phase 0 compatibility helper: current production Checkout still uses this
+// technical-only rule. Phase 1 will replace its runtime use with the approved
+// canStartMonthlyTrial target above. Keep behavior unchanged in Phase 0.
 export function canStartMonthlyBilling(technicalStatus: TechnicalSetupStatus) {
   return technicalStatus === "live";
 }

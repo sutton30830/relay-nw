@@ -1,6 +1,9 @@
 # Stripe Authority Migration
 
-Status: Phase 1 implementation and deployment design.
+Status: implemented historical migration design. The approved next-state contract is
+`docs/strategy/BILLING-OPERATIONS-SIMPLIFICATION.md`. Until Phase 1 of that
+new plan ships, this document remains an accurate description of the current
+runtime.
 
 ## Boundary
 

@@ -1,5 +1,11 @@
 # Relay NW Ops Runbook
 
+> **Phase 0 transition note:** this runbook describes the current production
+> runtime. The approved target delays monthly trial start until automatic
+> text-back activation and adds explicit blocker ownership. Do not use those
+> target rules operationally until their matching implementation phases ship.
+> See `docs/strategy/BILLING-OPERATIONS-SIMPLIFICATION.md`.
+
 Use this when Relay NW is live for a business and something important may have failed. The goal is simple: protect the missed-call recovery loop, notify the right person, and avoid silently losing caller data.
 
 ## Operator Boundary

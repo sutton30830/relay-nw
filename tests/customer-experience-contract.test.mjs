@@ -6,6 +6,10 @@ import ts from "typescript";
 
 const path = "lib/customer-experience-contract.ts";
 const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
+const currentBillingSource = await readFile(
+  new URL("../lib/billing.ts", import.meta.url),
+  "utf8",
+);
 const compiled = ts.transpileModule(source, {
   compilerOptions: {
     module: ts.ModuleKind.CommonJS,
@@ -17,10 +21,13 @@ new vm.Script(`(function(module, exports) { ${compiled}\n})`, { filename: path }
   .runInThisContext()(module, module.exports);
 
 const {
+  authorityForBillingFact,
   canEnableAutomaticTexting,
-  canStartMonthlyBilling,
+  canStartMonthlyTrial,
+  commercialTermsForOffer,
   deriveCustomerBillingView,
   deriveCustomerSetupView,
+  isAutomaticTextBackActive,
   setupFeeIsCommerciallySettled,
   shouldMarkTechnicalSetupLive,
 } = module.exports;
@@ -80,12 +87,67 @@ test("A2P approval permits texting but does not turn it on", () => {
   }), "calls_live_texting_on");
 });
 
-test("monthly billing is gated only by technical go-live", () => {
-  assert.equal(canStartMonthlyBilling("setting_up"), false);
-  assert.equal(canStartMonthlyBilling("waiting_for_forwarding"), false);
-  assert.equal(canStartMonthlyBilling("live"), true);
-  assert.equal(canStartMonthlyBilling("paused"), false);
-  assert.equal(canStartMonthlyBilling("closed"), false);
+test("calls can be ready while texting and monthly trial remain pending", () => {
+  const setupView = deriveCustomerSetupView({
+    technicalStatus: "live",
+    a2pStatus: "in_progress",
+    smsEnabled: false,
+  });
+
+  assert.equal(setupView, "calls_live_texting_pending");
+  assert.equal(isAutomaticTextBackActive({
+    technicalStatus: "live",
+    a2pStatus: "in_progress",
+    smsEnabled: false,
+  }), false);
+  assert.equal(canStartMonthlyTrial({
+    technicalStatus: "live",
+    a2pStatus: "in_progress",
+    smsEnabled: false,
+    blockedBy: "carrier",
+  }), false);
+});
+
+test("monthly trial starts only after approved automatic text-back is active", () => {
+  const base = {
+    technicalStatus: "live",
+    a2pStatus: "approved",
+    smsEnabled: true,
+    blockedBy: "none",
+  };
+
+  assert.equal(canStartMonthlyTrial(base), true);
+  assert.equal(canStartMonthlyTrial({ ...base, technicalStatus: "waiting_for_forwarding" }), false);
+  assert.equal(canStartMonthlyTrial({ ...base, a2pStatus: "in_progress" }), false);
+  assert.equal(canStartMonthlyTrial({ ...base, smsEnabled: false }), false);
+});
+
+test("standard customers receive a 14-day trial after paying the setup fee", () => {
+  assert.deepEqual(commercialTermsForOffer("standard"), {
+    setupFeeCents: 15_000,
+    setupFeeTreatment: "required",
+    trialDays: 14,
+  });
+});
+
+test("founding pilots receive an audited waiver and a 30-day trial", () => {
+  assert.deepEqual(commercialTermsForOffer("founding_pilot"), {
+    setupFeeCents: 15_000,
+    setupFeeTreatment: "waived",
+    trialDays: 30,
+  });
+});
+
+test("customer and carrier delays never start monthly trial time", () => {
+  const otherwiseReady = {
+    technicalStatus: "live",
+    a2pStatus: "approved",
+    smsEnabled: true,
+  };
+
+  assert.equal(canStartMonthlyTrial({ ...otherwiseReady, blockedBy: "customer" }), false);
+  assert.equal(canStartMonthlyTrial({ ...otherwiseReady, blockedBy: "carrier" }), false);
+  assert.equal(canStartMonthlyTrial({ ...otherwiseReady, blockedBy: "relay" }), false);
 });
 
 test("waivers and comps are Relay policy, not fake Stripe payments", () => {
@@ -101,6 +163,29 @@ test("waivers and comps are Relay policy, not fake Stripe payments", () => {
     policy: "standard",
     paymentStatus: "not_started",
   }), false);
+  assert.equal(authorityForBillingFact("setup_fee_waiver"), "relay");
+  assert.equal(authorityForBillingFact("comped_service"), "relay");
+});
+
+test("Stripe remains authoritative for every customer money fact", () => {
+  for (const fact of [
+    "payment_method",
+    "setup_fee_payment",
+    "subscription",
+    "trial",
+    "invoice",
+    "refund",
+    "dispute",
+    "retry",
+    "cancellation",
+  ]) {
+    assert.equal(authorityForBillingFact(fact), "stripe");
+  }
+});
+
+test("Phase 0 target remains isolated from current production billing", () => {
+  assert.match(currentBillingSource, /canStartMonthlyBilling/);
+  assert.doesNotMatch(currentBillingSource, /canStartMonthlyTrial/);
 });
 
 test("Stripe status drives the customer billing presentation", () => {

@@ -5,6 +5,11 @@ import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
 
+// Phase 0 compatibility coverage: these tests intentionally describe the
+// current production Checkout behavior. The approved delayed-trial target is
+// executable in customer-experience-contract.test.mjs and replaces these
+// expectations only when Phase 1 changes the runtime atomically.
+
 async function loadTsModule(path, mocks = {}) {
   const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
   const compiled = ts.transpileModule(source, {

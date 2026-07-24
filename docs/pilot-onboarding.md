@@ -1,5 +1,11 @@
 # Relay Pilot Onboarding
 
+> **Phase 0 transition note:** this runbook describes the current production
+> runtime. The approved target is a 30-day Stripe-owned founding-pilot trial
+> beginning only after automatic text-back activates. Do not operationalize
+> that target until the matching Phase 1 billing implementation ships. See
+> `docs/strategy/BILLING-OPERATIONS-SIMPLIFICATION.md`.
+
 Pilot onboarding is white-glove, but the customer experience stays simple:
 Relay prepares the account, the customer enables forwarding when needed, and
 the first real missed call proves the system is live.

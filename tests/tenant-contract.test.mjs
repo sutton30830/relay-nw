@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+// This suite protects the deployed contract. Phase 0 adds a separate pure
+// target contract and does not rewrite these runtime expectations early.
+
 const sql = await readFile(new URL("../supabase.sql", import.meta.url), "utf8");
 const envTs = await readFile(new URL("../lib/env.ts", import.meta.url), "utf8");
 const billingTs = await readFile(new URL("../lib/billing.ts", import.meta.url), "utf8");

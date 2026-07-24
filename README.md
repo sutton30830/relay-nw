@@ -2,6 +2,11 @@
 
 Relay NW is a missed-call recovery SaaS for one-truck home-service businesses. It is currently built for manually provisioned pilot accounts, not fully self-serve signup.
 
+The approved next-state billing and Operations contract is documented in
+`docs/strategy/BILLING-OPERATIONS-SIMPLIFICATION.md`. Phase 0 defines that
+target without changing the current production billing flow; follow the active
+runbooks until each matching implementation phase is deployed.
+
 Relay NW supports two call flows:
 
 - `CALL_MODE=forwarding`: the business keeps its existing public number and uses conditional call forwarding to send missed calls to Relay NW.
