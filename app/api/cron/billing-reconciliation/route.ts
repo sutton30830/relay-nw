@@ -1,4 +1,5 @@
 import { reconcileStripeBillingAccount } from "@/lib/billing-reconciliation";
+import { activateStripeTrialForAccount } from "@/lib/billing-activation";
 import { env } from "@/lib/env";
 import { notifyAdminOperationalIssue } from "@/lib/email";
 import {
@@ -33,16 +34,24 @@ export async function GET(request: Request) {
 
   for (const summary of summaries) {
     const account = await getOpsBillingAccountBySlug(summary.accountSlug);
-    if (!account || (!account.setupFeeCheckoutSessionId && !account.setupFeePaymentIntentId && !account.stripeSubscriptionId)) continue;
+    if (!account || (
+      !account.setupFeeCheckoutSessionId &&
+      !account.setupFeePaymentIntentId &&
+      !account.billingSetupCheckoutSessionId &&
+      !account.stripeSetupIntentId &&
+      !account.stripeCustomerId &&
+      !account.stripeSubscriptionId
+    )) continue;
     try {
       const checked = await reconcileStripeBillingAccount(account);
+      const activation = await activateStripeTrialForAccount(account.accountId);
       await recordAccountAuditEvents({
         accountId: account.accountId,
         actorUserId: null,
         actorEmail: "system:billing-reconciliation",
         events: [{ action: "billing.reconciled", summary: "Daily Stripe billing reconciliation completed" }],
       });
-      results.push({ accountId: account.accountId, accountSlug: account.accountSlug, ok: true, checked });
+      results.push({ accountId: account.accountId, accountSlug: account.accountSlug, ok: true, checked: { ...checked, activation } });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown reconciliation error";
       console.error("Daily Stripe reconciliation failed", { accountId: account.accountId, error: message });

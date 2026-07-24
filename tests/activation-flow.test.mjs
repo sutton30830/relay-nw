@@ -281,7 +281,21 @@ function makeMocks(state) {
 
 async function loadActivationModules(mocks) {
   const missedCall = await loadTsModule("lib/missed-call.ts", mocks);
-  const routeMocks = { ...mocks, "@/lib/missed-call": missedCall };
+  const routeMocks = {
+    ...mocks,
+    "next/server": {
+      after: (callback) => {
+        void callback();
+      },
+    },
+    "@/lib/billing-activation": {
+      activateStripeTrialForAccount: async () => ({
+        status: "not_eligible",
+        reason: "automatic_text_back_not_active",
+      }),
+    },
+    "@/lib/missed-call": missedCall,
+  };
   return {
     dialStatus: await loadTsModule("app/api/twilio/dial-status/route.ts", routeMocks),
     smsStatus: await loadTsModule("app/api/twilio/sms-status/route.ts", routeMocks),

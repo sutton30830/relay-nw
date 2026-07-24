@@ -31,9 +31,13 @@ function formatDateTime(value: string | null | undefined) {
   return new Date(value).toLocaleString();
 }
 
-function kickoffNotice(status: string | undefined) {
+function kickoffNotice(status: string | undefined, foundingPilot: boolean) {
   if (!status) return null;
-  if (status === "payment_link_sent") return "Secure $150 payment link emailed to the customer.";
+  if (status === "payment_link_sent") {
+    return foundingPilot
+      ? "Secure no-charge Stripe card link emailed to the founding pilot."
+      : "Secure $150 setup-payment link emailed to the customer.";
+  }
   if (status === "failed") return "Kickoff action failed. No billing state was changed unless shown above.";
   return "Kickoff action received.";
 }
@@ -53,7 +57,7 @@ function billingActionNotice(status: string | undefined) {
   if (status === "reconcile_failed") return "Stripe reconciliation failed. Check Diagnostics before retrying.";
   if (status === "setup_fee_already_paid") return "Not changed. A paid setup fee cannot be overwritten.";
   if (status === "override_blocked") return "Not changed. Stripe has a live subscription, so Stripe remains the source of truth.";
-  if (status === "setup_incomplete") return "Monthly billing is blocked until a real missed call reaches Relay.";
+  if (status === "setup_incomplete") return "Trial activation is waiting for full automatic text-back readiness.";
   if (status === "past_due") return "Monthly billing is past due; use the Billing Portal instead of starting another subscription.";
   if (status === "already_active") return "An active subscription already exists.";
   if (status === "subscription_incomplete") return "Stripe has an incomplete subscription; resolve it before retrying.";
@@ -117,7 +121,8 @@ export default async function OpsAccountPage({
   }
 
   const isComped = billing.billingPolicy === "comped";
-  const setupFeeWaived = billing.billingPolicy === "setup_fee_waived";
+  const isFoundingPilot = billing.commercialOffer === "founding_pilot";
+  const setupFeeWaived = billing.billingPolicy === "setup_fee_waived" || isFoundingPilot;
   const effectiveBillingStatus = isComped ? "comped" : billing.billingStatus;
 
   const lifecycle = getOpsLifecycle({
@@ -145,6 +150,12 @@ export default async function OpsAccountPage({
   );
   const kickoffCollectible = !kickoffSettled && (billing.setupFeeStatus === "due" || billing.setupFeeStatus === "refunded" ||
     billing.setupFeeStatus === "charged_back");
+  const pilotCardNeeded =
+    isFoundingPilot &&
+    !isComped &&
+    !billing.stripeDefaultPaymentMethodId &&
+    effectiveBillingStatus !== "active" &&
+    effectiveBillingStatus !== "trialing";
   const kickoffState = isComped
     ? "Comped"
     : setupFeeWaived
@@ -179,7 +190,7 @@ export default async function OpsAccountPage({
               ? "Canceled"
               : "Not started";
   const monthlyTone = effectiveBillingStatus === "past_due" ? "warn" : "neutral";
-  const kickoffMessage = kickoffNotice(notices.kickoff);
+  const kickoffMessage = kickoffNotice(notices.kickoff, isFoundingPilot);
   const billingMessage = billingActionNotice(notices.billing_action);
   return (
     <main className="leads-view">
@@ -220,24 +231,41 @@ export default async function OpsAccountPage({
           </div>
         </section>
 
-        {/* Money moment 1 — the $150 kickoff. State first, buttons only while due. */}
+        {/* Money moment 1 — commercial setup and Stripe card readiness. */}
         <section className="panel setup-panel" aria-label="Kickoff fee">
           <div className="setup-panel__head">
-            <p className="t-eyebrow">Kickoff · $150</p>
-            <h2>{kickoffCollectible ? "Collect the $150, or waive it deliberately." : `Setup fee: ${kickoffState.toLowerCase()}.`}</h2>
-            <p className="setup-copy">Separate from the $99 monthly plan. The customer always starts monthly billing themselves through Stripe Checkout.</p>
+            <p className="t-eyebrow">{isFoundingPilot ? "Founding pilot" : "Standard setup · $150"}</p>
+            <h2>
+              {pilotCardNeeded
+                ? "Setup fee waived · Stripe card still needed."
+                : kickoffCollectible
+                  ? "Collect the $150, or make this an audited founding pilot."
+                  : `Setup fee: ${kickoffState.toLowerCase()}.`}
+            </h2>
+            <p className="setup-copy">
+              {isFoundingPilot
+                ? "The waiver is a Relay exception, not a payment or refund. Stripe collects a card without charging it."
+                : "Stripe charges the one-time setup fee and securely retains the card with clear consent."}
+            </p>
           </div>
           {kickoffMessage ? (
             <div className={notices.kickoff === "failed" ? "intake-error settings-notice" : "settings-notice"} role="status">{kickoffMessage}</div>
           ) : null}
-          {kickoffCollectible ? (
+          {pilotCardNeeded ? (
+            <div className="ops-billing-actions">
+              <form action="/api/ops/kickoff" method="post">
+                <input type="hidden" name="account_slug" value={summary.accountSlug} />
+                <button className="btn btn-primary" name="action" value="send_invoice">Email secure card link</button>
+              </form>
+            </div>
+          ) : kickoffCollectible ? (
             <div className="ops-billing-actions">
               <form action="/api/ops/kickoff" method="post"><input type="hidden" name="account_slug" value={summary.accountSlug} /><button className="btn btn-primary" name="action" value="send_invoice">{billing.setupFeeStatus === "due" ? "Email $150 payment link" : "Collect $150 again"}</button></form>
             </div>
           ) : (
             <p className="setup-panel__note">
               {setupFeeWaived || billing.setupFeeStatus === "waived"
-                ? "Waived — recorded in the audit trail."
+                ? `Waived — recorded in the audit trail. Stripe card: ${billing.stripeDefaultPaymentMethodId ? "ready" : "not ready"}.`
                 : billing.setupFeeStatus === "disputed"
                   ? "The payment is disputed in Stripe. Sync after Stripe resolves the dispute."
                 : `Settled${billing.firstPaidAt ? ` · first paid ${formatDate(billing.firstPaidAt)}` : ""}.`}
@@ -275,7 +303,7 @@ export default async function OpsAccountPage({
             <p className="setup-copy">
               {effectiveBillingStatus !== "not_started"
                 ? "Stripe is the source of truth for monthly billing. A failed payment does not immediately interrupt call capture."
-                : "The customer starts monthly billing from Settings when call capture is live. Operators never create a subscription or save a card for them."}
+                : `The ${isFoundingPilot ? "30" : "14"}-day Stripe trial starts automatically only after calls, A2P, automatic text-back, commercial setup, and the Stripe card are ready. Calls alone never start trial time.`}
             </p>
           </div>
           {billingMessage ? (
@@ -304,7 +332,7 @@ export default async function OpsAccountPage({
                 <label className="field-label" htmlFor="setup-fee-waiver-reason">Setup-fee waiver reason</label>
                 <div className="lead-controls ops-trial-controls">
                   <input id="setup-fee-waiver-reason" className="field" name="reason" maxLength={240} minLength={5} required placeholder="e.g. pilot customer" />
-                  <button className="btn btn-secondary" type="submit" name="action" value="waive_setup_fee">Waive $150 setup fee</button>
+                  <button className="btn btn-secondary" type="submit" name="action" value="waive_setup_fee">Make founding pilot</button>
                 </div>
               </form>
             ) : null}
@@ -314,7 +342,7 @@ export default async function OpsAccountPage({
                 <label className="field-label" htmlFor="setup-fee-require-reason">Reason to require the setup fee</label>
                 <div className="lead-controls ops-trial-controls">
                   <input id="setup-fee-require-reason" className="field" name="reason" maxLength={240} minLength={5} required placeholder="Why is the original waiver being removed?" />
-                  <button className="btn btn-secondary" type="submit" name="action" value="require_setup_fee">Require $150 setup fee</button>
+                  <button className="btn btn-secondary" type="submit" name="action" value="require_setup_fee">Return to standard terms</button>
                 </div>
               </form>
             ) : null}

@@ -143,6 +143,11 @@ test("legacy call without ownLeadCreatedAt: any active competitor blocks (conser
 
 async function loadAccountsModule() {
   return loadTsModule("lib/supabase/accounts.ts", {
+    "@/lib/billing": {
+      normalizeCommercialOffer: (value) =>
+        value === "founding_pilot" ? "founding_pilot" : "standard",
+    },
+    "@/lib/customer-experience-contract": {},
     "@/lib/env": {
       env: {
         defaultAccountSlug: "relay-nw",

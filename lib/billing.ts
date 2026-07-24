@@ -1,10 +1,13 @@
 import {
-  canStartMonthlyBilling,
+  canStartMonthlyTrial,
+  commercialTermsForOffer,
+  type A2pRegistrationStatus,
   type BillingPolicy,
+  type CommercialOffer,
   type TechnicalSetupStatus,
 } from "@/lib/customer-experience-contract";
 
-export type { BillingPolicy } from "@/lib/customer-experience-contract";
+export type { BillingPolicy, CommercialOffer } from "@/lib/customer-experience-contract";
 
 export type AccountBillingStatus = "not_started" | "trialing" | "active" | "past_due" | "canceled" | "comped";
 
@@ -23,8 +26,9 @@ export type StripeSubscriptionStatus =
 export type BillingOwnerAction =
   | "none"
   | "pay_setup_fee"
+  | "add_payment_method"
   | "finish_setup"
-  | "start_billing"
+  | "wait_for_activation"
   | "manage_billing"
   | "update_payment"
   | "restart_subscription"
@@ -33,11 +37,17 @@ export type BillingOwnerAction =
 export type AccountBillingRecord = {
   billingStatus: AccountBillingStatus;
   billingPolicy: BillingPolicy;
+  commercialOffer: CommercialOffer;
   onboardingStatus: AccountOnboardingStatus;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
   stripePriceId: string | null;
   stripeSubscriptionStatus: StripeSubscriptionStatus | null;
+  billingSetupCheckoutSessionId: string | null;
+  stripeSetupIntentId: string | null;
+  stripeSetupIntentStatus: string | null;
+  stripeDefaultPaymentMethodId: string | null;
+  paymentMethodUpdatedAt: string | null;
   trialEndsAt: string | null;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
@@ -77,11 +87,11 @@ export type BillingCheckoutEligibility =
   | {
       ok: false;
       reason:
-        | "setup_incomplete"
-        | "setup_fee_required"
         | "already_active"
         | "subscription_incomplete"
         | "past_due"
+        | "setup_incomplete"
+        | "initial_trial_managed_automatically"
         | "contact_support";
     };
 
@@ -94,11 +104,17 @@ export type OperatorBillingOverrideAction =
 const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   billingStatus: "not_started",
   billingPolicy: "standard",
+  commercialOffer: "standard",
   onboardingStatus: "setting_up",
   stripeCustomerId: null,
   stripeSubscriptionId: null,
   stripePriceId: null,
   stripeSubscriptionStatus: null,
+  billingSetupCheckoutSessionId: null,
+  stripeSetupIntentId: null,
+  stripeSetupIntentStatus: null,
+  stripeDefaultPaymentMethodId: null,
+  paymentMethodUpdatedAt: null,
   trialEndsAt: null,
   currentPeriodEnd: null,
   cancelAtPeriodEnd: false,
@@ -173,6 +189,10 @@ export function normalizeBillingPolicy(
   return "standard";
 }
 
+export function normalizeCommercialOffer(value: string | null | undefined): CommercialOffer {
+  return value === "founding_pilot" ? "founding_pilot" : "standard";
+}
+
 export function normalizeOnboardingStatus(value: string | null | undefined): AccountOnboardingStatus {
   if (
     value === "setting_up" ||
@@ -221,11 +241,8 @@ function formatBillingLifecycleDate(value: string | null) {
 function actionFor(input: {
   billingStatus: AccountBillingStatus;
   activationReady: boolean;
-  stripeSubscriptionId?: string | null;
-  trialEndsAt?: string | null;
-  cancelAtPeriodEnd?: boolean;
-  setupFeeStatus?: AccountBillingRecord["setupFeeStatus"];
-  firstPaidAt?: string | null;
+  setupFeeSettled: boolean;
+  paymentMethodReady: boolean;
 }): BillingOwnerAction {
   if (input.billingStatus === "comped") {
     return "none";
@@ -236,10 +253,6 @@ function actionFor(input: {
   }
 
   if (input.billingStatus === "past_due") {
-    if (!input.stripeSubscriptionId && input.trialEndsAt) {
-      return input.activationReady ? "start_billing" : "finish_setup";
-    }
-
     return "update_payment";
   }
 
@@ -247,31 +260,49 @@ function actionFor(input: {
     return input.activationReady ? "restart_subscription" : "finish_setup";
   }
 
+  if (!input.setupFeeSettled) {
+    return "pay_setup_fee";
+  }
+
+  if (!input.paymentMethodReady) {
+    return "add_payment_method";
+  }
+
   if (!input.activationReady) {
     return "finish_setup";
   }
 
-  return "start_billing";
+  return "wait_for_activation";
 }
 
 export function computeBillingLifecycle(input: {
   billing: AccountBillingRecord | null | undefined;
   technicalStatus: TechnicalSetupStatus;
+  a2pStatus: A2pRegistrationStatus;
+  smsEnabled: boolean;
 }): BillingLifecycleState {
   const billing = input.billing ?? defaultBillingRecord();
-  const activationReady = canStartMonthlyBilling(input.technicalStatus);
+  const activationReady = canStartMonthlyTrial({
+    technicalStatus: input.technicalStatus,
+    a2pStatus: input.a2pStatus,
+    smsEnabled: input.smsEnabled,
+    blockedBy: "none",
+  });
   const billingStatus = billing.billingPolicy === "comped"
     ? "comped"
     : normalizeBillingStatus(billing.billingStatus);
   const onboardingStatus = input.technicalStatus;
+  const setupFeeSettled = isSetupFeeSettled(
+    billing.setupFeeStatus,
+    billing.firstPaidAt,
+    billing.billingPolicy,
+  );
+  const paymentMethodReady = Boolean(billing.stripeDefaultPaymentMethodId);
   const ownerAction = actionFor({
     billingStatus,
     activationReady,
-    stripeSubscriptionId: billing.stripeSubscriptionId,
-    trialEndsAt: billing.trialEndsAt,
-    cancelAtPeriodEnd: billing.cancelAtPeriodEnd,
-    setupFeeStatus: billing.setupFeeStatus,
-    firstPaidAt: billing.firstPaidAt,
+    setupFeeSettled,
+    paymentMethodReady,
   });
   if (billingStatus === "past_due") {
     return {
@@ -295,8 +326,8 @@ export function computeBillingLifecycle(input: {
       label: "Canceled",
       headline: "Subscription is canceled.",
       summary: activationReady
-        ? "Relay is still configured. Restart the subscription before treating this account as paid."
-        : "Finish setup before restarting billing.",
+        ? "Restart securely in Stripe. Your original free trial will not repeat."
+        : "Finish automatic text-back setup before restarting billing.",
       tone: "warn",
     };
   }
@@ -331,16 +362,43 @@ export function computeBillingLifecycle(input: {
     };
   }
 
+  if (!setupFeeSettled) {
+    return {
+      activationReady,
+      billingStatus,
+      onboardingStatus,
+      ownerAction,
+      label: "Setup fee due",
+      headline: "Complete the one-time setup payment.",
+      summary: "The $150 payment saves your card securely in Stripe. Your monthly trial still waits for automatic text-back.",
+      tone: "neutral",
+    };
+  }
+
+  if (!paymentMethodReady) {
+    const terms = commercialTermsForOffer(billing.commercialOffer);
+    return {
+      activationReady,
+      billingStatus,
+      onboardingStatus,
+      ownerAction,
+      label: "Card needed",
+      headline: "Add a payment method securely.",
+      summary: `Stripe will save the card for $99/month after the ${terms.trialDays}-day trial. Nothing is charged now.`,
+      tone: "neutral",
+    };
+  }
+
   if (activationReady) {
     return {
       activationReady,
       billingStatus,
       onboardingStatus,
       ownerAction,
-      label: "Ready to bill",
-      headline: "Ready for activation billing.",
-      summary: "Call capture is live. Start billing when the customer is handed off.",
-      tone: "warn",
+      label: "Activating trial",
+      headline: "Automatic text-back is ready.",
+      summary: `Relay will start the Stripe-owned ${commercialTermsForOffer(billing.commercialOffer).trialDays}-day trial automatically.`,
+      tone: "good",
     };
   }
 
@@ -350,35 +408,31 @@ export function computeBillingLifecycle(input: {
     onboardingStatus,
     ownerAction,
     label: "Setup first",
-    headline: "Billing should wait.",
-    summary: "Finish call capture before charging this account.",
+    headline: "Monthly billing is waiting.",
+    summary: "The trial begins only after A2P approval and automatic text-back activation.",
     tone: "neutral",
   };
 }
 
 export function getBillingCheckoutEligibility(input: {
   billing: AccountBillingRecord | null | undefined;
-  technicalStatus: TechnicalSetupStatus;
+  activationReady: boolean;
 }): BillingCheckoutEligibility {
   const billing = input.billing ?? defaultBillingRecord();
-  const activationReady = canStartMonthlyBilling(input.technicalStatus);
   const billingStatus = normalizeBillingStatus(billing.billingStatus);
   const stripeStatus = normalizeStripeSubscriptionStatus(billing.stripeSubscriptionStatus);
-
-  if (!activationReady) {
-    return { ok: false, reason: "setup_incomplete" };
-  }
 
   if (billing.billingPolicy === "comped") {
     return { ok: false, reason: "already_active" };
   }
 
-  if (billingStatus === "active" || stripeStatus === "active" || stripeStatus === "trialing") {
+  if (
+    billingStatus === "active" ||
+    billingStatus === "trialing" ||
+    stripeStatus === "active" ||
+    stripeStatus === "trialing"
+  ) {
     return { ok: false, reason: "already_active" };
-  }
-
-  if (stripeStatus === "incomplete_expired" || stripeStatus === "canceled") {
-    return { ok: true };
   }
 
   if (
@@ -394,20 +448,21 @@ export function getBillingCheckoutEligibility(input: {
     return { ok: false, reason: "subscription_incomplete" };
   }
 
+  // Initial subscriptions are created automatically only after full text-back
+  // activation. Checkout remains an on-session, authenticated restart path
+  // after a customer has already used the initial trial.
+  if (
+    billingStatus === "canceled" &&
+    (stripeStatus === "canceled" || stripeStatus === "incomplete_expired" || !stripeStatus) &&
+    Boolean(billing.activatedAt || billing.firstPaidAt || billing.canceledAt)
+  ) {
+    return input.activationReady
+      ? { ok: true }
+      : { ok: false, reason: "setup_incomplete" };
+  }
+
   if (billingStatus === "not_started") {
-    return { ok: true };
-  }
-
-  if (billingStatus === "trialing" && !billing.stripeSubscriptionId) {
-    return { ok: true };
-  }
-
-  if (billingStatus === "canceled") {
-    if (!stripeStatus) {
-      return { ok: true };
-    }
-
-    return { ok: false, reason: "contact_support" };
+    return { ok: false, reason: "initial_trial_managed_automatically" };
   }
 
   return { ok: false, reason: "contact_support" };

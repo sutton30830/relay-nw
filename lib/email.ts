@@ -417,6 +417,40 @@ export async function notifyOwnerBillingPaymentFailed(input: {
   });
 }
 
+export async function notifyOwnerTrialEnding(input: {
+  account: AccountRuntimeConfig;
+  trialEndsAt: string | null;
+}) {
+  const recipient = await ownerEmail(input.account);
+  const endDate = input.trialEndsAt
+    ? new Date(input.trialEndsAt).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : null;
+  const lines = [
+    endDate
+      ? `Your Relay NW trial ends on ${endDate}.`
+      : "Your Relay NW trial ends soon.",
+    "Stripe will begin the $99 monthly subscription automatically unless you cancel.",
+    "Use the secure Stripe billing portal to update your card, view invoices, or cancel.",
+  ];
+  return sendEmail({
+    to: recipient,
+    subject: `Relay NW trial ending for ${input.account.businessName}`,
+    html: emailHtml({
+      title: "Your trial ends soon",
+      preview: lines[0],
+      lines,
+      actionLabel: "Manage billing",
+      actionUrl: `${env.appBaseUrl}/settings#billing`,
+    }),
+    text: `${lines.join("\n")}\n\nManage billing: ${env.appBaseUrl}/settings#billing`,
+    tag: "owner_trial_ending",
+  });
+}
+
 export async function notifyOwnerSubscriptionScheduledToEnd(input: {
   account: AccountRuntimeConfig;
   currentPeriodEnd: string | null;
@@ -492,8 +526,8 @@ export async function notifyOwnerBillingTrialExpired(input: {
     trialEnd
       ? `Your Relay NW trial for ${input.account.businessName} ended on ${trialEnd}.`
       : `Your Relay NW trial for ${input.account.businessName} has ended.`,
-    "Start billing to continue on a paid subscription.",
-    "Relay is still catching missed calls while billing is resolved.",
+    "Stripe attempted to begin the $99 monthly subscription automatically.",
+    "Open the secure billing portal if payment needs approval or an updated card.",
   ];
 
   return sendEmail({
@@ -501,12 +535,12 @@ export async function notifyOwnerBillingTrialExpired(input: {
     subject: `Relay NW trial ended for ${input.account.businessName}`,
     html: emailHtml({
       title: "Trial ended",
-      preview: "Start billing to continue on a paid subscription.",
+      preview: "Review your subscription and payment in Stripe.",
       lines,
-      actionLabel: "Start billing",
+      actionLabel: "Manage billing",
       actionUrl: `${env.appBaseUrl}/settings#billing`,
     }),
-    text: `${lines.join("\n")}\n\nStart billing: ${env.appBaseUrl}/settings#billing`,
+    text: `${lines.join("\n")}\n\nManage billing: ${env.appBaseUrl}/settings#billing`,
     tag: "owner_billing_trial_expired",
   });
 }

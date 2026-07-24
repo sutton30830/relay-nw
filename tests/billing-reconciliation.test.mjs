@@ -51,6 +51,9 @@ function account(overrides = {}) {
     setupFeeRefundedAt: null,
     stripeCustomerId: "cus_1",
     stripeSubscriptionId: null,
+    stripeSetupIntentId: null,
+    billingSetupCheckoutSessionId: null,
+    stripeDefaultPaymentMethodId: "pm_1",
     ...overrides,
   };
 }
@@ -59,12 +62,14 @@ function payment(overrides = {}) {
   return {
     id: "pi_setup_1",
     customerId: "cus_1",
+    paymentMethodId: "pm_1",
     status: "succeeded",
     amount: 15000,
     amountReceived: 15000,
     amountRefunded: 0,
     disputed: false,
     disputeStatus: null,
+    livemode: false,
     ...overrides,
   };
 }
@@ -80,6 +85,17 @@ async function reconcile(inputAccount, paymentSnapshot) {
       },
       retrieveStripeSubscription: async () => {
         throw new Error("unexpected subscription lookup");
+      },
+      retrieveStripeSetupIntent: async () => {
+        throw new Error("unexpected SetupIntent lookup");
+      },
+      retrieveStripeCustomerBillingProfile: async () => ({
+        id: "cus_1",
+        defaultPaymentMethodId: "pm_1",
+        livemode: false,
+      }),
+      setStripeCustomerDefaultPaymentMethod: async () => {
+        throw new Error("unexpected customer update");
       },
     },
     "@/lib/supabase": {
@@ -103,10 +119,15 @@ test("reconciliation preserves charged-back truth without an explicit Stripe res
     payment(),
   );
 
-  assert.deepEqual(result, { setupFeeChecked: true, subscriptionChecked: false });
-  assert.equal(updates[0].update.setupFeeStatus, "charged_back");
-  assert.equal(updates[0].update.setupFeeDisputeStatus, "lost");
-  assert.equal(updates[0].update.setupFeeRefundedAt, "2026-07-01T00:00:00.000Z");
+  assert.deepEqual(result, {
+    setupFeeChecked: true,
+    paymentMethodChecked: true,
+    subscriptionChecked: false,
+  });
+  const setupUpdate = updates.find(({ update }) => update.setupFeeStatus);
+  assert.equal(setupUpdate.update.setupFeeStatus, "charged_back");
+  assert.equal(setupUpdate.update.setupFeeDisputeStatus, "lost");
+  assert.equal(setupUpdate.update.setupFeeRefundedAt, "2026-07-01T00:00:00.000Z");
 });
 
 test("reconciliation uses Stripe's explicit lost dispute outcome", async () => {
@@ -115,9 +136,10 @@ test("reconciliation uses Stripe's explicit lost dispute outcome", async () => {
     payment({ disputed: true, disputeStatus: "lost" }),
   );
 
-  assert.equal(updates[0].update.setupFeeStatus, "charged_back");
-  assert.equal(updates[0].update.setupFeeDisputeStatus, "lost");
-  assert.match(updates[0].update.setupFeeRefundedAt, /^\d{4}-\d{2}-\d{2}T/);
+  const setupUpdate = updates.find(({ update }) => update.setupFeeStatus);
+  assert.equal(setupUpdate.update.setupFeeStatus, "charged_back");
+  assert.equal(setupUpdate.update.setupFeeDisputeStatus, "lost");
+  assert.match(setupUpdate.update.setupFeeRefundedAt, /^\d{4}-\d{2}-\d{2}T/);
 });
 
 test("reconciliation preserves an unresolved dispute when Stripe omits its outcome", async () => {
@@ -129,8 +151,9 @@ test("reconciliation preserves an unresolved dispute when Stripe omits its outco
     payment(),
   );
 
-  assert.equal(updates[0].update.setupFeeStatus, "disputed");
-  assert.equal(updates[0].update.setupFeeDisputeStatus, "under_review");
+  const setupUpdate = updates.find(({ update }) => update.setupFeeStatus);
+  assert.equal(setupUpdate.update.setupFeeStatus, "disputed");
+  assert.equal(setupUpdate.update.setupFeeDisputeStatus, "under_review");
 });
 
 test("reconciliation clears a disputed state only after Stripe reports it won", async () => {
@@ -142,6 +165,7 @@ test("reconciliation clears a disputed state only after Stripe reports it won", 
     payment({ disputed: true, disputeStatus: "won" }),
   );
 
-  assert.equal(updates[0].update.setupFeeStatus, "paid");
-  assert.equal(updates[0].update.setupFeeDisputeStatus, "won");
+  const setupUpdate = updates.find(({ update }) => update.setupFeeStatus);
+  assert.equal(setupUpdate.update.setupFeeStatus, "paid");
+  assert.equal(setupUpdate.update.setupFeeDisputeStatus, "won");
 });

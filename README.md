@@ -83,7 +83,9 @@ For the customer-by-customer onboarding checklist, see `docs/customer-setup.md`.
 - `/api/twilio/recording` Twilio voicemail recording callback
 - `/api/twilio/sms` Twilio inbound SMS webhook
 - `/api/twilio/sms-status` Twilio outbound SMS delivery callback
-- `/api/billing/checkout` owner-only Stripe subscription Checkout
+- `/api/billing/setup-fee` owner-only $150 Stripe setup Checkout
+- `/api/billing/payment-method` owner-only no-charge Stripe card setup
+- `/api/billing/checkout` owner-only Stripe subscription restart Checkout
 - `/api/billing/portal` owner-only Stripe Customer Portal
 - `/api/stripe/webhook` signed Stripe billing synchronization
 

@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { after } from "next/server";
+import { activateStripeTrialForAccount } from "@/lib/billing-activation";
 import { requirePlatformOperatorWrite } from "@/lib/auth";
 import {
   getOpsBillingAccountBySlug,
@@ -42,5 +44,17 @@ export async function POST(request: Request) {
   const summary = `Carrier registration marked ${action.replaceAll("_", " ")}${detail ? ` — ${detail}` : ""}`;
   await recordAccountAuditEvents({ accountId: account.accountId, actorUserId: operator.userId, actorEmail: operator.email, events: [{ action: `carrier.${action}`, summary }] });
   await recordPlatformAuditEvent({ actorUserId: operator.userId, actorEmail: operator.email, targetAccountId: account.accountId, action: `carrier.${action}`, summary });
+  if (action === "approved") {
+    after(async () => {
+      try {
+        await activateStripeTrialForAccount(account.accountId);
+      } catch (error) {
+        console.error("Deferred trial activation after A2P approval failed", {
+          accountId: account.accountId,
+          error: error instanceof Error ? error.message : error,
+        });
+      }
+    });
+  }
   go(account.accountSlug, action);
 }

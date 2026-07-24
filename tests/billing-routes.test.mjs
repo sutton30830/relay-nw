@@ -4,8 +4,8 @@ import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
 
-// Phase 0 compatibility coverage. Runtime billing routes still use technical
-// call readiness until the Stripe-owned delayed-trial flow ships in Phase 1.
+// Phase 1 route coverage. Initial trial creation is server-managed after full
+// text-back activation; subscription Checkout is only a restart path.
 
 async function loadTsModule(path, mocks) {
   const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
@@ -28,11 +28,9 @@ async function loadTsModule(path, mocks) {
   return module.exports;
 }
 
+const customerExperienceContract = await loadTsModule("lib/customer-experience-contract.ts", {});
 const billing = await loadTsModule("lib/billing.ts", {
-  "@/lib/readiness": {},
-  "@/lib/customer-experience-contract": {
-    canStartMonthlyBilling: (status) => status === "live",
-  },
+  "@/lib/customer-experience-contract": customerExperienceContract,
 });
 
 function session(overrides = {}) {
@@ -55,21 +53,7 @@ function session(overrides = {}) {
 
 function billingRecord(overrides = {}) {
   return {
-    billingStatus: "not_started",
-    onboardingStatus: "requirements_needed",
-    stripeCustomerId: null,
-    stripeSubscriptionId: null,
-    stripePriceId: null,
-    stripeSubscriptionStatus: null,
-    trialEndsAt: null,
-    currentPeriodEnd: null,
-    cancelAtPeriodEnd: false,
-    activatedAt: null,
-    firstPaidAt: null,
-    guaranteeEndsAt: null,
-    billingAttentionSince: null,
-    billingUpdatedAt: null,
-    onboardingStatusUpdatedAt: null,
+    ...billing.defaultBillingRecord(),
     ...overrides,
   };
 }
@@ -77,8 +61,8 @@ function billingRecord(overrides = {}) {
 async function runCheckout({
   authSession = session(),
   accountBilling = billingRecord(),
-  callCaptureReady = true,
-  smsRegistrationReady = true,
+  technicalStatus = "live",
+  a2pStatus = "approved",
 } = {}) {
   const calls = {
     billingLookups: [],
@@ -97,9 +81,7 @@ async function runCheckout({
       requireAccountUser: async () => authSession,
     },
     "@/lib/billing": billing,
-    "@/lib/readiness": {
-      computeSetupReadiness: () => ({ callCaptureReady, smsRegistrationReady }),
-    },
+    "@/lib/customer-experience-contract": customerExperienceContract,
     "@/lib/stripe-billing": {
       createStripeCheckoutSession: async (input) => {
         calls.checkoutInputs.push(input);
@@ -111,7 +93,8 @@ async function runCheckout({
         calls.billingLookups.push(accountId);
         return accountBilling;
       },
-      getAccountTechnicalSetupStatus: async () => callCaptureReady ? "live" : "waiting_for_forwarding",
+      getAccountTechnicalSetupStatus: async () => technicalStatus,
+      getA2pRegistrationStatus: async () => a2pStatus,
     },
   });
 
@@ -121,6 +104,66 @@ async function runCheckout({
     if (!String(error?.message ?? "").startsWith("REDIRECT:")) {
       throw error;
     }
+  }
+
+  return calls;
+}
+
+async function runPaymentMethod({
+  authSession = session(),
+  accountBilling = billingRecord({
+    commercialOffer: "founding_pilot",
+    billingPolicy: "setup_fee_waived",
+    setupFeeStatus: "waived",
+  }),
+  existingCheckout = null,
+} = {}) {
+  const calls = {
+    billingLookups: [],
+    checkoutInputs: [],
+    checkoutLookups: [],
+    billingUpdates: [],
+    redirects: [],
+  };
+
+  const { POST } = await loadTsModule("app/api/billing/payment-method/route.ts", {
+    "next/navigation": {
+      redirect: (url) => {
+        calls.redirects.push(url);
+        throw Object.assign(new Error(`REDIRECT:${url}`), { url });
+      },
+    },
+    "@/lib/auth": {
+      requireAccountUser: async () => authSession,
+    },
+    "@/lib/billing": billing,
+    "@/lib/customer-experience-contract": customerExperienceContract,
+    "@/lib/stripe-billing": {
+      createStripePaymentMethodCheckoutSession: async (input) => {
+        calls.checkoutInputs.push(input);
+        return { id: "cs_card_123", url: "https://checkout.stripe.test/card" };
+      },
+      retrieveStripeCheckoutSession: async (sessionId) => {
+        calls.checkoutLookups.push(sessionId);
+        if (existingCheckout instanceof Error) throw existingCheckout;
+        return existingCheckout;
+      },
+    },
+    "@/lib/supabase": {
+      getAccountBillingRecord: async (accountId) => {
+        calls.billingLookups.push(accountId);
+        return accountBilling;
+      },
+      updateAccountBillingRecord: async (accountId, update) => {
+        calls.billingUpdates.push({ accountId, update });
+      },
+    },
+  });
+
+  try {
+    await POST();
+  } catch (error) {
+    if (!String(error?.message ?? "").startsWith("REDIRECT:")) throw error;
   }
 
   return calls;
@@ -186,6 +229,7 @@ async function runOpsBillingOverride({
   const calls = {
     lookups: [],
     policies: [],
+    commercialOffers: [],
     platformAudits: [],
     redirects: [],
   };
@@ -208,6 +252,9 @@ async function runOpsBillingOverride({
       },
       setAccountBillingPolicy: async (input) => {
         calls.policies.push(input);
+      },
+      setAccountCommercialOffer: async (input) => {
+        calls.commercialOffers.push(input);
       },
       recordPlatformAuditEvent: async (input) => {
         calls.platformAudits.push(input);
@@ -234,11 +281,11 @@ async function runOpsBillingOverride({
   return calls;
 }
 
-test("direct Checkout before activation readiness fails", async () => {
-  const calls = await runCheckout({ callCaptureReady: false, smsRegistrationReady: true });
+test("initial subscription Checkout is unavailable because activation creates the Stripe trial", async () => {
+  const calls = await runCheckout();
 
   assert.deepEqual(calls.checkoutInputs, []);
-  assert.deepEqual(calls.redirects, ["/settings?billing=setup_incomplete#billing"]);
+  assert.deepEqual(calls.redirects, ["/settings?billing=initial_trial_managed_automatically#billing"]);
 });
 
 test("viewer and admin cannot initiate billing", async () => {
@@ -250,16 +297,45 @@ test("viewer and admin cannot initiate billing", async () => {
   }
 });
 
-test("selected account determines the Stripe customer used for Checkout", async () => {
+test("selected account determines the Stripe customer used for restart Checkout", async () => {
   const calls = await runCheckout({
-    authSession: session({ accountId: "acct-b", account: { ...session().account, accountSlug: "tenant-b" } }),
-    accountBilling: billingRecord({ stripeCustomerId: "cus_tenant_b" }),
+    authSession: session({
+      accountId: "acct-b",
+      account: { ...session().account, accountSlug: "tenant-b", smsEnabled: true },
+    }),
+    accountBilling: billingRecord({
+      billingStatus: "canceled",
+      stripeSubscriptionStatus: "canceled",
+      stripeCustomerId: "cus_tenant_b",
+      activatedAt: "2026-07-23T00:00:00.000Z",
+    }),
   });
 
   assert.deepEqual(calls.billingLookups, ["acct-b"]);
   assert.equal(calls.checkoutInputs.length, 1);
   assert.equal(calls.checkoutInputs[0].accountId, "acct-b");
   assert.equal(calls.checkoutInputs[0].stripeCustomerId, "cus_tenant_b");
+});
+
+test("calls working alone cannot restart a canceled subscription", async () => {
+  const calls = await runCheckout({
+    authSession: session({
+      account: { ...session().account, smsEnabled: false },
+    }),
+    accountBilling: billingRecord({
+      billingStatus: "canceled",
+      stripeSubscriptionStatus: "canceled",
+      stripeCustomerId: "cus_1",
+      activatedAt: "2026-07-23T00:00:00.000Z",
+    }),
+    technicalStatus: "live",
+    a2pStatus: "in_progress",
+  });
+
+  assert.deepEqual(calls.checkoutInputs, []);
+  assert.deepEqual(calls.redirects, [
+    "/settings?billing=setup_incomplete#billing",
+  ]);
 });
 
 test("active subscription cannot create duplicate Checkout", async () => {
@@ -314,11 +390,15 @@ test("one tenant cannot open another tenant's Portal through request input", asy
 
 test("fully canceled subscription can restart through Checkout", async () => {
   const calls = await runCheckout({
+    authSession: session({
+      account: { ...session().account, smsEnabled: true },
+    }),
     accountBilling: billingRecord({
       billingStatus: "canceled",
       stripeCustomerId: "cus_1",
       stripeSubscriptionId: "sub_canceled",
       stripeSubscriptionStatus: "canceled",
+      activatedAt: "2026-07-23T00:00:00.000Z",
     }),
   });
 
@@ -328,31 +408,79 @@ test("fully canceled subscription can restart through Checkout", async () => {
 });
 
 test("double Checkout submission uses the same deterministic Stripe idempotency key", async () => {
-  const first = await runCheckout({ accountBilling: billingRecord({ stripeCustomerId: "cus_1" }) });
-  const second = await runCheckout({ accountBilling: billingRecord({ stripeCustomerId: "cus_1" }) });
+  const canceled = billingRecord({
+    billingStatus: "canceled",
+    stripeCustomerId: "cus_1",
+    stripeSubscriptionId: "sub_old",
+    stripeSubscriptionStatus: "canceled",
+    activatedAt: "2026-07-23T00:00:00.000Z",
+  });
+  const readySession = session({
+    account: { ...session().account, smsEnabled: true },
+  });
+  const first = await runCheckout({
+    authSession: readySession,
+    accountBilling: canceled,
+  });
+  const second = await runCheckout({
+    authSession: readySession,
+    accountBilling: canceled,
+  });
 
   assert.equal(first.checkoutInputs.length, 1);
   assert.equal(second.checkoutInputs.length, 1);
   assert.equal(first.checkoutInputs[0].idempotencyKey, second.checkoutInputs[0].idempotencyKey);
 });
 
-test("activation Checkout is independent from setup-fee collection", async () => {
-  const calls = await runCheckout({
-    accountBilling: billingRecord({ setupFeeStatus: "due" }),
+test("a standard account must pay setup before collecting the reusable card", async () => {
+  const calls = await runPaymentMethod({
+    accountBilling: billingRecord({
+      commercialOffer: "standard",
+      billingPolicy: "standard",
+      setupFeeStatus: "due",
+    }),
   });
 
-  assert.equal(calls.checkoutInputs.length, 1);
+  assert.deepEqual(calls.checkoutInputs, []);
+  assert.deepEqual(calls.redirects, ["/settings?billing=setup_fee_required#billing"]);
 });
 
-test("standard activation Checkout does not add app-managed billing fields", async () => {
-  const calls = await runCheckout({
-    accountBilling: billingRecord({ setupFeeStatus: "waived" }),
+test("founding pilot securely collects a card with the 30-day terms", async () => {
+  const calls = await runPaymentMethod({
+    authSession: session({ accountId: "pilot-1", account: { ...session().account, accountSlug: "founding-pilot" } }),
   });
 
-  assert.deepEqual(
-    Object.keys(calls.checkoutInputs[0]).sort(),
-    ["accountId", "accountSlug", "idempotencyKey", "ownerEmail", "stripeCustomerId"].sort(),
-  );
+  assert.deepEqual(calls.billingLookups, ["pilot-1"]);
+  assert.equal(calls.checkoutInputs.length, 1);
+  assert.equal(calls.checkoutInputs[0].accountId, "pilot-1");
+  assert.equal(calls.checkoutInputs[0].trialDays, 30);
+  assert.deepEqual(calls.billingUpdates, [{
+    accountId: "pilot-1",
+    update: { billingSetupCheckoutSessionId: "cs_card_123" },
+  }]);
+  assert.equal(calls.redirects.at(-1), "https://checkout.stripe.test/card");
+});
+
+test("an open payment-method Checkout is reused without creating a duplicate", async () => {
+  const calls = await runPaymentMethod({
+    accountBilling: billingRecord({
+      commercialOffer: "founding_pilot",
+      billingPolicy: "setup_fee_waived",
+      setupFeeStatus: "waived",
+      billingSetupCheckoutSessionId: "cs_open",
+    }),
+    existingCheckout: {
+      id: "cs_open",
+      status: "open",
+      url: "https://checkout.stripe.test/existing-card",
+      paymentStatus: "no_payment_required",
+    },
+  });
+
+  assert.deepEqual(calls.checkoutLookups, ["cs_open"]);
+  assert.deepEqual(calls.checkoutInputs, []);
+  assert.deepEqual(calls.billingUpdates, []);
+  assert.equal(calls.redirects.at(-1), "https://checkout.stripe.test/existing-card");
 });
 
 test("operator can manually comp an account without a live Stripe subscription", async () => {
@@ -383,8 +511,9 @@ test("operator can waive a setup fee for a selected pilot account and audit the 
     form: { account_slug: "demo", action: "waive_setup_fee", reason: "Pilot customer" },
   });
 
-  assert.equal(calls.policies[0].policy, "setup_fee_waived");
-  assert.equal(calls.policies[0].reason, "Pilot customer");
+  assert.deepEqual(calls.policies, []);
+  assert.equal(calls.commercialOffers[0].offer, "founding_pilot");
+  assert.equal(calls.commercialOffers[0].reason, "Pilot customer");
   assert.equal(calls.platformAudits[0].action, "billing.operator.waive_setup_fee");
   assert.equal(calls.redirects.at(-1), "/ops/accounts/demo?billing_action=waive_setup_fee");
 });

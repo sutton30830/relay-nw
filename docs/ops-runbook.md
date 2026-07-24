@@ -1,10 +1,8 @@
 # Relay NW Ops Runbook
 
-> **Phase 0 transition note:** this runbook describes the current production
-> runtime. The approved target delays monthly trial start until automatic
-> text-back activation and adds explicit blocker ownership. Do not use those
-> target rules operationally until their matching implementation phases ship.
-> See `docs/strategy/BILLING-OPERATIONS-SIMPLIFICATION.md`.
+> **Current billing contract:** Phase 1 delayed Stripe trials are live.
+> Dedicated blocker ownership and the simplified work queue remain later
+> Operations phases.
 
 Use this when Relay NW is live for a business and something important may have failed. The goal is simple: protect the missed-call recovery loop, notify the right person, and avoid silently losing caller data.
 
@@ -58,10 +56,21 @@ Run `npm run test:activation` locally before high-risk releases. This is determi
 
 ### Commercial Terms and Activation Billing
 
-- New accounts start with a one-time `$150 setup fee` due. Existing pilot/house accounts are backfilled as explicitly waived by the Phase 7C migration.
-- A pilot waiver must be made from the selected account in `/ops/billing`, include a short reason, and remain visible in the account audit history. A waiver never starts monthly billing.
-- Monthly billing is `$99/month` and becomes available when call capture is `live`. A2P approval and setup-fee status do not act as hidden monthly-billing gates.
-- Standard customer subscriptions start through Stripe-hosted Checkout. Do not create subscriptions from a locally stored payment-method reference.
+- Standard accounts start with a one-time `$150 setup fee` due. Founding pilots
+  are an explicit commercial offer with an audited setup-fee waiver and a
+  30-day trial.
+- A pilot waiver must be made from the selected account, include a short
+  reason, and remain visible in the account audit history. It is never shown as
+  paid or refunded.
+- Standard setup Checkout charges `$150` and retains the card in Stripe with
+  reuse disclosure. Founding-pilot card Checkout charges nothing.
+- Monthly service is `$99/month`. The initial Stripe-owned trial is 14 days for
+  standard customers and 30 days for founding pilots.
+- Trial creation is automatic and idempotent only after calls are live, A2P is
+  approved, automatic text-back is enabled, the setup terms are settled, and
+  Stripe has a default payment method. Calls alone never start trial time.
+- Subscription Checkout is only for a canceled customer restarting after the
+  one-time trial. Never grant a second trial.
 - Configure a separate Stripe one-time Price for `STRIPE_SETUP_FEE_PRICE_ID`. The existing `STRIPE_PRICE_ID` remains the recurring monthly Price.
 - Stripe webhooks are the immediate source for payments, cancellations, refunds, disputes, and deleted customers. `/api/cron/billing-reconciliation` re-reads all connected Stripe records daily as a repair path when an event is delayed or missed.
 - If setup-fee payment succeeds, confirm `paid`. A partial/full refund or dispute must appear after its Stripe event or after `Sync with Stripe`. Never change a payment to refunded only in Relay.
@@ -141,4 +150,6 @@ Before handing a business live access:
 
 `verify:launch` is also read-only. It ties the account, setup readiness, SMS mode, billing state, Stripe config, Checkout eligibility, and Portal availability into one launch decision. Treat a paused SMS warning as an operating choice, not a setup failure, but make sure the owner understands callers are not getting automatic replies.
 
-There is no app-managed trial or operator-created subscription rehearsal. Test the customer-owned Stripe Checkout path in Stripe test mode instead.
+There is no app-managed trial or operator-invented subscription state. In
+Stripe test mode, test setup/card Checkout, activate automatic text-back, then
+confirm Stripe created the correct delayed trial.

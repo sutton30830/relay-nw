@@ -35,8 +35,8 @@ Confirm:
 - `/setup` says calls are live.
 - Duplicate or unsigned webhooks do not change setup state.
 
-Automatic texting may still be unavailable. That does not block calls, CRM
-access, or monthly billing.
+Automatic texting may still be unavailable. That does not block calls or CRM
+access, and it does not consume monthly trial time.
 
 ## Phase 2: Enable texting
 
@@ -60,8 +60,15 @@ Billing is not an onboarding phase:
 
 - Setup costs $150 once unless Relay explicitly waives it.
 - Service costs $99 per month unless Relay explicitly comps the account.
-- Monthly Checkout becomes available when call capture is `live`; A2P and the
-  setup-fee state do not secretly block it.
+- Standard customers pay the $150 setup fee through Stripe; founding pilots
+  receive an audited waiver and add a card through a no-charge Stripe form.
+- The initial Stripe-owned trial is 14 days for standard customers and 30 days
+  for founding pilots.
+- Trial time starts only after calls are live, A2P is approved, automatic
+  text-back is enabled, commercial setup is settled, and the Stripe card is
+  ready. Calls alone never start it.
+- Subscription Checkout is reserved for a canceled customer restarting after
+  the initial trial has already been used.
 - Customers use Stripe Customer Portal from Settings to change payment
   methods, view invoices, update billing details, and cancel.
 - A scheduled cancellation remains active through the paid period.

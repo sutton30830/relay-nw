@@ -4,16 +4,22 @@ import {
   notifyOwnerBillingPaymentFailed,
   notifyOwnerBillingRecovered,
   notifyOwnerSubscriptionScheduledToEnd,
+  notifyOwnerTrialEnding,
 } from "@/lib/email";
 import {
+  assertStripeObjectMode,
   assertStripeWebhookConfigured,
   billingDatesFromPaidInvoice,
   billingUpdateFromSubscription,
   getStripeEventIdentity,
   mapStripeSubscriptionStatus,
+  expectedStripeLivemode,
   reconcileSetupFeeStateFromPayment,
+  retrieveStripeCustomerBillingProfile,
   retrieveStripePaymentIntent,
+  retrieveStripeSetupIntent,
   retrieveStripeSubscription,
+  setStripeCustomerDefaultPaymentMethod,
   stripeSubscriptionSnapshot,
   type StripeEvent,
   verifyStripeWebhookSignature,
@@ -40,6 +46,7 @@ const SUPPORTED_STRIPE_EVENTS = new Set([
   "customer.subscription.created",
   "customer.subscription.updated",
   "customer.subscription.deleted",
+  "customer.subscription.trial_will_end",
   "invoice.payment_failed",
   "invoice.payment_action_required",
   "invoice.paid",
@@ -50,6 +57,11 @@ const SUPPORTED_STRIPE_EVENTS = new Set([
   "charge.dispute.created",
   "charge.dispute.closed",
   "customer.deleted",
+  "customer.updated",
+  "payment_method.attached",
+  "payment_method.detached",
+  "setup_intent.succeeded",
+  "setup_intent.setup_failed",
 ]);
 
 function sanitizedErrorCode(error: unknown) {
@@ -106,7 +118,8 @@ function getCheckoutAssociation(object: Record<string, unknown>) {
   const customerId = typeof object.customer === "string" ? object.customer : null;
   const subscriptionId = typeof object.subscription === "string" ? object.subscription : null;
   const paymentIntentId = typeof object.payment_intent === "string" ? object.payment_intent : null;
-  return { customerId, subscriptionId, paymentIntentId };
+  const setupIntentId = typeof object.setup_intent === "string" ? object.setup_intent : null;
+  return { customerId, subscriptionId, paymentIntentId, setupIntentId };
 }
 
 function checkoutChargeType(object: Record<string, unknown>) {
@@ -115,12 +128,6 @@ function checkoutChargeType(object: Record<string, unknown>) {
   return typeof (metadata as Record<string, unknown>).charge_type === "string"
     ? (metadata as Record<string, unknown>).charge_type
     : null;
-}
-
-function expectedStripeLivemode() {
-  if (env.stripeSecretKey?.startsWith("sk_live_")) return true;
-  if (env.stripeSecretKey?.startsWith("sk_test_")) return false;
-  return null;
 }
 
 async function notifyBillingAttention(input: {
@@ -132,6 +139,7 @@ async function notifyBillingAttention(input: {
   recovered: boolean;
   scheduledToCancel: boolean;
   currentPeriodEnd: string | null;
+  trialEndsAt: string | null;
 }) {
   let account = null;
 
@@ -198,6 +206,20 @@ async function notifyBillingAttention(input: {
       });
     } catch (emailError) {
       console.error("Stripe billing alert failed after billing state update", {
+        eventId: input.eventId,
+        error: emailError instanceof Error ? emailError.message : emailError,
+      });
+    }
+  }
+
+  if (input.eventType === "customer.subscription.trial_will_end" && account) {
+    try {
+      await notifyOwnerTrialEnding({
+        account,
+        trialEndsAt: input.trialEndsAt,
+      });
+    } catch (emailError) {
+      console.error("Stripe trial-ending owner email failed after billing state update", {
         eventId: input.eventId,
         error: emailError instanceof Error ? emailError.message : emailError,
       });
@@ -286,6 +308,11 @@ export async function POST(request: Request) {
         stripeSubscriptionId: null,
         stripePriceId: null,
         stripeSubscriptionStatus: null,
+        billingSetupCheckoutSessionId: null,
+        stripeSetupIntentId: null,
+        stripeSetupIntentStatus: null,
+        stripeDefaultPaymentMethodId: null,
+        paymentMethodUpdatedAt: identity.eventCreatedAt ?? new Date().toISOString(),
         billingStatus: "canceled",
         cancelAtPeriodEnd: false,
         canceledAt: new Date().toISOString(),
@@ -303,6 +330,69 @@ export async function POST(request: Request) {
       ) {
         await updateAccountBillingRecord(resolution.accountId, { setupFeeCheckoutSessionId: null });
       }
+      if (
+        checkoutChargeType(identity.object) === "billing_payment_method" &&
+        existing.billingSetupCheckoutSessionId === identity.object.id
+      ) {
+        await updateAccountBillingRecord(resolution.accountId, { billingSetupCheckoutSessionId: null });
+      }
+      await markStripeEventProcessed(accountContext);
+      return Response.json({ received: true }, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    if (
+      identity.eventType === "customer.updated" ||
+      identity.eventType === "payment_method.attached" ||
+      identity.eventType === "payment_method.detached"
+    ) {
+      if (!identity.stripeCustomerId) {
+        await markStripeEventIgnored({ ...accountContext, reason: "customer_unavailable" });
+        return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
+      }
+      const customer = await retrieveStripeCustomerBillingProfile(identity.stripeCustomerId);
+      assertStripeObjectMode(customer.livemode, "Stripe customer");
+      await updateAccountBillingRecord(resolution.accountId, {
+        stripeCustomerId: customer.id,
+        stripeDefaultPaymentMethodId: customer.defaultPaymentMethodId,
+        paymentMethodUpdatedAt: identity.eventCreatedAt ?? new Date().toISOString(),
+      });
+      await markStripeEventProcessed(accountContext);
+      return Response.json({ received: true }, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    if (
+      identity.eventType === "setup_intent.succeeded" ||
+      identity.eventType === "setup_intent.setup_failed"
+    ) {
+      const setupIntentId = typeof identity.object.id === "string" ? identity.object.id : null;
+      if (!setupIntentId) {
+        await markStripeEventIgnored({ ...accountContext, reason: "setup_intent_unavailable" });
+        return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
+      }
+      const setupIntent = await retrieveStripeSetupIntent(setupIntentId);
+      assertStripeObjectMode(setupIntent.livemode, "Stripe SetupIntent");
+      const existing = await getAccountBillingRecord(resolution.accountId);
+      let defaultPaymentMethodId = existing.stripeDefaultPaymentMethodId;
+      if (
+        setupIntent.status === "succeeded" &&
+        setupIntent.customerId &&
+        setupIntent.paymentMethodId
+      ) {
+        const customer = await setStripeCustomerDefaultPaymentMethod({
+          customerId: setupIntent.customerId,
+          paymentMethodId: setupIntent.paymentMethodId,
+          idempotencyKey: `relay-default-payment-method:${resolution.accountId}:${setupIntent.id}`,
+        });
+        assertStripeObjectMode(customer.livemode, "Stripe customer");
+        defaultPaymentMethodId = customer.defaultPaymentMethodId;
+      }
+      await updateAccountBillingRecord(resolution.accountId, {
+        stripeCustomerId: setupIntent.customerId ?? identity.stripeCustomerId,
+        stripeSetupIntentId: setupIntent.id,
+        stripeSetupIntentStatus: setupIntent.status,
+        stripeDefaultPaymentMethodId: defaultPaymentMethodId,
+        paymentMethodUpdatedAt: identity.eventCreatedAt ?? new Date().toISOString(),
+      });
       await markStripeEventProcessed(accountContext);
       return Response.json({ received: true }, { headers: { "Cache-Control": "no-store" } });
     }
@@ -327,6 +417,7 @@ export async function POST(request: Request) {
       }
 
       const payment = await retrieveStripePaymentIntent(identity.stripePaymentIntentId);
+      assertStripeObjectMode(payment.livemode, "Stripe PaymentIntent");
       const eventDisputeStatus = identity.eventType.startsWith("charge.dispute.")
         ? typeof identity.object.status === "string" ? identity.object.status : identity.eventType.endsWith("created") ? "needs_response" : null
         : null;
@@ -353,26 +444,84 @@ export async function POST(request: Request) {
     if (identity.eventType === "checkout.session.completed") {
       const association = getCheckoutAssociation(identity.object);
       if (checkoutChargeType(identity.object) === "setup_fee") {
-        if (identity.object.payment_status !== "paid") {
+        if (identity.object.payment_status !== "paid" || !association.paymentIntentId) {
           await markStripeEventIgnored({ ...accountContext, reason: "setup_fee_not_paid" });
           return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
         }
 
+        const payment = await retrieveStripePaymentIntent(association.paymentIntentId);
+        assertStripeObjectMode(payment.livemode, "Stripe PaymentIntent");
+        if (payment.status !== "succeeded") {
+          await markStripeEventIgnored({ ...accountContext, reason: "setup_fee_not_paid" });
+          return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
+        }
+        const customerId = association.customerId ?? payment.customerId;
+        let defaultPaymentMethodId: string | null = null;
+        if (customerId && payment.paymentMethodId) {
+          const customer = await setStripeCustomerDefaultPaymentMethod({
+            customerId,
+            paymentMethodId: payment.paymentMethodId,
+            idempotencyKey: `relay-default-payment-method:${resolution.accountId}:${payment.id}`,
+          });
+          assertStripeObjectMode(customer.livemode, "Stripe customer");
+          defaultPaymentMethodId = customer.defaultPaymentMethodId;
+        }
         const setupFeeUpdate = {
           setupFeeStatus: "paid",
           setupFeeCheckoutSessionId: identity.object.id as string,
-          setupFeePaymentIntentId: association.paymentIntentId,
+          setupFeePaymentIntentId: payment.id,
           setupFeePaidAt: new Date().toISOString(),
+          stripeDefaultPaymentMethodId: defaultPaymentMethodId,
+          paymentMethodUpdatedAt: identity.eventCreatedAt ?? new Date().toISOString(),
         } as const;
         await updateAccountBillingRecord(
           resolution.accountId,
-          association.customerId
-            ? { ...setupFeeUpdate, stripeCustomerId: association.customerId }
+          customerId
+            ? { ...setupFeeUpdate, stripeCustomerId: customerId }
             : setupFeeUpdate,
         );
         await markStripeEventProcessed({
           ...accountContext,
-          stripeCustomerId: association.customerId,
+          stripeCustomerId: customerId,
+        });
+        return Response.json({ received: true }, { headers: { "Cache-Control": "no-store" } });
+      }
+
+      if (checkoutChargeType(identity.object) === "billing_payment_method") {
+        if (!association.setupIntentId) {
+          await markStripeEventIgnored({ ...accountContext, reason: "setup_intent_unavailable" });
+          return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
+        }
+        const setupIntent = await retrieveStripeSetupIntent(association.setupIntentId);
+        assertStripeObjectMode(setupIntent.livemode, "Stripe SetupIntent");
+        const customerId = association.customerId ?? setupIntent.customerId;
+        if (setupIntent.status !== "succeeded" || !customerId || !setupIntent.paymentMethodId) {
+          await updateAccountBillingRecord(resolution.accountId, {
+            billingSetupCheckoutSessionId: identity.object.id as string,
+            stripeSetupIntentId: setupIntent.id,
+            stripeSetupIntentStatus: setupIntent.status,
+            paymentMethodUpdatedAt: identity.eventCreatedAt ?? new Date().toISOString(),
+          });
+          await markStripeEventIgnored({ ...accountContext, reason: "payment_method_setup_incomplete" });
+          return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
+        }
+        const customer = await setStripeCustomerDefaultPaymentMethod({
+          customerId,
+          paymentMethodId: setupIntent.paymentMethodId,
+          idempotencyKey: `relay-default-payment-method:${resolution.accountId}:${setupIntent.id}`,
+        });
+        assertStripeObjectMode(customer.livemode, "Stripe customer");
+        await updateAccountBillingRecord(resolution.accountId, {
+          stripeCustomerId: customer.id,
+          billingSetupCheckoutSessionId: identity.object.id as string,
+          stripeSetupIntentId: setupIntent.id,
+          stripeSetupIntentStatus: setupIntent.status,
+          stripeDefaultPaymentMethodId: customer.defaultPaymentMethodId,
+          paymentMethodUpdatedAt: identity.eventCreatedAt ?? new Date().toISOString(),
+        });
+        await markStripeEventProcessed({
+          ...accountContext,
+          stripeCustomerId: customer.id,
         });
         return Response.json({ received: true }, { headers: { "Cache-Control": "no-store" } });
       }
@@ -405,6 +554,7 @@ export async function POST(request: Request) {
       await markStripeEventIgnored({ ...accountContext, reason: "subscription_unavailable" });
       return Response.json({ received: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
     }
+    assertStripeObjectMode(subscription.livemode, "Stripe subscription");
 
     const existingBilling = await getAccountBillingRecord(resolution.accountId);
     const update = billingUpdateFromSubscription(resolution.accountId, subscription);
@@ -436,6 +586,7 @@ export async function POST(request: Request) {
       recovered: eventStatus !== "past_due" && update.billingAttentionSince === null,
       scheduledToCancel: subscription.cancelAtPeriodEnd && !existingBilling.cancelAtPeriodEnd,
       currentPeriodEnd: subscription.currentPeriodEnd,
+      trialEndsAt: subscription.trialEndsAt,
     });
 
     if (eventStatus === "canceled") {

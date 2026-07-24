@@ -1,8 +1,4 @@
-// Phase 0 contract for the simplified customer experience.
-//
-// This module is intentionally pure and is not wired into the current UI or
-// database yet. It gives the implementation phases one shared vocabulary and
-// makes the independence rules executable before migrations begin.
+// Shared contract for the simplified customer experience.
 
 export const TECHNICAL_SETUP_STATUSES = [
   "setting_up",
@@ -55,8 +51,6 @@ export const STRIPE_SUBSCRIPTION_STATUSES = [
 
 export type StripeSubscriptionStatus = (typeof STRIPE_SUBSCRIPTION_STATUSES)[number];
 
-// Phase 0 commercial target. These terms are intentionally pure and are not
-// wired into Checkout or Operations until the matching implementation phases.
 export const COMMERCIAL_OFFERS = ["standard", "founding_pilot"] as const;
 
 export type CommercialOffer = (typeof COMMERCIAL_OFFERS)[number];
@@ -105,9 +99,9 @@ export function isAutomaticTextBackActive(input: {
   );
 }
 
-// The approved Phase 0 target starts a Stripe-owned trial only when the paid
-// outcome is working and nobody is still blocking activation. Call capture by
-// itself remains useful technical progress, but is not the $99 activation bar.
+// A Stripe-owned trial starts only when the paid outcome is working and nobody
+// is still blocking activation. Call capture by itself remains useful
+// technical progress, but is not the $99 activation bar.
 export function canStartMonthlyTrial(input: {
   technicalStatus: TechnicalSetupStatus;
   a2pStatus: A2pRegistrationStatus;
@@ -174,13 +168,6 @@ export function shouldMarkTechnicalSetupLive(input: {
     input.insertedNewMissedCall &&
     input.twilioSignatureValid
   );
-}
-
-// Phase 0 compatibility helper: current production Checkout still uses this
-// technical-only rule. Phase 1 will replace its runtime use with the approved
-// canStartMonthlyTrial target above. Keep behavior unchanged in Phase 0.
-export function canStartMonthlyBilling(technicalStatus: TechnicalSetupStatus) {
-  return technicalStatus === "live";
 }
 
 export function canEnableAutomaticTexting(a2pStatus: A2pRegistrationStatus) {

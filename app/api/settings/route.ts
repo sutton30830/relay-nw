@@ -1,9 +1,12 @@
 import { redirect } from "next/navigation";
 import { requireAccountUser } from "@/lib/auth";
+import { activateStripeTrialForAccount } from "@/lib/billing-activation";
+import { isSetupFeeSettled } from "@/lib/billing";
 import { normalizePhoneNumber } from "@/lib/phone";
 import { diffSettingsForAudit, type AuditableSettings } from "@/lib/audit";
 import {
   getA2pRegistrationStatus,
+  getAccountBillingRecord,
   recordAccountAuditEvents,
   updateAccountSettings,
   type AccountSettingsUpdate,
@@ -175,10 +178,23 @@ export async function POST(request: Request) {
     if (wantsSmsEnabled && !session.account.smsEnabled) {
       // Turning texting ON requires an approved A2P campaign. Fail closed on
       // lookup failure: a status we cannot read is not an approved status.
-      const a2pStatus = await getA2pRegistrationStatus(session.accountId);
+      const [a2pStatus, billing] = await Promise.all([
+        getA2pRegistrationStatus(session.accountId),
+        getAccountBillingRecord(session.accountId),
+      ]);
 
       if (a2pStatus !== "approved") {
         redirect("/settings?error=a2p_not_approved");
+      }
+      if (!isSetupFeeSettled(
+        billing.setupFeeStatus,
+        billing.firstPaidAt,
+        billing.billingPolicy,
+      )) {
+        redirect("/settings?billing=setup_fee_required#billing");
+      }
+      if (!billing.stripeDefaultPaymentMethodId && billing.billingPolicy !== "comped") {
+        redirect("/settings?billing=payment_method_required#billing");
       }
     }
 
@@ -237,6 +253,40 @@ export async function POST(request: Request) {
     actorEmail: session.email,
     events: auditEvents,
   });
+
+  if (session.role === "owner" && update.sms_enabled && !session.account.smsEnabled) {
+    let blockedActivation:
+      | "setup_fee_required"
+      | "payment_method_required"
+      | "restart_required"
+      | "conflicting_subscription"
+      | null = null;
+    try {
+      const activation = await activateStripeTrialForAccount(session.accountId);
+      if (
+        activation.status === "setup_fee_required" ||
+        activation.status === "payment_method_required" ||
+        activation.status === "restart_required" ||
+        activation.status === "conflicting_subscription"
+      ) {
+        blockedActivation = activation.status;
+      }
+    } catch (error) {
+      // A timeout can occur after Stripe created the idempotent subscription.
+      // Keep automatic text-back on and let webhooks/reconciliation recover the
+      // synchronized display state instead of consuming a live trial while the
+      // service is artificially paused.
+      console.error("Stripe trial activation after texting enable failed", {
+        accountId: session.accountId,
+        error: error instanceof Error ? error.message : error,
+      });
+      redirect("/settings?billing=activation_sync_pending#billing");
+    }
+    if (blockedActivation) {
+      await updateAccountSettings(session.accountId, { sms_enabled: false });
+      redirect(`/settings?billing=${blockedActivation}#billing`);
+    }
+  }
 
   redirect("/settings?saved=1");
 }

@@ -65,6 +65,17 @@ function makeMocks({
   };
 
   const mocks = {
+    "next/server": {
+      after: (callback) => {
+        void callback();
+      },
+    },
+    "@/lib/billing-activation": {
+      activateStripeTrialForAccount: async () => ({
+        status: "not_eligible",
+        reason: "automatic_text_back_not_active",
+      }),
+    },
     "@/lib/env": {
       env: {
         allowUnsignedTwilioWebhooks: false,

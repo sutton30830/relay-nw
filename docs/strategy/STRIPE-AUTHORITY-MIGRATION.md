@@ -1,9 +1,7 @@
 # Stripe Authority Migration
 
-Status: implemented historical migration design. The approved next-state contract is
-`docs/strategy/BILLING-OPERATIONS-SIMPLIFICATION.md`. Until Phase 1 of that
-new plan ships, this document remains an accurate description of the current
-runtime.
+Status: Phase 1 delayed-trial migration implemented July 23, 2026. The current
+contract is `docs/strategy/BILLING-OPERATIONS-SIMPLIFICATION.md`.
 
 ## Boundary
 
@@ -13,15 +11,20 @@ Stripe owns customer, payment-method, setup-fee payment, subscription, invoice, 
 
 ## Migration
 
-Apply `docs/migrations/2026-07-22-stripe-authority.sql`.
+Apply `docs/migrations/2026-07-22-stripe-authority.sql`, followed by
+`docs/migrations/2026-07-23-phase1-delayed-stripe-trials.sql`.
 
-The migration:
+The combined migration:
 
 1. Adds `billing_policy` with `standard`, `setup_fee_waived`, and `comped`.
 2. Adds `billing_policy_updated_at`.
 3. Backfills policy from legacy `comped` and `waived` values.
-4. Preserves legacy columns and values for a rolling-deploy compatibility window.
-5. Makes no destructive changes.
+4. Adds the commercial offer, Stripe SetupIntent, Checkout-session, and
+   default-payment-method display fields used by delayed activation.
+5. Adds the audited `set_account_commercial_offer` operation.
+6. Repairs only the documented sample account's stale test-mode links while
+   preserving Stripe event history.
+7. Preserves legacy columns and values for a rolling-deploy compatibility window.
 
 Fresh environments receive the same schema through `supabase.sql`.
 
@@ -37,10 +40,20 @@ Fresh environments receive the same schema through `supabase.sql`.
 
 New policy writes require the migration and should be deployed after it.
 
-## Checkout and Portal
+## Checkout, activation, and Portal
 
-- Subscription Checkout is allowed when real call capture is ready.
-- A2P and setup-fee status are not Checkout gates.
+- Standard setup Checkout charges `$150` and asks Stripe to retain the card
+  with explicit reuse disclosure.
+- Founding-pilot Checkout runs in `setup` mode, charges nothing, and saves the
+  card in Stripe after an audited setup-fee waiver.
+- Call capture alone never creates a subscription.
+- The initial subscription is created idempotently only when call capture is
+  live, A2P is approved, automatic text-back is enabled, the commercial setup
+  is settled, and Stripe has a default payment method.
+- Stripe receives `trial_period_days=14` for standard customers or `30` for
+  founding pilots. Missing-payment-method trial-end behavior is `cancel`.
+- Subscription Checkout is an authenticated restart path after the initial
+  free trial has already been used; it does not grant another trial.
 - Customer Portal owns payment-method changes, invoices, billing details, and cancellation.
 - Portal cancellation should be configured for end-of-period cancellation and cancellation-reason collection.
 - Relay keeps call capture running through a scheduled cancellation's paid period.
@@ -51,9 +64,15 @@ The configured Stripe endpoint must include:
 
 - `checkout.session.completed`
 - `checkout.session.expired`
+- `customer.updated`
+- `payment_method.attached`
+- `payment_method.detached`
+- `setup_intent.succeeded`
+- `setup_intent.setup_failed`
 - `customer.subscription.created`
 - `customer.subscription.updated`
 - `customer.subscription.deleted`
+- `customer.subscription.trial_will_end`
 - `invoice.paid`
 - `invoice.payment_failed`
 - `invoice.payment_action_required`
@@ -81,8 +100,8 @@ After production verification:
 
 - Stop writing legacy `billing_status = 'comped'`.
 - Stop writing legacy `setup_fee_status = 'waived'`.
-- Remove local `stripe_payment_method_id` after saved-card operator activation is replaced by Stripe-hosted flows.
-- Retire app-managed trial state and trial cron behavior, or move trials fully into Stripe.
+- Remove obsolete local payment-method compatibility columns after Stripe
+  default-payment-method synchronization has observed production stability.
 - Narrow the old status constraints.
 - Remove compatibility fallbacks.
 

@@ -5,10 +5,9 @@ import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
 
-// Phase 0 compatibility coverage: these tests intentionally describe the
-// current production Checkout behavior. The approved delayed-trial target is
-// executable in customer-experience-contract.test.mjs and replaces these
-// expectations only when Phase 1 changes the runtime atomically.
+// Phase 1 runtime coverage: initial subscriptions are created only after
+// automatic text-back is active. Checkout is reserved for authenticated
+// restarts after the one-time trial has already been used.
 
 async function loadTsModule(path, mocks = {}) {
   const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
@@ -31,11 +30,9 @@ async function loadTsModule(path, mocks = {}) {
   return module.exports;
 }
 
+const customerExperienceContract = await loadTsModule("lib/customer-experience-contract.ts");
 const billing = await loadTsModule("lib/billing.ts", {
-  "@/lib/readiness": {},
-  "@/lib/customer-experience-contract": {
-    canStartMonthlyBilling: (status) => status === "live",
-  },
+  "@/lib/customer-experience-contract": customerExperienceContract,
 });
 
 const stripeBilling = await loadTsModule("lib/stripe-billing.ts", {
@@ -54,107 +51,128 @@ const stripeBilling = await loadTsModule("lib/stripe-billing.ts", {
 
 function billingRecord(overrides = {}) {
   return {
-    billingStatus: "not_started",
-    billingPolicy: "standard",
-    stripeCustomerId: null,
-    stripeSubscriptionId: null,
-    stripePriceId: null,
-    trialEndsAt: null,
-    billingUpdatedAt: null,
+    ...billing.defaultBillingRecord(),
     ...overrides,
   };
 }
 
-test("technical status alone determines whether billing can start", () => {
-  const live = billing.computeBillingLifecycle({
-    billing: billingRecord(),
+function lifecycle(billingOverrides = {}, setupOverrides = {}) {
+  return billing.computeBillingLifecycle({
+    billing: billingRecord(billingOverrides),
     technicalStatus: "live",
+    a2pStatus: "approved",
+    smsEnabled: true,
+    ...setupOverrides,
   });
-  const waiting = billing.computeBillingLifecycle({
-    billing: billingRecord(),
-    technicalStatus: "waiting_for_forwarding",
+}
+
+test("calls working alone cannot start the monthly trial", () => {
+  const callsOnly = lifecycle(
+    {
+      setupFeeStatus: "paid",
+      stripeDefaultPaymentMethodId: "pm_1",
+    },
+    { a2pStatus: "in_progress", smsEnabled: false },
+  );
+  const textBackActive = lifecycle({
+    setupFeeStatus: "paid",
+    stripeDefaultPaymentMethodId: "pm_1",
   });
 
-  assert.equal(live.activationReady, true);
-  assert.equal(live.ownerAction, "start_billing");
-  assert.equal(waiting.activationReady, false);
-  assert.equal(waiting.ownerAction, "finish_setup");
+  assert.equal(callsOnly.activationReady, false);
+  assert.equal(callsOnly.ownerAction, "finish_setup");
+  assert.equal(textBackActive.activationReady, true);
+  assert.equal(textBackActive.ownerAction, "wait_for_activation");
 });
 
-test("every billing status has one owner action", () => {
-  const expectations = {
-    not_started: "start_billing",
-    trialing: "manage_billing",
-    active: "manage_billing",
-    past_due: "update_payment",
-    canceled: "restart_subscription",
-    comped: "none",
-  };
-
-  for (const [billingStatus, ownerAction] of Object.entries(expectations)) {
-    const state = billing.computeBillingLifecycle({
-      billing: billingRecord({ billingStatus }),
-      technicalStatus: "live",
-    });
-
-    assert.equal(state.ownerAction, ownerAction);
-  }
+test("billing lifecycle exposes one safe customer action", () => {
+  assert.equal(lifecycle({ setupFeeStatus: "due" }).ownerAction, "pay_setup_fee");
+  assert.equal(lifecycle({ setupFeeStatus: "paid" }).ownerAction, "add_payment_method");
+  assert.equal(
+    lifecycle(
+      { setupFeeStatus: "paid", stripeDefaultPaymentMethodId: "pm_1" },
+      { a2pStatus: "in_progress", smsEnabled: false },
+    ).ownerAction,
+    "finish_setup",
+  );
+  assert.equal(lifecycle({ billingStatus: "trialing" }).ownerAction, "manage_billing");
+  assert.equal(lifecycle({ billingStatus: "active" }).ownerAction, "manage_billing");
+  assert.equal(lifecycle({ billingStatus: "past_due" }).ownerAction, "update_payment");
+  assert.equal(lifecycle({ billingStatus: "canceled" }).ownerAction, "restart_subscription");
+  assert.equal(lifecycle({ billingStatus: "comped", billingPolicy: "comped" }).ownerAction, "none");
 });
 
-test("checkout eligibility allows only not started or fully canceled accounts", () => {
+test("subscription Checkout is a restart path, never an initial-trial path", () => {
   assert.deepEqual(
-    billing.getBillingCheckoutEligibility({ billing: billingRecord(), technicalStatus: "live" }),
-    { ok: true },
+    billing.getBillingCheckoutEligibility({
+      billing: billingRecord(),
+      activationReady: false,
+    }),
+    { ok: false, reason: "initial_trial_managed_automatically" },
   );
   assert.deepEqual(
     billing.getBillingCheckoutEligibility({
-      billing: billingRecord({ billingStatus: "canceled", stripeSubscriptionStatus: "canceled" }),
-      technicalStatus: "live",
+      billing: billingRecord({
+        billingStatus: "canceled",
+        stripeSubscriptionStatus: "canceled",
+        activatedAt: "2026-07-23T00:00:00.000Z",
+      }),
+      activationReady: true,
     }),
     { ok: true },
   );
   assert.deepEqual(
     billing.getBillingCheckoutEligibility({
-      billing: billingRecord({ billingStatus: "trialing", stripeSubscriptionId: null }),
-      technicalStatus: "live",
+      billing: billingRecord({ billingStatus: "trialing" }),
+      activationReady: true,
     }),
-    { ok: true },
+    { ok: false, reason: "already_active" },
   );
   assert.deepEqual(
     billing.getBillingCheckoutEligibility({
       billing: billingRecord({ billingStatus: "not_started", stripeSubscriptionStatus: "incomplete" }),
-      technicalStatus: "live",
+      activationReady: true,
     }),
     { ok: false, reason: "subscription_incomplete" },
   );
   assert.deepEqual(
     billing.getBillingCheckoutEligibility({
       billing: billingRecord({ billingStatus: "past_due", stripeSubscriptionStatus: "past_due" }),
-      technicalStatus: "live",
+      activationReady: true,
     }),
     { ok: false, reason: "past_due" },
   );
   assert.deepEqual(
     billing.getBillingCheckoutEligibility({
-      billing: billingRecord(),
-      technicalStatus: "waiting_for_forwarding",
+      billing: billingRecord({
+        billingStatus: "canceled",
+        stripeSubscriptionStatus: "canceled",
+        activatedAt: "2026-07-23T00:00:00.000Z",
+      }),
+      activationReady: false,
     }),
     { ok: false, reason: "setup_incomplete" },
   );
 });
 
-test("setup fee state does not gate monthly billing after call capture is live", () => {
-  const due = billing.getBillingCheckoutEligibility({
-    billing: billingRecord({ setupFeeStatus: "due" }),
-    technicalStatus: "live",
+test("commercial setup and saved-card readiness remain explicit trial gates", () => {
+  const due = lifecycle({ setupFeeStatus: "due" });
+  const pilotWithoutCard = lifecycle({
+    commercialOffer: "founding_pilot",
+    billingPolicy: "setup_fee_waived",
+    setupFeeStatus: "waived",
   });
-  const waived = billing.getBillingCheckoutEligibility({
-    billing: billingRecord({ setupFeeStatus: "waived" }),
-    technicalStatus: "live",
+  const pilotReady = lifecycle({
+    commercialOffer: "founding_pilot",
+    billingPolicy: "setup_fee_waived",
+    setupFeeStatus: "waived",
+    stripeDefaultPaymentMethodId: "pm_pilot",
   });
 
-  assert.deepEqual(due, { ok: true });
-  assert.deepEqual(waived, { ok: true });
+  assert.equal(due.ownerAction, "pay_setup_fee");
+  assert.equal(pilotWithoutCard.ownerAction, "add_payment_method");
+  assert.equal(pilotReady.ownerAction, "wait_for_activation");
+  assert.match(pilotWithoutCard.summary, /30-day trial/);
 });
 
 test("an explicit refund or chargeback overrides a historical first payment", () => {
@@ -166,22 +184,19 @@ test("an explicit refund or chargeback overrides a historical first payment", ()
 });
 
 test("setup fee remains separately observable without taking over technical setup", () => {
-  const lifecycle = billing.computeBillingLifecycle({
-    billing: billingRecord({ setupFeeStatus: "due" }),
-    technicalStatus: "setting_up",
-  });
+  const state = lifecycle(
+    { setupFeeStatus: "due" },
+    { technicalStatus: "setting_up", a2pStatus: "not_started", smsEnabled: false },
+  );
 
-  assert.equal(lifecycle.ownerAction, "finish_setup");
-  assert.equal(lifecycle.label, "Setup first");
+  assert.equal(state.ownerAction, "pay_setup_fee");
+  assert.equal(state.label, "Setup fee due");
 });
 
 test("trialing billing lifecycle does not claim the account is renewing monthly", () => {
-  const state = billing.computeBillingLifecycle({
-    billing: billingRecord({
-      billingStatus: "trialing",
-      trialEndsAt: "2026-08-01T12:00:00.000Z",
-    }),
-    technicalStatus: "live",
+  const state = lifecycle({
+    billingStatus: "trialing",
+    trialEndsAt: "2026-08-01T12:00:00.000Z",
   });
 
   assert.equal(state.label, "Trial active");
@@ -191,13 +206,10 @@ test("trialing billing lifecycle does not claim the account is renewing monthly"
 });
 
 test("scheduled cancellation stays manageable and does not imply service shutdown", () => {
-  const state = billing.computeBillingLifecycle({
-    billing: billingRecord({
-      billingStatus: "active",
-      cancelAtPeriodEnd: true,
-      currentPeriodEnd: "2026-08-01T00:00:00.000Z",
-    }),
-    technicalStatus: "live",
+  const state = lifecycle({
+    billingStatus: "active",
+    cancelAtPeriodEnd: true,
+    currentPeriodEnd: "2026-08-01T00:00:00.000Z",
   });
 
   assert.equal(state.label, "Active until end date");
@@ -208,15 +220,13 @@ test("scheduled cancellation stays manageable and does not imply service shutdow
 });
 
 test("past due and canceled remain visible without disabling call capture", () => {
-  for (const billingStatus of ["past_due", "canceled"]) {
-    const state = billing.computeBillingLifecycle({
-      billing: billingRecord({ billingStatus }),
-      technicalStatus: "live",
-    });
+  const pastDue = lifecycle({ billingStatus: "past_due" });
+  const canceled = lifecycle({ billingStatus: "canceled" });
 
-    assert.equal(state.tone, "warn");
-    assert.match(state.summary, /Relay|Missed-call capture/);
-  }
+  assert.equal(pastDue.tone, "warn");
+  assert.match(pastDue.summary, /Missed-call capture/);
+  assert.equal(canceled.tone, "warn");
+  assert.match(canceled.summary, /Restart securely in Stripe/);
 });
 
 test("unknown billing status falls back to not_started", () => {
@@ -278,6 +288,99 @@ test("setup fee checkout creates a customer when collecting a new card", async (
     assert.equal(params.get("customer_email"), "owner@example.com");
     assert.equal(params.get("customer_creation"), "always");
     assert.equal(params.get("payment_intent_data[setup_future_usage]"), "off_session");
+    assert.equal(params.get("payment_method_types[0]"), "card");
+    assert.equal(
+      params.get("consent_collection[payment_method_reuse_agreement][position]"),
+      "auto",
+    );
+    assert.match(params.get("custom_text[submit][message]"), /saved securely in Stripe/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("founding-pilot card collection uses Stripe setup mode and charges nothing", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return {
+      ok: true,
+      async json() {
+        return { id: "cs_pilot_card", url: "https://checkout.stripe.test/card" };
+      },
+    };
+  };
+
+  try {
+    await stripeBilling.createStripePaymentMethodCheckoutSession({
+      accountId: "acct_pilot",
+      accountSlug: "pilot-plumbing",
+      ownerEmail: "pilot@example.com",
+      stripeCustomerId: null,
+      trialDays: 30,
+      idempotencyKey: "pilot-card-key",
+    });
+    const params = new URLSearchParams(calls[0].init.body);
+
+    assert.equal(params.get("mode"), "setup");
+    assert.equal(params.get("currency"), "usd");
+    assert.equal(params.get("customer_creation"), "always");
+    assert.equal(params.get("payment_method_types[0]"), "card");
+    assert.equal(params.has("line_items[0][price]"), false);
+    assert.equal(params.has("amount"), false);
+    assert.match(params.get("custom_text[submit][message]"), /Nothing is charged now/);
+    assert.match(params.get("custom_text[submit][message]"), /30-day trial/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("delayed trial creation is Stripe-owned, scoped, and idempotent", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return {
+      ok: true,
+      async json() {
+        return {
+          id: "sub_trial",
+          customer: "cus_123",
+          status: "trialing",
+          trial_start: 1_800_000_000,
+          trial_end: 1_801_209_600,
+          livemode: false,
+          metadata: { account_id: "acct_123" },
+          items: { data: [{ price: { id: "price_123" } }] },
+        };
+      },
+    };
+  };
+
+  try {
+    const subscription = await stripeBilling.createStripeTrialSubscription({
+      accountId: "acct_123",
+      accountSlug: "demo",
+      commercialOffer: "standard",
+      customerId: "cus_123",
+      defaultPaymentMethodId: "pm_123",
+      trialDays: 14,
+      idempotencyKey: "relay-trial-activation:acct_123:initial:standard:v1",
+    });
+    const params = new URLSearchParams(calls[0].init.body);
+
+    assert.equal(calls[0].url, "https://api.stripe.com/v1/subscriptions");
+    assert.equal(calls[0].init.headers["Idempotency-Key"], "relay-trial-activation:acct_123:initial:standard:v1");
+    assert.equal(params.get("trial_period_days"), "14");
+    assert.equal(params.get("default_payment_method"), "pm_123");
+    assert.equal(params.get("payment_behavior"), "default_incomplete");
+    assert.equal(params.get("trial_settings[end_behavior][missing_payment_method]"), "cancel");
+    assert.equal(params.get("metadata[account_id]"), "acct_123");
+    assert.equal(params.get("metadata[activation_contract]"), "delayed-text-back-v1");
+    assert.equal(params.has("trial_end"), false);
+    assert.equal(subscription.status, "trialing");
+    assert.equal(subscription.metadataAccountId, "acct_123");
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -412,6 +515,7 @@ test("Stripe subscription snapshots never establish paid or guarantee dates", ()
       customerId: "cus_123",
       priceId: "price_123",
       status: "active",
+      trialStartsAt: null,
       trialEndsAt: null,
       currentPeriodEnd: "2026-08-17T00:00:00.000Z",
       cancelAtPeriodEnd: false,
@@ -421,7 +525,7 @@ test("Stripe subscription snapshots never establish paid or guarantee dates", ()
 
   assert.equal(update.billingStatus, "active");
   assert.equal(update.onboardingStatus, undefined);
-  assert.equal(update.activatedAt, undefined);
+  assert.equal(update.activatedAt, null);
   assert.equal(update.firstPaidAt, undefined);
   assert.equal(update.guaranteeEndsAt, undefined);
 });

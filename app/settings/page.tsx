@@ -4,6 +4,7 @@ import { PageHead } from "@/app/leads/_components/page-head";
 import { isRelayOperator, requireAccountUser } from "@/lib/auth";
 import { computeBillingLifecycle } from "@/lib/billing";
 import type { AccountBillingRecord, BillingLifecycleState } from "@/lib/billing";
+import type { A2pRegistrationStatus } from "@/lib/customer-experience-contract";
 import {
   getA2pRegistrationStatus,
   getAccountBillingRecord,
@@ -96,8 +97,8 @@ function billingHeadline(billing: AccountBillingRecord, lifecycle: BillingLifecy
   if (billing.billingStatus === "past_due") return "Payment needs attention";
   if (billing.billingStatus === "canceled") return "Subscription canceled";
   if (billing.billingStatus === "active") return "Subscription active";
-  if (lifecycle.activationReady) return "Ready to start billing";
-  return "Finish setup before billing";
+  if (lifecycle.activationReady) return "Trial activation in progress";
+  return "Monthly trial waits for text-back";
 }
 
 function billingSummary(billing: AccountBillingRecord, lifecycle: BillingLifecycleState) {
@@ -113,14 +114,14 @@ function billingSummary(billing: AccountBillingRecord, lifecycle: BillingLifecyc
 
   if (billing.billingStatus === "trialing") {
     if (trialDate && trialDaysLeft !== null && trialDaysLeft > 0) {
-      return `${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left in your trial. Start billing any time.`;
+      return `${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left in your trial. Stripe begins $99/month afterward unless you cancel.`;
     }
 
     if (trialDate) {
-      return `Your trial ended ${trialDate}. Start billing to move this account onto a paid subscription.`;
+      return `Your trial ended ${trialDate}. Check Stripe for the current invoice and subscription status.`;
     }
 
-    return "Your trial is active. Start billing any time.";
+    return "Your Stripe-owned trial is active.";
   }
 
   if (billing.billingPolicy === "comped" || billing.billingStatus === "comped") {
@@ -130,8 +131,8 @@ function billingSummary(billing: AccountBillingRecord, lifecycle: BillingLifecyc
   if (billing.billingStatus === "past_due") {
     if (!billing.stripeSubscriptionId && billing.trialEndsAt) {
       return trialDate
-        ? `Your trial ended ${trialDate}. Start billing to move this account onto a paid subscription.`
-        : "Your trial ended. Start billing to move this account onto a paid subscription.";
+        ? `Your trial ended ${trialDate}. Update payment securely in Stripe.`
+        : "Your trial ended. Update payment securely in Stripe.";
     }
 
     return "Update payment so the subscription stays in good standing.";
@@ -148,7 +149,7 @@ function billingSummary(billing: AccountBillingRecord, lifecycle: BillingLifecyc
     billing.setupFeeStatus === "refunded" ||
     billing.setupFeeStatus === "charged_back"
   ) {
-    return "The one-time $150 setup fee is due. Monthly billing can begin once missed-call capture is live; texting approval is separate.";
+    return "The one-time $150 setup fee is due. It saves your card in Stripe, but the monthly trial waits for automatic text-back activation.";
   }
 
   return lifecycle.summary;
@@ -189,11 +190,11 @@ function BillingPrimaryAction({
     );
   }
 
-  if (billing.billingStatus === "trialing" && !billing.stripeCustomerId) {
+  if (lifecycle.ownerAction === "add_payment_method") {
     return (
-      <form action="/api/billing/checkout" method="post">
+      <form action="/api/billing/payment-method" method="post">
         <button className="btn btn-primary settings-billing__action" type="submit">
-          Start billing
+          Add payment method
         </button>
       </form>
     );
@@ -203,11 +204,15 @@ function BillingPrimaryAction({
     return null;
   }
 
-  if (lifecycle.ownerAction === "start_billing" || lifecycle.ownerAction === "restart_subscription") {
+  if (lifecycle.ownerAction === "wait_for_activation") {
+    return <p className="settings-section__meta">Relay is starting your trial automatically.</p>;
+  }
+
+  if (lifecycle.ownerAction === "restart_subscription") {
     return (
       <form action="/api/billing/checkout" method="post">
         <button className="btn btn-primary settings-billing__action" type="submit">
-          {lifecycle.ownerAction === "restart_subscription" ? "Restart subscription" : "Start billing"}
+          Restart subscription
         </button>
       </form>
     );
@@ -317,8 +322,7 @@ function BillingSection({
           <h2 className="settings-billing__plan">Current plan: $99/month</h2>
           <p className="settings-section__lead">{billingHeadline(billing, lifecycle)}</p>
           <p className="settings-section__meta">{billingSummary(billing, lifecycle)}</p>
-          {lifecycle.ownerAction === "start_billing" ||
-          lifecycle.ownerAction === "restart_subscription" ? (
+          {lifecycle.ownerAction === "restart_subscription" ? (
             <p className="settings-section__meta settings-billing__charge-copy">
               Stripe Checkout will charge $99 now, then $99 monthly until canceled.
             </p>
@@ -428,6 +432,8 @@ export default async function SettingsPage({
   const billingLifecycle = computeBillingLifecycle({
     billing,
     technicalStatus,
+    a2pStatus: (a2pStatus ?? "not_started") as A2pRegistrationStatus,
+    smsEnabled: account.smsEnabled,
   });
   const readOnly = role === "viewer";
 
@@ -469,6 +475,8 @@ export default async function SettingsPage({
             <Icon name="info" size={14} />
             {params.billing === "setup_incomplete"
               ? "Confirm that a real missed call reaches Relay before starting billing."
+              : params.billing === "initial_trial_managed_automatically"
+                ? "Your initial trial starts automatically only when automatic text-back is fully active."
               : params.billing === "already_active"
                 ? "This account already has an active subscription. Manage it here instead."
                 : params.billing === "past_due" || params.billing === "subscription_incomplete"
@@ -479,10 +487,24 @@ export default async function SettingsPage({
                       ? "Only the owner can manage billing."
                       : params.billing === "checkout_failed"
                         ? "Stripe Checkout could not be started. Try again."
+                      : params.billing === "payment_method_required"
+                        ? "Add a payment method securely in Stripe before automatic text-back is activated."
+                      : params.billing === "payment_method_checkout_failed"
+                        ? "Stripe could not open the secure card form. Try again."
+                      : params.billing === "payment_method_ready"
+                        ? "Stripe already has a payment method ready for this account."
+                      : params.billing === "payment_method_success"
+                        ? "Payment method saved. Nothing was charged; your trial still waits for automatic text-back activation."
+                      : params.billing === "restart_required"
+                        ? "This account already used its free trial. Restart the subscription securely in Stripe."
+                      : params.billing === "conflicting_subscription"
+                        ? "Stripe has another subscription that must be resolved before activation."
+                      : params.billing === "activation_sync_pending"
+                        ? "Automatic text-back is on. Stripe activation is being synchronized; Relay will retry safely."
                       : params.billing === "portal_failed"
                           ? "Stripe Billing Portal could not be opened. Try again."
                           : params.billing === "relink_required"
-                            ? "Your billing link was stale and has been cleared. Start billing again to reconnect this account."
+                            ? "Your billing link was stale and has been cleared. Reconnect securely through Stripe."
                           : params.billing === "setup_fee_required"
                             ? "Pay the one-time setup fee before starting monthly billing."
                             : params.billing === "setup_fee_checkout_failed"

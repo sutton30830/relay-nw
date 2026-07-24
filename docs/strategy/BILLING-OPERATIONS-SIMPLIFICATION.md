@@ -1,6 +1,7 @@
 # Billing and Operations Simplification
 
-Status: approved Phase 0 target architecture. Runtime implementation begins in Phase 1.
+Status: Phase 1 billing lifecycle implemented July 23, 2026. Operations queue
+and blocker ownership remain Phase 2–4 work.
 
 ## Outcome
 
@@ -85,6 +86,12 @@ The account workspace presents:
 
 Operators never manually write favorable Stripe states. External failures remain visible and leave local state unchanged until Stripe confirms the result.
 
-## Phase 0 compatibility boundary
+## Phase 1 runtime boundary
 
-Production currently allows subscription Checkout after technical call capture becomes `live`. Phase 0 deliberately does not change that runtime path. The pure target helpers and tests define the replacement behavior; Phase 1 must migrate the Stripe flow and runtime atomically before the compatibility rule is removed.
+Production now collects the standard setup payment or founding-pilot card
+through Stripe, then creates the initial Stripe-owned trial only after full
+automatic text-back activation. Subscription Checkout is reserved for a
+customer restarting after the initial trial has already been used. Operations
+blocker ownership is not yet stored as a dedicated field; until Phase 2, no
+customer, carrier, or Relay delay can trigger trial creation because the
+technical/A2P/SMS activation facts must all be ready.

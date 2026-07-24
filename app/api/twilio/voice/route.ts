@@ -16,6 +16,8 @@ import {
   validateTwilioWebhook,
 } from "@/lib/twilio";
 import { handleMissedCall } from "@/lib/missed-call";
+import { activateStripeTrialForAccount } from "@/lib/billing-activation";
+import { after } from "next/server";
 import { handleUnresolvedTwilioAccount } from "@/lib/twilio/unresolved-account";
 import { dialForwardTwiml, forwardedMissedCallTwiml, twimlResponse } from "@/lib/twiml";
 
@@ -121,6 +123,19 @@ async function handleForwardingMode(input: {
       correlationId: input.correlationId,
       twilioSignatureValid: input.twilioSignatureValid,
     });
+    if (result.becameLive && input.account.smsEnabled) {
+      after(async () => {
+        try {
+          await activateStripeTrialForAccount(input.account.accountId);
+        } catch (error) {
+          console.error("Deferred trial activation after first missed call failed", {
+            accountId: input.account.accountId,
+            correlationId: input.correlationId,
+            error: error instanceof Error ? error.message : error,
+          });
+        }
+      });
+    }
 
     console.info("Handled forwarded missed call", {
       correlationId: input.correlationId,

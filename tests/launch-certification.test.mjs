@@ -16,6 +16,9 @@ function readyFacts(overrides = {}) {
       stripe_subscription_id: "sub_123",
       stripe_price_id: "price_123",
       stripe_subscription_status: "active",
+      stripe_default_payment_method_id: "pm_123",
+      billing_policy: "standard",
+      commercial_offer: "standard",
       setup_fee_status: "paid",
       ...overrides.account,
     },
@@ -88,7 +91,7 @@ test("launch verifier reports paused SMS as operational choice, not setup failur
   assert.equal(result.ok, true);
 });
 
-test("launch verifier keeps checkout eligibility independent from setup-fee state", () => {
+test("launch verifier blocks duplicate Checkout even when setup-fee truth changes", () => {
   const result = analyzeLaunchCertification(readyFacts({
     account: { setup_fee_status: "refunded" },
   }));
@@ -137,7 +140,26 @@ test("launch verifier treats carrier approval as separate from call-capture read
   assert.equal(setup.blocker, "setup");
   assert.equal(carrier.blocker, "none");
   assert.match(setup.checks.find((check) => check.label === "onboarding blocker").detail, /blocked by call setup/i);
-  assert.match(carrier.checks.find((check) => check.label === "A2P\/SMS registration readiness").detail, /calls and billing remain available/i);
+  assert.match(carrier.checks.find((check) => check.label === "A2P\/SMS registration readiness").detail, /trial time has not started/i);
+});
+
+test("calls live while texting is pending cannot report Stripe trial readiness", () => {
+  const result = analyzeLaunchCertification(readyFacts({
+    account: {
+      billing_status: "not_started",
+      stripe_subscription_status: null,
+      stripe_subscription_id: null,
+    },
+    settings: {
+      a2p_registration_status: "in_progress",
+      sms_enabled: false,
+    },
+  }));
+  const activation = result.checks.find((check) => check.label === "Stripe trial activation readiness");
+
+  assert.equal(result.activationReady, false);
+  assert.equal(activation.level, "warn");
+  assert.match(activation.detail, /trial remains stopped/i);
 });
 
 test("launch verifier accepts the account slug", () => {

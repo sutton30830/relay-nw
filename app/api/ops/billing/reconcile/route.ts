@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { requirePlatformOperatorWrite } from "@/lib/auth";
 import { reconcileStripeBillingAccount } from "@/lib/billing-reconciliation";
+import { activateStripeTrialForAccount } from "@/lib/billing-activation";
 import {
   getOpsBillingAccountBySlug,
   recordAccountAuditEvents,
@@ -20,6 +21,7 @@ export async function POST(request: Request) {
   if (!account) go(slug, "account_not_found");
   try {
     await reconcileStripeBillingAccount(account);
+    await activateStripeTrialForAccount(account.accountId);
     const summary = "Reconciled billing state from Stripe";
     await recordAccountAuditEvents({ accountId: account.accountId, actorUserId: operator.userId, actorEmail: operator.email, events: [{ action: "billing.reconciled", summary }] });
     await recordPlatformAuditEvent({ actorUserId: operator.userId, actorEmail: operator.email, targetAccountId: account.accountId, action: "billing.reconciled", summary });

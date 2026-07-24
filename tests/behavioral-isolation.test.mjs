@@ -445,6 +445,11 @@ async function loadStores(fake) {
     "./tenant": tenantMock,
   });
   const accounts = await loadTsModule("lib/supabase/accounts.ts", {
+    "@/lib/billing": {
+      normalizeCommercialOffer: (value) =>
+        value === "founding_pilot" ? "founding_pilot" : "standard",
+    },
+    "@/lib/customer-experience-contract": {},
     "@/lib/env": {
       env: {
         appBaseUrl: "https://example.com",

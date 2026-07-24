@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-// Phase 0 compatibility coverage. Customer billing copy remains unchanged
-// until Phase 1 can replace the Checkout flow and presentation together.
+// Phase 1 customer billing copy: money timing and Stripe ownership must be
+// explicit without exposing internal lifecycle machinery.
 
 const settings = await readFile(
   new URL("../app/settings/page.tsx", import.meta.url),
@@ -22,6 +22,10 @@ test("customer billing is transparent and Stripe-hosted", () => {
   assert.match(settings, /Contact Relay about billing or a refund/);
   assert.match(settings, /Refund status updates here only after Stripe confirms it/);
   assert.match(settings, /failed payment does not immediately interrupt missed-call capture/);
+  assert.match(settings, /Monthly trial waits for text-back/);
+  assert.match(settings, /trial waits for automatic text-back activation/);
+  assert.match(settings, /Add payment method/);
+  assert.match(settings, /Payment method saved\. Nothing was charged/);
 });
 
 test("A2P registration is not a customer questionnaire", () => {

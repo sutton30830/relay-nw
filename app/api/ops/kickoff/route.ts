@@ -1,7 +1,12 @@
 import { redirect } from "next/navigation";
 import { requirePlatformOperatorWrite } from "@/lib/auth";
+import { commercialTermsForOffer } from "@/lib/customer-experience-contract";
 import { notifyOwnerKickoffPayment } from "@/lib/email";
-import { createStripeSetupFeeCheckoutSession } from "@/lib/stripe-billing";
+import {
+  createStripePaymentMethodCheckoutSession,
+  createStripeSetupFeeCheckoutSession,
+  retrieveStripeCheckoutSession,
+} from "@/lib/stripe-billing";
 import {
   getAccountConfigByAccountId,
   getOpsBillingAccountBySlug,
@@ -15,6 +20,27 @@ function go(slug: string, result: string): never {
 
 function resultResponse(request: Request, slug: string, result: string) {
   return Response.redirect(new URL(`/ops/accounts/${encodeURIComponent(slug)}?kickoff=${result}`, request.url), 303);
+}
+
+async function reusableCheckoutUrl(
+  sessionId: string | null,
+  requiresUnpaid: boolean,
+) {
+  if (!sessionId) return null;
+  try {
+    const existing = await retrieveStripeCheckoutSession(sessionId);
+    if (
+      existing.status === "open" &&
+      (!requiresUnpaid || existing.paymentStatus !== "paid") &&
+      existing.url
+    ) {
+      return existing.url;
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/no such checkout|resource_missing/i.test(message)) throw error;
+  }
+  return null;
 }
 
 export async function POST(request: Request) {
@@ -33,23 +59,69 @@ export async function POST(request: Request) {
 
   try {
     if (action === "send_invoice") {
-      const checkout = await createStripeSetupFeeCheckoutSession({
-        accountId: account.accountId,
-        accountSlug: account.accountSlug,
-        ownerEmail: billingEmail,
-        stripeCustomerId: account.stripeCustomerId,
-        setupFeeCents: account.setupFeeCents,
-        // A refund/chargeback must create a new Checkout attempt. Including
-        // the current state and its timestamp avoids Stripe returning the old,
-        // already-completed session while remaining stable across double-clicks.
-        idempotencyKey: `relay-kickoff-fee:${account.accountId}:${account.setupFeeStatus}:${account.setupFeeRefundedAt ?? account.setupFeeCheckoutSessionId ?? "new"}`,
-      });
-      if (!checkout.url) throw new Error("Stripe returned no setup-fee checkout URL.");
-      await updateAccountBillingRecord(account.accountId, { setupFeeCheckoutSessionId: checkout.id });
+      if (account.commercialOffer === "founding_pilot") {
+        const terms = commercialTermsForOffer(account.commercialOffer);
+        let checkoutUrl = await reusableCheckoutUrl(
+          account.billingSetupCheckoutSessionId,
+          false,
+        );
+        if (!checkoutUrl) {
+          const checkout = await createStripePaymentMethodCheckoutSession({
+            accountId: account.accountId,
+            accountSlug: account.accountSlug,
+            ownerEmail: billingEmail,
+            stripeCustomerId: account.stripeCustomerId,
+            trialDays: terms.trialDays,
+            idempotencyKey: `relay-kickoff-card:${account.accountId}:${account.billingSetupCheckoutSessionId ?? "new"}`,
+          });
+          await updateAccountBillingRecord(account.accountId, {
+            billingSetupCheckoutSessionId: checkout.id,
+          });
+          checkoutUrl = checkout.url;
+        }
+        const delivery = await notifyOwnerKickoffPayment({
+          to: billingEmail,
+          businessName: runtime.businessName,
+          checkoutUrl,
+          feeWaived: true,
+        });
+        if (!delivery.sent) throw new Error("Kickoff card-setup email was not delivered.");
+        await recordPlatformAuditEvent({
+          actorUserId: operator.userId,
+          actorEmail: operator.email,
+          targetAccountId: account.accountId,
+          action: "billing.kickoff.card_setup_started",
+          summary: "Sent founding-pilot Stripe card setup for the 30-day delayed trial",
+        });
+        return resultResponse(request, account.accountSlug, "payment_link_sent");
+      }
+
+      let checkoutUrl = await reusableCheckoutUrl(
+        account.setupFeeCheckoutSessionId,
+        true,
+      );
+      if (!checkoutUrl) {
+        const checkout = await createStripeSetupFeeCheckoutSession({
+          accountId: account.accountId,
+          accountSlug: account.accountSlug,
+          ownerEmail: billingEmail,
+          stripeCustomerId: account.stripeCustomerId,
+          setupFeeCents: account.setupFeeCents,
+          // A refund/chargeback must create a new Checkout attempt. Including
+          // the current state and its timestamp avoids Stripe returning the old,
+          // already-completed session while remaining stable across double-clicks.
+          idempotencyKey: `relay-kickoff-fee:${account.accountId}:${account.setupFeeStatus}:${account.setupFeeRefundedAt ?? account.setupFeeCheckoutSessionId ?? "new"}`,
+        });
+        if (!checkout.url) throw new Error("Stripe returned no setup-fee checkout URL.");
+        await updateAccountBillingRecord(account.accountId, {
+          setupFeeCheckoutSessionId: checkout.id,
+        });
+        checkoutUrl = checkout.url;
+      }
       const delivery = await notifyOwnerKickoffPayment({
         to: billingEmail,
         businessName: runtime.businessName,
-        checkoutUrl: checkout.url,
+        checkoutUrl,
         feeWaived: false,
       });
       if (!delivery.sent) throw new Error("Kickoff payment email was not delivered.");

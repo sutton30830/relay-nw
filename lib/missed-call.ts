@@ -109,7 +109,7 @@ export async function handleMissedCall(input: {
   });
 
   if (!leadResult.inserted || !leadResult.leadId) {
-    return { inserted: false, smsStatus: "duplicate" as const };
+    return { inserted: false, becameLive: false, smsStatus: "duplicate" as const };
   }
 
   try {
@@ -160,7 +160,7 @@ export async function handleMissedCall(input: {
       smsStatus: "skipped_disabled",
     });
 
-    return { inserted: true, smsStatus: "skipped_disabled" as const };
+    return { inserted: true, becameLive: leadResult.becameLive, smsStatus: "skipped_disabled" as const };
   }
 
   // Fail closed: if the cooldown or opt-out check cannot be completed, do not send
@@ -213,7 +213,7 @@ export async function handleMissedCall(input: {
       correlationId,
     });
 
-    return { inserted: true, smsStatus: "failed" as const, smsError: detail };
+    return { inserted: true, becameLive: leadResult.becameLive, smsStatus: "failed" as const, smsError: detail };
   }
 
   if (alreadyTextedRecently) {
@@ -230,7 +230,7 @@ export async function handleMissedCall(input: {
       smsStatus: "repeat_call",
       correlationId,
     });
-    return { inserted: true, smsStatus: "skipped_recent" as const };
+    return { inserted: true, becameLive: leadResult.becameLive, smsStatus: "skipped_recent" as const };
   }
 
   if (optedOut) {
@@ -251,7 +251,7 @@ export async function handleMissedCall(input: {
       smsStatus: "skipped_opt_out",
       correlationId,
     });
-    return { inserted: true, smsStatus: "skipped_opt_out" as const };
+    return { inserted: true, becameLive: leadResult.becameLive, smsStatus: "skipped_opt_out" as const };
   }
 
   try {
@@ -349,7 +349,7 @@ export async function handleMissedCall(input: {
       correlationId,
     });
 
-    return { inserted: true, smsStatus: "sent" as const, twilioMessageSid: message.sid };
+    return { inserted: true, becameLive: leadResult.becameLive, smsStatus: "sent" as const, twilioMessageSid: message.sid };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown SMS send error";
 
@@ -385,6 +385,6 @@ export async function handleMissedCall(input: {
       smsStatus: "failed",
       correlationId,
     });
-    return { inserted: true, smsStatus: "failed" as const, smsError: message };
+    return { inserted: true, becameLive: leadResult.becameLive, smsStatus: "failed" as const, smsError: message };
   }
 }

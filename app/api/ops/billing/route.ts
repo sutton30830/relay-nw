@@ -5,6 +5,7 @@ import {
   getOpsBillingAccountBySlug,
   recordPlatformAuditEvent,
   setAccountBillingPolicy,
+  setAccountCommercialOffer,
 } from "@/lib/supabase";
 
 const VALID_ACTIONS = new Set([
@@ -42,9 +43,10 @@ function actionSummary(action: OperatorBillingPolicyAction) {
   return "Updated billing policy";
 }
 
-function policyFor(action: OperatorBillingPolicyAction) {
+function policyFor(action: OperatorBillingPolicyAction, offer: "standard" | "founding_pilot") {
   if (action === "comp") return "comped" as const;
   if (action === "waive_setup_fee") return "setup_fee_waived" as const;
+  if (action === "uncomp" && offer === "founding_pilot") return "setup_fee_waived" as const;
   return "standard" as const;
 }
 
@@ -86,13 +88,23 @@ export async function POST(request: Request) {
   const auditSummary = actionSummary(action);
 
   try {
-    await setAccountBillingPolicy({
-      accountId: account.accountId,
-      policy: policyFor(action),
-      reason,
-      actorUserId: session.userId,
-      actorEmail: session.email,
-    });
+    if (action === "waive_setup_fee" || action === "require_setup_fee") {
+      await setAccountCommercialOffer({
+        accountId: account.accountId,
+        offer: action === "waive_setup_fee" ? "founding_pilot" : "standard",
+        reason,
+        actorUserId: session.userId,
+        actorEmail: session.email,
+      });
+    } else {
+      await setAccountBillingPolicy({
+        accountId: account.accountId,
+        policy: policyFor(action, account.commercialOffer),
+        reason,
+        actorUserId: session.userId,
+        actorEmail: session.email,
+      });
+    }
 
     // The policy helper writes the required account audit record atomically.
     // This platform record is useful context, but must never turn a completed

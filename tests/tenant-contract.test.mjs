@@ -2,8 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-// This suite protects the deployed contract. Phase 0 adds a separate pure
-// target contract and does not rewrite these runtime expectations early.
+// This suite protects the deployed Phase 1 delayed-trial contract.
 
 const sql = await readFile(new URL("../supabase.sql", import.meta.url), "utf8");
 const envTs = await readFile(new URL("../lib/env.ts", import.meta.url), "utf8");
@@ -24,7 +23,9 @@ const authLogoutRouteTs = await readFile(new URL("../app/api/auth/logout/route.t
 const authRecoveryRouteTs = await readFile(new URL("../app/api/auth/recovery/route.ts", import.meta.url), "utf8");
 const authUpdatePasswordRouteTs = await readFile(new URL("../app/api/auth/update-password/route.ts", import.meta.url), "utf8");
 const billingCheckoutRouteTs = await readFile(new URL("../app/api/billing/checkout/route.ts", import.meta.url), "utf8");
+const billingPaymentMethodRouteTs = await readFile(new URL("../app/api/billing/payment-method/route.ts", import.meta.url), "utf8");
 const billingPortalRouteTs = await readFile(new URL("../app/api/billing/portal/route.ts", import.meta.url), "utf8");
+const billingActivationTs = await readFile(new URL("../lib/billing-activation.ts", import.meta.url), "utf8");
 const stripeWebhookRouteTs = await readFile(new URL("../app/api/stripe/webhook/route.ts", import.meta.url), "utf8");
 const authCallbackRouteTs = await readFile(new URL("../app/auth/callback/route.ts", import.meta.url), "utf8");
 const authRecoveryPageTsx = await readFile(new URL("../app/auth/recovery/page.tsx", import.meta.url), "utf8");
@@ -100,10 +101,16 @@ test("billing foundation is account-scoped, Stripe-authoritative, and independen
   assert.match(sql, /billing_status text not null default 'not_started'/);
   assert.match(sql, /billing_policy text not null default 'standard'/);
   assert.match(sql, /billing_policy in \('standard', 'setup_fee_waived', 'comped'\)/);
+  assert.match(sql, /commercial_offer text not null default 'standard'/);
+  assert.match(sql, /commercial_offer in \('standard', 'founding_pilot'\)/);
   assert.match(sql, /setup_fee_status text not null default 'due'/);
   assert.match(sql, /monthly_price_cents integer not null default 9900/);
   assert.match(sql, /stripe_customer_id text/);
   assert.match(sql, /stripe_subscription_id text/);
+  assert.match(sql, /billing_setup_checkout_session_id text/);
+  assert.match(sql, /stripe_setup_intent_id text/);
+  assert.match(sql, /stripe_default_payment_method_id text/);
+  assert.match(sql, /set_account_commercial_offer/);
   assert.match(sql, /onboarding_status text not null default 'setting_up'/);
   assert.match(sql, /'waiting_for_forwarding'/);
   assert.match(sql, /'live'/);
@@ -141,7 +148,8 @@ test("billing foundation is account-scoped, Stripe-authoritative, and independen
   assert.match(billingTs, /computeBillingLifecycle/);
   assert.match(billingTs, /ownerAction/);
   assert.match(billingTs, /canApplyOperatorBillingOverride/);
-  assert.match(billingTs, /canStartMonthlyBilling\(input\.technicalStatus\)/);
+  assert.match(billingTs, /canStartMonthlyTrial\(\{/);
+  assert.doesNotMatch(billingTs, /canStartMonthlyBilling/);
   assert.match(setupPageTsx, /getAccountTechnicalSetupStatus\(accountId\)/);
   assert.match(setupPageTsx, /technicalStatus === "live"/);
   assert.doesNotMatch(setupPageTsx, /computeBillingReadiness|ownerOnboardingDelayMessage|Billing activation/);
@@ -162,8 +170,18 @@ test("stripe checkout and webhooks update account billing without gating missed-
   assert.match(stripeBillingTs, /metadataAccountId/);
   assert.match(stripeBillingTs, /mapStripeSubscriptionStatus/);
   assert.doesNotMatch(stripeBillingTs, /checkoutTrialPeriodDays|subscription_data\[trial_period_days\]/);
+  assert.match(stripeBillingTs, /createStripePaymentMethodCheckoutSession/);
+  assert.match(stripeBillingTs, /mode:\s*"setup"/);
+  assert.match(stripeBillingTs, /createStripeTrialSubscription/);
+  assert.match(stripeBillingTs, /trial_period_days/);
+  assert.match(stripeBillingTs, /payment_behavior:\s*"default_incomplete"/);
+  assert.match(stripeBillingTs, /trial_settings\[end_behavior\]\[missing_payment_method\]/);
   assert.match(stripeBillingTs, /retrieveStripeSubscription/);
   assert.match(stripeBillingTs, /billingUpdateFromSubscription/);
+  assert.match(billingActivationTs, /canStartMonthlyTrial/);
+  assert.match(billingActivationTs, /listStripeSubscriptionsForCustomer/);
+  assert.match(billingActivationTs, /relay-trial-activation/);
+  assert.match(billingActivationTs, /initial_trial_already_used/);
 
   assert.match(billingCheckoutRouteTs, /requireAccountUser\(\)/);
   assert.match(billingCheckoutRouteTs, /session\.role !== "owner"/);
@@ -172,8 +190,13 @@ test("stripe checkout and webhooks update account billing without gating missed-
   assert.match(billingCheckoutRouteTs, /getBillingCheckoutEligibility/);
   assert.doesNotMatch(billingCheckoutRouteTs, /checkoutTrialPeriodDays|trialPeriodDays/);
   assert.match(billingCheckoutRouteTs, /getAccountTechnicalSetupStatus/);
-  assert.match(billingCheckoutRouteTs, /technicalStatus/);
-  assert.doesNotMatch(billingCheckoutRouteTs, /computeSetupReadiness|getA2pRegistrationStatus|getForwardingHealthSummary/);
+  assert.match(billingCheckoutRouteTs, /getA2pRegistrationStatus/);
+  assert.match(billingCheckoutRouteTs, /canStartMonthlyTrial/);
+  assert.match(billingPaymentMethodRouteTs, /requireAccountUser\(\)/);
+  assert.match(billingPaymentMethodRouteTs, /session\.role !== "owner"/);
+  assert.match(billingPaymentMethodRouteTs, /isSetupFeeSettled/);
+  assert.match(billingPaymentMethodRouteTs, /createStripePaymentMethodCheckoutSession/);
+  assert.match(billingPaymentMethodRouteTs, /retrieveStripeCheckoutSession/);
   assert.match(stripeBillingTs, /createStripePortalSession/);
   assert.match(stripeBillingTs, /billing_portal\/sessions/);
   assert.match(stripeBillingTs, /Idempotency-Key/);
@@ -188,7 +211,9 @@ test("stripe checkout and webhooks update account billing without gating missed-
   assert.match(settingsPageTsx, /Trial ends/);
   assert.match(settingsPageTsx, /Free account/);
   assert.match(settingsPageTsx, /Relay isn't charging this account/);
-  assert.match(settingsPageTsx, /Monthly billing can begin once missed-call capture is live; texting approval is separate/);
+  assert.match(settingsPageTsx, /Monthly trial waits for text-back/);
+  assert.match(settingsPageTsx, /trial waits for automatic text-back activation/);
+  assert.match(settingsPageTsx, /Add payment method/);
   assert.match(emailTs, /notifyOwnerBillingPaymentFailed/);
   assert.match(emailTs, /notifyOwnerSubscriptionScheduledToEnd/);
   assert.match(emailTs, /notifyOwnerBillingRecovered/);
@@ -213,6 +238,9 @@ test("stripe checkout and webhooks update account billing without gating missed-
   assert.match(stripeWebhookRouteTs, /notifyOwnerBillingPaymentFailed/);
   assert.match(stripeWebhookRouteTs, /notifyOwnerSubscriptionScheduledToEnd/);
   assert.match(stripeWebhookRouteTs, /notifyOwnerBillingRecovered/);
+  assert.match(stripeWebhookRouteTs, /notifyOwnerTrialEnding/);
+  assert.match(stripeWebhookRouteTs, /setup_intent\.succeeded/);
+  assert.match(stripeWebhookRouteTs, /customer\.subscription\.trial_will_end/);
   assert.match(stripeWebhookRouteTs, /existingBilling\.billingAttentionSince \?\? new Date\(\)\.toISOString\(\)/);
   assert.doesNotMatch(stripeWebhookRouteTs, /extractBillingUpdateFromStripeEvent/);
   assert.doesNotMatch(missedCallTs, /billingStatus|stripe/i);
@@ -221,6 +249,9 @@ test("stripe checkout and webhooks update account billing without gating missed-
   assert.match(verifyBillingScript, /requiredStripeWebhookEvents/);
   assert.match(verifyBillingScript, /checkout\.session\.completed/);
   assert.match(verifyBillingScript, /customer\.subscription\.updated/);
+  assert.match(verifyBillingScript, /customer\.subscription\.trial_will_end/);
+  assert.match(verifyBillingScript, /setup_intent\.succeeded/);
+  assert.match(verifyBillingScript, /payment_method\.detached/);
   assert.match(verifyBillingScript, /invoice\.payment_failed/);
   assert.match(verifyBillingScript, /invoice\.payment_action_required/);
   assert.match(verifyBillingScript, /invoice\.paid/);
@@ -355,7 +386,7 @@ test("ops pages share the same internal tool actions", () => {
   assert.match(appHeaderTsx, /Back to my inbox/);
   assert.match(opsPageTsx, /listOpsAccounts\(q\)/);
   assert.match(opsAccountPageTsx, /getOpsAccountBySlug\(id\)/);
-  assert.match(opsAccountPageTsx, /Collect the \$150, or waive it deliberately/);
+  assert.match(opsAccountPageTsx, /Collect the \$150, or make this an audited founding pilot/);
   assert.match(opsBillingPageTsx, /redirect\(`\/ops\/accounts\//);
   assert.match(opsAccountDirectoryTsx, /Needs attention/);
   assert.match(opsAccountDirectoryTsx, /Diagnostics/);

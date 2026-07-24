@@ -1,9 +1,10 @@
 import { env } from "@/lib/env";
-import type {
-  AccountBillingRecord,
-  AccountBillingStatus,
-  AccountOnboardingStatus,
-  StripeSubscriptionStatus,
+import {
+  normalizeCommercialOffer,
+  type AccountBillingRecord,
+  type AccountBillingStatus,
+  type AccountOnboardingStatus,
+  type StripeSubscriptionStatus,
 } from "@/lib/billing";
 import type { TechnicalSetupStatus } from "@/lib/customer-experience-contract";
 import { normalizePhoneNumber } from "@/lib/phone";
@@ -121,11 +122,17 @@ type AccountBillingRow = {
   billing_status: string | null;
   billing_policy: string | null;
   billing_policy_updated_at: string | null;
+  commercial_offer: string | null;
   onboarding_status: string | null;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   stripe_price_id: string | null;
   stripe_subscription_status: string | null;
+  billing_setup_checkout_session_id: string | null;
+  stripe_setup_intent_id: string | null;
+  stripe_setup_intent_status: string | null;
+  stripe_default_payment_method_id: string | null;
+  payment_method_updated_at: string | null;
   trial_ends_at: string | null;
   current_period_end: string | null;
   cancel_at_period_end: boolean | null;
@@ -224,11 +231,17 @@ export type OpsAccountSummary = {
 const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   billingStatus: "not_started",
   billingPolicy: "standard",
+  commercialOffer: "standard",
   onboardingStatus: "setting_up",
   stripeCustomerId: null,
   stripeSubscriptionId: null,
   stripePriceId: null,
   stripeSubscriptionStatus: null,
+  billingSetupCheckoutSessionId: null,
+  stripeSetupIntentId: null,
+  stripeSetupIntentStatus: null,
+  stripeDefaultPaymentMethodId: null,
+  paymentMethodUpdatedAt: null,
   trialEndsAt: null,
   currentPeriodEnd: null,
   cancelAtPeriodEnd: false,
@@ -616,13 +629,13 @@ export async function getAccountBillingRecord(accountId: string | null | undefin
   let { data, error } = await supabaseAdmin
     .from("accounts")
     .select(
-      "billing_status, billing_policy, billing_policy_updated_at, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, canceled_at, onboarding_status_updated_at, setup_fee_cents, setup_fee_status, setup_fee_checkout_session_id, setup_fee_payment_intent_id, setup_fee_paid_at, setup_fee_waived_at, setup_fee_waiver_reason, setup_fee_refunded_at, setup_fee_refunded_cents, setup_fee_dispute_status, monthly_price_cents",
+      "billing_status, billing_policy, billing_policy_updated_at, commercial_offer, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, billing_setup_checkout_session_id, stripe_setup_intent_id, stripe_setup_intent_status, stripe_default_payment_method_id, payment_method_updated_at, trial_ends_at, current_period_end, cancel_at_period_end, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, canceled_at, onboarding_status_updated_at, setup_fee_cents, setup_fee_status, setup_fee_checkout_session_id, setup_fee_payment_intent_id, setup_fee_paid_at, setup_fee_waived_at, setup_fee_waiver_reason, setup_fee_refunded_at, setup_fee_refunded_cents, setup_fee_dispute_status, monthly_price_cents",
     )
     .eq("id", accountId)
     .maybeSingle();
 
-  if (error?.message.includes("billing_policy")) {
-    console.warn("accounts.billing_policy is missing. Apply the Phase 1 Stripe-authority migration.");
+  if (error?.message.includes("billing_policy") || error?.message.includes("commercial_offer")) {
+    console.warn("Account commercial billing columns are missing. Apply the Phase 1 delayed-trial migration.");
     ({ data, error } = await supabaseAdmin
       .from("accounts")
       .select(
@@ -658,11 +671,17 @@ export async function getAccountBillingRecord(accountId: string | null | undefin
   return {
     billingStatus: normalizeAccountBillingStatus(row.billing_status),
     billingPolicy: normalizeAccountBillingPolicy(row.billing_policy, row.billing_status, row.setup_fee_status),
+    commercialOffer: normalizeCommercialOffer(row.commercial_offer),
     onboardingStatus: normalizeAccountOnboardingStatus(row.onboarding_status),
     stripeCustomerId: row.stripe_customer_id,
     stripeSubscriptionId: row.stripe_subscription_id,
     stripePriceId: row.stripe_price_id,
     stripeSubscriptionStatus: normalizeAccountStripeSubscriptionStatus(row.stripe_subscription_status),
+    billingSetupCheckoutSessionId: row.billing_setup_checkout_session_id,
+    stripeSetupIntentId: row.stripe_setup_intent_id,
+    stripeSetupIntentStatus: row.stripe_setup_intent_status,
+    stripeDefaultPaymentMethodId: row.stripe_default_payment_method_id,
+    paymentMethodUpdatedAt: row.payment_method_updated_at,
     trialEndsAt: row.trial_ends_at,
     currentPeriodEnd: row.current_period_end,
     cancelAtPeriodEnd: Boolean(row.cancel_at_period_end),
@@ -733,6 +752,7 @@ export async function updateAccountBillingRecord(
     payload.billing_policy = update.billingPolicy;
     payload.billing_policy_updated_at = new Date().toISOString();
   }
+  if (update.commercialOffer !== undefined) payload.commercial_offer = update.commercialOffer;
   if (update.onboardingStatus !== undefined) {
     payload.onboarding_status = update.onboardingStatus;
     payload.onboarding_status_updated_at = new Date().toISOString();
@@ -741,6 +761,11 @@ export async function updateAccountBillingRecord(
   if (update.stripeSubscriptionId !== undefined) payload.stripe_subscription_id = update.stripeSubscriptionId;
   if (update.stripePriceId !== undefined) payload.stripe_price_id = update.stripePriceId;
   if (update.stripeSubscriptionStatus !== undefined) payload.stripe_subscription_status = update.stripeSubscriptionStatus;
+  if (update.billingSetupCheckoutSessionId !== undefined) payload.billing_setup_checkout_session_id = update.billingSetupCheckoutSessionId;
+  if (update.stripeSetupIntentId !== undefined) payload.stripe_setup_intent_id = update.stripeSetupIntentId;
+  if (update.stripeSetupIntentStatus !== undefined) payload.stripe_setup_intent_status = update.stripeSetupIntentStatus;
+  if (update.stripeDefaultPaymentMethodId !== undefined) payload.stripe_default_payment_method_id = update.stripeDefaultPaymentMethodId;
+  if (update.paymentMethodUpdatedAt !== undefined) payload.payment_method_updated_at = update.paymentMethodUpdatedAt;
   if (update.trialEndsAt !== undefined) payload.trial_ends_at = update.trialEndsAt;
   if (update.currentPeriodEnd !== undefined) payload.current_period_end = update.currentPeriodEnd;
   if (update.cancelAtPeriodEnd !== undefined) payload.cancel_at_period_end = update.cancelAtPeriodEnd;
@@ -823,6 +848,28 @@ export async function setAccountBillingPolicy(input: {
     p_actor_email: input.actorEmail,
   });
 
+  throwIfSupabaseError(error);
+}
+
+export async function setAccountCommercialOffer(input: {
+  accountId: string;
+  offer: AccountBillingRecord["commercialOffer"];
+  reason: string;
+  actorUserId: string;
+  actorEmail: string | null;
+}) {
+  const accountId = assertAccountIdForAccountStore(
+    input.accountId,
+    "setAccountCommercialOffer",
+  );
+  if (shouldSkipDatabaseWrite("commercial offer", input)) return;
+  const { error } = await supabaseAdmin.rpc("set_account_commercial_offer", {
+    p_account_id: accountId,
+    p_offer: input.offer,
+    p_reason: input.reason.trim(),
+    p_actor_user_id: input.actorUserId,
+    p_actor_email: input.actorEmail,
+  });
   throwIfSupabaseError(error);
 }
 
@@ -1217,13 +1264,13 @@ export async function getOpsBillingAccountBySlug(slug: string): Promise<OpsBilli
   let { data, error } = await supabaseAdmin
     .from("accounts")
     .select(
-      "id, slug, name, billing_status, billing_policy, billing_policy_updated_at, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, canceled_at, onboarding_status_updated_at, setup_fee_cents, setup_fee_status, setup_fee_checkout_session_id, setup_fee_payment_intent_id, setup_fee_paid_at, setup_fee_waived_at, setup_fee_waiver_reason, setup_fee_refunded_at, setup_fee_refunded_cents, setup_fee_dispute_status, monthly_price_cents",
+      "id, slug, name, billing_status, billing_policy, billing_policy_updated_at, commercial_offer, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, billing_setup_checkout_session_id, stripe_setup_intent_id, stripe_setup_intent_status, stripe_default_payment_method_id, payment_method_updated_at, trial_ends_at, current_period_end, cancel_at_period_end, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, canceled_at, onboarding_status_updated_at, setup_fee_cents, setup_fee_status, setup_fee_checkout_session_id, setup_fee_payment_intent_id, setup_fee_paid_at, setup_fee_waived_at, setup_fee_waiver_reason, setup_fee_refunded_at, setup_fee_refunded_cents, setup_fee_dispute_status, monthly_price_cents",
     )
     .eq("slug", normalizedSlug)
     .maybeSingle();
 
-  if (error?.message.includes("billing_policy")) {
-    console.warn("accounts.billing_policy is missing. Apply the Phase 1 Stripe-authority migration.");
+  if (error?.message.includes("billing_policy") || error?.message.includes("commercial_offer")) {
+    console.warn("Account commercial billing columns are missing. Apply the Phase 1 delayed-trial migration.");
     ({ data, error } = await supabaseAdmin
       .from("accounts")
       .select(
@@ -1259,11 +1306,21 @@ export async function getOpsBillingAccountBySlug(slug: string): Promise<OpsBilli
       data.billing_status as string | null | undefined,
       data.setup_fee_status as string | null | undefined,
     ),
+    commercialOffer: normalizeCommercialOffer(data.commercial_offer as string | null | undefined),
     onboardingStatus: normalizeAccountOnboardingStatus(data.onboarding_status as string | null | undefined),
     stripeCustomerId: typeof data.stripe_customer_id === "string" ? data.stripe_customer_id : null,
     stripeSubscriptionId: typeof data.stripe_subscription_id === "string" ? data.stripe_subscription_id : null,
     stripePriceId: typeof data.stripe_price_id === "string" ? data.stripe_price_id : null,
     stripeSubscriptionStatus: normalizeAccountStripeSubscriptionStatus(data.stripe_subscription_status as string | null | undefined),
+    billingSetupCheckoutSessionId:
+      typeof data.billing_setup_checkout_session_id === "string" ? data.billing_setup_checkout_session_id : null,
+    stripeSetupIntentId: typeof data.stripe_setup_intent_id === "string" ? data.stripe_setup_intent_id : null,
+    stripeSetupIntentStatus:
+      typeof data.stripe_setup_intent_status === "string" ? data.stripe_setup_intent_status : null,
+    stripeDefaultPaymentMethodId:
+      typeof data.stripe_default_payment_method_id === "string" ? data.stripe_default_payment_method_id : null,
+    paymentMethodUpdatedAt:
+      typeof data.payment_method_updated_at === "string" ? data.payment_method_updated_at : null,
     trialEndsAt: typeof data.trial_ends_at === "string" ? data.trial_ends_at : null,
     currentPeriodEnd: typeof data.current_period_end === "string" ? data.current_period_end : null,
     cancelAtPeriodEnd: Boolean(data.cancel_at_period_end),

@@ -183,9 +183,10 @@ test("Stripe remains authoritative for every customer money fact", () => {
   }
 });
 
-test("Phase 0 target remains isolated from current production billing", () => {
-  assert.match(currentBillingSource, /canStartMonthlyBilling/);
-  assert.doesNotMatch(currentBillingSource, /canStartMonthlyTrial/);
+test("Phase 1 runtime uses the delayed-trial contract", () => {
+  assert.match(currentBillingSource, /canStartMonthlyTrial/);
+  assert.doesNotMatch(currentBillingSource, /canStartMonthlyBilling/);
+  assert.match(currentBillingSource, /initial_trial_managed_automatically/);
 });
 
 test("Stripe status drives the customer billing presentation", () => {

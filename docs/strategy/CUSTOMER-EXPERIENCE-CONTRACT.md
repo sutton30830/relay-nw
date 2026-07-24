@@ -1,6 +1,7 @@
 # Relay Customer Experience Contract
 
-Status: approved Phase 0 target contract, revised July 23, 2026. This document defines the behavior later implementation phases must preserve. It does not claim that the current application already follows the contract.
+Status: Phase 1 billing contract implemented July 23, 2026. Later Operations
+and customer-experience phases must preserve these invariants.
 
 ## Product promise
 
@@ -45,7 +46,9 @@ The first valid, newly inserted missed-call lead may transition `setting_up` or 
 
 - A2P never blocks call capture or CRM access.
 - Only `approved` permits automatic texting to be enabled.
-- Approval never starts a trial or enables texting without recorded commercial consent and an explicit activation action.
+- Approval never starts a trial by itself or enables texting without recorded
+  commercial consent. Trial creation follows the full automatic text-back
+  activation event and is idempotent.
 - Registration work is operator-driven and primarily completed in Twilio.
 
 ### Operational blocker

@@ -105,19 +105,24 @@ function deriveCallCaptureReady({ settings, latestLead }) {
     : { ready: false, detail: "Relay has not recovered a real missed call yet." };
 }
 
-function deriveCheckoutAllowed({ account, activationReady }) {
+function deriveCheckoutAllowed({ account }) {
   const billingStatus = account?.billing_status ?? "not_started";
   const stripeStatus = account?.stripe_subscription_status ?? null;
 
-  if (!activationReady) return { ok: false, detail: "Checkout is blocked until call capture is live." };
   if (billingStatus === "active" || billingStatus === "trialing" || stripeStatus === "active" || stripeStatus === "trialing") {
     return { ok: false, detail: "Checkout should be blocked because billing is already active/trialing." };
   }
   if (billingStatus === "past_due" || stripeStatus === "past_due" || stripeStatus === "unpaid") {
     return { ok: false, detail: "Checkout should be blocked; send the owner to the Customer Portal to update payment." };
   }
-  if (billingStatus === "not_started") return { ok: true, detail: "Checkout may start once the owner is handed off." };
-  if (billingStatus === "canceled" && (!stripeStatus || stripeStatus === "canceled" || stripeStatus === "incomplete_expired")) {
+  if (billingStatus === "not_started") {
+    return { ok: false, detail: "Initial subscription Checkout is blocked; Relay creates the Stripe trial automatically after full text-back activation." };
+  }
+  if (
+    billingStatus === "canceled" &&
+    (!stripeStatus || stripeStatus === "canceled" || stripeStatus === "incomplete_expired") &&
+    Boolean(account?.activated_at || account?.first_paid_at || account?.canceled_at)
+  ) {
     return { ok: true, detail: "A fully canceled account may restart through Checkout." };
   }
 
@@ -189,11 +194,26 @@ export function analyzeLaunchCertification(input) {
 
   const callCapture = deriveCallCaptureReady({ settings, latestLead });
   const smsRegistrationReady = READY_A2P_STATUSES.has(settings?.a2p_registration_status ?? "not_started");
-  const activationReady = callCapture.ready;
-  const effectiveOnboardingStatus = deriveEffectiveOnboardingStatus(account, activationReady);
-  const checkoutAllowed = deriveCheckoutAllowed({ account, activationReady });
-  const blocker = onboardingBlocker(account, activationReady);
-  const setupFeeStatus = account.setup_fee_status ?? "waived";
+  const technicalReady = callCapture.ready;
+  const setupFeeStatus = account.setup_fee_status ?? "due";
+  const setupFeeSettled =
+    account.billing_policy === "setup_fee_waived" ||
+    account.billing_policy === "comped" ||
+    setupFeeStatus === "paid" ||
+    setupFeeStatus === "waived" ||
+    setupFeeStatus === "partially_refunded";
+  const paymentMethodReady =
+    account.billing_policy === "comped" ||
+    Boolean(account.stripe_default_payment_method_id);
+  const activationReady =
+    technicalReady &&
+    smsRegistrationReady &&
+    settings?.sms_enabled === true &&
+    setupFeeSettled &&
+    paymentMethodReady;
+  const effectiveOnboardingStatus = deriveEffectiveOnboardingStatus(account, technicalReady);
+  const checkoutAllowed = deriveCheckoutAllowed({ account });
+  const blocker = onboardingBlocker(account, technicalReady);
 
   addCheck(
     checks,
@@ -209,7 +229,7 @@ export function analyzeLaunchCertification(input) {
     "A2P/SMS registration readiness",
     smsRegistrationReady
       ? "Carrier registration is approved."
-      : `a2p_registration_status=${settings?.a2p_registration_status ?? "missing"}; calls and billing remain available.`,
+      : `a2p_registration_status=${settings?.a2p_registration_status ?? "missing"}; calls remain available and monthly trial time has not started.`,
     smsRegistrationReady ? "pass" : "warn",
   );
   addCheck(
@@ -224,8 +244,11 @@ export function analyzeLaunchCertification(input) {
   addCheck(
     checks,
     activationReady,
-    "activation readiness",
-    activationReady ? "Call capture is live; monthly billing may begin." : "A real missed call must reach the CRM before monthly billing begins.",
+    "Stripe trial activation readiness",
+    activationReady
+      ? "Automatic text-back and commercial setup are ready; Stripe trial activation may run."
+      : "The Stripe trial remains stopped until calls, A2P, automatic text-back, setup terms, and the Stripe payment method are all ready.",
+    activationReady ? "pass" : "warn",
   );
   addCheck(
     checks,
@@ -247,7 +270,7 @@ export function analyzeLaunchCertification(input) {
   );
   addCheck(
     checks,
-    setupFeeStatus === "paid" || setupFeeStatus === "waived" || setupFeeStatus === "partially_refunded",
+    setupFeeSettled,
     "setup fee status",
     setupFeeStatus === "paid"
       ? "The one-time setup fee is paid."
@@ -255,10 +278,21 @@ export function analyzeLaunchCertification(input) {
         ? "The one-time setup fee is explicitly waived."
         : setupFeeStatus === "partially_refunded"
           ? "The one-time setup fee was paid and partially refunded."
-          : `The one-time setup fee is independently unresolved (status=${setupFeeStatus}); this does not block monthly Checkout.`,
-    setupFeeStatus === "paid" || setupFeeStatus === "waived" || setupFeeStatus === "partially_refunded"
+          : `The one-time setup fee is unresolved (status=${setupFeeStatus}); the initial Stripe trial cannot start.`,
+    setupFeeSettled
       ? "pass"
       : "warn",
+  );
+  addCheck(
+    checks,
+    paymentMethodReady,
+    "Stripe payment method",
+    paymentMethodReady
+      ? account.billing_policy === "comped"
+        ? "Comped account does not require a Stripe payment method."
+        : `Stripe default payment method ${account.stripe_default_payment_method_id} is ready.`
+      : "No Stripe default payment method is ready; trial activation remains stopped.",
+    paymentMethodReady ? "pass" : "warn",
   );
 
   const dangerousStripeDisagreement =
@@ -324,7 +358,7 @@ async function loadAccountFacts(supabase, slug) {
   const account = await maybeSingle(
     supabase
       .from("accounts")
-      .select("id, slug, name, status, billing_status, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, trial_ends_at, current_period_end, cancel_at_period_end, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, setup_fee_status, setup_fee_paid_at, setup_fee_waived_at")
+      .select("id, slug, name, status, billing_status, billing_policy, commercial_offer, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, stripe_default_payment_method_id, trial_ends_at, current_period_end, cancel_at_period_end, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, canceled_at, setup_fee_status, setup_fee_paid_at, setup_fee_waived_at")
       .eq("slug", slug),
     "account lookup",
   );

@@ -9,9 +9,15 @@ const EXPECTED_CURRENCY = "usd";
 
 export const requiredStripeWebhookEvents = [
   "checkout.session.completed",
+  "customer.updated",
+  "payment_method.attached",
+  "payment_method.detached",
+  "setup_intent.succeeded",
+  "setup_intent.setup_failed",
   "customer.subscription.created",
   "customer.subscription.updated",
   "customer.subscription.deleted",
+  "customer.subscription.trial_will_end",
   "invoice.payment_failed",
   "invoice.payment_action_required",
   "invoice.paid",

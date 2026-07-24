@@ -67,6 +67,7 @@ async function runSettingsPost({
   const calls = {
     a2pLookups: [],
     billingLookups: [],
+    activations: [],
     billingUpdates: [],
     updates: [],
     auditEvents: [],
@@ -95,6 +96,24 @@ async function runSettingsPost({
         profile.publicBusinessNumber && profile.businessType && profile.callMode
       ),
     },
+    "@/lib/billing-activation": {
+      activateStripeTrialForAccount: async (accountId) => {
+        calls.activations.push(accountId);
+        return {
+          status: "created",
+          subscriptionId: "sub_trial",
+          trialEndsAt: "2026-08-06T00:00:00.000Z",
+        };
+      },
+    },
+    "@/lib/billing": {
+      isSetupFeeSettled: (status, _firstPaidAt, policy) =>
+        policy === "setup_fee_waived" ||
+        policy === "comped" ||
+        status === "paid" ||
+        status === "waived" ||
+        status === "partially_refunded",
+    },
     "@/lib/supabase": {
       getA2pRegistrationStatus: async (accountId) => {
         calls.a2pLookups.push(accountId);
@@ -104,6 +123,10 @@ async function runSettingsPost({
         calls.billingLookups.push(accountId);
         return {
           onboardingStatus: "requirements_needed",
+          setupFeeStatus: "paid",
+          billingPolicy: "standard",
+          firstPaidAt: null,
+          stripeDefaultPaymentMethodId: "pm_1",
         };
       },
       updateAccountBillingRecord: async (accountId, update) => {

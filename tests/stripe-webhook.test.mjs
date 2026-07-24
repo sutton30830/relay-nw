@@ -44,9 +44,12 @@ function subscription(overrides = {}) {
     customerId: "cus_1",
     status: "active",
     priceId: "price_123",
+    trialStartsAt: null,
     trialEndsAt: null,
     currentPeriodEnd: "2026-08-01T00:00:00.000Z",
     cancelAtPeriodEnd: false,
+    metadataAccountId: "acct_1",
+    livemode: false,
     ...overrides,
   };
 }
@@ -84,12 +87,26 @@ async function runWebhook({
   paymentSnapshot = {
     id: "pi_setup_1",
     customerId: "cus_1",
+    paymentMethodId: "pm_1",
     status: "succeeded",
     amount: 15000,
     amountReceived: 15000,
     amountRefunded: 0,
     disputed: false,
     disputeStatus: null,
+    livemode: false,
+  },
+  setupIntentSnapshot = {
+    id: "seti_1",
+    customerId: "cus_1",
+    paymentMethodId: "pm_1",
+    status: "succeeded",
+    livemode: false,
+  },
+  customerSnapshot = {
+    id: "cus_1",
+    defaultPaymentMethodId: "pm_1",
+    livemode: false,
   },
   subscriptionError = null,
   subscriptionAccountId = "acct_1",
@@ -107,6 +124,7 @@ async function runWebhook({
     setupFeeStatus: "paid",
     setupFeeDisputeStatus: null,
     setupFeeRefundedAt: null,
+    stripeDefaultPaymentMethodId: null,
   },
   stripeSecretKey = "sk_test_example",
 } = {}) {
@@ -118,6 +136,9 @@ async function runWebhook({
     accountExists: [],
     retrievedSubscriptions: [],
     retrievedPayments: [],
+    retrievedSetupIntents: [],
+    retrievedCustomers: [],
+    customerUpdates: [],
     updates: [],
     processed: [],
     ignored: [],
@@ -158,11 +179,17 @@ async function runWebhook({
         if (ownerEmailError) throw ownerEmailError;
         return { sent: true };
       },
+      notifyOwnerTrialEnding: async (input) => {
+        calls.ownerEmails.push({ type: "trial_ending", input });
+        if (ownerEmailError) throw ownerEmailError;
+        return { sent: true };
+      },
     },
     "@/lib/stripe-billing": {
       ...realStripeBilling,
       assertStripeWebhookConfigured: () => {},
       verifyStripeWebhookSignature: () => true,
+      expectedStripeLivemode: () => stripeSecretKey.startsWith("sk_live_"),
       retrieveStripeSubscription: async (stripeSubscriptionId) => {
         calls.retrievedSubscriptions.push(stripeSubscriptionId);
         if (subscriptionError) throw subscriptionError;
@@ -170,7 +197,29 @@ async function runWebhook({
       },
       retrieveStripePaymentIntent: async (paymentIntentId) => {
         calls.retrievedPayments.push(paymentIntentId);
-        return { ...paymentSnapshot, id: paymentIntentId };
+        return {
+          paymentMethodId: null,
+          disputeStatus: null,
+          livemode: false,
+          ...paymentSnapshot,
+          id: paymentIntentId,
+        };
+      },
+      retrieveStripeSetupIntent: async (setupIntentId) => {
+        calls.retrievedSetupIntents.push(setupIntentId);
+        return { ...setupIntentSnapshot, id: setupIntentId };
+      },
+      retrieveStripeCustomerBillingProfile: async (customerId) => {
+        calls.retrievedCustomers.push(customerId);
+        return { ...customerSnapshot, id: customerId };
+      },
+      setStripeCustomerDefaultPaymentMethod: async (input) => {
+        calls.customerUpdates.push(input);
+        return {
+          ...customerSnapshot,
+          id: input.customerId,
+          defaultPaymentMethodId: input.paymentMethodId,
+        };
       },
     },
     "@/lib/supabase": {
@@ -278,9 +327,13 @@ test("paid setup-fee Checkout marks only the setup fee as paid", async () => {
         setupFeeCheckoutSessionId: "cs_setup_fee_1",
         setupFeePaymentIntentId: "pi_setup_1",
         setupFeePaidAt: calls.updates[0]?.update?.setupFeePaidAt,
+        stripeDefaultPaymentMethodId: "pm_1",
+        paymentMethodUpdatedAt: "2027-01-15T08:00:00.000Z",
       },
     },
   ]);
+  assert.equal(calls.customerUpdates.length, 1);
+  assert.equal(calls.customerUpdates[0].paymentMethodId, "pm_1");
   assert.match(calls.updates[0].update.setupFeePaidAt, /^\d{4}-\d{2}-\d{2}T/);
   assert.equal(calls.processed.length, 1);
 });
@@ -296,6 +349,18 @@ test("paid setup-fee Checkout without a customer still marks setup paid", async 
     }),
     subscriptionAccountId: null,
     customerAccountId: null,
+    paymentSnapshot: {
+      id: "pi_setup_customerless",
+      customerId: null,
+      paymentMethodId: null,
+      status: "succeeded",
+      amount: 15000,
+      amountReceived: 15000,
+      amountRefunded: 0,
+      disputed: false,
+      disputeStatus: null,
+      livemode: false,
+    },
   });
 
   assert.equal(response.status, 200);
@@ -308,10 +373,78 @@ test("paid setup-fee Checkout without a customer still marks setup paid", async 
         setupFeeCheckoutSessionId: "cs_setup_fee_customerless",
         setupFeePaymentIntentId: "pi_setup_customerless",
         setupFeePaidAt: calls.updates[0]?.update?.setupFeePaidAt,
+        stripeDefaultPaymentMethodId: null,
+        paymentMethodUpdatedAt: "2027-01-15T08:00:00.000Z",
       },
     },
   ]);
   assert.equal(calls.processed.length, 1);
+});
+
+test("pilot payment-method Checkout synchronizes the succeeded SetupIntent", async () => {
+  const { response, calls } = await runWebhook({
+    event: stripeEvent("checkout.session.completed", {
+      id: "cs_card_1",
+      mode: "setup",
+      customer: "cus_1",
+      setup_intent: "seti_1",
+      metadata: {
+        account_id: "acct_1",
+        charge_type: "billing_payment_method",
+      },
+    }),
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls.retrievedSetupIntents, ["seti_1"]);
+  assert.equal(calls.customerUpdates[0].paymentMethodId, "pm_1");
+  assert.deepEqual(calls.updates.at(-1), {
+    accountId: "acct_1",
+    update: {
+      stripeCustomerId: "cus_1",
+      billingSetupCheckoutSessionId: "cs_card_1",
+      stripeSetupIntentId: "seti_1",
+      stripeSetupIntentStatus: "succeeded",
+      stripeDefaultPaymentMethodId: "pm_1",
+      paymentMethodUpdatedAt: "2027-01-15T08:00:00.000Z",
+    },
+  });
+});
+
+test("SetupIntent webhook replay safely synchronizes the Stripe default card", async () => {
+  const { response, calls } = await runWebhook({
+    event: stripeEvent("setup_intent.succeeded", {
+      id: "seti_1",
+      customer: "cus_1",
+      payment_method: "pm_1",
+      status: "succeeded",
+      metadata: { account_id: "acct_1" },
+    }),
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls.retrievedSetupIntents, ["seti_1"]);
+  assert.equal(calls.customerUpdates.length, 1);
+  assert.equal(calls.updates.at(-1).update.stripeDefaultPaymentMethodId, "pm_1");
+  assert.equal(calls.processed.length, 1);
+});
+
+test("customer.updated keeps Stripe authoritative for the default payment method", async () => {
+  const { response, calls } = await runWebhook({
+    event: stripeEvent("customer.updated", {
+      id: "cus_1",
+      invoice_settings: { default_payment_method: "pm_new" },
+    }),
+    customerSnapshot: {
+      id: "cus_1",
+      defaultPaymentMethodId: "pm_new",
+      livemode: false,
+    },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls.retrievedCustomers, ["cus_1"]);
+  assert.equal(calls.updates.at(-1).update.stripeDefaultPaymentMethodId, "pm_new");
 });
 
 test("full setup-fee refund is reflected from Stripe", async () => {
@@ -576,6 +709,27 @@ test("subscription scheduled to cancel notifies the owner without canceling serv
   assert.equal(calls.updates[0].update.cancelAtPeriodEnd, true);
   assert.equal(calls.ownerEmails.length, 1);
   assert.equal(calls.ownerEmails[0].type, "subscription_scheduled_to_end");
+});
+
+test("Stripe trial-ending event notifies the owner without changing the trial locally", async () => {
+  const { response, calls } = await runWebhook({
+    event: stripeEvent("customer.subscription.trial_will_end", {
+      id: "sub_1",
+      customer: "cus_1",
+      status: "trialing",
+      metadata: { account_id: "acct_1" },
+    }),
+    subscriptionSnapshot: subscription({
+      status: "trialing",
+      trialStartsAt: "2026-07-23T00:00:00.000Z",
+      trialEndsAt: "2026-08-06T00:00:00.000Z",
+    }),
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(calls.updates[0].update.billingStatus, "trialing");
+  assert.equal(calls.ownerEmails[0].type, "trial_ending");
+  assert.equal(calls.ownerEmails[0].input.trialEndsAt, "2026-08-06T00:00:00.000Z");
 });
 
 test("unknown Stripe customer is recorded as ignored", async () => {

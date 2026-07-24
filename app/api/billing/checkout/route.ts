@@ -1,8 +1,13 @@
 import { redirect } from "next/navigation";
 import { requireAccountUser } from "@/lib/auth";
 import { getBillingCheckoutEligibility } from "@/lib/billing";
+import {
+  canStartMonthlyTrial,
+  type A2pRegistrationStatus,
+} from "@/lib/customer-experience-contract";
 import { createStripeCheckoutSession } from "@/lib/stripe-billing";
 import {
+  getA2pRegistrationStatus,
   getAccountBillingRecord,
   getAccountTechnicalSetupStatus,
 } from "@/lib/supabase";
@@ -35,13 +40,27 @@ export async function POST() {
     billingRedirect("forbidden");
   }
 
-  const [billing, technicalStatus] = await Promise.all([
+  const [billing, technicalStatus, a2pValue] = await Promise.all([
     getAccountBillingRecord(session.accountId),
     getAccountTechnicalSetupStatus(session.accountId),
+    getA2pRegistrationStatus(session.accountId),
   ]);
+  const a2pStatus: A2pRegistrationStatus =
+    a2pValue === "in_progress" ||
+    a2pValue === "approved" ||
+    a2pValue === "needs_attention" ||
+    a2pValue === "rejected" ||
+    a2pValue === "paused"
+      ? a2pValue
+      : "not_started";
   const eligibility = getBillingCheckoutEligibility({
     billing,
-    technicalStatus,
+    activationReady: canStartMonthlyTrial({
+      technicalStatus,
+      a2pStatus,
+      smsEnabled: session.account.smsEnabled,
+      blockedBy: "none",
+    }),
   });
 
   if (!eligibility.ok) {

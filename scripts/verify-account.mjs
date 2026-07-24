@@ -76,8 +76,10 @@ function deriveBillingVerification(account, settings) {
     label: "billing: not started",
     level: "warn",
     detail: a2pReady
-      ? "Carrier registration is approved. Start billing when this account is handed off."
-      : "Setup is still pending, so activation-based billing can wait.",
+      ? settings?.sms_enabled
+        ? "Automatic text-back is active. Stripe trial activation should reconcile automatically when commercial setup is complete."
+        : "Carrier registration is approved, but the Stripe trial waits until automatic text-back is enabled."
+      : "Carrier or customer setup is still pending, so no monthly trial time is being consumed.",
   };
 }
 
