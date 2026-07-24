@@ -95,7 +95,7 @@ const QUEUE_LABELS: Record<OpsQueueGroup, string> = {
   needs_attention: "Needs attention",
   onboarding: "Onboarding",
   running: "Running",
-  paused: "Paused",
+  paused: "Paused or closed",
 };
 
 const CALLS_LABELS: Record<OpsCallsState, string> = {
@@ -414,8 +414,7 @@ function deriveQueueGroup(input: {
     input.blockedBy !== "none" ||
     input.texting === "issue" ||
     input.billing === "attention" ||
-    input.billing === "canceled" ||
-    input.cancelAtPeriodEnd
+    input.billing === "canceled"
   ) {
     return "needs_attention";
   }

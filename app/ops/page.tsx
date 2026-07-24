@@ -1,9 +1,8 @@
 import { redirect } from "next/navigation";
-import { OpsAccountDirectory } from "@/app/ops/_components/ops-account-directory";
+import { OpsWorkQueue } from "@/app/ops/_components/ops-account-directory";
 import { OpsHeader } from "@/app/ops/_components/ops-header";
 import { requirePlatformOperator } from "@/lib/auth";
-import type { OpsQueueGroup } from "@/lib/ops-state";
-import { listOpsAccounts } from "@/lib/supabase";
+import { listOpsAccounts, listSetupRequests } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
@@ -18,11 +17,12 @@ export default async function OpsPage({
     q?: string;
     account?: string;
     view?: string;
-    queue?: OpsQueueGroup | "all";
+    queue?: string;
+    request_result?: string;
   }>;
 }) {
   const operator = await requirePlatformOperator();
-  const { q = "", account: legacyAccountSlug = "", view, queue = "all" } = await searchParams;
+  const { q = "", account: legacyAccountSlug = "", view, request_result: requestResult } = await searchParams;
 
   // Old bookmarks and emails used /ops?account=<slug>[&view=logs]. Send them to
   // the account's own page.
@@ -32,7 +32,10 @@ export default async function OpsPage({
     );
   }
 
-  const accounts = await listOpsAccounts(q);
+  const [accounts, requests] = await Promise.all([
+    listOpsAccounts(),
+    listSetupRequests("new"),
+  ]);
 
   return (
     <main className="leads-view">
@@ -41,7 +44,7 @@ export default async function OpsPage({
 
         <div className="leads-header">
           <div>
-            <p className="t-eyebrow">Operations queue</p>
+            <p className="t-eyebrow">Work queue</p>
             <h1 className="t-display">What needs to move today?</h1>
             <p className="leads-subtitle">
               Calls, texting, billing, and blocker ownership stay independent. Relay derives one next action.
@@ -49,7 +52,13 @@ export default async function OpsPage({
           </div>
         </div>
 
-        <OpsAccountDirectory accounts={accounts} query={q} queue={queue} />
+        <OpsWorkQueue
+          accounts={accounts}
+          requests={requests}
+          query={q}
+          canAcceptRequests={operator.role !== "support"}
+          requestResult={requestResult}
+        />
       </section>
     </main>
   );

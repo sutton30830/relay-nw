@@ -11,7 +11,7 @@ type HeaderSearch = {
   value: string;
 };
 
-type HeaderPage = "inbox" | "reports" | "setup" | "settings" | "conversation" | "operations" | "customers" | "requests" | "team";
+type HeaderPage = "inbox" | "reports" | "setup" | "settings" | "conversation" | "operations" | "accounts" | "team";
 
 const OWNER_NAV_ITEMS = [
   { key: "inbox", href: "/leads", icon: "inbox" as const, label: "Inbox" },
@@ -42,9 +42,8 @@ export function AppHeader({
   // destination, so neither shows this.
   const showBackToInbox = currentPage != null && currentPage !== "inbox" && currentPage !== "conversation";
   const operationsNavItems = [
-    { key: "operations", href: "/ops", icon: "inbox" as const, label: "Operations" },
-    { key: "customers", href: "/ops/customers", icon: "user" as const, label: "Customers" },
-    { key: "requests", href: "/ops/setup-requests", icon: "message" as const, label: "Requests" },
+    { key: "operations", href: "/ops", icon: "inbox" as const, label: "Work queue" },
+    { key: "accounts", href: "/ops/accounts", icon: "user" as const, label: "Accounts" },
     { key: "team", href: "/ops/team", icon: "settings" as const, label: "Team" },
   ];
   const navItems = isOperations ? operationsNavItems : OWNER_NAV_ITEMS;

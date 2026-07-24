@@ -1,8 +1,9 @@
 # Billing and Operations Simplification
 
-Status: Phase 2 independent Operations states implemented July 23, 2026.
-Stripe-owned delayed trials, blocker ownership, and the derived work queue are
-live. Later phases simplify customer-facing setup and remove obsolete surfaces.
+Status: Phase 3 single Work queue implemented July 23, 2026. Stripe-owned
+delayed trials, blocker ownership, and the derived Work queue are live.
+Operations navigation is Work queue, Accounts, and Team; old Customers and
+Requests links redirect temporarily.
 
 ## Outcome
 
@@ -66,7 +67,8 @@ pause, cancel, close, or refund an account.
 
 Primary navigation:
 
-- **Work queue:** needs attention, onboarding, running, paused.
+- **Work queue:** needs attention, onboarding, running, paused or closed.
+  New setup requests appear at the top of Onboarding.
 - **Accounts:** searchable directory, not a second pipeline.
 - **Team:** operator access.
 
@@ -91,7 +93,7 @@ The account workspace presents:
 
 Operators never manually write favorable Stripe states. External failures remain visible and leave local state unchanged until Stripe confirms the result.
 
-## Phase 2 runtime boundary
+## Phase 3 runtime boundary
 
 Production now collects the standard setup payment or founding-pilot card
 through Stripe, then creates the initial Stripe-owned trial only after full

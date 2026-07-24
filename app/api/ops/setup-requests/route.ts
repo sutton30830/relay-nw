@@ -24,11 +24,11 @@ function slugify(value: string, requestId: string) {
 }
 
 function go(result: string): never {
-  redirect(`/ops/setup-requests?result=${encodeURIComponent(result)}`);
+  redirect(`/ops?request_result=${encodeURIComponent(result)}#new-requests`);
 }
 
 function resultResponse(request: Request, result: string) {
-  return Response.redirect(new URL(`/ops/setup-requests?result=${encodeURIComponent(result)}`, request.url), 303);
+  return Response.redirect(new URL(`/ops?request_result=${encodeURIComponent(result)}#new-requests`, request.url), 303);
 }
 
 export async function POST(request: Request) {
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
       console.error("Setup request status update failed", { id, status, error });
       go("save_failed");
     }
-    redirect(`/ops/setup-requests?status=${status}`);
+    redirect("/ops?queue=onboarding#new-requests");
   }
 
   if (operator.role === "support") go("forbidden");

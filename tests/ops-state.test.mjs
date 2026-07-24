@@ -247,7 +247,7 @@ test("Relay comp never manufactures Stripe trial or active state", () => {
   assert.equal(state.nextAction.key, "none");
 });
 
-test("scheduled cancellation remains Stripe-owned and visible before deletion", () => {
+test("scheduled cancellation remains Stripe-owned and running through period end", () => {
   const state = deriveOpsState(input({
     technicalStatus: "live",
     a2pStatus: "approved",
@@ -257,7 +257,7 @@ test("scheduled cancellation remains Stripe-owned and visible before deletion", 
   }));
 
   assert.equal(state.billing, "active");
-  assert.equal(state.queueGroup, "needs_attention");
+  assert.equal(state.queueGroup, "running");
   assert.equal(state.nextAction.key, "review_cancellation");
 });
 

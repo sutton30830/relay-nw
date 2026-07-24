@@ -14,7 +14,11 @@ Use this when Relay NW is live for a business and something important may have f
 - The initial platform operator is bootstrapped by `supabase.sql` from the Supabase Auth email `srlowry21@gmail.com`.
 - Add future operators deliberately to `platform_operators` with role `super_admin`, `operator`, or `support`; revoke access by setting `status='revoked'`.
 - Do not grant Operations access by adding someone to a house-account `account_users` row. Account membership and platform access are separate concerns.
-- `/ops` is the derived Operations queue. Choose a customer before opening technical logs or Billing & setup.
+- `/ops` is the one derived Work queue: Needs attention, Onboarding, Running,
+  then collapsed Paused or closed. Choose a customer before opening technical
+  logs or Billing & setup.
+- `/ops/accounts` is the searchable directory, not a second pipeline. Old
+  `/ops/customers` and `/ops/setup-requests` links redirect to the new places.
 - Billing and onboarding forms carry the selected account server-side; never use an owner account cookie to decide which customer gets changed.
 
 ## First Response
@@ -43,7 +47,8 @@ Run `npm run test:activation` locally before high-risk releases. This is determi
 
 ### Assisted Onboarding Queue
 
-- Open `/ops/setup-requests` as an active platform operator.
+- Open `/ops` as an active platform operator. New setup requests are the first
+  cards in the Onboarding group.
 - New requests must include the owner login email. `Accept and invite` creates a separate tenant, owner membership, and secure password-setup email in one audited action.
 - Acceptance leaves the `$150` setup fee due, assigns no Relay number, and starts no monthly billing. Never reuse an operator account as the customer account.
 - Use `Resend account invite` if delivery fails. Relay sends the custom password email through Resend so Supabase's hosted-email rate limit is not part of normal onboarding.

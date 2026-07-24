@@ -4,10 +4,10 @@ import { requirePlatformOperator } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 const JOBS = [
-  ["Move a customer forward", "Start in the Operations queue. Calls, Texting, Billing, and Blocked by are independent; the next action is derived from those facts and never typed by an operator."],
+  ["Work the queue", "Start in Work queue. Calls, Texting, Billing, and Blocked by are independent; the next action is derived from those facts and never typed by an operator."],
   ["Handle money", "Stripe is the source of truth. Collect or waive the $150 setup fee and securely collect the card; Stripe starts the $99 trial only after automatic text-back is active and nobody remains blocked."],
-  ["Track the customer", "Use Customers for the commercial ledger and open an account from any card. Keep diagnostics collapsed until a normal-language state points you there."],
-  ["Manage requests", "Requests are prospects, not leads. Accept and invite creates a separate customer tenant with the setup fee due; it never assigns a number or starts monthly billing."],
+  ["Find an account", "Use Accounts as the searchable directory, then open the account. Keep diagnostics collapsed until a normal-language state points you there."],
+  ["Accept new work", "New requests sit at the top of Onboarding. Accept and invite creates a separate customer tenant with the setup fee due; it never assigns a number or starts monthly billing."],
   ["Manage operators", "Team access is explicit. Super admins can invite, change roles, and revoke. Never revoke yourself, and never remove the last active super admin."],
 ];
 

@@ -72,9 +72,10 @@ For the customer-by-customer onboarding checklist, see `docs/customer-setup.md`.
 - `/setup` authenticated call setup/status page
 - `/settings` authenticated account settings
 - `/reports` authenticated owner reporting
-- `/ops` Relay operator-only derived work queue
+- `/ops` Relay operator-only Work queue, including new setup requests
+- `/ops/accounts` searchable account directory
 - `/ops/accounts/[id]` independent Calls, Texting, Billing, and blocker workspace
-- `/ops/setup-requests` Relay NW operator-only assisted onboarding queue
+- `/ops/setup-requests` retired assisted-onboarding URL (redirects to Work queue)
 - `/ops/runbook` authenticated operational runbook
 - `/api/intake` intake form submission
 - `/api/leads/[id]` lead status update

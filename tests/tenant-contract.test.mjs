@@ -333,7 +333,7 @@ test("ops runbook is authenticated and covers failure visibility plus retention"
   assert.match(opsRunbookPageTsx, /requirePlatformOperator\(\)/);
   assert.match(opsRunbookPageTsx, /OpsHeader/);
   assert.match(opsRunbookPageTsx, /Five jobs, one shared language/);
-  assert.match(opsRunbookPageTsx, /Move a customer forward/);
+  assert.match(opsRunbookPageTsx, /Work the queue/);
   assert.match(opsRunbookPageTsx, /Handle money/);
   assert.match(opsRunbookPageTsx, /Manage operators/);
   assert.match(opsAccountPageTsx, /getRecentStripeEventsForAccount/);
@@ -353,7 +353,7 @@ test("ops runbook is authenticated and covers failure visibility plus retention"
   assert.match(opsBillingRouteTs, /setAccountBillingPolicy/);
   assert.doesNotMatch(opsBillingRouteTs, /updateAccountBillingRecord|recordAccountAuditEvents|grant_trial/);
   assert.match(verifyAccountScript, /Stripe event ledger healthy/);
-  assert.match(opsRunbookPageTsx, /Requests are prospects, not leads/);
+  assert.match(opsRunbookPageTsx, /New requests sit at the top of Onboarding/);
   assert.match(opsRunbookPageTsx, /Stripe is the source of truth/);
   assert.match(opsRunbookPageTsx, /Never revoke yourself/);
 
@@ -377,16 +377,16 @@ test("app-managed trial controls and cron are removed", () => {
   assert.doesNotMatch(opsBillingRouteTs, /grant_trial|extend_trial|end_trial_now/);
 });
 
-test("assisted onboarding setup requests are operator-only and status tracked", () => {
+test("assisted onboarding requests remain operator-only and are surfaced from Work queue", () => {
   assert.match(authTs, /export function isRelayOperator/);
   assert.match(authTs, /export async function requireRelayOperator\(\)/);
-  assert.match(appHeaderTsx, /href: "\/ops\/setup-requests"/);
+  assert.match(appHeaderTsx, /label: "Work queue"/);
+  assert.match(appHeaderTsx, /href: "\/ops\/accounts"/);
   assert.match(opsSetupRequestsPageTsx, /requirePlatformOperator\(\)/);
-  assert.match(opsSetupRequestsPageTsx, /listSetupRequests\(status\)/);
-  assert.match(opsSetupRequestsPageTsx, /New/);
-  assert.match(opsSetupRequestsPageTsx, /Contacted/);
-  assert.match(opsSetupRequestsPageTsx, /Onboarded/);
-  assert.match(opsSetupRequestsPageTsx, /Closed/);
+  assert.match(opsSetupRequestsPageTsx, /redirect\(`\/ops/);
+  assert.match(opsPageTsx, /listSetupRequests\("new"\)/);
+  assert.match(opsAccountDirectoryTsx, /New setup request/);
+  assert.match(opsAccountDirectoryTsx, /Accept and invite/);
   assert.match(opsSetupRequestsRouteTs, /requirePlatformOperator/);
   assert.match(opsSetupRequestsRouteTs, /updateSetupRequestStatus\(id, status\)/);
   assert.match(setupRequestsTs, /export type SetupRequestStatus = "new" \| "contacted" \| "onboarded" \| "closed"/);
@@ -419,18 +419,19 @@ test("ops pages share the same internal tool actions", () => {
   assert.match(opsHeaderTsx, /variant="operations"/);
   assert.match(appHeaderTsx, /Relay NW · Operations/);
   assert.match(appHeaderTsx, /Back to my inbox/);
-  assert.match(opsPageTsx, /listOpsAccounts\(q\)/);
+  assert.match(opsPageTsx, /listOpsAccounts\(\)/);
   assert.match(opsAccountPageTsx, /getOpsAccountBySlug\(id\)/);
   assert.match(opsAccountPageTsx, /Collect the \$150, or make this an audited founding pilot/);
   assert.match(opsBillingPageTsx, /redirect\(`\/ops\/accounts\//);
   assert.match(opsAccountDirectoryTsx, /Needs attention/);
-  assert.match(opsAccountDirectoryTsx, /Diagnostics/);
+  assert.match(opsAccountDirectoryTsx, /Open account/);
+  assert.doesNotMatch(opsAccountDirectoryTsx, /Diagnostics/);
   assert.match(emailTestRouteTs, /requirePlatformOperatorJson/);
   assert.match(emailTestRouteTs, /getOpsAccountBySlug/);
   assert.match(appHeaderTsx, /Back to my inbox/);
   assert.match(opsAccountPageTsx, /ops-diagnostics/);
 
-  for (const source of [opsPageTsx, opsRunbookPageTsx, opsSetupRequestsPageTsx, opsAccountPageTsx]) {
+  for (const source of [opsPageTsx, opsRunbookPageTsx, opsAccountPageTsx]) {
     assert.match(source, /requirePlatformOperator\(\)/);
     assert.match(source, /OpsHeader/);
     assert.doesNotMatch(source, /OpsToolbar/);
@@ -439,7 +440,7 @@ test("ops pages share the same internal tool actions", () => {
 });
 
 test("customer setup docs describe current assisted provisioning flow", () => {
-  assert.match(customerSetupMd, /\/ops\/setup-requests/);
+  assert.match(customerSetupMd, /top of Onboarding in `\/ops`/);
   assert.match(customerSetupMd, /npm run verify:account -- <slug>/);
   assert.match(customerSetupMd, /The customer does not run an app-generated test/);
   assert.match(customerSetupMd, /first valid, signed, real/);

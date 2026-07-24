@@ -17,7 +17,7 @@ to enter it again.
 
 ### Operator steps
 
-1. Accept the request in `/ops/setup-requests`.
+1. Accept the request from the top of Onboarding in `/ops`.
 2. Provision the account and owner login.
 3. Assign the account's Relay/Twilio number.
 4. Configure the Twilio voice and messaging webhooks.

@@ -127,7 +127,7 @@ export default async function OpsAccountPage({
     return (
       <main className="leads-view">
         <section className="leads-shell">
-          <OpsHeader operatorEmail={operator.email} />
+          <OpsHeader currentPage="accounts" operatorEmail={operator.email} />
           <div className="panel setup-panel ops-account-empty">
             <p className="t-eyebrow">Account not found</p>
             <h1 className="t-display">Choose another account.</h1>
@@ -228,7 +228,7 @@ export default async function OpsAccountPage({
   return (
     <main className="leads-view">
       <section className="leads-shell">
-        <OpsHeader businessName={summary.businessName} operatorEmail={operator.email} />
+        <OpsHeader businessName={summary.businessName} currentPage="accounts" operatorEmail={operator.email} />
 
         <div className="leads-header">
           <div>

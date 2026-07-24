@@ -222,7 +222,10 @@ export type OpsAccountSummary = {
   accountSlug: string;
   businessName: string;
   accountStatus: "active" | "paused" | "archived";
+  ownerName: string | null;
   ownerEmail: string | null;
+  publicBusinessNumber: string | null;
+  relayNumber: string | null;
   technicalStatus: TechnicalSetupStatus;
   a2pStatus: A2pRegistrationStatus;
   smsEnabled: boolean;
@@ -1271,13 +1274,32 @@ function mapOpsAccountSummary(row: Record<string, unknown>): OpsAccountSummary {
     typeof settingsRecord?.owner_email === "string" && settingsRecord.owner_email.trim()
       ? settingsRecord.owner_email
       : null;
+  const ownerName =
+    typeof settingsRecord?.owner_name === "string" && settingsRecord.owner_name.trim()
+      ? settingsRecord.owner_name
+      : null;
+  const publicBusinessNumber =
+    typeof settingsRecord?.public_business_number === "string" && settingsRecord.public_business_number.trim()
+      ? settingsRecord.public_business_number
+      : null;
+  const phoneNumbersRaw = row.account_phone_numbers;
+  const phoneNumbers = Array.isArray(phoneNumbersRaw)
+    ? phoneNumbersRaw.filter((value): value is Record<string, unknown> => Boolean(value) && typeof value === "object")
+    : [];
+  const primaryRelayNumber = phoneNumbers.find((number) => number.is_primary === true)
+    ?? phoneNumbers[0];
 
   return {
     accountId: String(row.id),
     accountSlug: String(row.slug),
     businessName,
     accountStatus: row.status === "paused" || row.status === "archived" ? row.status : "active",
+    ownerName,
     ownerEmail,
+    publicBusinessNumber,
+    relayNumber: typeof primaryRelayNumber?.phone_number === "string"
+      ? primaryRelayNumber.phone_number
+      : null,
     technicalStatus: normalizeTechnicalSetupStatus(
       row.onboarding_status as string | null | undefined,
     ),
@@ -1318,27 +1340,22 @@ function mapOpsAccountSummary(row: Record<string, unknown>): OpsAccountSummary {
   };
 }
 
-export async function listOpsAccounts(query = ""): Promise<OpsAccountSummary[]> {
+export async function listOpsAccounts(): Promise<OpsAccountSummary[]> {
   if (isPlaceholderSupabaseConfig()) return [];
 
-  const normalizedQuery = query.trim();
-  let request = supabaseAdmin
+  const request = supabaseAdmin
     .from("accounts")
     .select(
-      "id, slug, name, status, onboarding_status, ops_blocked_by, ops_blocker_note, ops_blocked_since, billing_status, billing_policy, setup_fee_status, stripe_default_payment_method_id, stripe_subscription_status, activated_at, first_paid_at, cancel_at_period_end, current_period_end, billing_updated_at, updated_at, canceled_at, account_settings(owner_email, business_name, a2p_registration_status, sms_enabled)",
+      "id, slug, name, status, onboarding_status, ops_blocked_by, ops_blocker_note, ops_blocked_since, billing_status, billing_policy, setup_fee_status, stripe_default_payment_method_id, stripe_subscription_status, activated_at, first_paid_at, cancel_at_period_end, current_period_end, billing_updated_at, updated_at, canceled_at, account_settings(owner_email, owner_name, business_name, public_business_number, a2p_registration_status, sms_enabled), account_phone_numbers(phone_number, is_primary)",
     )
     .order("updated_at", { ascending: false })
     .limit(250);
-
-  if (normalizedQuery) {
-    const escaped = normalizedQuery.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll(",", "\\,");
-    request = request.or(`slug.ilike.%${escaped}%,name.ilike.%${escaped}%`);
-  }
 
   const { data, error } = await request;
   if (error) {
     if (
       error.message.includes("account_settings") ||
+      error.message.includes("account_phone_numbers") ||
       error.message.includes("onboarding_status") ||
       error.message.includes("ops_blocked_by")
     ) {
@@ -1359,7 +1376,7 @@ export async function getOpsAccountBySlug(slug: string): Promise<OpsAccountSumma
   const { data, error } = await supabaseAdmin
     .from("accounts")
     .select(
-      "id, slug, name, status, onboarding_status, ops_blocked_by, ops_blocker_note, ops_blocked_since, billing_status, billing_policy, setup_fee_status, stripe_default_payment_method_id, stripe_subscription_status, activated_at, first_paid_at, cancel_at_period_end, current_period_end, billing_updated_at, updated_at, canceled_at, account_settings(owner_email, business_name, a2p_registration_status, sms_enabled)",
+      "id, slug, name, status, onboarding_status, ops_blocked_by, ops_blocker_note, ops_blocked_since, billing_status, billing_policy, setup_fee_status, stripe_default_payment_method_id, stripe_subscription_status, activated_at, first_paid_at, cancel_at_period_end, current_period_end, billing_updated_at, updated_at, canceled_at, account_settings(owner_email, owner_name, business_name, public_business_number, a2p_registration_status, sms_enabled), account_phone_numbers(phone_number, is_primary)",
     )
     .eq("slug", normalizedSlug)
     .maybeSingle();
@@ -1367,6 +1384,7 @@ export async function getOpsAccountBySlug(slug: string): Promise<OpsAccountSumma
   if (error) {
     if (
       error.message.includes("account_settings") ||
+      error.message.includes("account_phone_numbers") ||
       error.message.includes("onboarding_status") ||
       error.message.includes("ops_blocked_by")
     ) {
