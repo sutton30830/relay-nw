@@ -24,6 +24,30 @@ type TwilioRequestSummary = {
 
 export const twilioClient = twilio(env.twilioAccountSid, env.twilioAuthToken);
 
+export async function fetchA2pCampaignStatus(
+  messagingServiceSid: string,
+  campaignSid: string,
+) {
+  if (!/^MG[0-9a-fA-F]{32}$/.test(messagingServiceSid)) {
+    throw new Error("Invalid Twilio Messaging Service SID.");
+  }
+  if (!/^QE[0-9a-fA-F]{32}$/.test(campaignSid)) {
+    throw new Error("Invalid Twilio A2P Campaign SID.");
+  }
+
+  // Twilio's UsAppToPerson resource is authoritative for whether an A2P
+  // campaign is pending, in review, verified, failed, or suspended.
+  const campaign = await twilioClient.messaging.v1
+    .services(messagingServiceSid)
+    .usAppToPerson(campaignSid)
+    .fetch();
+
+  return {
+    campaignStatus: campaign.campaignStatus,
+    errors: campaign.errors,
+  };
+}
+
 export async function findAvailableRelayNumbers(areaCode: string, limit = 8) {
   if (!/^\d{3}$/.test(areaCode)) throw new Error("Enter a three-digit area code.");
   const numbers = await twilioClient.availablePhoneNumbers("US").local.list({

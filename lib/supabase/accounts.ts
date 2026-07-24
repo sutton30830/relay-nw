@@ -6,7 +6,11 @@ import {
   type AccountOnboardingStatus,
   type StripeSubscriptionStatus,
 } from "@/lib/billing";
-import type { TechnicalSetupStatus } from "@/lib/customer-experience-contract";
+import type {
+  A2pRegistrationStatus,
+  OperationsBlocker,
+  TechnicalSetupStatus,
+} from "@/lib/customer-experience-contract";
 import { normalizePhoneNumber } from "@/lib/phone";
 import { isPlaceholderSupabaseConfig, shouldSkipDatabaseWrite, supabaseAdmin, throwIfSupabaseError } from "./client";
 
@@ -208,6 +212,9 @@ export type OpsBillingAccount = AccountBillingRecord & {
   accountId: string;
   accountSlug: string;
   businessName: string;
+  opsBlockedBy: OperationsBlocker;
+  opsBlockerNote: string | null;
+  opsBlockedSince: string | null;
 };
 
 export type OpsAccountSummary = {
@@ -216,9 +223,17 @@ export type OpsAccountSummary = {
   businessName: string;
   accountStatus: "active" | "paused" | "archived";
   ownerEmail: string | null;
+  technicalStatus: TechnicalSetupStatus;
+  a2pStatus: A2pRegistrationStatus;
+  smsEnabled: boolean;
   billingStatus: AccountBillingStatus;
-  onboardingStatus: AccountOnboardingStatus;
+  billingPolicy: AccountBillingRecord["billingPolicy"];
+  setupFeeStatus: AccountBillingRecord["setupFeeStatus"];
+  stripeDefaultPaymentMethodId: string | null;
   stripeSubscriptionStatus: StripeSubscriptionStatus | null;
+  opsBlockedBy: OperationsBlocker;
+  opsBlockerNote: string | null;
+  opsBlockedSince: string | null;
   activatedAt: string | null;
   firstPaidAt: string | null;
   cancelAtPeriodEnd: boolean;
@@ -320,6 +335,30 @@ export function normalizeTechnicalSetupStatus(
   return "setting_up";
 }
 
+function normalizeA2pRegistrationStatus(
+  value: string | null | undefined,
+): A2pRegistrationStatus {
+  if (
+    value === "not_started" ||
+    value === "in_progress" ||
+    value === "approved" ||
+    value === "needs_attention" ||
+    value === "rejected" ||
+    value === "paused"
+  ) {
+    return value;
+  }
+  return "not_started";
+}
+
+function normalizeOperationsBlocker(
+  value: string | null | undefined,
+): OperationsBlocker {
+  return value === "relay" || value === "customer" || value === "carrier"
+    ? value
+    : "none";
+}
+
 function normalizeAccountOnboardingStatus(value: string | null | undefined): AccountOnboardingStatus {
   if (
     value === "setting_up" ||
@@ -353,6 +392,35 @@ export async function getAccountTechnicalSetupStatus(
 
   throwIfSupabaseError(error);
   return normalizeTechnicalSetupStatus(data?.onboarding_status as string | null | undefined);
+}
+
+export async function getAccountOpsBlocker(
+  accountId: string | null | undefined,
+): Promise<{
+  blockedBy: OperationsBlocker;
+  blockerNote: string | null;
+  blockedSince: string | null;
+}> {
+  if (!accountId || isPlaceholderSupabaseConfig()) {
+    return { blockedBy: "none", blockerNote: null, blockedSince: null };
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("accounts")
+    .select("ops_blocked_by, ops_blocker_note, ops_blocked_since")
+    .eq("id", accountId)
+    .maybeSingle();
+
+  throwIfSupabaseError(error);
+  return {
+    blockedBy: normalizeOperationsBlocker(
+      data?.ops_blocked_by as string | null | undefined,
+    ),
+    blockerNote:
+      typeof data?.ops_blocker_note === "string" ? data.ops_blocker_note : null,
+    blockedSince:
+      typeof data?.ops_blocked_since === "string" ? data.ops_blocked_since : null,
+  };
 }
 
 function normalizeAccountStripeSubscriptionStatus(value: string | null | undefined): StripeSubscriptionStatus | null {
@@ -873,6 +941,30 @@ export async function setAccountCommercialOffer(input: {
   throwIfSupabaseError(error);
 }
 
+export async function setAccountOpsBlocker(input: {
+  accountId: string;
+  blockedBy: OperationsBlocker;
+  note: string | null;
+  actorUserId: string;
+  actorEmail: string | null;
+}) {
+  const accountId = assertAccountIdForAccountStore(
+    input.accountId,
+    "setAccountOpsBlocker",
+  );
+  if (shouldSkipDatabaseWrite("operations blocker", input)) return;
+
+  const { error } = await supabaseAdmin.rpc("set_account_ops_blocker", {
+    p_account_id: accountId,
+    p_blocked_by: input.blockedBy,
+    p_note: input.blockedBy === "none" ? null : input.note?.trim() ?? null,
+    p_actor_user_id: input.actorUserId,
+    p_actor_email: input.actorEmail,
+  });
+
+  throwIfSupabaseError(error);
+}
+
 function sanitizeStripeEventText(value: string | null | undefined) {
   return (value ?? "unknown")
     .replace(/[^a-zA-Z0-9_.:-]/g, "_")
@@ -1186,11 +1278,36 @@ function mapOpsAccountSummary(row: Record<string, unknown>): OpsAccountSummary {
     businessName,
     accountStatus: row.status === "paused" || row.status === "archived" ? row.status : "active",
     ownerEmail,
+    technicalStatus: normalizeTechnicalSetupStatus(
+      row.onboarding_status as string | null | undefined,
+    ),
+    a2pStatus: normalizeA2pRegistrationStatus(
+      settingsRecord?.a2p_registration_status as string | null | undefined,
+    ),
+    smsEnabled: settingsRecord?.sms_enabled === true,
     billingStatus: normalizeAccountBillingStatus(row.billing_status as string | null | undefined),
-    onboardingStatus: normalizeAccountOnboardingStatus(row.onboarding_status as string | null | undefined),
+    billingPolicy: normalizeAccountBillingPolicy(
+      row.billing_policy as string | null | undefined,
+      row.billing_status as string | null | undefined,
+      row.setup_fee_status as string | null | undefined,
+    ),
+    setupFeeStatus: normalizeSetupFeeStatus(
+      row.setup_fee_status as string | null | undefined,
+    ),
+    stripeDefaultPaymentMethodId:
+      typeof row.stripe_default_payment_method_id === "string"
+        ? row.stripe_default_payment_method_id
+        : null,
     stripeSubscriptionStatus: normalizeAccountStripeSubscriptionStatus(
       row.stripe_subscription_status as string | null | undefined,
     ),
+    opsBlockedBy: normalizeOperationsBlocker(
+      row.ops_blocked_by as string | null | undefined,
+    ),
+    opsBlockerNote:
+      typeof row.ops_blocker_note === "string" ? row.ops_blocker_note : null,
+    opsBlockedSince:
+      typeof row.ops_blocked_since === "string" ? row.ops_blocked_since : null,
     activatedAt: typeof row.activated_at === "string" ? row.activated_at : null,
     firstPaidAt: typeof row.first_paid_at === "string" ? row.first_paid_at : null,
     cancelAtPeriodEnd: Boolean(row.cancel_at_period_end),
@@ -1208,7 +1325,7 @@ export async function listOpsAccounts(query = ""): Promise<OpsAccountSummary[]> 
   let request = supabaseAdmin
     .from("accounts")
     .select(
-      "id, slug, name, status, billing_status, onboarding_status, stripe_subscription_status, activated_at, first_paid_at, cancel_at_period_end, current_period_end, billing_updated_at, updated_at, canceled_at, account_settings(owner_email, business_name)",
+      "id, slug, name, status, onboarding_status, ops_blocked_by, ops_blocker_note, ops_blocked_since, billing_status, billing_policy, setup_fee_status, stripe_default_payment_method_id, stripe_subscription_status, activated_at, first_paid_at, cancel_at_period_end, current_period_end, billing_updated_at, updated_at, canceled_at, account_settings(owner_email, business_name, a2p_registration_status, sms_enabled)",
     )
     .order("updated_at", { ascending: false })
     .limit(250);
@@ -1220,7 +1337,11 @@ export async function listOpsAccounts(query = ""): Promise<OpsAccountSummary[]> 
 
   const { data, error } = await request;
   if (error) {
-    if (error.message.includes("account_settings") || error.message.includes("onboarding_status")) {
+    if (
+      error.message.includes("account_settings") ||
+      error.message.includes("onboarding_status") ||
+      error.message.includes("ops_blocked_by")
+    ) {
       console.warn("Account lifecycle columns are missing. Run supabase.sql before enabling the Operations directory.");
       return [];
     }
@@ -1238,13 +1359,17 @@ export async function getOpsAccountBySlug(slug: string): Promise<OpsAccountSumma
   const { data, error } = await supabaseAdmin
     .from("accounts")
     .select(
-      "id, slug, name, status, billing_status, onboarding_status, stripe_subscription_status, activated_at, first_paid_at, cancel_at_period_end, current_period_end, billing_updated_at, updated_at, canceled_at, account_settings(owner_email, business_name)",
+      "id, slug, name, status, onboarding_status, ops_blocked_by, ops_blocker_note, ops_blocked_since, billing_status, billing_policy, setup_fee_status, stripe_default_payment_method_id, stripe_subscription_status, activated_at, first_paid_at, cancel_at_period_end, current_period_end, billing_updated_at, updated_at, canceled_at, account_settings(owner_email, business_name, a2p_registration_status, sms_enabled)",
     )
     .eq("slug", normalizedSlug)
     .maybeSingle();
 
   if (error) {
-    if (error.message.includes("account_settings") || error.message.includes("onboarding_status")) {
+    if (
+      error.message.includes("account_settings") ||
+      error.message.includes("onboarding_status") ||
+      error.message.includes("ops_blocked_by")
+    ) {
       console.warn("Account lifecycle columns are missing. Run supabase.sql before enabling the Operations directory.");
       return null;
     }
@@ -1264,7 +1389,7 @@ export async function getOpsBillingAccountBySlug(slug: string): Promise<OpsBilli
   let { data, error } = await supabaseAdmin
     .from("accounts")
     .select(
-      "id, slug, name, billing_status, billing_policy, billing_policy_updated_at, commercial_offer, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, billing_setup_checkout_session_id, stripe_setup_intent_id, stripe_setup_intent_status, stripe_default_payment_method_id, payment_method_updated_at, trial_ends_at, current_period_end, cancel_at_period_end, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, canceled_at, onboarding_status_updated_at, setup_fee_cents, setup_fee_status, setup_fee_checkout_session_id, setup_fee_payment_intent_id, setup_fee_paid_at, setup_fee_waived_at, setup_fee_waiver_reason, setup_fee_refunded_at, setup_fee_refunded_cents, setup_fee_dispute_status, monthly_price_cents",
+      "id, slug, name, billing_status, billing_policy, billing_policy_updated_at, commercial_offer, onboarding_status, ops_blocked_by, ops_blocker_note, ops_blocked_since, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, billing_setup_checkout_session_id, stripe_setup_intent_id, stripe_setup_intent_status, stripe_default_payment_method_id, payment_method_updated_at, trial_ends_at, current_period_end, cancel_at_period_end, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, billing_updated_at, canceled_at, onboarding_status_updated_at, setup_fee_cents, setup_fee_status, setup_fee_checkout_session_id, setup_fee_payment_intent_id, setup_fee_paid_at, setup_fee_waived_at, setup_fee_waiver_reason, setup_fee_refunded_at, setup_fee_refunded_cents, setup_fee_dispute_status, monthly_price_cents",
     )
     .eq("slug", normalizedSlug)
     .maybeSingle();
@@ -1285,7 +1410,8 @@ export async function getOpsBillingAccountBySlug(slug: string): Promise<OpsBilli
       error.message.includes("billing_status") ||
       error.message.includes("stripe_subscription_id") ||
       error.message.includes("trial_ends_at") ||
-      error.message.includes("setup_fee_status")
+      error.message.includes("setup_fee_status") ||
+      error.message.includes("ops_blocked_by")
     ) {
       console.warn("Account billing lifecycle columns are missing. Run supabase.sql before using operator billing controls.");
       return null;
@@ -1300,6 +1426,13 @@ export async function getOpsBillingAccountBySlug(slug: string): Promise<OpsBilli
     accountId: String(data.id),
     accountSlug: String(data.slug),
     businessName: String(data.name),
+    opsBlockedBy: normalizeOperationsBlocker(
+      data.ops_blocked_by as string | null | undefined,
+    ),
+    opsBlockerNote:
+      typeof data.ops_blocker_note === "string" ? data.ops_blocker_note : null,
+    opsBlockedSince:
+      typeof data.ops_blocked_since === "string" ? data.ops_blocked_since : null,
     billingStatus: normalizeAccountBillingStatus(data.billing_status as string | null | undefined),
     billingPolicy: normalizeAccountBillingPolicy(
       data.billing_policy as string | null | undefined,

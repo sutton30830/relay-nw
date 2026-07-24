@@ -6,11 +6,12 @@ const mutatingOpsRoutes = [
   "app/api/ops/billing/reconcile/route.ts",
   "app/api/ops/billing/refund/route.ts",
   "app/api/ops/billing/route.ts",
+  "app/api/ops/blocker/route.ts",
+  "app/api/ops/calls/route.ts",
   "app/api/ops/carrier/route.ts",
   "app/api/ops/kickoff/route.ts",
   "app/api/ops/profile/route.ts",
   "app/api/ops/setup-requests/route.ts",
-  "app/api/ops/stage/route.ts",
   "app/api/ops/team/route.ts",
   "app/api/ops/twilio/assign/route.ts",
 ];

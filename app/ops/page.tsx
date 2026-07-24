@@ -2,11 +2,13 @@ import { redirect } from "next/navigation";
 import { OpsAccountDirectory } from "@/app/ops/_components/ops-account-directory";
 import { OpsHeader } from "@/app/ops/_components/ops-header";
 import { requirePlatformOperator } from "@/lib/auth";
+import type { OpsQueueGroup } from "@/lib/ops-state";
 import { listOpsAccounts } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
-// The pipeline: every customer, grouped by stage, each with one next step.
+// One derived work queue: every customer has independent domain facts and one
+// next action. No operator selects an overall lifecycle.
 // Everything about a single customer — money, setup, diagnostics — lives on
 // that customer's own page (/ops/accounts/[slug]).
 export default async function OpsPage({
@@ -16,11 +18,11 @@ export default async function OpsPage({
     q?: string;
     account?: string;
     view?: string;
-    stage?: "all" | "setting_up" | "live" | "active" | "paused" | "closed" | "canceled";
+    queue?: OpsQueueGroup | "all";
   }>;
 }) {
   const operator = await requirePlatformOperator();
-  const { q = "", account: legacyAccountSlug = "", view, stage = "all" } = await searchParams;
+  const { q = "", account: legacyAccountSlug = "", view, queue = "all" } = await searchParams;
 
   // Old bookmarks and emails used /ops?account=<slug>[&view=logs]. Send them to
   // the account's own page.
@@ -39,15 +41,15 @@ export default async function OpsPage({
 
         <div className="leads-header">
           <div>
-            <p className="t-eyebrow">Pipeline</p>
+            <p className="t-eyebrow">Operations queue</p>
             <h1 className="t-display">What needs to move today?</h1>
             <p className="leads-subtitle">
-              Every customer has one next step. Open an account only when the card tells you to.
+              Calls, texting, billing, and blocker ownership stay independent. Relay derives one next action.
             </p>
           </div>
         </div>
 
-        <OpsAccountDirectory accounts={accounts} query={q} stage={stage} />
+        <OpsAccountDirectory accounts={accounts} query={q} queue={queue} />
       </section>
     </main>
   );

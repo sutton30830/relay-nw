@@ -5740,7 +5740,7 @@ code {
   .journey__phase--done .journey__detail { display: none; }
 }
 
-/* Stage-move control on pipeline cards. */
+/* Compact Operations form controls. */
 .ops-stage-move { display: flex; gap: 6px; align-items: center; }
 .ops-stage-move .field { min-height: 34px; padding: 2px 8px; font-size: 12.5px; }
 

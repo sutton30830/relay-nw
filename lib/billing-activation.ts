@@ -19,6 +19,7 @@ import {
   getA2pRegistrationStatus,
   getAccountBillingRecord,
   getAccountConfigByAccountId,
+  getAccountOpsBlocker,
   getAccountTechnicalSetupStatus,
   recordAccountAuditEvents,
   updateAccountBillingRecord,
@@ -124,11 +125,12 @@ async function resolveDefaultPaymentMethod(input: {
 export async function activateStripeTrialForAccount(
   accountId: string,
 ): Promise<StripeTrialActivationResult> {
-  const [billing, technicalStatus, a2pValue, account] = await Promise.all([
+  const [billing, technicalStatus, a2pValue, account, blocker] = await Promise.all([
     getAccountBillingRecord(accountId),
     getAccountTechnicalSetupStatus(accountId),
     getA2pRegistrationStatus(accountId),
     getAccountConfigByAccountId(accountId),
+    getAccountOpsBlocker(accountId),
   ]);
 
   if (!account) {
@@ -144,9 +146,14 @@ export async function activateStripeTrialForAccount(
     technicalStatus,
     a2pStatus,
     smsEnabled: account.smsEnabled,
-    blockedBy: "none",
+    blockedBy: blocker.blockedBy,
   })) {
-    return { status: "not_eligible", reason: "automatic_text_back_not_active" };
+    return {
+      status: "not_eligible",
+      reason: blocker.blockedBy === "none"
+        ? "automatic_text_back_not_active"
+        : `operations_blocked_by_${blocker.blockedBy}`,
+    };
   }
 
   if (!isSetupFeeSettled(

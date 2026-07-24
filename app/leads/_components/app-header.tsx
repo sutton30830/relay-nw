@@ -42,7 +42,7 @@ export function AppHeader({
   // destination, so neither shows this.
   const showBackToInbox = currentPage != null && currentPage !== "inbox" && currentPage !== "conversation";
   const operationsNavItems = [
-    { key: "operations", href: "/ops", icon: "inbox" as const, label: "Pipeline" },
+    { key: "operations", href: "/ops", icon: "inbox" as const, label: "Operations" },
     { key: "customers", href: "/ops/customers", icon: "user" as const, label: "Customers" },
     { key: "requests", href: "/ops/setup-requests", icon: "message" as const, label: "Requests" },
     { key: "team", href: "/ops/team", icon: "settings" as const, label: "Team" },

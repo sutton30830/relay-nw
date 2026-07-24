@@ -1,8 +1,8 @@
 # Relay NW Ops Runbook
 
-> **Current billing contract:** Phase 1 delayed Stripe trials are live.
-> Dedicated blocker ownership and the simplified work queue remain later
-> Operations phases.
+> **Current operating contract:** Stripe-owned delayed trials and the Phase 2
+> independent Operations states are live. Calls, Texting, Billing, and blocker
+> ownership are separate facts; the queue and next action are derived.
 
 Use this when Relay NW is live for a business and something important may have failed. The goal is simple: protect the missed-call recovery loop, notify the right person, and avoid silently losing caller data.
 
@@ -14,7 +14,7 @@ Use this when Relay NW is live for a business and something important may have f
 - The initial platform operator is bootstrapped by `supabase.sql` from the Supabase Auth email `srlowry21@gmail.com`.
 - Add future operators deliberately to `platform_operators` with role `super_admin`, `operator`, or `support`; revoke access by setting `status='revoked'`.
 - Do not grant Operations access by adding someone to a house-account `account_users` row. Account membership and platform access are separate concerns.
-- `/ops` is the account directory. Choose a customer before opening technical logs or Billing & setup.
+- `/ops` is the derived Operations queue. Choose a customer before opening technical logs or Billing & setup.
 - Billing and onboarding forms carry the selected account server-side; never use an owner account cookie to decide which customer gets changed.
 
 ## First Response
@@ -52,7 +52,28 @@ Run `npm run test:activation` locally before high-risk releases. This is determi
 - Assign an owned Twilio number from the account page after acceptance, or deliberately purchase one there. Purchasing creates a real Twilio charge.
 - Help forwarding customers complete the one carrier-specific forwarding step on `/setup`. Do not run synthetic forwarding or SMS tests.
 - The first signed, newly inserted real missed call marks call capture `live`. A2P work is separate and happens primarily in Twilio.
-- If a customer stops onboarding, an operator may explicitly pause or close the account. Relay does not run an automatic customer-deadline clock.
+- Copy the Messaging Service and A2P Campaign SIDs into the account workspace,
+  then use **Sync from Twilio**. The external campaign result controls A2P;
+  operators cannot select Approved.
+- Record whether Relay, the customer, or the carrier owns any blocker and include the specific reason. Blocker age is visible but does not create an automatic deadline.
+- Operators may explicitly pause call setup. They cannot manually mark calls ready, approve A2P, or invent a Stripe state.
+- Clearing a blocker clears its note and age; it does not change Calls, Texting, or Billing.
+
+### Operations Queue
+
+Every account exposes four independent facts:
+
+- **Calls:** setting up, waiting for forwarding, ready, or paused. A signed real missed call is the only positive readiness proof.
+- **Texting:** preparing, carrier review, approved, or issue. Relay reads the
+  Twilio campaign result; Twilio/carrier status is authoritative.
+- **Billing:** setup due, card ready, trial, active, attention, or canceled. Stripe-synchronized state is authoritative for subscription outcomes.
+- **Blocked by:** none, Relay, customer, or carrier. Relay operators own only this explanation and explicit call holds.
+
+Relay derives one queue group and one next action; neither is stored or directly
+editable. The precedence is: explicit blocker, paused calls, Stripe attention
+or cancellation, texting issue, commercial setup, call setup, A2P work,
+automatic text-back activation, then delayed trial activation. A healthy
+Stripe trial, active subscription, or audited comp needs no action.
 
 ### Commercial Terms and Activation Billing
 
@@ -67,8 +88,9 @@ Run `npm run test:activation` locally before high-risk releases. This is determi
 - Monthly service is `$99/month`. The initial Stripe-owned trial is 14 days for
   standard customers and 30 days for founding pilots.
 - Trial creation is automatic and idempotent only after calls are live, A2P is
-  approved, automatic text-back is enabled, the setup terms are settled, and
-  Stripe has a default payment method. Calls alone never start trial time.
+  approved, automatic text-back is enabled, the setup terms are settled,
+  Stripe has a default payment method, and no operational blocker is present.
+  Calls alone never start trial time.
 - Subscription Checkout is only for a canceled customer restarting after the
   one-time trial. Never grant a second trial.
 - Configure a separate Stripe one-time Price for `STRIPE_SETUP_FEE_PRICE_ID`. The existing `STRIPE_PRICE_ID` remains the recurring monthly Price.
@@ -143,8 +165,9 @@ Before handing a business live access:
 4. `npm run test:activation`
 5. One real missed-call test through Twilio.
 6. One Stripe test-mode Checkout for the launch account or a matching sandbox account.
-7. Confirm `/ops` shows the voice/dial-status, SMS status, inbound reply, recording, and Stripe events.
-8. Confirm privacy and terms links are visible from intake/setup flows.
+7. Confirm `/ops` shows the independent Calls, Texting, Billing, and Blocked-by facts plus the expected derived action.
+8. Confirm the account diagnostics show the voice/dial-status, SMS status, inbound reply, recording, and Stripe events.
+9. Confirm privacy and terms links are visible from intake/setup flows.
 
 `verify:billing` is read-only. It confirms the Stripe prices are the `$99/month` recurring plan and the `$150` one-time setup fee, Customer Portal is active, and the production webhook endpoint is enabled for every billing event Relay NW processes.
 

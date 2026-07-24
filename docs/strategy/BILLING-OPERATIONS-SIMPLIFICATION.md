@@ -1,7 +1,8 @@
 # Billing and Operations Simplification
 
-Status: Phase 1 billing lifecycle implemented July 23, 2026. Operations queue
-and blocker ownership remain Phase 2–4 work.
+Status: Phase 2 independent Operations states implemented July 23, 2026.
+Stripe-owned delayed trials, blocker ownership, and the derived work queue are
+live. Later phases simplify customer-facing setup and remove obsolete surfaces.
 
 ## Outcome
 
@@ -28,7 +29,7 @@ The $99 product is automatic missed-call text-back plus the shared conversation 
 
 | Domain | Minimal meaning | Authority |
 |---|---|---|
-| Calls | Setting up, waiting for forwarding, live, paused, closed | Relay technical evidence |
+| Calls | Setting up, waiting for forwarding, ready, paused | Signed real-call evidence and explicit Relay holds |
 | Texting | Preparing, carrier review, approved, issue | Twilio/carriers |
 | Billing | Setup due, card ready, trial, active, attention, canceled | Stripe |
 | Blocker | None, Relay, customer, carrier | Relay operator |
@@ -43,8 +44,8 @@ A monthly trial is eligible to start only when all of the following are true:
 - A2P is `approved`;
 - automatic texting is enabled;
 - required commercial consent and payment-method setup are complete in Stripe;
-- the account is not paused or closed;
-- `blocked_by` is `none`;
+- calls are not paused;
+- `ops_blocked_by` is `none`;
 - Stripe has no conflicting active, trialing, incomplete, or past-due subscription.
 
 Starting the trial is an idempotent Stripe operation. Relay does not first write `trialing` and hope Stripe agrees.
@@ -58,13 +59,14 @@ Starting the trial is an idempotent Stripe operation. Relay does not first write
 | Carrier | Does not start | Monitor Twilio/carrier review |
 | None | May start when all activation invariants pass | Perform the derived activation action |
 
-Phase 0 introduces no deadline automation. A later phase may show stale blocker age, but it must not silently charge, close, or refund an account.
+Phase 2 shows blocker age for operator context. Age does not silently charge,
+pause, cancel, close, or refund an account.
 
 ## Operations information architecture
 
 Primary navigation:
 
-- **Work queue:** needs attention, onboarding, running, paused/closed.
+- **Work queue:** needs attention, onboarding, running, paused.
 - **Accounts:** searchable directory, not a second pipeline.
 - **Team:** operator access.
 
@@ -80,18 +82,25 @@ The account workspace presents:
 ## Control boundary
 
 - Support can read accounts and diagnostics.
-- Operators can perform setup work, update A2P operational status, and own blockers.
-- Super admins can approve audited waivers, comps, pauses, closures, and reopenings.
+- Operators can perform setup work, synchronize A2P status from Twilio, own
+  blockers, and set explicit call holds. They cannot select A2P approval or
+  call readiness.
+- Super admins can approve audited waivers and comps. Authorized operators can
+  record blockers and explicit call holds.
 - Stripe owns payment methods, invoices, refunds, retries, disputes, and cancellation.
 
 Operators never manually write favorable Stripe states. External failures remain visible and leave local state unchanged until Stripe confirms the result.
 
-## Phase 1 runtime boundary
+## Phase 2 runtime boundary
 
 Production now collects the standard setup payment or founding-pilot card
 through Stripe, then creates the initial Stripe-owned trial only after full
 automatic text-back activation. Subscription Checkout is reserved for a
-customer restarting after the initial trial has already been used. Operations
-blocker ownership is not yet stored as a dedicated field; until Phase 2, no
-customer, carrier, or Relay delay can trigger trial creation because the
-technical/A2P/SMS activation facts must all be ready.
+customer restarting after the initial trial has already been used.
+
+Operations stores only blocker owner, blocker reason, and blocker start time.
+The queue group, four status labels, blocker age, and one next action are
+derived in application code and covered exhaustively. Trial activation reads
+the blocker atomically with the independent technical, A2P, SMS, and commercial
+facts. A non-`none` blocker prevents Stripe activation without consuming trial
+time.

@@ -3,7 +3,10 @@ import { OpsHeader } from "@/app/ops/_components/ops-header";
 import { Icon } from "@/components/icon";
 import { requirePlatformOperator } from "@/lib/auth";
 import { canApplyOperatorBillingOverride, isSetupFeeSettled } from "@/lib/billing";
-import { getOpsLifecycle } from "@/lib/ops-lifecycle";
+import {
+  deriveOpsState,
+  type OpsCallsState,
+} from "@/lib/ops-state";
 import {
   getOpsAccountBySlug,
   getOpsBillingAccountBySlug,
@@ -72,13 +75,28 @@ function billingActionSucceeded(status: string | undefined) {
     status === "refund_started" || status === "reconciled";
 }
 
-function setupStageCopy(stage: ReturnType<typeof getOpsLifecycle>["stage"]) {
-  if (stage === "setting_up") return "Relay is getting call capture ready.";
-  if (stage === "live") return "Call capture is working.";
-  if (stage === "active") return "Call capture is working and monthly billing is active.";
-  if (stage === "paused") return "Setup is paused.";
-  if (stage === "closed") return "This account is closed.";
-  return "The subscription is ending or has ended.";
+function setupStageCopy(calls: OpsCallsState) {
+  if (calls === "setting_up") return "Relay is getting call capture ready.";
+  if (calls === "waiting_for_forwarding") return "Waiting for customer forwarding.";
+  if (calls === "ready") return "Call capture is ready.";
+  return "Calls are on an explicit hold.";
+}
+
+function blockerNotice(status: string | undefined) {
+  if (!status) return null;
+  if (status === "saved") return "Blocker ownership updated and audited.";
+  if (status === "reason_required") return "Add a blocker reason between 5 and 240 characters.";
+  if (status === "invalid_owner") return "Choose Relay, customer, carrier, or none.";
+  if (status === "save_failed") return "The blocker was not changed. Check logs before retrying.";
+  return "Blocker update was not completed.";
+}
+
+function carrierNotice(status: string | undefined) {
+  if (!status) return null;
+  if (status === "invalid_ids") return "Enter the MG Messaging Service SID and QE Campaign SID from Twilio.";
+  if (status === "sync_failed") return "Twilio status could not be read. No A2P state was changed.";
+  if (status === "unknown_status") return "Twilio returned an unfamiliar campaign status. No A2P state was changed.";
+  return `Twilio campaign status synchronized: ${status.replaceAll("_", " ")}.`;
 }
 
 export default async function OpsAccountPage({
@@ -92,7 +110,8 @@ export default async function OpsAccountPage({
     carrier?: string;
     number?: string;
     profile?: string;
-    stage_moved?: string;
+    calls?: string;
+    blocker?: string;
   }>;
 }) {
   const operator = await requirePlatformOperator();
@@ -113,7 +132,7 @@ export default async function OpsAccountPage({
             <p className="t-eyebrow">Account not found</p>
             <h1 className="t-display">Choose another account.</h1>
             <p className="setup-copy">The requested account does not exist or is no longer available.</p>
-            <Link className="btn btn-secondary" href="/ops">Back to pipeline</Link>
+            <Link className="btn btn-secondary" href="/ops">Back to Operations</Link>
           </div>
         </section>
       </main>
@@ -125,12 +144,19 @@ export default async function OpsAccountPage({
   const setupFeeWaived = billing.billingPolicy === "setup_fee_waived" || isFoundingPilot;
   const effectiveBillingStatus = isComped ? "comped" : billing.billingStatus;
 
-  const lifecycle = getOpsLifecycle({
-    onboardingStatus: billing.onboardingStatus,
+  const opsState = deriveOpsState({
+    technicalStatus: summary.technicalStatus,
+    a2pStatus: summary.a2pStatus,
+    smsEnabled: summary.smsEnabled,
     billingStatus: effectiveBillingStatus,
+    billingPolicy: billing.billingPolicy,
+    stripeSubscriptionStatus: billing.stripeSubscriptionStatus,
     setupFeeStatus: billing.setupFeeStatus,
-    activatedAt: summary.activatedAt,
-    updatedAt: summary.updatedAt,
+    stripeDefaultPaymentMethodId: billing.stripeDefaultPaymentMethodId,
+    cancelAtPeriodEnd: billing.cancelAtPeriodEnd,
+    blockedBy: summary.opsBlockedBy,
+    blockerNote: summary.opsBlockerNote,
+    blockedSince: summary.opsBlockedSince,
   });
 
   const [stripeEvents, systemEvents, carrierProfile, runtime] = await Promise.all([
@@ -192,6 +218,13 @@ export default async function OpsAccountPage({
   const monthlyTone = effectiveBillingStatus === "past_due" ? "warn" : "neutral";
   const kickoffMessage = kickoffNotice(notices.kickoff, isFoundingPilot);
   const billingMessage = billingActionNotice(notices.billing_action);
+  const blockerMessage = blockerNotice(notices.blocker);
+  const queuePillTone =
+    opsState.queueGroup === "running"
+      ? "booked"
+      : opsState.queueGroup === "onboarding"
+        ? "new"
+        : "contacted";
   return (
     <main className="leads-view">
       <section className="leads-shell">
@@ -202,13 +235,13 @@ export default async function OpsAccountPage({
             <p className="t-eyebrow">Customer</p>
             <h1 className="t-display">{summary.businessName}</h1>
             <p className="leads-subtitle">
-              <span className={`lead-card__status-pill lead-card__status-pill--${lifecycle.stage === "active" ? "booked" : lifecycle.stage === "live" ? "new" : "contacted"}`}>{lifecycle.label}</span>
+              <span className={`lead-card__status-pill lead-card__status-pill--${queuePillTone}`}>{opsState.queueLabel}</span>
               {" "}· {summary.ownerEmail ?? "Owner not set"} · {summary.accountSlug}
             </p>
           </div>
           <div className="lead-actions">
             <Link className="btn btn-secondary btn-sm" href="/ops">
-              <Icon name="arrowLeft" size={14} /> Pipeline
+              <Icon name="arrowLeft" size={14} /> Operations queue
             </Link>
           </div>
         </div>
@@ -217,18 +250,81 @@ export default async function OpsAccountPage({
           You are signed in as operator <strong>{operator.email}</strong> and managing the separate customer account for <strong>{summary.ownerEmail ?? "an owner whose email is not set"}</strong>. Operator changes apply only to {summary.businessName}.
         </div>
 
+        <section className="panel setup-panel" aria-label="Independent account statuses">
+          <div className="setup-panel__head">
+            <p className="t-eyebrow">Current status</p>
+            <h2>Four facts, no invented lifecycle.</h2>
+          </div>
+          <dl className="webhook-event__meta">
+            <div><dt>Calls</dt><dd>{opsState.labels.calls}</dd></div>
+            <div><dt>Texting</dt><dd>{opsState.labels.texting}</dd></div>
+            <div><dt>Billing</dt><dd>{opsState.labels.billing}</dd></div>
+            <div>
+              <dt>Blocked by</dt>
+              <dd>
+                {opsState.labels.blocker}
+                {opsState.blockedAgeDays !== null ? ` · ${opsState.blockedAgeDays}d` : ""}
+              </dd>
+            </div>
+          </dl>
+        </section>
+
         {/* The one thing to do next. */}
         <section className="readiness readiness--testing ops-next" aria-label="Next operator action">
           <div className="readiness__main">
-            <span className="readiness__badge"><span className="readiness__dot" aria-hidden="true" />Next step</span>
-            <h2 className="readiness__headline">{lifecycle.primaryAction}</h2>
-            <p className="readiness__summary">
-              {effectiveBillingStatus === "past_due"
-                ? "Payment failed — open the billing events below, then have the owner update their card."
-                : lifecycle.blockedOn}
-              {lifecycle.daysInStage !== null ? ` · day ${lifecycle.daysInStage} in this stage` : ""}
+            <span className="readiness__badge"><span className="readiness__dot" aria-hidden="true" />Derived next action</span>
+            <h2 className="readiness__headline">{opsState.nextAction.label}</h2>
+            <p className="readiness__summary">{opsState.nextAction.detail}</p>
+          </div>
+        </section>
+
+        <section className="panel setup-panel" aria-label="Operations blocker">
+          <div className="setup-panel__head">
+            <p className="t-eyebrow">Blocker ownership</p>
+            <h2>
+              {opsState.blockedBy === "none"
+                ? "Nobody is recorded as blocking progress."
+                : `${opsState.labels.blocker} owns the current blocker.`}
+            </h2>
+            <p className="setup-copy">
+              {opsState.blockerNote ??
+                "Blocker ownership explains responsibility without changing Calls, Texting, or Stripe."}
             </p>
           </div>
+          {blockerMessage ? (
+            <div className={notices.blocker === "saved" ? "settings-notice" : "intake-error settings-notice"} role="status">
+              {blockerMessage}
+            </div>
+          ) : null}
+          {operator.role !== "support" ? (
+            <form action="/api/ops/blocker" method="post" className="setup-panel__action ops-form">
+              <input type="hidden" name="account_slug" value={summary.accountSlug} />
+              <label className="form-field">
+                <span className="t-eyebrow form-field__label">Blocked by</span>
+                <select className="field" name="blocked_by" defaultValue={opsState.blockedBy}>
+                  <option value="none">None</option>
+                  <option value="relay">Relay</option>
+                  <option value="customer">Customer</option>
+                  <option value="carrier">Carrier</option>
+                </select>
+              </label>
+              <label className="form-field">
+                <span className="t-eyebrow form-field__label">Specific reason</span>
+                <input
+                  className="field"
+                  name="note"
+                  minLength={5}
+                  maxLength={240}
+                  defaultValue={opsState.blockerNote ?? ""}
+                  placeholder="Required unless nobody is blocked"
+                />
+              </label>
+              <button className="btn btn-secondary" type="submit">Save blocker</button>
+              <p className="setup-panel__note">
+                Clearing the blocker also clears its note and waiting timestamp. Every change is audited.
+              </p>
+            </form>
+          ) : null}
         </section>
 
         {/* Money moment 1 — commercial setup and Stripe card readiness. */}
@@ -352,28 +448,27 @@ export default async function OpsAccountPage({
         {/* Setup progress is operational only; it has no customer deadline. */}
         <section className="panel setup-panel" aria-label="Setup progress">
           <div className="setup-panel__head">
-            <p className="t-eyebrow">Setup progress</p>
-            <h2>{setupStageCopy(lifecycle.stage)}</h2>
+            <p className="t-eyebrow">Calls</p>
+            <h2>{setupStageCopy(opsState.calls)}</h2>
             <p className="setup-copy">A signed, real missed call records call capture as live. Billing and carrier review do not change that result.</p>
           </div>
-          {notices.stage_moved ? (
-            <div className={notices.stage_moved === "saved" ? "settings-notice" : "intake-error settings-notice"} role="status">
-              {notices.stage_moved === "saved" ? "Stage updated." : "Stage change failed — pick a valid stage."}
+          {notices.calls ? (
+            <div className={notices.calls === "saved" ? "settings-notice" : "intake-error settings-notice"} role="status">
+              {notices.calls === "saved" ? "Call hold updated." : "Call hold change failed."}
             </div>
           ) : null}
           {operator.role !== "support" ? (
-            <form action="/api/ops/stage" method="post" className="setup-panel__action">
+            <form action="/api/ops/calls" method="post" className="setup-panel__action">
               <input type="hidden" name="account_slug" value={summary.accountSlug} />
               <div className="lead-controls ops-trial-controls">
-                <select className="field" name="stage" defaultValue={lifecycle.stage === "setting_up" || lifecycle.stage === "paused" || lifecycle.stage === "closed" ? lifecycle.stage : ""} aria-label="Move to stage">
-                  <option value="" disabled>Move manually…</option>
-                  <option value="setting_up">Setting up</option>
-                  <option value="paused">Paused</option>
-                  <option value="closed">Closed</option>
+                <select className="field" name="call_control" defaultValue={opsState.calls === "paused" ? "paused" : ""} aria-label="Set explicit call hold">
+                  <option value="" disabled>Choose a call control…</option>
+                  <option value="setting_up">Resume call setup</option>
+                  <option value="paused">Pause calls</option>
                 </select>
-                <button className="btn btn-secondary" type="submit">Move stage</button>
+                <button className="btn btn-secondary" type="submit">Update call hold</button>
               </div>
-              <p className="setup-panel__note">Live is recorded by a signed customer call. Active and Canceled come from Stripe, never from this control.</p>
+              <p className="setup-panel__note">Ready comes only from a signed real call. Trial, Active, Attention, and Canceled come from Stripe.</p>
             </form>
           ) : null}
         </section>
@@ -420,7 +515,11 @@ export default async function OpsAccountPage({
             <h2>{carrierProfile?.status ? carrierProfile.status.replaceAll("_", " ") : "Waiting on registration information"}</h2>
             <p className="setup-copy">Legal and consent information stays separate from the Relay number and billing records. Relay can enter it with the customer.</p>
           </div>
-          {notices.carrier ? <div className="settings-notice" role="status">Carrier status updated: {notices.carrier.replaceAll("_", " ")}.</div> : null}
+          {notices.carrier ? (
+            <div className={notices.carrier === "sync_failed" || notices.carrier === "invalid_ids" || notices.carrier === "unknown_status" ? "intake-error settings-notice" : "settings-notice"} role="status">
+              {carrierNotice(notices.carrier)}
+            </div>
+          ) : null}
           {carrierProfile?.statusDetail ? (
             <p className="setup-copy">{carrierProfile.statusDetail}</p>
           ) : null}
@@ -428,7 +527,7 @@ export default async function OpsAccountPage({
             <details className="ops-manual">
               <summary>Registration worksheet — what to collect from the customer</summary>
               <div className="ops-worksheet">
-                <p className="setup-copy">Registration itself happens in the Twilio console (Trust Hub). Collect these on the setup call, enter them in Twilio, then mark the status below. Relay does not store tax IDs.</p>
+                <p className="setup-copy">Registration itself happens in the Twilio console (Trust Hub). Collect these on the setup call and enter them in Twilio. Relay does not store tax IDs.</p>
                 <div className="ops-worksheet__cols">
                   <div>
                     <p className="t-eyebrow">Business with an EIN (Standard / Low-Volume)</p>
@@ -459,22 +558,18 @@ export default async function OpsAccountPage({
           {operator.role !== "support" ? (
             <form action="/api/ops/carrier" method="post" className="setup-panel__action">
               <input type="hidden" name="account_slug" value={summary.accountSlug} />
-              <p className="t-eyebrow">Track carrier status (registered in the Twilio console)</p>
-              <p className="setup-copy">When Twilio&apos;s Trust Hub status changes, record the match here. Approval makes the owner&apos;s automatic-texting switch available; it does not turn texting on.</p>
-              <input className="field" name="status_detail" defaultValue={carrierProfile?.statusDetail ?? ""} placeholder="Owner-facing note (optional, shown to the customer)" />
-              <div className="ops-billing-actions">
-                {([["submitted","Submitted"],["in_progress","In review"],["approved","Approved"],["needs_changes","Needs changes"],["rejected","Rejected"]] as const).map(([valueKey, label]) => (
-                  <button
-                    key={valueKey}
-                    className={`btn ${carrierProfile?.status === valueKey ? "btn-primary" : "btn-secondary"}`}
-                    name="action"
-                    value={valueKey}
-                    aria-pressed={carrierProfile?.status === valueKey}
-                  >
-                    {carrierProfile?.status === valueKey ? "✓ " : ""}{label}
-                  </button>
-                ))}
-              </div>
+              <p className="t-eyebrow">Read status from Twilio</p>
+              <p className="setup-copy">Copy the two identifiers from Twilio once. Relay reads the campaign result directly; an operator cannot mark A2P approved.</p>
+              <label className="form-field">
+                <span className="field-label">Messaging Service SID</span>
+                <input className="field" name="messaging_service_sid" required pattern="MG[0-9a-fA-F]{32}" defaultValue={carrierProfile?.messagingServiceSid ?? ""} placeholder="MG…" />
+              </label>
+              <label className="form-field">
+                <span className="field-label">A2P Campaign SID</span>
+                <input className="field" name="twilio_campaign_sid" required pattern="QE[0-9a-fA-F]{32}" defaultValue={carrierProfile?.twilioCampaignSid ?? ""} placeholder="QE…" />
+              </label>
+              <button className="btn btn-secondary" type="submit">Sync from Twilio</button>
+              <p className="setup-panel__note">Verified enables the customer&apos;s automatic-texting control; it does not turn texting on or start trial time by itself.</p>
             </form>
           ) : null}
         </section>

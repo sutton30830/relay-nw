@@ -2,10 +2,10 @@
 
 Relay NW is a missed-call recovery SaaS for one-truck home-service businesses. It is currently built for manually provisioned pilot accounts, not fully self-serve signup.
 
-The approved next-state billing and Operations contract is documented in
-`docs/strategy/BILLING-OPERATIONS-SIMPLIFICATION.md`. Phase 0 defines that
-target without changing the current production billing flow; follow the active
-runbooks until each matching implementation phase is deployed.
+The deployed billing and Operations contract is documented in
+`docs/strategy/BILLING-OPERATIONS-SIMPLIFICATION.md`. Stripe owns delayed
+trials and billing truth; Relay derives its Operations queue from independent
+Calls, Texting, Billing, and blocker facts.
 
 Relay NW supports two call flows:
 
@@ -72,7 +72,8 @@ For the customer-by-customer onboarding checklist, see `docs/customer-setup.md`.
 - `/setup` authenticated call setup/status page
 - `/settings` authenticated account settings
 - `/reports` authenticated owner reporting
-- `/ops` authenticated operational webhook/debug page
+- `/ops` Relay operator-only derived work queue
+- `/ops/accounts/[id]` independent Calls, Texting, Billing, and blocker workspace
 - `/ops/setup-requests` Relay NW operator-only assisted onboarding queue
 - `/ops/runbook` authenticated operational runbook
 - `/api/intake` intake form submission
@@ -87,6 +88,8 @@ For the customer-by-customer onboarding checklist, see `docs/customer-setup.md`.
 - `/api/billing/payment-method` owner-only no-charge Stripe card setup
 - `/api/billing/checkout` owner-only Stripe subscription restart Checkout
 - `/api/billing/portal` owner-only Stripe Customer Portal
+- `/api/ops/blocker` audited operator blocker ownership
+- `/api/ops/calls` audited operator call hold/resume control
 - `/api/stripe/webhook` signed Stripe billing synchronization
 
 ## Environment Variables

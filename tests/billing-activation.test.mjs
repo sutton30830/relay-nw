@@ -62,6 +62,7 @@ async function runActivation({
   technicalStatus = "live",
   a2pStatus = "approved",
   smsEnabled = true,
+  blockedBy = "none",
   customer = { id: "cus_1", defaultPaymentMethodId: "pm_1", livemode: false },
   subscriptions = [],
   createdSubscription = subscription(),
@@ -131,6 +132,11 @@ async function runActivation({
       getAccountBillingRecord: async () => accountBilling,
       getAccountTechnicalSetupStatus: async () => technicalStatus,
       getA2pRegistrationStatus: async () => a2pStatus,
+      getAccountOpsBlocker: async () => ({
+        blockedBy,
+        blockerNote: blockedBy === "none" ? null : "Explicit test blocker",
+        blockedSince: blockedBy === "none" ? null : "2026-07-23T00:00:00.000Z",
+      }),
       getAccountConfigByAccountId: async (accountId) => ({
         accountId,
         accountSlug: "demo",
@@ -170,6 +176,20 @@ test("A2P approval without automatic text-back does not consume trial time", asy
   const { result, calls } = await runActivation({ smsEnabled: false });
   assert.equal(result.status, "not_eligible");
   assert.deepEqual(calls.creates, []);
+});
+
+test("an explicit Operations blocker prevents trial activation", async () => {
+  for (const blockedBy of ["relay", "customer", "carrier"]) {
+    const { result, calls } = await runActivation({ blockedBy });
+
+    assert.deepEqual(result, {
+      status: "not_eligible",
+      reason: `operations_blocked_by_${blockedBy}`,
+    });
+    assert.deepEqual(calls.customerLookups, []);
+    assert.deepEqual(calls.subscriptionLists, []);
+    assert.deepEqual(calls.creates, []);
+  }
 });
 
 test("standard setup fee is required before Stripe trial activation", async () => {

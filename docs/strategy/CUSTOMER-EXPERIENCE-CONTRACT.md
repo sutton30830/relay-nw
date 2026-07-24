@@ -125,7 +125,9 @@ The exact grace-period duration and post-period suspension automation are delibe
 
 - **Phase 0:** approve this contract and make its independence rules executable.
 - **Phase 1:** implement Stripe-owned delayed trials and correct billing truth.
-- **Phase 2:** add operational blocker ownership and derived next actions.
+- **Phase 2 (complete):** add audited operational blocker ownership and derive
+  Calls, Texting, Billing, queue grouping, blocker age, and one next action
+  without another overall lifecycle.
 - **Phase 3:** rebuild Operations as one work queue.
 - **Phase 4:** secure operator controls and rebuild the account workspace.
 - **Phase 5:** rebuild customer-facing setup and billing presentation.

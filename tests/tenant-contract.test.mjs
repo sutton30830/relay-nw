@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-// This suite protects the deployed Phase 1 delayed-trial contract.
+// This suite protects the deployed delayed-trial and independent Operations contract.
 
 const sql = await readFile(new URL("../supabase.sql", import.meta.url), "utf8");
 const envTs = await readFile(new URL("../lib/env.ts", import.meta.url), "utf8");
@@ -26,6 +26,9 @@ const billingCheckoutRouteTs = await readFile(new URL("../app/api/billing/checko
 const billingPaymentMethodRouteTs = await readFile(new URL("../app/api/billing/payment-method/route.ts", import.meta.url), "utf8");
 const billingPortalRouteTs = await readFile(new URL("../app/api/billing/portal/route.ts", import.meta.url), "utf8");
 const billingActivationTs = await readFile(new URL("../lib/billing-activation.ts", import.meta.url), "utf8");
+const opsStateTs = await readFile(new URL("../lib/ops-state.ts", import.meta.url), "utf8");
+const opsBlockerRouteTs = await readFile(new URL("../app/api/ops/blocker/route.ts", import.meta.url), "utf8");
+const opsCallsRouteTs = await readFile(new URL("../app/api/ops/calls/route.ts", import.meta.url), "utf8");
 const stripeWebhookRouteTs = await readFile(new URL("../app/api/stripe/webhook/route.ts", import.meta.url), "utf8");
 const authCallbackRouteTs = await readFile(new URL("../app/auth/callback/route.ts", import.meta.url), "utf8");
 const authRecoveryPageTsx = await readFile(new URL("../app/auth/recovery/page.tsx", import.meta.url), "utf8");
@@ -155,6 +158,38 @@ test("billing foundation is account-scoped, Stripe-authoritative, and independen
   assert.doesNotMatch(setupPageTsx, /computeBillingReadiness|ownerOnboardingDelayMessage|Billing activation/);
   assert.match(verifyAccountScript, /deriveBillingVerification/);
   assert.doesNotMatch(missedCallTs, /billingStatus|stripe/i);
+});
+
+test("Operations uses independent authority-backed facts and audited blocker ownership", () => {
+  assert.match(sql, /ops_blocked_by text not null default 'none'/);
+  assert.match(sql, /ops_blocker_note text/);
+  assert.match(sql, /ops_blocked_since timestamptz/);
+  assert.match(sql, /accounts_ops_blocker_consistency_check/);
+  assert.match(sql, /create or replace function public\.set_account_ops_blocker/);
+  assert.match(sql, /revoke all\s+on function public\.set_account_ops_blocker/);
+  assert.match(sql, /grant execute\s+on function public\.set_account_ops_blocker[\s\S]*to service_role/);
+  assert.match(sql, /insert into public\.account_audit_events/);
+  assert.doesNotMatch(sql, /\bnext_action\b/);
+
+  assert.match(accountStore, /setAccountOpsBlocker/);
+  assert.match(accountStore, /getAccountOpsBlocker/);
+  assert.match(accountStore, /a2p_registration_status, sms_enabled/);
+  assert.match(accountStore, /ops_blocked_by, ops_blocker_note, ops_blocked_since/);
+  assert.match(billingActivationTs, /getAccountOpsBlocker/);
+  assert.match(billingActivationTs, /operations_blocked_by_/);
+
+  assert.match(opsStateTs, /deriveOpsCallsState/);
+  assert.match(opsStateTs, /deriveOpsTextingState/);
+  assert.match(opsStateTs, /deriveOpsBillingState/);
+  assert.match(opsStateTs, /deriveOpsState/);
+  assert.doesNotMatch(opsStateTs, /manualNextAction|storedNextAction/);
+
+  assert.match(opsBlockerRouteTs, /requirePlatformOperatorWrite/);
+  assert.match(opsBlockerRouteTs, /blockedBy !== "none" && note\.length < 5/);
+  assert.match(opsBlockerRouteTs, /setAccountOpsBlocker/);
+  assert.match(opsCallsRouteTs, /requirePlatformOperatorWrite/);
+  assert.match(opsCallsRouteTs, /call_control/);
+  assert.doesNotMatch(opsCallsRouteTs, /call_control.*closed/s);
 });
 
 test("stripe checkout and webhooks update account billing without gating missed-call capture", () => {
