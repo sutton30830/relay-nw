@@ -425,7 +425,7 @@ test("ops pages share the same internal tool actions", () => {
   assert.match(opsAccountPageTsx, /getOpsAccountBySlug\(id\)/);
   assert.match(opsAccountPageTsx, /Email \$150 payment link/);
   assert.match(opsAccountPageTsx, /Make founding pilot/);
-  assert.match(opsAccountPageTsx, /aria-label="Account command center"/);
+  assert.match(opsAccountPageTsx, /aria-label="Primary operator action"/);
   assert.match(opsBillingPageTsx, /redirect\(`\/ops\/accounts\//);
   assert.match(opsAccountDirectoryTsx, /Needs attention/);
   assert.match(opsAccountDirectoryTsx, /Open account/);

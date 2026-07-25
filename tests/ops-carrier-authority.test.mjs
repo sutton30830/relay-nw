@@ -21,7 +21,7 @@ test("A2P state is synchronized from Twilio rather than selected by an operator"
   assert.doesNotMatch(route, /const mapping = \{\s*submitted:/);
 
   assert.match(twilio, /\.usAppToPerson\(campaignSid\)[\s\S]*\.fetch\(\)/);
-  assert.match(page, /Sync from Twilio/);
+  assert.match(page, /Sync status/);
   assert.match(page, /an operator cannot mark A2P approved/);
   assert.doesNotMatch(page, /value="approved"/);
 });

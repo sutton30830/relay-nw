@@ -8,9 +8,9 @@ const page = await readFile(
 );
 const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
-test("account workspace has one command center and independent domain status", () => {
-  assert.equal((page.match(/aria-label="Account command center"/g) ?? []).length, 1);
+test("account workspace has one compact status strip and one primary action", () => {
   assert.equal((page.match(/aria-label="Primary operator action"/g) ?? []).length, 1);
+  assert.equal((page.match(/aria-label="Independent account statuses"/g) ?? []).length, 1);
   assert.match(page, /<dt>Calls<\/dt>/);
   assert.match(page, /<dt>Texting<\/dt>/);
   assert.match(page, /<dt>Billing<\/dt>/);
@@ -40,27 +40,31 @@ test("infrequent details and diagnostics are collapsed without weakening control
   assert.doesNotMatch(page, /api\/ops\/billing\/refund/);
 });
 
-test("primary billing actions retain secure server-side paths", () => {
+test("focused operational rows retain secure server-side paths and authority", () => {
   assert.match(page, /action="\/api\/ops\/billing\/activate"/);
   assert.match(page, /action="\/api\/ops\/kickoff"/);
   assert.match(page, /action="\/api\/ops\/billing\/reconcile"/);
   assert.match(page, /action="\/api\/ops\/carrier"/);
   assert.match(page, /action="\/api\/ops\/twilio\/assign"/);
   assert.match(page, /action="\/api\/ops\/blocker"/);
-  assert.match(page, /A signed real call controls call readiness/);
+  assert.match(page, /verified by a real missed call/);
   assert.match(page, /an operator cannot mark A2P approved/);
-  assert.match(page, /Stripe-owned money state/);
+  assert.match(page, /managed in Stripe/);
+  assert.match(page, /id="calls" open=\{callsControlOpen\}/);
+  assert.match(page, /id="texting" open=\{textingControlOpen\}/);
+  assert.match(page, /id="blocker" open=\{blockerControlOpen\}/);
+  assert.doesNotMatch(page, /Stripe-owned money state|These move independently|Four facts, no invented lifecycle/);
 });
 
 test("workspace adapts from desktop to phone layouts", () => {
-  assert.match(css, /\.ops-workspace-command\s*\{[\s\S]*grid-template-columns:/);
-  assert.match(css, /\.ops-workspace-grid\s*\{[\s\S]*grid-template-columns:/);
+  assert.match(css, /\.ops-workspace-layout\s*\{[\s\S]*grid-template-columns:/);
+  assert.match(css, /\.ops-task-row > summary\s*\{[\s\S]*grid-template-columns:/);
   assert.match(
     css,
-    /@media \(max-width: 720px\)[\s\S]*\.ops-workspace-command,[\s\S]*\.ops-workspace-grid\s*\{\s*grid-template-columns: 1fr;/,
+    /@media \(max-width: 720px\)[\s\S]*\.ops-workspace-layout\s*\{\s*grid-template-columns: 1fr;/,
   );
   assert.match(
     css,
-    /@media \(max-width: 430px\)[\s\S]*\.ops-workspace-status,[\s\S]*\.ops-workspace-facts\s*\{\s*grid-template-columns: 1fr;/,
+    /@media \(max-width: 430px\)[\s\S]*\.ops-workspace-status\s*\{\s*grid-template-columns: 1fr;/,
   );
 });

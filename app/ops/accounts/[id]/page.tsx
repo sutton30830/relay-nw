@@ -5,7 +5,6 @@ import { requirePlatformOperator } from "@/lib/auth";
 import { canApplyOperatorBillingOverride, isSetupFeeSettled } from "@/lib/billing";
 import {
   deriveOpsState,
-  type OpsCallsState,
   type OpsNextActionKey,
 } from "@/lib/ops-state";
 import { stripeDashboardPaymentUrl } from "@/lib/stripe-billing";
@@ -83,13 +82,6 @@ function billingActionSucceeded(status: string | undefined) {
     status === "reconciled" || status === "trial_started" || status === "trial_already_started";
 }
 
-function setupStageCopy(calls: OpsCallsState) {
-  if (calls === "setting_up") return "Relay is getting call capture ready.";
-  if (calls === "waiting_for_forwarding") return "Waiting for customer forwarding.";
-  if (calls === "ready") return "Call capture is ready.";
-  return "Calls are on an explicit hold.";
-}
-
 function blockerNotice(status: string | undefined) {
   if (!status) return null;
   if (status === "saved") return "Blocker ownership updated and audited.";
@@ -123,17 +115,23 @@ function accountControlNotice(status: string | undefined) {
 }
 
 function nextActionDestination(key: OpsNextActionKey) {
-  if (
-    key === "resolve_billing" ||
-    key === "review_cancellation" ||
-    key === "review_canceled_subscription" ||
-    key === "complete_setup_payment" ||
-    key === "collect_payment_method" ||
-    key === "check_trial_activation"
-  ) {
-    return "#billing";
-  }
-  return key === "none" ? null : "#setup";
+  if (key === "resolve_relay_blocker" || key === "follow_up_customer" || key === "monitor_carrier_blocker") return "#blocker";
+  if (key === "review_call_hold" || key === "finish_call_setup" || key === "help_with_forwarding") return "#calls";
+  if (key === "resolve_texting_issue" || key === "prepare_a2p" || key === "monitor_carrier_review" || key === "enable_text_back") return "#texting";
+  if (key === "resolve_billing" || key === "review_cancellation" || key === "review_canceled_subscription") return "#billing";
+  return null;
+}
+
+function nextActionButtonLabel(key: OpsNextActionKey) {
+  if (key === "resolve_relay_blocker" || key === "follow_up_customer" || key === "monitor_carrier_blocker") return "Update blocker";
+  if (key === "review_call_hold") return "Review call settings";
+  if (key === "finish_call_setup") return "Assign Relay number";
+  if (key === "help_with_forwarding") return "Open call setup";
+  if (key === "resolve_texting_issue") return "Review texting";
+  if (key === "prepare_a2p") return "Set up A2P";
+  if (key === "monitor_carrier_review") return "Sync carrier status";
+  if (key === "enable_text_back") return "Review text-back";
+  return "Review billing";
 }
 
 export default async function OpsAccountPage({
@@ -276,14 +274,42 @@ export default async function OpsAccountPage({
         ? "Business-details save failed. Check logs before retrying."
         : null;
   const primaryDestination = nextActionDestination(opsState.nextAction.key);
-  const setupControlsOpen =
-    primaryDestination === "#setup" ||
-    Boolean(
-      (notices.blocker && notices.blocker !== "saved") ||
-      (notices.carrier && !carrierMessage?.startsWith("Twilio campaign status synchronized")) ||
-      (notices.number && notices.number !== "assigned") ||
-      (notices.calls && notices.calls !== "saved"),
-    );
+  const callsControlOpen =
+    primaryDestination === "#calls" ||
+    Boolean((notices.number && notices.number !== "assigned") || (notices.calls && notices.calls !== "saved"));
+  const textingControlOpen =
+    primaryDestination === "#texting" ||
+    Boolean(notices.carrier && !carrierMessage?.startsWith("Twilio campaign status synchronized"));
+  const blockerControlOpen =
+    primaryDestination === "#blocker" ||
+    Boolean(notices.blocker && notices.blocker !== "saved");
+  const billingControlOpen = Boolean(notices.billing_action && !billingActionSucceeded(notices.billing_action));
+  const hasWorkspaceNotice = Boolean(
+    kickoffMessage ||
+    billingMessage ||
+    blockerMessage ||
+    carrierMessage ||
+    numberMessage ||
+    profileMessage ||
+    accountControlMessage,
+  );
+  const callsDetail = opsState.calls === "ready"
+    ? `${runtime?.twilioPhoneNumber || "Relay number assigned"} · verified by a real missed call`
+    : opsState.calls === "waiting_for_forwarding"
+      ? `${runtime?.twilioPhoneNumber || "Relay number assigned"} · forwarding not verified`
+      : opsState.calls === "paused"
+        ? "Call setup is on hold"
+        : runtime?.twilioPhoneNumber
+          ? `${runtime.twilioPhoneNumber} · waiting for a verified missed call`
+          : "Relay number not assigned";
+  const textingDetail = carrierProfile?.statusDetail ||
+    (opsState.texting === "approved"
+      ? summary.smsEnabled ? "Automatic text-back is on" : "Approved · automatic text-back is off"
+      : opsState.texting === "carrier_review"
+        ? "Carrier review is in progress"
+        : opsState.texting === "issue"
+          ? "Review the latest carrier response"
+          : "Registration has not been submitted");
   const queuePillTone =
     opsState.queueGroup === "running"
       ? "booked"
@@ -295,243 +321,271 @@ export default async function OpsAccountPage({
       <section className="leads-shell ops-account-workspace">
         <OpsHeader businessName={summary.businessName} currentPage="accounts" operatorEmail={operator.email} />
 
-        <div className="leads-header ops-account-workspace__head">
+        <div className="ops-account-workspace__head">
           <div>
-            <p className="t-eyebrow">Account workspace</p>
+            <Link className="ops-account-workspace__back" href="/ops">
+              <Icon name="arrowLeft" size={14} /> Work queue
+            </Link>
             <h1 className="t-display">{summary.businessName}</h1>
-            <p className="leads-subtitle">
-              <span className={`lead-card__status-pill lead-card__status-pill--${queuePillTone}`}>{opsState.queueLabel}</span>
-              {" "}· {runtime?.ownerName || summary.ownerEmail || "Owner not set"}
-            </p>
+            <p>{runtime?.ownerName || "Owner not set"}{summary.ownerEmail ? ` · ${summary.ownerEmail}` : ""}</p>
           </div>
-          <Link className="btn btn-secondary btn-sm" href="/ops">
-            <Icon name="arrowLeft" size={14} /> Work queue
-          </Link>
+          <span className={`lead-card__status-pill lead-card__status-pill--${queuePillTone}`}>{opsState.queueLabel}</span>
         </div>
 
-        <div className="ops-workspace-notices" aria-live="polite">
-          <div className="settings-notice">
-            Managing <strong>{summary.businessName}</strong> as {operator.email}. Changes stay scoped to this customer.
+        {hasWorkspaceNotice ? (
+          <div className="ops-workspace-notices" aria-live="polite">
+            {kickoffMessage ? <div className={notices.kickoff === "failed" ? "intake-error settings-notice" : "settings-notice"}>{kickoffMessage}</div> : null}
+            {billingMessage ? <div className={billingActionSucceeded(notices.billing_action) ? "settings-notice" : "intake-error settings-notice"}>{billingMessage}</div> : null}
+            {blockerMessage ? <div className={notices.blocker === "saved" ? "settings-notice" : "intake-error settings-notice"}>{blockerMessage}</div> : null}
+            {carrierMessage ? <div className={notices.carrier === "sync_failed" || notices.carrier === "invalid_ids" || notices.carrier === "unknown_status" || notices.carrier === "save_failed" ? "intake-error settings-notice" : "settings-notice"}>{carrierMessage}</div> : null}
+            {numberMessage ? <div className={notices.number === "assigned" ? "settings-notice" : "intake-error settings-notice"}>{numberMessage}</div> : null}
+            {profileMessage ? <div className={notices.profile === "saved" ? "settings-notice" : "intake-error settings-notice"}>{profileMessage}</div> : null}
+            {accountControlMessage ? <div className={notices.calls === "saved" ? "settings-notice" : "intake-error settings-notice"}>{accountControlMessage}</div> : null}
           </div>
-          {kickoffMessage ? <div className={notices.kickoff === "failed" ? "intake-error settings-notice" : "settings-notice"}>{kickoffMessage}</div> : null}
-          {billingMessage ? <div className={billingActionSucceeded(notices.billing_action) ? "settings-notice" : "intake-error settings-notice"}>{billingMessage}</div> : null}
-          {blockerMessage ? <div className={notices.blocker === "saved" ? "settings-notice" : "intake-error settings-notice"}>{blockerMessage}</div> : null}
-          {carrierMessage ? <div className={notices.carrier === "sync_failed" || notices.carrier === "invalid_ids" || notices.carrier === "unknown_status" || notices.carrier === "save_failed" ? "intake-error settings-notice" : "settings-notice"}>{carrierMessage}</div> : null}
-          {numberMessage ? <div className={notices.number === "assigned" ? "settings-notice" : "intake-error settings-notice"}>{numberMessage}</div> : null}
-          {profileMessage ? <div className={notices.profile === "saved" ? "settings-notice" : "intake-error settings-notice"}>{profileMessage}</div> : null}
-          {accountControlMessage ? <div className={notices.calls === "saved" ? "settings-notice" : "intake-error settings-notice"}>{accountControlMessage}</div> : null}
-        </div>
+        ) : null}
 
-        <section className="panel ops-workspace-command" aria-label="Account command center">
-          <dl className="ops-workspace-status" aria-label="Independent account statuses">
-            <div><dt>Calls</dt><dd>{opsState.labels.calls}</dd></div>
-            <div><dt>Texting</dt><dd>{opsState.labels.texting}</dd></div>
-            <div><dt>Billing</dt><dd>{opsState.labels.billing}</dd></div>
-            <div className={opsState.blockedBy === "none" ? undefined : "ops-workspace-status__attention"}>
+        <dl className="ops-workspace-status" aria-label="Independent account statuses">
+          <div className={opsState.calls === "ready" ? "ops-workspace-status__good" : undefined}>
+            <dt>Calls</dt><dd>{opsState.labels.calls}</dd>
+          </div>
+          <div className={opsState.texting === "approved" ? "ops-workspace-status__good" : undefined}>
+            <dt>Texting</dt><dd>{opsState.labels.texting}</dd>
+          </div>
+          <div className={opsState.billing === "attention" ? "ops-workspace-status__attention" : undefined}>
+            <dt>Billing</dt><dd>{opsState.labels.billing}</dd>
+          </div>
+          <div className={opsState.blockedBy === "none" ? undefined : "ops-workspace-status__attention"}>
               <dt>Blocked by</dt>
               <dd>{opsState.labels.blocker}{opsState.blockedAgeDays !== null ? ` · ${opsState.blockedAgeDays}d` : ""}</dd>
-            </div>
-          </dl>
-          <div className="ops-workspace-primary" aria-label="Primary operator action">
+          </div>
+        </dl>
+
+        <section className="panel ops-workspace-primary" aria-label="Primary operator action">
+          <div className="ops-workspace-primary__copy">
+            <span className="ops-workspace-primary__label">Next step</span>
             <div>
-              <p className="t-eyebrow">Next action</p>
               <h2>{opsState.nextAction.label}</h2>
               <p>{opsState.nextAction.detail}</p>
             </div>
-            {operator.role !== "support" && opsState.nextAction.key === "check_trial_activation" ? (
-              <form action="/api/ops/billing/activate" method="post">
-                <input type="hidden" name="account_slug" value={summary.accountSlug} />
-                <button className="btn btn-primary" type="submit">Start eligible Stripe trial</button>
-              </form>
-            ) : operator.role !== "support" && (opsState.nextAction.key === "complete_setup_payment" || opsState.nextAction.key === "collect_payment_method") ? (
-              <form action="/api/ops/kickoff" method="post">
-                <input type="hidden" name="account_slug" value={summary.accountSlug} />
-                <button className="btn btn-primary" name="action" value="send_invoice">
-                  {pilotCardNeeded ? "Email secure card link" : billing.setupFeeStatus === "due" ? "Email $150 payment link" : "Collect $150 again"}
-                </button>
-              </form>
-            ) : primaryDestination ? (
-              <Link className="btn btn-primary" href={primaryDestination}>
-                {primaryDestination === "#billing" ? "Open billing" : "Open setup"}
-              </Link>
-            ) : null}
           </div>
+          {operator.role !== "support" && opsState.nextAction.key === "check_trial_activation" ? (
+            <form action="/api/ops/billing/activate" method="post">
+              <input type="hidden" name="account_slug" value={summary.accountSlug} />
+              <button className="btn btn-primary" type="submit">Start eligible Stripe trial</button>
+            </form>
+          ) : operator.role !== "support" && (opsState.nextAction.key === "complete_setup_payment" || opsState.nextAction.key === "collect_payment_method") ? (
+            <form action="/api/ops/kickoff" method="post">
+              <input type="hidden" name="account_slug" value={summary.accountSlug} />
+              <button className="btn btn-primary" name="action" value="send_invoice">
+                {pilotCardNeeded ? "Email secure card link" : billing.setupFeeStatus === "due" ? "Email $150 payment link" : "Collect $150 again"}
+              </button>
+            </form>
+          ) : primaryDestination ? (
+            <Link className="btn btn-primary" href={primaryDestination}>
+              {nextActionButtonLabel(opsState.nextAction.key)}
+            </Link>
+          ) : null}
         </section>
 
-        <div className="ops-workspace-grid">
-          <section className="panel setup-panel ops-workspace-card" id="setup" aria-label="Setup">
-            <div className="setup-panel__head">
-              <p className="t-eyebrow">Setup</p>
-              <h2>Calls and texting</h2>
-              <p className="setup-copy">These move independently. A signed real call controls call readiness; Twilio and the carrier control A2P.</p>
-            </div>
-            <div className="ops-workspace-rows">
+        <div className="ops-workspace-layout">
+          <section className="panel ops-task-list" id="setup" aria-label="Setup">
+            <header className="ops-card-heading">
               <div>
-                <span>Calls</span>
-                <strong>{setupStageCopy(opsState.calls)}</strong>
-                <small>Relay number: {runtime?.twilioPhoneNumber || "not assigned"}</small>
+                <p className="t-eyebrow">Setup</p>
+                <h2>Service readiness</h2>
               </div>
-              <div>
-                <span>Texting</span>
-                <strong>{opsState.labels.texting}</strong>
-                <small>{carrierProfile?.statusDetail || "Automatic text-back waits for carrier approval and customer activation."}</small>
-              </div>
-              <div className={opsState.blockedBy === "none" ? undefined : "ops-workspace-row--attention"}>
-                <span>Blocker</span>
-                <strong>{opsState.labels.blocker}{opsState.blockedAgeDays !== null ? ` · ${opsState.blockedAgeDays} days` : ""}</strong>
-                <small>{opsState.blockerNote || "No recorded blocker."}</small>
-              </div>
-            </div>
+              <span>Open a row to make changes</span>
+            </header>
 
-            {operator.role !== "support" ? (
-              <details className="ops-manual ops-workspace-controls" open={setupControlsOpen}>
-                <summary>Setup controls</summary>
-                <div className="ops-workspace-controls__body">
-                  <form action="/api/ops/blocker" method="post" className="setup-panel__action ops-form" id="blocker-control">
+            <details className="ops-task-row" id="calls" open={callsControlOpen}>
+              <summary>
+                <span className={`ops-task-row__icon ${opsState.calls === "ready" ? "ops-task-row__icon--good" : ""}`}><Icon name="phone" size={17} /></span>
+                <span className="ops-task-row__content">
+                  <span className="ops-task-row__label">Calls</span>
+                  <strong>{opsState.labels.calls}</strong>
+                  <small>{callsDetail}</small>
+                </span>
+                <span className="ops-task-row__action">{runtime?.twilioPhoneNumber ? "Manage" : "Assign number"} <Icon name="chevronRight" size={15} /></span>
+              </summary>
+              {operator.role !== "support" ? (
+                <div className="ops-task-row__body">
+                  <form action="/api/ops/twilio/assign" method="post" className="ops-compact-form">
                     <input type="hidden" name="account_slug" value={summary.accountSlug} />
-                    <p className="t-eyebrow">Blocker ownership</p>
-                    <label className="form-field">
-                      <span className="form-field__label">Blocked by</span>
-                      <select className="field" name="blocked_by" defaultValue={opsState.blockedBy}>
-                        <option value="none">None</option>
-                        <option value="relay">Relay</option>
-                        <option value="customer">Customer</option>
-                        <option value="carrier">Carrier</option>
-                      </select>
-                    </label>
-                    <label className="form-field">
-                      <span className="form-field__label">Specific reason</span>
-                      <input className="field" name="note" minLength={5} maxLength={240} defaultValue={opsState.blockerNote ?? ""} placeholder="Required unless nobody is blocked" />
-                    </label>
-                    <button className="btn btn-secondary" type="submit">Save blocker</button>
-                    <p className="setup-panel__note">Clearing the blocker also clears its note and waiting timestamp. Every change is audited.</p>
-                  </form>
-
-                  <form action="/api/ops/twilio/assign" method="post" className="setup-panel__action ops-form">
-                    <input type="hidden" name="account_slug" value={summary.accountSlug} />
-                    <p className="t-eyebrow">Relay number</p>
-                    <p className="setup-copy">Attach a number already owned in the configured Twilio account.</p>
-                    <div className="lead-controls">
-                      <input className="field" name="phone_number" required pattern="\+1[0-9]{10}" placeholder="+12065550123" aria-label="Twilio phone number" />
-                      <button className="btn btn-secondary" name="action" value="attach_existing">Attach owned number</button>
+                    <div>
+                      <strong>Relay number</strong>
+                      <p>Attach a number already owned in the configured Twilio account.</p>
                     </div>
-                    <p className="setup-panel__note">An unowned number fails without changing account routing.</p>
+                    <div className="ops-inline-control">
+                      <input className="field" name="phone_number" required pattern="\+1[0-9]{10}" placeholder="+12065550123" aria-label="Twilio phone number" />
+                      <button className="btn btn-secondary" name="action" value="attach_existing">Attach number</button>
+                    </div>
                   </form>
-
-                  <form action="/api/ops/carrier" method="post" className="setup-panel__action ops-form">
+                  <form action="/api/ops/calls" method="post" className="ops-compact-form">
                     <input type="hidden" name="account_slug" value={summary.accountSlug} />
-                    <p className="t-eyebrow">Carrier status</p>
-                    <p className="setup-copy">Registration happens outside Relay. Enter the Twilio references once; Relay reads the campaign result directly, and an operator cannot mark A2P approved.</p>
-                    <label className="form-field">
-                      <span className="field-label">Messaging Service SID</span>
-                      <input className="field" name="messaging_service_sid" required pattern="MG[0-9a-fA-F]{32}" defaultValue={carrierProfile?.messagingServiceSid ?? ""} placeholder="MG…" />
-                    </label>
-                    <label className="form-field">
-                      <span className="field-label">A2P Campaign SID</span>
-                      <input className="field" name="twilio_campaign_sid" required pattern="QE[0-9a-fA-F]{32}" defaultValue={carrierProfile?.twilioCampaignSid ?? ""} placeholder="QE…" />
-                    </label>
-                    <button className="btn btn-secondary" type="submit">Sync from Twilio</button>
-                    <p className="setup-panel__note">Approval does not turn texting on or start trial time by itself.</p>
-                  </form>
-
-                  <form action="/api/ops/calls" method="post" className="setup-panel__action ops-form">
-                    <input type="hidden" name="account_slug" value={summary.accountSlug} />
-                    <p className="t-eyebrow">Onboarding hold</p>
-                    <div className="lead-controls ops-trial-controls">
+                    <div>
+                      <strong>Onboarding hold</strong>
+                      <p>Pause or resume setup without changing Stripe.</p>
+                    </div>
+                    <div className="ops-inline-control">
                       <select className="field" name="account_control" defaultValue="" aria-label="Set explicit onboarding hold">
-                        <option value="" disabled>Choose a hold action…</option>
+                        <option value="" disabled>Choose action…</option>
                         <option value="resume_onboarding">Resume onboarding</option>
                         <option value="pause_onboarding">Pause onboarding</option>
                       </select>
                       <button className="btn btn-secondary" type="submit">Apply</button>
                     </div>
-                    <p className="setup-panel__note">Ready still comes only from a signed real call.</p>
                   </form>
                 </div>
-              </details>
-            ) : null}
-          </section>
+              ) : <p className="ops-task-row__readonly">Support access is read-only.</p>}
+            </details>
 
-          <section className="panel setup-panel ops-workspace-card" id="billing" aria-label="Billing">
-            <div className="setup-panel__head">
-              <p className="t-eyebrow">Billing</p>
-              <h2>Stripe-owned money state</h2>
-              <p className="setup-copy">Relay shows Stripe&apos;s truth and controls technical eligibility. Payment methods, invoices, refunds, retries, disputes, and cancellation stay in Stripe.</p>
-            </div>
-            <div className="ops-workspace-rows">
-              <div>
-                <span>{isFoundingPilot ? "Founding pilot setup" : "Setup fee · $150"}</span>
-                <strong>{kickoffState}</strong>
-                <small>{setupFeeWaived ? `Waived with audit trail · card ${billing.stripeDefaultPaymentMethodId ? "ready" : "not ready"}` : billing.firstPaidAt ? `Paid ${formatDate(billing.firstPaidAt)}` : "Collected securely through Stripe"}</small>
-              </div>
-              <div className={monthlyTone === "warn" ? "ops-workspace-row--attention" : undefined}>
-                <span>Monthly · $99</span>
-                <strong>{monthlyState}</strong>
-                <small>{effectiveBillingStatus === "not_started" ? `${isFoundingPilot ? "30" : "14"}-day trial waits for full automatic text-back activation.` : "A failed payment does not immediately interrupt call capture."}</small>
-              </div>
-            </div>
-
-            {operator.role !== "support" ? (
-              <details className="ops-manual ops-workspace-controls" open={Boolean(notices.billing_action && !billingActionSucceeded(notices.billing_action))}>
-                <summary>Billing controls</summary>
-                <div className="ops-workspace-controls__body">
-                  {(pilotCardNeeded || kickoffCollectible) && opsState.nextAction.key !== "complete_setup_payment" && opsState.nextAction.key !== "collect_payment_method" ? (
-                    <form action="/api/ops/kickoff" method="post" className="setup-panel__action">
-                      <input type="hidden" name="account_slug" value={summary.accountSlug} />
-                      <button className="btn btn-secondary" name="action" value="send_invoice">
-                        {pilotCardNeeded ? "Email secure card link" : billing.setupFeeStatus === "due" ? "Email $150 payment link" : "Collect $150 again"}
-                      </button>
-                    </form>
-                  ) : null}
-                  <form action="/api/ops/billing/reconcile" method="post" className="setup-panel__action">
-                    <input type="hidden" name="account_slug" value={summary.accountSlug} />
-                    <button className="btn btn-secondary" type="submit">Sync with Stripe</button>
-                  </form>
-                  {(billing.setupFeeStatus === "paid" || billing.setupFeeStatus === "partially_refunded") && operator.role === "super_admin" && stripePaymentUrl ? (
-                    <div className="setup-panel__action">
-                      <a className="btn btn-secondary" href={stripePaymentUrl} target="_blank" rel="noreferrer">Open payment in Stripe</a>
-                      <p className="setup-panel__note">Refunds and disputes are managed in Stripe. Relay updates only from signed Stripe events.</p>
-                    </div>
-                  ) : null}
-                </div>
-              </details>
-            ) : null}
-
-            {operator.role === "super_admin" ? (
-              <details className="ops-manual">
-                <summary>Super-admin commercial exceptions</summary>
-                {!canApplyOverride ? <p className="intake-error settings-notice">Locked: this account has a live Stripe subscription, so Stripe stays authoritative.</p> : null}
-                <form action="/api/ops/billing" method="post" className="setup-panel__action ops-form">
+            <details className="ops-task-row" id="texting" open={textingControlOpen}>
+              <summary>
+                <span className={`ops-task-row__icon ${opsState.texting === "approved" ? "ops-task-row__icon--good" : ""}`}><Icon name="message" size={17} /></span>
+                <span className="ops-task-row__content">
+                  <span className="ops-task-row__label">Texting</span>
+                  <strong>{opsState.labels.texting}</strong>
+                  <small>{textingDetail}</small>
+                </span>
+                <span className="ops-task-row__action">Sync A2P <Icon name="chevronRight" size={15} /></span>
+              </summary>
+              {operator.role !== "support" ? (
+                <form action="/api/ops/carrier" method="post" className="ops-task-row__body ops-compact-form">
                   <input type="hidden" name="account_slug" value={summary.accountSlug} />
-                  <label className="field-label" htmlFor="comp-reason">Reason</label>
-                  <input id="comp-reason" className="field" name="reason" maxLength={240} minLength={5} required placeholder="Why is this commercial exception appropriate?" />
-                  <label><input type="checkbox" name="confirmation" value="confirmed" required /> I confirm this commercial exception.</label>
-                  <div className="ops-billing-actions" aria-label="Manual billing actions">
-                    <button className="btn btn-secondary" type="submit" name="action" value="comp" disabled={!canApplyOverride}>Comp account</button>
-                    <button className="btn btn-secondary" type="submit" name="action" value="uncomp" disabled={!canApplyOverride}>Remove comp</button>
+                  <div>
+                    <strong>Twilio campaign</strong>
+                    <p>Registration happens in Twilio. Relay reads the result; an operator cannot mark A2P approved.</p>
                   </div>
+                  <label className="form-field">
+                    <span className="field-label">Messaging Service SID</span>
+                    <input className="field" name="messaging_service_sid" required pattern="MG[0-9a-fA-F]{32}" defaultValue={carrierProfile?.messagingServiceSid ?? ""} placeholder="MG…" />
+                  </label>
+                  <label className="form-field">
+                    <span className="field-label">A2P Campaign SID</span>
+                    <input className="field" name="twilio_campaign_sid" required pattern="QE[0-9a-fA-F]{32}" defaultValue={carrierProfile?.twilioCampaignSid ?? ""} placeholder="QE…" />
+                  </label>
+                  <button className="btn btn-secondary" type="submit">Sync status</button>
                 </form>
-                {canApplyOverride && !kickoffSettled ? (
-                  <form action="/api/ops/billing" method="post" className="setup-panel__action ops-form">
-                    <input type="hidden" name="account_slug" value={summary.accountSlug} />
-                    <label className="field-label" htmlFor="setup-fee-waiver-reason">Setup-fee waiver reason</label>
-                    <input id="setup-fee-waiver-reason" className="field" name="reason" maxLength={240} minLength={5} required placeholder="e.g. founding pilot" />
-                    <label><input type="checkbox" name="confirmation" value="confirmed" required /> Confirm waiver</label>
-                    <button className="btn btn-secondary" type="submit" name="action" value="waive_setup_fee">Make founding pilot</button>
-                  </form>
-                ) : null}
-                {billing.setupFeeStatus === "waived" && canApplyOverride ? (
-                  <form action="/api/ops/billing" method="post" className="setup-panel__action ops-form">
-                    <input type="hidden" name="account_slug" value={summary.accountSlug} />
-                    <label className="field-label" htmlFor="setup-fee-require-reason">Reason to require setup fee</label>
-                    <input id="setup-fee-require-reason" className="field" name="reason" maxLength={240} minLength={5} required />
-                    <label><input type="checkbox" name="confirmation" value="confirmed" required /> Confirm standard terms</label>
-                    <button className="btn btn-secondary" type="submit" name="action" value="require_setup_fee">Return to standard terms</button>
-                  </form>
-                ) : null}
-              </details>
-            ) : null}
+              ) : <p className="ops-task-row__readonly">Support access is read-only.</p>}
+            </details>
+
+            <details className={`ops-task-row ${opsState.blockedBy !== "none" ? "ops-task-row--attention" : "ops-task-row--quiet"}`} id="blocker" open={blockerControlOpen}>
+              <summary>
+                <span className="ops-task-row__icon"><Icon name="pause" size={17} /></span>
+                <span className="ops-task-row__content">
+                  <span className="ops-task-row__label">Blocker</span>
+                  <strong>{opsState.blockedBy === "none" ? "—" : `${opsState.labels.blocker}${opsState.blockedAgeDays !== null ? ` · ${opsState.blockedAgeDays}d` : ""}`}</strong>
+                  {opsState.blockerNote ? <small>{opsState.blockerNote}</small> : null}
+                </span>
+                <span className="ops-task-row__action">{opsState.blockedBy === "none" ? "Add blocker" : "Update"} <Icon name="chevronRight" size={15} /></span>
+              </summary>
+              {operator.role !== "support" ? (
+                <form action="/api/ops/blocker" method="post" className="ops-task-row__body ops-compact-form">
+                  <input type="hidden" name="account_slug" value={summary.accountSlug} />
+                  <label className="form-field">
+                    <span className="field-label">Blocked by</span>
+                    <select className="field" name="blocked_by" defaultValue={opsState.blockedBy}>
+                      <option value="none">Nobody</option>
+                      <option value="relay">Relay</option>
+                      <option value="customer">Customer</option>
+                      <option value="carrier">Carrier</option>
+                    </select>
+                  </label>
+                  <label className="form-field">
+                    <span className="field-label">What is needed?</span>
+                    <input className="field" name="note" minLength={5} maxLength={240} defaultValue={opsState.blockerNote ?? ""} placeholder="Required when a blocker is selected" />
+                  </label>
+                  <button className="btn btn-secondary" type="submit">Save blocker</button>
+                </form>
+              ) : <p className="ops-task-row__readonly">Support access is read-only.</p>}
+            </details>
           </section>
+
+          <aside className="ops-workspace-sidebar">
+            <section className="panel ops-billing-card" id="billing" aria-label="Billing">
+              <header className="ops-card-heading">
+                <div>
+                  <p className="t-eyebrow">Billing</p>
+                  <h2>{opsState.labels.billing}</h2>
+                </div>
+                {monthlyTone === "warn" ? <span className="chip chip-danger">Attention</span> : null}
+              </header>
+              <dl className="ops-billing-ledger">
+                <div>
+                  <dt>Setup fee</dt>
+                  <dd>{kickoffState}</dd>
+                  <small>{isFoundingPilot ? "Founding pilot" : "$150 standard setup"}</small>
+                </div>
+                <div>
+                  <dt>Payment method</dt>
+                  <dd>{billing.stripeDefaultPaymentMethodId ? "Ready" : "Needed"}</dd>
+                  <small>Stored securely by Stripe</small>
+                </div>
+                <div>
+                  <dt>Monthly</dt>
+                  <dd>{monthlyState}</dd>
+                  <small>{effectiveBillingStatus === "not_started" ? `${isFoundingPilot ? "30" : "14"}-day trial starts after activation` : "$99 per month"}</small>
+                </div>
+              </dl>
+
+              {operator.role !== "support" ? (
+                <details className="ops-secondary-menu" open={billingControlOpen}>
+                  <summary>More billing actions <Icon name="chevronRight" size={15} /></summary>
+                  <div className="ops-secondary-menu__body">
+                    {(pilotCardNeeded || kickoffCollectible) && opsState.nextAction.key !== "complete_setup_payment" && opsState.nextAction.key !== "collect_payment_method" ? (
+                      <form action="/api/ops/kickoff" method="post">
+                        <input type="hidden" name="account_slug" value={summary.accountSlug} />
+                        <button className="btn btn-secondary" name="action" value="send_invoice">
+                          {pilotCardNeeded ? "Email secure card link" : billing.setupFeeStatus === "due" ? "Email $150 payment link" : "Collect $150 again"}
+                        </button>
+                      </form>
+                    ) : null}
+                    <form action="/api/ops/billing/reconcile" method="post">
+                      <input type="hidden" name="account_slug" value={summary.accountSlug} />
+                      <button className="btn btn-secondary" type="submit">Sync with Stripe</button>
+                    </form>
+                    {(billing.setupFeeStatus === "paid" || billing.setupFeeStatus === "partially_refunded") && operator.role === "super_admin" && stripePaymentUrl ? (
+                      <a className="btn btn-secondary" href={stripePaymentUrl} target="_blank" rel="noreferrer">Open payment in Stripe</a>
+                    ) : null}
+
+                    {operator.role === "super_admin" ? (
+                      <div className="ops-commercial-exceptions">
+                        <strong>Super-admin commercial exceptions</strong>
+                        <p>Every exception requires a reason and confirmation.</p>
+                        {!canApplyOverride ? <p className="intake-error settings-notice">Locked while Stripe has a live subscription.</p> : null}
+                        <form action="/api/ops/billing" method="post" className="ops-compact-form">
+                          <input type="hidden" name="account_slug" value={summary.accountSlug} />
+                          <label className="form-field"><span className="field-label">Reason</span><input className="field" name="reason" maxLength={240} minLength={5} required placeholder="Why is this exception appropriate?" /></label>
+                          <label><input type="checkbox" name="confirmation" value="confirmed" required /> Confirm exception</label>
+                          <div className="ops-billing-actions" aria-label="Manual billing actions">
+                            <button className="btn btn-secondary" type="submit" name="action" value="comp" disabled={!canApplyOverride}>Comp account</button>
+                            <button className="btn btn-secondary" type="submit" name="action" value="uncomp" disabled={!canApplyOverride}>Remove comp</button>
+                          </div>
+                        </form>
+                        {canApplyOverride && !kickoffSettled ? (
+                          <form action="/api/ops/billing" method="post" className="ops-compact-form">
+                            <input type="hidden" name="account_slug" value={summary.accountSlug} />
+                            <label className="form-field"><span className="field-label">Waiver reason</span><input className="field" name="reason" maxLength={240} minLength={5} required placeholder="e.g. founding pilot" /></label>
+                            <label><input type="checkbox" name="confirmation" value="confirmed" required /> Confirm waiver</label>
+                            <button className="btn btn-secondary" type="submit" name="action" value="waive_setup_fee">Make founding pilot</button>
+                          </form>
+                        ) : null}
+                        {billing.setupFeeStatus === "waived" && canApplyOverride ? (
+                          <form action="/api/ops/billing" method="post" className="ops-compact-form">
+                            <input type="hidden" name="account_slug" value={summary.accountSlug} />
+                            <label className="form-field"><span className="field-label">Reason to require setup fee</span><input className="field" name="reason" maxLength={240} minLength={5} required /></label>
+                            <label><input type="checkbox" name="confirmation" value="confirmed" required /> Confirm standard terms</label>
+                            <button className="btn btn-secondary" type="submit" name="action" value="require_setup_fee">Return to standard terms</button>
+                          </form>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                </details>
+              ) : null}
+              <p className="ops-billing-card__foot">Charges, refunds, payment methods, and cancellation are managed in Stripe.</p>
+            </section>
+          </aside>
         </div>
 
         <details className="panel setup-panel ops-customer-details" open={Boolean(notices.profile && notices.profile !== "saved")}>
