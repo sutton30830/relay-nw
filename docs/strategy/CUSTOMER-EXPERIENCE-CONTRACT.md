@@ -129,7 +129,11 @@ The exact grace-period duration and post-period suspension automation are delibe
   Calls, Texting, Billing, queue grouping, blocker age, and one next action
   without another overall lifecycle.
 - **Phase 3:** rebuild Operations as one work queue.
-- **Phase 4:** secure operator controls and rebuild the account workspace.
+- **Phase 4A (complete):** secure operator controls and external-state
+  authority.
+- **Phase 4B (complete):** rebuild the account workspace as one status header,
+  one derived primary action, one setup card, one billing card, collapsed
+  customer details, and collapsed diagnostics.
 - **Phase 5:** rebuild customer-facing setup and billing presentation.
 - **Phase 6:** remove obsolete surfaces.
 - **Phase 7:** complete security, billing, and pilot certification.

@@ -112,3 +112,21 @@ time.
 Operations no longer exposes refund execution or Twilio number purchasing.
 Authorized refund work opens the selected payment in Stripe. A2P
 synchronization changes compliance state only and cannot activate a trial.
+
+## Phase 4B workspace boundary
+
+The account workspace now follows the same derived contract as the Work queue:
+
+- one command center combines the four independent statuses with the single
+  derived next action;
+- setup is one card for calls, texting, Relay-number assignment, blocker
+  ownership, carrier synchronization, and explicit onboarding holds;
+- billing is one card for setup-fee and monthly Stripe truth;
+- customer details and raw diagnostics stay collapsed until needed;
+- commercial exceptions and sensitive account controls remain role-gated and
+  progressively disclosed; and
+- A2P registration work stays outside Relay. The workspace stores only Twilio
+  references needed to synchronize carrier-owned status.
+
+This presentation changes no billing, call-readiness, A2P, authorization, or
+audit authority established in Phase 4A.
