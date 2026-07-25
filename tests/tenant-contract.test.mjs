@@ -730,8 +730,9 @@ test("authenticated setup page presents one calls-first path without internal te
   assert.match(setupPageTsx, /getAccountTechnicalSetupStatus\(accountId\)/);
   assert.match(setupPageTsx, /getA2pRegistrationStatus\(accountId\)/);
   assert.match(setupPageTsx, /Turn on missed-call forwarding/);
-  assert.match(setupPageTsx, /Relay is preparing your line/);
+  assert.match(setupPageTsx, /getting your Relay line ready/);
   assert.match(setupPageTsx, /Calls are live/);
+  assert.match(setupPageTsx, /Calls and texting move independently/);
   assert.match(setupPageTsx, /CarrierForwarding relayNumber=/);
   assert.doesNotMatch(setupPageTsx, /FullTestPanel|ReadinessFact|live-tests|carrier-registration/);
   assert.doesNotMatch(setupPageTsx, /Guide the owner|The owner should|customer&apos;s carrier instructions/);

@@ -134,7 +134,9 @@ The exact grace-period duration and post-period suspension automation are delibe
 - **Phase 4B (complete):** rebuild the account workspace as one status header,
   one derived primary action, one setup card, one billing card, collapsed
   customer details, and collapsed diagnostics.
-- **Phase 5:** rebuild customer-facing setup and billing presentation.
+- **Phase 5 (complete):** rebuild customer-facing setup around independent
+  Calls and automatic text-back facts, and make Settings billing concise,
+  transparent, Stripe-managed, and limited to one primary customer action.
 - **Phase 6:** remove obsolete surfaces.
 - **Phase 7:** complete security, billing, and pilot certification.
 

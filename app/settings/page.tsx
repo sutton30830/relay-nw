@@ -266,34 +266,6 @@ function BillingActions({
   );
 }
 
-function SetupFeeAction({
-  billing,
-  role,
-}: {
-  billing: AccountBillingRecord;
-  role: string;
-}) {
-  const feeIsDue =
-    billing.billingPolicy === "standard" &&
-    (billing.setupFeeStatus === "due" ||
-      billing.setupFeeStatus === "refunded" ||
-      billing.setupFeeStatus === "charged_back");
-
-  if (!feeIsDue) return null;
-
-  if (role !== "owner") {
-    return <span className="settings-section__meta">The account owner can pay this fee.</span>;
-  }
-
-  return (
-    <form action="/api/billing/setup-fee" method="post">
-      <button className="btn btn-secondary" type="submit">
-        Pay setup fee
-      </button>
-    </form>
-  );
-}
-
 function BillingSection({
   billing,
   lifecycle,
@@ -310,12 +282,35 @@ function BillingSection({
   const showPaymentWarning = billing.billingStatus === "past_due";
   const showCancelWarning = billing.cancelAtPeriodEnd && billing.billingStatus !== "canceled";
   const setupFeeDate = formatBillingDate(billing.setupFeePaidAt ?? billing.setupFeeWaivedAt);
+  const trialDays = billing.commercialOffer === "founding_pilot" ? 30 : 14;
+  const setupFeeLabel = billing.setupFeeStatus === "paid"
+    ? `Paid${setupFeeDate ? ` ${setupFeeDate}` : ""}`
+    : billing.setupFeeStatus === "waived"
+      ? "Waived"
+      : billing.setupFeeStatus === "partially_refunded"
+        ? `Partially refunded ($${(billing.setupFeeRefundedCents / 100).toFixed(2)})`
+      : billing.setupFeeStatus === "refunded"
+        ? "Refunded"
+        : billing.setupFeeStatus === "disputed"
+          ? "Payment disputed"
+          : billing.setupFeeStatus === "charged_back"
+            ? "Charged back"
+            : billing.firstPaidAt
+              ? "Settled through prior activation"
+              : "$150 due";
+  const setupFeeDetail = billing.setupFeeStatus === "due"
+    ? "One time. Securely paid through Stripe."
+    : billing.setupFeeStatus === "waived"
+      ? "Your founding-pilot setup fee is waived."
+      : billing.billingPolicy === "comped"
+        ? "Relay is not charging this account."
+        : "This is separate from your monthly service.";
   const canRequestRefund =
     role === "owner" &&
     (billing.setupFeeStatus === "paid" || billing.setupFeeStatus === "partially_refunded");
 
   return (
-    <section id="billing" className="panel settings-section settings-billing">
+    <section id="billing" className="panel settings-section settings-billing customer-billing">
       <div className="settings-billing__main">
         <div>
           <p className="t-eyebrow settings-section__title">Billing</p>
@@ -328,7 +323,7 @@ function BillingSection({
             </p>
           ) : null}
           {billing.stripeCustomerId ? (
-            <p className="settings-section__meta">
+            <p className="settings-section__meta customer-billing__stripe-note">
               Stripe securely handles payment methods, invoices, billing details, and cancellation.
             </p>
           ) : null}
@@ -360,6 +355,11 @@ function BillingSection({
           <dt>Status</dt>
           <dd>{billingStatusLabel(billing)}</dd>
         </div>
+        <div>
+          <dt>Monthly service</dt>
+          <dd>$99/month</dd>
+          <small>{billing.billingStatus === "trialing" ? "Your Stripe trial is active." : `${trialDays}-day trial starts after automatic text-back is on.`}</small>
+        </div>
         {periodDate ? (
           <div>
             <dt>{periodLabel}</dt>
@@ -380,32 +380,14 @@ function BillingSection({
         ) : null}
         <div>
           <dt>Setup fee</dt>
-          <dd>
-            {billing.setupFeeStatus === "paid"
-              ? `Paid${setupFeeDate ? ` ${setupFeeDate}` : ""}`
-              : billing.setupFeeStatus === "waived"
-                ? "Waived"
-                : billing.setupFeeStatus === "partially_refunded"
-                  ? `Partially refunded ($${(billing.setupFeeRefundedCents / 100).toFixed(2)})`
-                : billing.setupFeeStatus === "refunded"
-                  ? "Refunded"
-                  : billing.setupFeeStatus === "disputed"
-                    ? "Payment disputed"
-                    : billing.setupFeeStatus === "charged_back"
-                      ? "Charged back"
-                  : billing.firstPaidAt
-                    ? "Settled through prior activation"
-                    : "$150 due"}
-          </dd>
-          <dd className="settings-billing__secondary-action">
-            <SetupFeeAction billing={billing} role={role} />
-          </dd>
+          <dd>{setupFeeLabel}</dd>
+          <small>{setupFeeDetail}</small>
         </div>
       </dl>
 
       {canRequestRefund ? (
         <p className="settings-section__meta settings-billing__support">
-          Need help with a charge?{" "}
+          Need help with a charge or refund?{" "}
           <a href="mailto:relaynw@gmail.com?subject=Relay%20billing%20or%20refund%20request">
             Contact Relay about billing or a refund
           </a>
@@ -448,9 +430,9 @@ export default async function SettingsPage({
         />
 
         <PageHead
-          eyebrow="Settings"
+          eyebrow="Account settings"
           title={account.businessName}
-          subtitle={readOnly ? "View-only access" : "Changes apply to the next call that comes in."}
+          subtitle={readOnly ? "View-only access" : "Manage your business details, automatic text-back, and voicemail."}
         />
 
         {params.saved ? (
@@ -585,7 +567,7 @@ export default async function SettingsPage({
               </div>
             </Field>
 
-            <p className="t-eyebrow settings-group-title">Messaging</p>
+            <p id="texting" className="t-eyebrow settings-group-title">Automatic text-back</p>
             {role === "owner" ? (
               <SmsToggle
                 defaultEnabled={account.smsEnabled}

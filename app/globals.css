@@ -3505,6 +3505,122 @@ code {
   gap: 22px;
 }
 
+/* Customer setup has just two independent facts: can Relay catch missed
+   calls, and is automatic text-back ready. The page intentionally keeps
+   carrier administration, diagnostics, and billing elsewhere. */
+.customer-setup-overview {
+  overflow: hidden;
+  padding: 0;
+}
+.customer-setup-overview__intro,
+.customer-setup-task__head,
+.customer-setup-help {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+.customer-setup-overview__intro {
+  padding: 18px 20px 16px;
+}
+.customer-setup-overview__intro h2,
+.customer-setup-task h2,
+.customer-setup-help h2 {
+  margin: 2px 0 0;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+.customer-setup-overview__states {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  border-top: 1px solid var(--line-soft);
+}
+.customer-setup-overview__states > div {
+  min-width: 0;
+  padding: 16px 20px 18px;
+}
+.customer-setup-overview__states > div + div {
+  border-left: 1px solid var(--line-soft);
+}
+.customer-setup-overview__states dt {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.customer-setup-overview__states dd {
+  display: grid;
+  gap: 3px;
+  margin: 8px 0 0;
+}
+.customer-setup-overview__states strong {
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.25;
+}
+.customer-setup-overview__states dd > span {
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.customer-setup-overview__state--good {
+  background: color-mix(in oklab, var(--good-soft) 38%, var(--panel));
+}
+.customer-setup-overview__state--good dt,
+.customer-setup-overview__state--good strong {
+  color: var(--good);
+}
+.customer-setup-overview__state--attention {
+  background: color-mix(in oklab, var(--accent-soft) 42%, var(--panel));
+}
+.customer-setup-overview__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  margin-top: 5px;
+  color: var(--brand);
+  font-size: 13px;
+  font-weight: 800;
+}
+.customer-setup-overview__confirmation {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  border-top: 1px solid var(--line-soft);
+  padding: 10px 20px;
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+.customer-setup-overview__confirmation svg {
+  color: var(--good);
+}
+.customer-setup-task,
+.customer-setup-help {
+  padding: 20px;
+}
+.customer-setup-task__head p,
+.customer-setup-help p {
+  margin: 6px 0 0;
+  color: var(--ink-3);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.customer-setup-task .carrier-forwarding {
+  margin-top: 18px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 2px;
+}
+
 /* Decisive Setup readiness banner — one state, one next action. */
 .readiness {
   display: flex;
@@ -3777,6 +3893,14 @@ code {
   color: var(--ink);
   font-weight: 800;
 }
+.settings-billing__facts small {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+}
 .settings-billing__facts .settings-billing__secondary-action {
   margin-top: 10px;
   font-weight: 400;
@@ -3787,6 +3911,12 @@ code {
 .settings-billing__support a {
   color: var(--accent);
   font-weight: 800;
+}
+.customer-billing {
+  border-color: color-mix(in oklab, var(--brand) 16%, var(--line));
+}
+.customer-billing__stripe-note {
+  margin-top: 10px;
 }
 .settings-form {
   padding: 20px 18px;
@@ -5658,6 +5788,27 @@ code {
   .intake-row,
   .home-settings {
     grid-template-columns: 1fr;
+  }
+
+  .customer-setup-overview__intro,
+  .customer-setup-task__head,
+  .customer-setup-help {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .customer-setup-overview__states {
+    grid-template-columns: 1fr;
+  }
+
+  .customer-setup-overview__states > div + div {
+    border-top: 1px solid var(--line-soft);
+    border-left: 0;
+  }
+
+  .customer-setup-task .btn,
+  .customer-setup-help .btn {
+    width: 100%;
   }
 
   .settings-billing__main {

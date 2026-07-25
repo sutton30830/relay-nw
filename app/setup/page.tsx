@@ -1,6 +1,7 @@
 import { AppHeader } from "@/app/leads/_components/app-header";
 import { PageHead } from "@/app/leads/_components/page-head";
 import { Icon } from "@/components/icon";
+import Link from "next/link";
 import { isRelayOperator, requireAccountUser } from "@/lib/auth";
 import {
   getA2pRegistrationStatus,
@@ -32,13 +33,36 @@ export default async function SetupPage() {
   const callsAreLive = technicalStatus === "live";
   const waitingForForwarding = technicalStatus === "waiting_for_forwarding";
   const serviceUnavailable = technicalStatus === "paused" || technicalStatus === "closed";
-  const textingStatus = a2pStatus === "approved"
-    ? account.smsEnabled
-      ? "Automatic texts are on."
-      : "Texting is available and currently off."
-    : a2pStatus === "rejected" || a2pStatus === "needs_attention"
-      ? "Relay is resolving a texting issue."
-      : "Relay is enabling texting. Calls work independently.";
+  const textingIsAvailable = a2pStatus === "approved";
+  const textingNeedsAttention = a2pStatus === "rejected" || a2pStatus === "needs_attention" || a2pStatus === "paused";
+  const callsLabel = callsAreLive
+    ? "Live"
+    : waitingForForwarding
+      ? "Action needed"
+      : serviceUnavailable
+        ? technicalStatus === "closed" ? "Closed" : "Paused"
+        : "Relay is working";
+  const callsDetail = callsAreLive
+    ? "A real missed call reached your Relay inbox."
+    : waitingForForwarding
+      ? "Turn on missed-call forwarding below."
+      : serviceUnavailable
+        ? "Contact Relay if this is unexpected."
+        : "We’ll let you know if we need anything.";
+  const textingLabel = account.smsEnabled
+    ? "On"
+    : textingIsAvailable
+      ? "Ready to turn on"
+      : textingNeedsAttention
+        ? "Relay is resolving this"
+        : "Relay is preparing this";
+  const textingDetail = account.smsEnabled
+    ? "Missed callers receive an automatic text-back."
+    : textingIsAvailable
+      ? "You can enable automatic text-back in Settings."
+      : textingNeedsAttention
+        ? "Calls and your inbox continue to work normally."
+        : "This happens separately from call setup.";
 
   return (
     <main className="leads-view">
@@ -51,123 +75,89 @@ export default async function SetupPage() {
         />
 
         <PageHead
-          eyebrow="Call setup"
+          eyebrow="Relay setup"
           title={
             callsAreLive
-              ? "Calls are live"
+              ? "Your missed calls are covered"
               : technicalStatus === "closed"
                 ? "Account closed"
                 : technicalStatus === "paused"
                   ? "Service paused"
                   : waitingForForwarding
-                    ? "Turn on missed-call forwarding"
-                    : "Relay is preparing your line"
+                    ? "One step to turn on call capture"
+                    : "We’re getting your Relay line ready"
           }
           subtitle={
             callsAreLive
-              ? "Relay caught a real missed call and confirmed your inbox is connected."
+              ? "Relay confirmed your inbox with a real missed call."
               : serviceUnavailable
                 ? "Contact Relay if you need help with this account."
                 : waitingForForwarding
-                  ? "Complete this one phone step. Relay confirms the connection automatically after your first real missed call."
+                  ? "Forward the calls you miss. Relay confirms the connection after the first real missed call."
                   : "Nothing is needed from you right now."
           }
         />
 
+        <section className="panel customer-setup-overview" aria-label="Relay service status">
+          <div className="customer-setup-overview__intro">
+            <div>
+              <p className="t-eyebrow">Your service</p>
+              <h2>{callsAreLive ? "Calls are live" : "Calls and texting move independently"}</h2>
+            </div>
+            {callsAreLive ? <span className="readiness__badge"><Icon name="check" size={13} /> Live</span> : null}
+          </div>
+          <dl className="customer-setup-overview__states">
+            <div className={callsAreLive ? "customer-setup-overview__state--good" : waitingForForwarding ? "customer-setup-overview__state--attention" : ""}>
+              <dt><Icon name="phone" size={16} /> Calls</dt>
+              <dd><strong>{callsLabel}</strong><span>{callsDetail}</span></dd>
+            </div>
+            <div className={account.smsEnabled ? "customer-setup-overview__state--good" : ""}>
+              <dt><Icon name="message" size={16} /> Automatic text-back</dt>
+              <dd>
+                <strong>{textingLabel}</strong>
+                <span>{textingDetail}</span>
+                {callsAreLive && textingIsAvailable && !account.smsEnabled ? (
+                  <Link className="customer-setup-overview__link" href="/settings#texting">Enable text-back <Icon name="arrowRight" size={14} /></Link>
+                ) : null}
+              </dd>
+            </div>
+          </dl>
+          {callsAreLive && lastRecoveredCallAt ? (
+            <p className="customer-setup-overview__confirmation"><Icon name="check" size={13} /> Confirmed {new Date(lastRecoveredCallAt).toLocaleDateString("en-US")}</p>
+          ) : null}
+        </section>
+
         {serviceUnavailable ? (
-          <section className="panel setup-panel" aria-label="Service status">
-            <div className="setup-panel__head">
+          <section className="panel customer-setup-help" aria-label="Service status">
+            <div>
+              <p className="t-eyebrow">Need help?</p>
+              <h2>{technicalStatus === "closed" ? "This account is closed." : "Relay is paused."}</h2>
+              <p>Contact Relay if this is unexpected or you want to resume service.</p>
+            </div>
+            <RelayHelpLink businessName={account.businessName} />
+          </section>
+        ) : waitingForForwarding ? (
+          <section className="panel customer-setup-task" aria-label="Call forwarding instructions">
+            <div className="customer-setup-task__head">
               <div>
-                <p className="t-eyebrow">Service status</p>
-                <h2 className="t-display">
-                  {technicalStatus === "closed" ? "This account is closed." : "Relay is paused."}
-                </h2>
-                <p className="setup-copy">
-                  Contact Relay if this is unexpected or you want to resume service.
-                </p>
+                <p className="t-eyebrow">Your next step</p>
+                <h2>{account.callMode === "forwarding" ? "Turn on missed-call forwarding" : "Start using your Relay number"}</h2>
+                <p>Choose your carrier, then dial the code on your existing business phone.</p>
               </div>
               <RelayHelpLink businessName={account.businessName} />
             </div>
+            <CarrierForwarding relayNumber={account.twilioPhoneNumber} />
           </section>
-        ) : callsAreLive ? (
-          <section className="panel setup-panel" aria-label="Calls are live">
-            <div className="setup-panel__head">
-              <div>
-                <p className="t-eyebrow">Call capture</p>
-                <h2 className="t-display">Relay is catching your missed calls.</h2>
-                <p className="setup-copy">
-                  New missed calls will appear in your inbox so you can follow up quickly.
-                </p>
-              </div>
-              <span className="readiness__badge">
-                <Icon name="check" size={13} /> Live
-              </span>
+        ) : !callsAreLive ? (
+          <section className="panel customer-setup-help" aria-label="Relay setup progress">
+            <div>
+              <p className="t-eyebrow">Relay&apos;s turn</p>
+              <h2>We&apos;re connecting your number and inbox.</h2>
+              <p>We&apos;ll show the one phone step here if we need you to do anything.</p>
             </div>
-
-            <dl className="setup-details" aria-label="Texting status">
-              <div>
-                <dt>Texting</dt>
-                <dd>
-                  {textingStatus}
-                </dd>
-              </div>
-              {lastRecoveredCallAt ? (
-                <div>
-                  <dt>Confirmed</dt>
-                  <dd>{new Date(lastRecoveredCallAt).toLocaleDateString("en-US")}</dd>
-                </div>
-              ) : null}
-            </dl>
+            <span className="readiness__badge"><Icon name="clock" size={13} /> In progress</span>
           </section>
-        ) : waitingForForwarding ? (
-          <>
-            <section className="panel setup-panel" aria-label="Call setup instructions">
-              <div className="setup-panel__head">
-                <div>
-                  <p className="t-eyebrow">Your next step</p>
-                  <h2 className="t-display">
-                    {account.callMode === "forwarding"
-                      ? "Turn on missed-call forwarding."
-                      : "Start using your Relay number."}
-                  </h2>
-                </div>
-              </div>
-
-              <p className="setup-copy">
-                Choose your phone carrier below and turn on forwarding for calls you do not answer. Relay confirms the connection automatically after the first real missed call.
-              </p>
-              <CarrierForwarding relayNumber={account.twilioPhoneNumber} />
-            </section>
-
-            <section className="panel setup-panel" aria-label="Relay setup help">
-              <div className="setup-panel__head">
-                <div>
-                  <p className="t-eyebrow">Need a hand?</p>
-                  <h2 className="t-display">Relay can help set this up.</h2>
-                  <p className="setup-copy">
-                    Send us a note and we&apos;ll help with your phone carrier or number setup.
-                  </p>
-                </div>
-                <RelayHelpLink businessName={account.businessName} />
-              </div>
-            </section>
-          </>
-        ) : (
-          <section className="panel setup-panel" aria-label="Relay setup progress">
-            <div className="setup-panel__head">
-              <div>
-                <p className="t-eyebrow">Relay&apos;s turn</p>
-                <h2 className="t-display">We&apos;re connecting your number and inbox.</h2>
-                <p className="setup-copy">
-                  We&apos;ll show the forwarding step here if you need to do anything.
-                </p>
-              </div>
-              <span className="readiness__badge">
-                <Icon name="clock" size={13} /> In progress
-              </span>
-            </div>
-          </section>
-        )}
+        ) : null}
       </section>
     </main>
   );

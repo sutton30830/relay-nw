@@ -26,6 +26,10 @@ test("customer billing is transparent and Stripe-hosted", () => {
   assert.match(settings, /trial waits for automatic text-back activation/);
   assert.match(settings, /Add payment method/);
   assert.match(settings, /Payment method saved\. Nothing was charged/);
+  assert.match(settings, /One time\. Securely paid through Stripe/);
+  assert.match(settings, /day trial starts after automatic text-back is on/);
+  assert.doesNotMatch(settings, /function SetupFeeAction/);
+  assert.equal((settings.match(/action="\/api\/billing\/setup-fee"/g) ?? []).length, 1);
 });
 
 test("A2P registration is not a customer questionnaire", () => {
@@ -42,4 +46,12 @@ test("billing remains separate from technical setup", () => {
   assert.doesNotMatch(setup, /Stripe|setup fee|\$99|Manage billing/i);
   assert.match(setup, /getAccountTechnicalSetupStatus/);
   assert.match(setup, /first real missed call/i);
+});
+
+test("customer setup shows independent call and texting facts with one relevant action", () => {
+  assert.match(setup, /customer-setup-overview/);
+  assert.match(setup, /Automatic text-back/);
+  assert.match(setup, /Enable text-back/);
+  assert.match(setup, /\/settings#texting/);
+  assert.doesNotMatch(setup, /Stripe-owned|carrier review|billing lifecycle/i);
 });
