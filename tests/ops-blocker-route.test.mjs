@@ -12,7 +12,7 @@ const sql = await readFile(
 );
 
 test("blocker persistence is role-protected, bounded, and audited atomically", () => {
-  assert.match(route, /requirePlatformOperatorWrite/);
+  assert.match(route, /requirePlatformOperatorAction\(OPS_ACTIONS\.blockerManage\)/);
   assert.match(route, /setAccountOpsBlocker/);
   assert.match(route, /recordPlatformAuditEvent/);
   assert.match(route, /note\.length < 5/);

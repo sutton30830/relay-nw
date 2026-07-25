@@ -14,6 +14,8 @@ export async function recordAccountAuditEvents(input: {
   actorUserId: string | null;
   actorEmail: string | null;
   events: AuditDraft[];
+}, options?: {
+  required?: boolean;
 }): Promise<void> {
   if (input.events.length === 0) return;
 
@@ -38,5 +40,8 @@ export async function recordAccountAuditEvents(input: {
       accountId,
       error: error.message,
     });
+    if (options?.required) {
+      throw error;
+    }
   }
 }

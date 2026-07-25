@@ -1,12 +1,12 @@
 import { redirect } from "next/navigation";
-import { requirePlatformOperatorWrite } from "@/lib/auth";
+import { requirePlatformOperatorAction } from "@/lib/auth";
+import { OPS_ACTIONS } from "@/lib/ops-actions";
 import { countActiveSuperAdmins, invitePlatformOperator, recordPlatformAuditEvent, updatePlatformOperator, type PlatformOperatorRole } from "@/lib/supabase";
 
 const ROLES = new Set<PlatformOperatorRole>(["super_admin", "operator", "support"]);
 
 export async function POST(request: Request) {
-  const operator = await requirePlatformOperatorWrite();
-  if (operator.role !== "super_admin") redirect("/ops/team?error=forbidden");
+  const operator = await requirePlatformOperatorAction(OPS_ACTIONS.teamManage);
   const form = await request.formData();
   const action = String(form.get("action") ?? "");
   const role = String(form.get("role") ?? "operator") as PlatformOperatorRole;

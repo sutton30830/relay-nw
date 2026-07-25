@@ -29,6 +29,8 @@ async function loadTsModule(path, mocks) {
   return module.exports;
 }
 
+const opsActions = await loadTsModule("lib/ops-actions.ts", {});
+
 // --- lib/auth.ts: requireWriteAccessJson ---
 
 function accountUsersAdminFake(rowOrRows) {
@@ -87,6 +89,7 @@ async function loadAuthModule({
       }),
     },
     "@/lib/env": { env: { supabaseUrl: "http://localhost", supabaseAnonKey: "anon" } },
+    "@/lib/ops-actions": opsActions,
     "@/lib/supabase": {
       supabaseAdmin: accountUsersAdminFake(row),
       getAccountConfigByAccountId: async (accountId) => ({ accountId }),
@@ -152,6 +155,34 @@ test("requirePlatformOperatorWrite denies support users", async () => {
   });
 
   await assert.rejects(auth.requirePlatformOperatorWrite(), /redirect:\/leads\?error=ops_read_only/);
+});
+
+test("requirePlatformOperatorAction enforces the centralized role matrix", async () => {
+  const operatorAuth = await loadAuthModule({
+    role: "owner",
+    platformOperator: { userId: "user-1", email: "owner@example.com", role: "operator", status: "active" },
+  });
+  assert.equal(
+    (await operatorAuth.requirePlatformOperatorAction(opsActions.OPS_ACTIONS.profileEdit)).role,
+    "operator",
+  );
+  await assert.rejects(
+    operatorAuth.requirePlatformOperatorAction(opsActions.OPS_ACTIONS.serviceComp),
+    /redirect:\/leads\?error=ops_read_only/,
+  );
+
+  const supportAuth = await loadAuthModule({
+    role: "owner",
+    platformOperator: { userId: "user-1", email: "owner@example.com", role: "support", status: "active" },
+  });
+  assert.equal(
+    (await supportAuth.requirePlatformOperatorAction(opsActions.OPS_ACTIONS.diagnosticsRead)).role,
+    "support",
+  );
+  await assert.rejects(
+    supportAuth.requirePlatformOperatorAction(opsActions.OPS_ACTIONS.blockerManage),
+    /redirect:\/leads\?error=ops_read_only/,
+  );
 });
 
 // --- Route handlers bail before side effects when the guard rejects ---

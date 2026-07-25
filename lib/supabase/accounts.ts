@@ -397,6 +397,25 @@ export async function getAccountTechnicalSetupStatus(
   return normalizeTechnicalSetupStatus(data?.onboarding_status as string | null | undefined);
 }
 
+export async function getAccountOperationalStatus(
+  accountId: string | null | undefined,
+): Promise<"active" | "paused" | "archived"> {
+  if (!accountId || isPlaceholderSupabaseConfig()) {
+    return "active";
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("accounts")
+    .select("status")
+    .eq("id", accountId)
+    .maybeSingle();
+
+  throwIfSupabaseError(error);
+  return data?.status === "paused" || data?.status === "archived"
+    ? data.status
+    : "active";
+}
+
 export async function getAccountOpsBlocker(
   accountId: string | null | undefined,
 ): Promise<{
@@ -892,6 +911,34 @@ export async function updateAccountTechnicalSetupStatus(
       onboarding_status: status,
       onboarding_status_updated_at: new Date().toISOString(),
     })
+    .eq("id", accountId);
+
+  throwIfSupabaseError(error);
+}
+
+export async function updateAccountOperationalState(input: {
+  accountId: string;
+  accountStatus?: "active" | "paused" | "archived";
+  technicalStatus?: TechnicalSetupStatus;
+}) {
+  const accountId = assertAccountIdForAccountStore(
+    input.accountId,
+    "updateAccountOperationalState",
+  );
+  const payload: Record<string, string> = {
+    updated_at: new Date().toISOString(),
+  };
+  if (input.accountStatus) payload.status = input.accountStatus;
+  if (input.technicalStatus) {
+    payload.onboarding_status = input.technicalStatus;
+    payload.onboarding_status_updated_at = new Date().toISOString();
+  }
+  if (Object.keys(payload).length === 1) return;
+  if (shouldSkipDatabaseWrite("account operational state", input)) return;
+
+  const { error } = await supabaseAdmin
+    .from("accounts")
+    .update(payload)
     .eq("id", accountId);
 
   throwIfSupabaseError(error);

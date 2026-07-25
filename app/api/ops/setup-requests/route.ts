@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
-import { requirePlatformOperatorWrite } from "@/lib/auth";
+import { requirePlatformOperatorAction } from "@/lib/auth";
 import { sendCustomerPasswordInvite } from "@/lib/customer-invitations";
 import { env } from "@/lib/env";
+import { OPS_ACTIONS } from "@/lib/ops-actions";
 import {
   getSetupRequestById,
   markSetupRequestOnboarded,
@@ -32,7 +33,7 @@ function resultResponse(request: Request, result: string) {
 }
 
 export async function POST(request: Request) {
-  const operator = await requirePlatformOperatorWrite();
+  const operator = await requirePlatformOperatorAction(OPS_ACTIONS.setupRequestAccept);
   const formData = await request.formData();
   const id = readString(formData, "id", 80);
   const action = readString(formData, "action", 40) || "status";
@@ -50,8 +51,6 @@ export async function POST(request: Request) {
     }
     redirect("/ops?queue=onboarding#new-requests");
   }
-
-  if (operator.role === "support") go("forbidden");
 
   const setupRequest = await getSetupRequestById(id);
   if (!setupRequest) go("not_found");

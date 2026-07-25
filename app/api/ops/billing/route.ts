@@ -2,6 +2,12 @@ import { redirect } from "next/navigation";
 import { requirePlatformOperatorWrite } from "@/lib/auth";
 import { canApplyOperatorBillingOverride } from "@/lib/billing";
 import {
+  OPS_ACTIONS,
+  canPerformOpsAction,
+  hasExplicitOpsConfirmation,
+  type OpsAction,
+} from "@/lib/ops-actions";
+import {
   getOpsBillingAccountBySlug,
   recordPlatformAuditEvent,
   setAccountBillingPolicy,
@@ -43,6 +49,13 @@ function actionSummary(action: OperatorBillingPolicyAction) {
   return "Updated billing policy";
 }
 
+function permissionFor(action: OperatorBillingPolicyAction): OpsAction {
+  if (action === "comp") return OPS_ACTIONS.serviceComp;
+  if (action === "uncomp") return OPS_ACTIONS.serviceUncomp;
+  if (action === "waive_setup_fee") return OPS_ACTIONS.setupFeeWaive;
+  return OPS_ACTIONS.setupFeeRequire;
+}
+
 function policyFor(action: OperatorBillingPolicyAction, offer: "standard" | "founding_pilot") {
   if (action === "comp") return "comped" as const;
   if (action === "waive_setup_fee") return "setup_fee_waived" as const;
@@ -62,6 +75,12 @@ export async function POST(request: Request) {
 
   if (!action) {
     return redirectWith("invalid_action", accountSlug);
+  }
+  if (!canPerformOpsAction(session.role, permissionFor(action))) {
+    return redirectWith("forbidden", accountSlug);
+  }
+  if (!hasExplicitOpsConfirmation(formData.get("confirmation"))) {
+    return redirectWith("confirmation_required", accountSlug);
   }
 
   const account = await getOpsBillingAccountBySlug(accountSlug);
@@ -88,6 +107,17 @@ export async function POST(request: Request) {
   const auditSummary = actionSummary(action);
 
   try {
+    // Record the super-admin authorization before changing commercial state.
+    // The account-scoped RPC records the applied result in the same transaction
+    // as the policy change, giving every successful exception both audit views.
+    await recordPlatformAuditEvent({
+      actorUserId: session.userId,
+      actorEmail: session.email,
+      targetAccountId: account.accountId,
+      action: `billing.operator.${action}.authorized`,
+      summary: `${auditSummary} authorized — ${reason}`,
+    }, { required: true });
+
     if (action === "waive_setup_fee" || action === "require_setup_fee") {
       await setAccountCommercialOffer({
         accountId: account.accountId,
@@ -106,16 +136,6 @@ export async function POST(request: Request) {
       });
     }
 
-    // The policy helper writes the required account audit record atomically.
-    // This platform record is useful context, but must never turn a completed
-    // commercial exception into an apparent failure.
-    void recordPlatformAuditEvent({
-      actorUserId: session.userId,
-      actorEmail: session.email,
-      targetAccountId: account.accountId,
-      action: `billing.operator.${action}`,
-      summary: auditSummary,
-    }).catch((error) => console.error("Platform billing audit failed", error));
   } catch (error) {
     console.error("Operator billing override failed", {
       accountSlug: account.accountSlug,

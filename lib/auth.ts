@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createServerClient } from "@supabase/ssr";
 import { env } from "@/lib/env";
+import { canPerformOpsAction, type OpsAction } from "@/lib/ops-actions";
 import {
   getAccountConfigByAccountId,
   getPlatformOperatorByUserId,
@@ -410,6 +411,16 @@ export async function requirePlatformOperatorWrite() {
   const operator = await requirePlatformOperator();
 
   if (operator.role === "support") {
+    redirect("/leads?error=ops_read_only");
+  }
+
+  return operator;
+}
+
+export async function requirePlatformOperatorAction(action: OpsAction) {
+  const operator = await requirePlatformOperator();
+
+  if (!canPerformOpsAction(operator.role, action)) {
     redirect("/leads?error=ops_read_only");
   }
 

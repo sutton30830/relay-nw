@@ -118,6 +118,7 @@ function makeAuthMocks({ rows, cookieValue = null, user = { id: "user-1", email:
           supabaseAnonKey: "anon",
         },
       },
+      "@/lib/ops-actions": { canPerformOpsAction: () => true },
       "@/lib/supabase": {
         supabaseAdmin: supabase.client,
         getAccountConfigByAccountId: async (accountId) => accountConfigs.get(accountId) ?? null,

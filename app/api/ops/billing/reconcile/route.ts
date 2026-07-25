@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
-import { requirePlatformOperatorWrite } from "@/lib/auth";
+import { requirePlatformOperatorAction } from "@/lib/auth";
 import { reconcileStripeBillingAccount } from "@/lib/billing-reconciliation";
-import { activateStripeTrialForAccount } from "@/lib/billing-activation";
+import { OPS_ACTIONS } from "@/lib/ops-actions";
 import {
   getOpsBillingAccountBySlug,
   recordAccountAuditEvents,
@@ -13,7 +13,7 @@ function go(slug: string, result: string): never {
 }
 
 export async function POST(request: Request) {
-  const operator = await requirePlatformOperatorWrite();
+  const operator = await requirePlatformOperatorAction(OPS_ACTIONS.billingReconcile);
   const form = await request.formData();
   const slug = String(form.get("account_slug") ?? "").trim();
   if (!slug) redirect("/ops");
@@ -21,7 +21,6 @@ export async function POST(request: Request) {
   if (!account) go(slug, "account_not_found");
   try {
     await reconcileStripeBillingAccount(account);
-    await activateStripeTrialForAccount(account.accountId);
     const summary = "Reconciled billing state from Stripe";
     await recordAccountAuditEvents({ accountId: account.accountId, actorUserId: operator.userId, actorEmail: operator.email, events: [{ action: "billing.reconciled", summary }] });
     await recordPlatformAuditEvent({ actorUserId: operator.userId, actorEmail: operator.email, targetAccountId: account.accountId, action: "billing.reconciled", summary });

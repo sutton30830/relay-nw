@@ -85,15 +85,17 @@ The account workspace presents:
 
 - Support can read accounts and diagnostics.
 - Operators can perform setup work, synchronize A2P status from Twilio, own
-  blockers, and set explicit call holds. They cannot select A2P approval or
-  call readiness.
-- Super admins can approve audited waivers and comps. Authorized operators can
-  record blockers and explicit call holds.
+  blockers, send secure Stripe setup/card links, assign an existing Twilio
+  number, pause onboarding, and invoke the gated Stripe trial operation. They
+  cannot select A2P approval, call readiness, or any Stripe outcome.
+- Super admins can approve confirmed, reasoned waivers and comps, close or
+  reopen an account, and explicitly pause paid service. These actions create
+  account and platform audit records without changing Stripe history.
 - Stripe owns payment methods, invoices, refunds, retries, disputes, and cancellation.
 
 Operators never manually write favorable Stripe states. External failures remain visible and leave local state unchanged until Stripe confirms the result.
 
-## Phase 3 runtime boundary
+## Phase 4A runtime boundary
 
 Production now collects the standard setup payment or founding-pilot card
 through Stripe, then creates the initial Stripe-owned trial only after full
@@ -106,3 +108,7 @@ derived in application code and covered exhaustively. Trial activation reads
 the blocker atomically with the independent technical, A2P, SMS, and commercial
 facts. A non-`none` blocker prevents Stripe activation without consuming trial
 time.
+
+Operations no longer exposes refund execution or Twilio number purchasing.
+Authorized refund work opens the selected payment in Stripe. A2P
+synchronization changes compliance state only and cannot activate a trial.

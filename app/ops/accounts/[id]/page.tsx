@@ -7,6 +7,7 @@ import {
   deriveOpsState,
   type OpsCallsState,
 } from "@/lib/ops-state";
+import { stripeDashboardPaymentUrl } from "@/lib/stripe-billing";
 import {
   getOpsAccountBySlug,
   getOpsBillingAccountBySlug,
@@ -52,11 +53,9 @@ function billingActionNotice(status: string | undefined) {
   if (status === "waive_setup_fee") return "The $150 setup fee was waived and recorded.";
   if (status === "require_setup_fee") return "The $150 setup fee is required.";
   if (status === "reason_required") return "Add a meaningful reason (at least five characters) before changing billing policy.";
-  if (status === "refund_started") return "Stripe accepted the setup-fee refund. Relay will confirm it from Stripe.";
+  if (status === "confirmation_required") return "Confirm this commercial exception before applying it.";
+  if (status === "forbidden") return "Only a super admin can approve a commercial exception.";
   if (status === "reconciled") return "Billing state refreshed from Stripe.";
-  if (status === "refund_forbidden") return "Only a super admin can refund a payment.";
-  if (status === "refund_unavailable") return "This setup payment cannot be refunded from Relay.";
-  if (status === "refund_failed") return "Stripe could not create the refund. No local payment state was changed.";
   if (status === "reconcile_failed") return "Stripe reconciliation failed. Check Diagnostics before retrying.";
   if (status === "setup_fee_already_paid") return "Not changed. A paid setup fee cannot be overwritten.";
   if (status === "override_blocked") return "Not changed. Stripe has a live subscription, so Stripe remains the source of truth.";
@@ -65,6 +64,15 @@ function billingActionNotice(status: string | undefined) {
   if (status === "already_active") return "An active subscription already exists.";
   if (status === "subscription_incomplete") return "Stripe has an incomplete subscription; resolve it before retrying.";
   if (status === "checkout_failed") return "Stripe Checkout could not be started. Check the billing events below.";
+  if (status === "trial_started") return "Stripe started the eligible free trial.";
+  if (status === "trial_already_started") return "Stripe already has the account's trial or subscription. Relay synchronized it.";
+  if (status === "setup_fee_required") return "The setup fee must be settled in Stripe before trial activation.";
+  if (status === "payment_method_required") return "Stripe has not confirmed a reusable payment method yet.";
+  if (status === "activation_not_eligible") return "Trial not started: calls, approved A2P, automatic text-back, an unpaused account, and no blocker must all be ready.";
+  if (status === "subscription_conflict") return "Stripe already has another active or incomplete subscription for this customer.";
+  if (status === "restart_required") return "This account already used its initial trial. Restart through Stripe Checkout.";
+  if (status === "account_comped") return "No Stripe trial was started because Relay has explicitly comped this account.";
+  if (status === "activation_failed") return "Stripe trial activation failed visibly. No favorable billing state was created locally.";
   if (status === "save_failed") return "Billing change failed. Check logs before trying again.";
   if (status === "invalid_action") return "Choose a valid billing action.";
   return null;
@@ -72,7 +80,7 @@ function billingActionNotice(status: string | undefined) {
 
 function billingActionSucceeded(status: string | undefined) {
   return status === "comp" || status === "uncomp" || status === "waive_setup_fee" || status === "require_setup_fee" ||
-    status === "refund_started" || status === "reconciled";
+    status === "reconciled" || status === "trial_started" || status === "trial_already_started";
 }
 
 function setupStageCopy(calls: OpsCallsState) {
@@ -95,8 +103,23 @@ function carrierNotice(status: string | undefined) {
   if (!status) return null;
   if (status === "invalid_ids") return "Enter the MG Messaging Service SID and QE Campaign SID from Twilio.";
   if (status === "sync_failed") return "Twilio status could not be read. No A2P state was changed.";
+  if (status === "save_failed") return "Twilio was read, but Relay could not save the compliance result. Trial was not started.";
   if (status === "unknown_status") return "Twilio returned an unfamiliar campaign status. No A2P state was changed.";
   return `Twilio campaign status synchronized: ${status.replaceAll("_", " ")}.`;
+}
+
+function accountControlNotice(status: string | undefined) {
+  if (!status) return null;
+  if (status === "saved") return "Account control updated and audited.";
+  if (status === "paid_service_requires_super_admin") return "Paid service can be paused only by a super admin using the confirmed paid-service action.";
+  if (status === "not_paid_service") return "This account has no active or incomplete Stripe subscription requiring a paid-service pause.";
+  if (status === "account_requires_reopen") return "A closed or service-paused account must be reopened by a super admin.";
+  if (status === "invalid_state") return "That action does not apply to the account's current operational state.";
+  if (status === "reason_required") return "Add a meaningful reason for this sensitive account action.";
+  if (status === "confirmation_required") return "Confirm the sensitive account action before applying it.";
+  if (status === "invalid") return "Choose a valid account control.";
+  if (status === "account_not_found") return "The account could not be resolved.";
+  return "The account control failed visibly. No Stripe state was changed.";
 }
 
 export default async function OpsAccountPage({
@@ -216,9 +239,13 @@ export default async function OpsAccountPage({
               ? "Canceled"
               : "Not started";
   const monthlyTone = effectiveBillingStatus === "past_due" ? "warn" : "neutral";
+  const stripePaymentUrl = billing.setupFeePaymentIntentId
+    ? stripeDashboardPaymentUrl(billing.setupFeePaymentIntentId)
+    : null;
   const kickoffMessage = kickoffNotice(notices.kickoff, isFoundingPilot);
   const billingMessage = billingActionNotice(notices.billing_action);
   const blockerMessage = blockerNotice(notices.blocker);
+  const accountControlMessage = accountControlNotice(notices.calls);
   const queuePillTone =
     opsState.queueGroup === "running"
       ? "booked"
@@ -347,14 +374,14 @@ export default async function OpsAccountPage({
           {kickoffMessage ? (
             <div className={notices.kickoff === "failed" ? "intake-error settings-notice" : "settings-notice"} role="status">{kickoffMessage}</div>
           ) : null}
-          {pilotCardNeeded ? (
+          {operator.role !== "support" && pilotCardNeeded ? (
             <div className="ops-billing-actions">
               <form action="/api/ops/kickoff" method="post">
                 <input type="hidden" name="account_slug" value={summary.accountSlug} />
                 <button className="btn btn-primary" name="action" value="send_invoice">Email secure card link</button>
               </form>
             </div>
-          ) : kickoffCollectible ? (
+          ) : operator.role !== "support" && kickoffCollectible ? (
             <div className="ops-billing-actions">
               <form action="/api/ops/kickoff" method="post"><input type="hidden" name="account_slug" value={summary.accountSlug} /><button className="btn btn-primary" name="action" value="send_invoice">{billing.setupFeeStatus === "due" ? "Email $150 payment link" : "Collect $150 again"}</button></form>
             </div>
@@ -362,12 +389,14 @@ export default async function OpsAccountPage({
             <p className="setup-panel__note">
               {setupFeeWaived || billing.setupFeeStatus === "waived"
                 ? `Waived — recorded in the audit trail. Stripe card: ${billing.stripeDefaultPaymentMethodId ? "ready" : "not ready"}.`
+                : kickoffCollectible
+                  ? "The secure Stripe setup-payment link still needs to be sent or completed."
                 : billing.setupFeeStatus === "disputed"
                   ? "The payment is disputed in Stripe. Sync after Stripe resolves the dispute."
                 : `Settled${billing.firstPaidAt ? ` · first paid ${formatDate(billing.firstPaidAt)}` : ""}.`}
             </p>
           )}
-          {billing.setupFeePaymentIntentId ? (
+          {billing.setupFeePaymentIntentId && operator.role !== "support" ? (
             <details className="ops-manual">
               <summary>Payment controls</summary>
               <div className="ops-billing-actions">
@@ -376,16 +405,13 @@ export default async function OpsAccountPage({
                   <button className="btn btn-secondary" type="submit">Sync with Stripe</button>
                 </form>
               </div>
-              {(billing.setupFeeStatus === "paid" || billing.setupFeeStatus === "partially_refunded") && operator.role === "super_admin" ? (
-                <form action="/api/ops/billing/refund" method="post" className="setup-panel__action">
-                  <input type="hidden" name="account_slug" value={summary.accountSlug} />
-                  <label className="field-label" htmlFor="setup-refund-reason">Refund reason</label>
-                  <div className="lead-controls ops-trial-controls">
-                    <input id="setup-refund-reason" className="field" name="reason" maxLength={240} required placeholder="Why is this being refunded?" />
-                    <button className="btn btn-secondary" type="submit">Refund remaining setup fee</button>
-                  </div>
-                  <p className="setup-panel__note">This creates a real Stripe refund. Relay changes state only after Stripe confirms it.</p>
-                </form>
+              {(billing.setupFeeStatus === "paid" || billing.setupFeeStatus === "partially_refunded") && operator.role === "super_admin" && stripePaymentUrl ? (
+                <div className="setup-panel__action">
+                  <a className="btn btn-secondary" href={stripePaymentUrl} target="_blank" rel="noreferrer">
+                    Open payment in Stripe
+                  </a>
+                  <p className="setup-panel__note">Refunds, disputes, and payment history are managed in Stripe. Relay updates only from Stripe&apos;s signed events.</p>
+                </div>
               ) : null}
             </details>
           ) : null}
@@ -405,10 +431,17 @@ export default async function OpsAccountPage({
           {billingMessage ? (
             <div className={billingActionSucceeded(notices.billing_action) ? "settings-notice" : "intake-error settings-notice"} role="status">{billingMessage}</div>
           ) : null}
+          {operator.role !== "support" && opsState.nextAction.key === "check_trial_activation" ? (
+            <form action="/api/ops/billing/activate" method="post" className="setup-panel__action">
+              <input type="hidden" name="account_slug" value={summary.accountSlug} />
+              <button className="btn btn-primary" type="submit">Start eligible Stripe trial</button>
+              <p className="setup-panel__note">The server rechecks real-call readiness, approved A2P, card readiness, account holds, and existing Stripe subscriptions before creating anything.</p>
+            </form>
+          ) : null}
 
-          {/* Operators may grant a documented exception, never start customer billing. */}
-          <details className="ops-manual">
-            <summary>Operator billing exceptions</summary>
+          {/* Only super admins may grant a documented commercial exception. */}
+          {operator.role === "super_admin" ? <details className="ops-manual">
+            <summary>Super-admin commercial exceptions</summary>
             {!canApplyOverride ? (
               <p className="intake-error settings-notice">Locked: this account has a live Stripe subscription, so Stripe stays the source of truth. Use the Billing Portal instead.</p>
             ) : null}
@@ -416,6 +449,9 @@ export default async function OpsAccountPage({
               <input type="hidden" name="account_slug" value={summary.accountSlug} />
               <label className="field-label" htmlFor="comp-reason">Reason</label>
               <input id="comp-reason" className="field" name="reason" maxLength={240} minLength={5} required placeholder="Why is this account comped or returned to standard billing?" />
+              <label className="form-field">
+                <span><input type="checkbox" name="confirmation" value="confirmed" required /> I confirm this commercial exception.</span>
+              </label>
               <div className="ops-billing-actions" aria-label="Manual billing actions">
                 <button className="btn btn-secondary" type="submit" name="action" value="comp" disabled={!canApplyOverride}>Comp account</button>
                 <button className="btn btn-secondary" type="submit" name="action" value="uncomp" disabled={!canApplyOverride}>Remove comp</button>
@@ -428,6 +464,7 @@ export default async function OpsAccountPage({
                 <label className="field-label" htmlFor="setup-fee-waiver-reason">Setup-fee waiver reason</label>
                 <div className="lead-controls ops-trial-controls">
                   <input id="setup-fee-waiver-reason" className="field" name="reason" maxLength={240} minLength={5} required placeholder="e.g. pilot customer" />
+                  <label><input type="checkbox" name="confirmation" value="confirmed" required /> Confirm waiver</label>
                   <button className="btn btn-secondary" type="submit" name="action" value="waive_setup_fee">Make founding pilot</button>
                 </div>
               </form>
@@ -438,11 +475,12 @@ export default async function OpsAccountPage({
                 <label className="field-label" htmlFor="setup-fee-require-reason">Reason to require the setup fee</label>
                 <div className="lead-controls ops-trial-controls">
                   <input id="setup-fee-require-reason" className="field" name="reason" maxLength={240} minLength={5} required placeholder="Why is the original waiver being removed?" />
+                  <label><input type="checkbox" name="confirmation" value="confirmed" required /> Confirm standard terms</label>
                   <button className="btn btn-secondary" type="submit" name="action" value="require_setup_fee">Return to standard terms</button>
                 </div>
               </form>
             ) : null}
-          </details>
+          </details> : null}
         </section>
 
         {/* Setup progress is operational only; it has no customer deadline. */}
@@ -454,22 +492,45 @@ export default async function OpsAccountPage({
           </div>
           {notices.calls ? (
             <div className={notices.calls === "saved" ? "settings-notice" : "intake-error settings-notice"} role="status">
-              {notices.calls === "saved" ? "Call hold updated." : "Call hold change failed."}
+              {accountControlMessage}
             </div>
           ) : null}
           {operator.role !== "support" ? (
             <form action="/api/ops/calls" method="post" className="setup-panel__action">
               <input type="hidden" name="account_slug" value={summary.accountSlug} />
               <div className="lead-controls ops-trial-controls">
-                <select className="field" name="call_control" defaultValue={opsState.calls === "paused" ? "paused" : ""} aria-label="Set explicit call hold">
+                <select className="field" name="account_control" defaultValue="" aria-label="Set explicit onboarding hold">
                   <option value="" disabled>Choose a call control…</option>
-                  <option value="setting_up">Resume call setup</option>
-                  <option value="paused">Pause calls</option>
+                  <option value="resume_onboarding">Resume onboarding</option>
+                  <option value="pause_onboarding">Pause onboarding</option>
                 </select>
-                <button className="btn btn-secondary" type="submit">Update call hold</button>
+                <button className="btn btn-secondary" type="submit">Update onboarding hold</button>
               </div>
               <p className="setup-panel__note">Ready comes only from a signed real call. Trial, Active, Attention, and Canceled come from Stripe.</p>
             </form>
+          ) : null}
+          {operator.role === "super_admin" ? (
+            <details className="ops-manual">
+              <summary>Super-admin account controls</summary>
+              <form action="/api/ops/calls" method="post" className="setup-panel__action ops-form">
+                <input type="hidden" name="account_slug" value={summary.accountSlug} />
+                <label className="form-field">
+                  <span className="t-eyebrow form-field__label">Sensitive action</span>
+                  <select className="field" name="account_control" defaultValue="">
+                    <option value="" disabled>Choose an action…</option>
+                    <option value="pause_paid_service">Explicitly pause paid service</option>
+                    <option value="close_account">Close account</option>
+                    <option value="reopen_account">Reopen account</option>
+                  </select>
+                </label>
+                <label className="form-field">
+                  <span className="t-eyebrow form-field__label">Reason</span>
+                  <input className="field" name="reason" minLength={5} maxLength={240} required />
+                </label>
+                <label><input type="checkbox" name="confirmation" value="confirmed" required /> I confirm this account action. Stripe billing will not be changed.</label>
+                <button className="btn btn-secondary" type="submit">Apply account action</button>
+              </form>
+            </details>
           ) : null}
         </section>
 
@@ -578,7 +639,7 @@ export default async function OpsAccountPage({
           <div className="setup-panel__head">
             <p className="t-eyebrow">Relay number</p>
             <h2>{runtime?.twilioPhoneNumber || "No number assigned"}</h2>
-            <p className="setup-copy">Attach a number already owned in Twilio, or purchase a specific available number. Relay configures the voice and messaging callbacks automatically.</p>
+            <p className="setup-copy">Attach a number already owned in the configured Twilio account. Relay configures the voice and messaging callbacks automatically.</p>
           </div>
           {notices.number ? <div className={notices.number === "assigned" ? "settings-notice" : "intake-error settings-notice"} role="status">
             {notices.number === "assigned" ? "Relay number assigned and configured." : notices.number === "invalid" ? "Enter a US number in +1 format." : "Number assignment failed. No account routing was changed."}
@@ -589,9 +650,8 @@ export default async function OpsAccountPage({
               <div className="lead-controls">
                 <input className="field" name="phone_number" required pattern="\+1[0-9]{10}" placeholder="+12065550123" aria-label="Twilio phone number" />
                 <button className="btn btn-primary" name="action" value="attach_existing">Attach owned number</button>
-                <button className="btn btn-secondary" name="action" value="purchase">Purchase this number</button>
               </div>
-              <p className="setup-panel__note">Purchasing creates a real Twilio charge. Use Attach when the number already appears in your Twilio account.</p>
+              <p className="setup-panel__note">If the number is not already owned, this action fails without changing account routing.</p>
             </form>
           ) : null}
         </section>

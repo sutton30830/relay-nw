@@ -184,12 +184,12 @@ test("Operations uses independent authority-backed facts and audited blocker own
   assert.match(opsStateTs, /deriveOpsState/);
   assert.doesNotMatch(opsStateTs, /manualNextAction|storedNextAction/);
 
-  assert.match(opsBlockerRouteTs, /requirePlatformOperatorWrite/);
+  assert.match(opsBlockerRouteTs, /requirePlatformOperatorAction\(OPS_ACTIONS\.blockerManage\)/);
   assert.match(opsBlockerRouteTs, /blockedBy !== "none" && note\.length < 5/);
   assert.match(opsBlockerRouteTs, /setAccountOpsBlocker/);
-  assert.match(opsCallsRouteTs, /requirePlatformOperatorWrite/);
-  assert.match(opsCallsRouteTs, /call_control/);
-  assert.doesNotMatch(opsCallsRouteTs, /call_control.*closed/s);
+  assert.match(opsCallsRouteTs, /requirePlatformOperatorAction\(ACTION_POLICY\[control\]\)/);
+  assert.match(opsCallsRouteTs, /account_control/);
+  assert.doesNotMatch(opsCallsRouteTs, /ready_to_activate/);
 });
 
 test("stripe checkout and webhooks update account billing without gating missed-call capture", () => {
@@ -339,7 +339,7 @@ test("ops runbook is authenticated and covers failure visibility plus retention"
   assert.match(opsAccountPageTsx, /getRecentStripeEventsForAccount/);
   assert.match(opsAccountPageTsx, /Stripe webhook processing/);
   assert.match(opsAccountPageTsx, /failedCount/);
-  assert.match(opsAccountPageTsx, /Operator billing exceptions/);
+  assert.match(opsAccountPageTsx, /Super-admin commercial exceptions/);
   assert.match(opsAccountPageTsx, /Comp account/);
   assert.match(opsAccountPageTsx, /billing\.billingPolicy === "comped"/);
   assert.match(opsAccountPageTsx, /billing\.billingPolicy === "setup_fee_waived"/);
@@ -348,6 +348,8 @@ test("ops runbook is authenticated and covers failure visibility plus retention"
   assert.doesNotMatch(opsAccountPageTsx, /Grant trial|Start \$99 billing|Waive \+ email card link/);
   assert.match(opsAccountPageTsx, /canApplyOperatorBillingOverride/);
   assert.match(opsBillingRouteTs, /requirePlatformOperatorWrite/);
+  assert.match(opsBillingRouteTs, /canPerformOpsAction/);
+  assert.match(opsBillingRouteTs, /hasExplicitOpsConfirmation/);
   assert.match(opsBillingRouteTs, /getOpsBillingAccountBySlug/);
   assert.match(opsBillingRouteTs, /canApplyOperatorBillingOverride/);
   assert.match(opsBillingRouteTs, /setAccountBillingPolicy/);

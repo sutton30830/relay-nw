@@ -32,6 +32,7 @@ const customerExperienceContract = await loadTsModule("lib/customer-experience-c
 const billing = await loadTsModule("lib/billing.ts", {
   "@/lib/customer-experience-contract": customerExperienceContract,
 });
+const opsActions = await loadTsModule("lib/ops-actions.ts", {});
 
 function session(overrides = {}) {
   return {
@@ -222,9 +223,9 @@ async function runPortal({
 }
 
 async function runOpsBillingOverride({
-  authSession = { userId: "user-1", email: "ops@example.com" },
+  authSession = { userId: "user-1", email: "ops@example.com", role: "super_admin" },
   accountBilling = billingRecord({ accountId: "acct-1", accountSlug: "demo", businessName: "Demo Plumbing" }),
-  form = { account_slug: "demo", action: "comp", reason: "Approved pilot exception" },
+  form = { account_slug: "demo", action: "comp", reason: "Approved pilot exception", confirmation: "confirmed" },
 } = {}) {
   const calls = {
     lookups: [],
@@ -245,6 +246,7 @@ async function runOpsBillingOverride({
       requirePlatformOperatorWrite: async () => authSession,
     },
     "@/lib/billing": billing,
+    "@/lib/ops-actions": opsActions,
     "@/lib/supabase": {
       getOpsBillingAccountBySlug: async (slug) => {
         calls.lookups.push(slug);
@@ -483,7 +485,7 @@ test("an open payment-method Checkout is reused without creating a duplicate", a
   assert.equal(calls.redirects.at(-1), "https://checkout.stripe.test/existing-card");
 });
 
-test("operator can manually comp an account without a live Stripe subscription", async () => {
+test("super admin can manually comp an account without a live Stripe subscription", async () => {
   const calls = await runOpsBillingOverride();
 
   assert.deepEqual(calls.lookups, ["demo"]);
@@ -496,11 +498,11 @@ test("operator can manually comp an account without a live Stripe subscription",
       actorEmail: "ops@example.com",
     },
   ]);
-  assert.equal(calls.platformAudits[0].action, "billing.operator.comp");
+  assert.equal(calls.platformAudits[0].action, "billing.operator.comp.authorized");
   assert.equal(calls.redirects.at(-1), "/ops/accounts/demo?billing_action=comp");
 });
 
-test("operator can waive a setup fee for a selected pilot account and audit the reason", async () => {
+test("super admin can waive a setup fee for a selected pilot account and audit the reason", async () => {
   const calls = await runOpsBillingOverride({
     accountBilling: billingRecord({
       accountId: "acct-1",
@@ -508,13 +510,13 @@ test("operator can waive a setup fee for a selected pilot account and audit the 
       businessName: "Demo Plumbing",
       setupFeeStatus: "due",
     }),
-    form: { account_slug: "demo", action: "waive_setup_fee", reason: "Pilot customer" },
+    form: { account_slug: "demo", action: "waive_setup_fee", reason: "Pilot customer", confirmation: "confirmed" },
   });
 
   assert.deepEqual(calls.policies, []);
   assert.equal(calls.commercialOffers[0].offer, "founding_pilot");
   assert.equal(calls.commercialOffers[0].reason, "Pilot customer");
-  assert.equal(calls.platformAudits[0].action, "billing.operator.waive_setup_fee");
+  assert.equal(calls.platformAudits[0].action, "billing.operator.waive_setup_fee.authorized");
   assert.equal(calls.redirects.at(-1), "/ops/accounts/demo?billing_action=waive_setup_fee");
 });
 
@@ -526,7 +528,7 @@ test("operator cannot overwrite a paid setup fee", async () => {
       businessName: "Demo Plumbing",
       setupFeeStatus: "paid",
     }),
-    form: { account_slug: "demo", action: "require_setup_fee", reason: "Correcting pilot terms" },
+    form: { account_slug: "demo", action: "require_setup_fee", reason: "Correcting pilot terms", confirmation: "confirmed" },
   });
 
   assert.deepEqual(calls.policies, []);
@@ -535,7 +537,7 @@ test("operator cannot overwrite a paid setup fee", async () => {
 
 test("operator cannot grant an app-managed trial", async () => {
   const calls = await runOpsBillingOverride({
-    form: { account_slug: "demo", action: "grant_trial", reason: "No longer supported" },
+    form: { account_slug: "demo", action: "grant_trial", reason: "No longer supported", confirmation: "confirmed" },
   });
 
   assert.deepEqual(calls.policies, []);
@@ -544,11 +546,31 @@ test("operator cannot grant an app-managed trial", async () => {
 
 test("operator requires a meaningful exception reason", async () => {
   const calls = await runOpsBillingOverride({
-    form: { account_slug: "demo", action: "uncomp", reason: "no" },
+    form: { account_slug: "demo", action: "uncomp", reason: "no", confirmation: "confirmed" },
   });
 
   assert.deepEqual(calls.policies, []);
   assert.equal(calls.redirects.at(-1), "/ops/accounts/demo?billing_action=reason_required");
+});
+
+test("operators cannot approve commercial exceptions", async () => {
+  const calls = await runOpsBillingOverride({
+    authSession: { userId: "user-2", email: "operator@example.com", role: "operator" },
+  });
+
+  assert.deepEqual(calls.policies, []);
+  assert.deepEqual(calls.platformAudits, []);
+  assert.equal(calls.redirects.at(-1), "/ops/accounts/demo?billing_action=forbidden");
+});
+
+test("commercial exceptions require explicit confirmation before either audit is written", async () => {
+  const calls = await runOpsBillingOverride({
+    form: { account_slug: "demo", action: "comp", reason: "Approved pilot exception" },
+  });
+
+  assert.deepEqual(calls.policies, []);
+  assert.deepEqual(calls.platformAudits, []);
+  assert.equal(calls.redirects.at(-1), "/ops/accounts/demo?billing_action=confirmation_required");
 });
 
 test("operator billing override refuses active Stripe subscriptions", async () => {

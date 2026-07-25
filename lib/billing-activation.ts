@@ -19,6 +19,7 @@ import {
   getA2pRegistrationStatus,
   getAccountBillingRecord,
   getAccountConfigByAccountId,
+  getAccountOperationalStatus,
   getAccountOpsBlocker,
   getAccountTechnicalSetupStatus,
   recordAccountAuditEvents,
@@ -125,9 +126,10 @@ async function resolveDefaultPaymentMethod(input: {
 export async function activateStripeTrialForAccount(
   accountId: string,
 ): Promise<StripeTrialActivationResult> {
-  const [billing, technicalStatus, a2pValue, account, blocker] = await Promise.all([
+  const [billing, technicalStatus, operationalStatus, a2pValue, account, blocker] = await Promise.all([
     getAccountBillingRecord(accountId),
     getAccountTechnicalSetupStatus(accountId),
+    getAccountOperationalStatus(accountId),
     getA2pRegistrationStatus(accountId),
     getAccountConfigByAccountId(accountId),
     getAccountOpsBlocker(accountId),
@@ -135,6 +137,13 @@ export async function activateStripeTrialForAccount(
 
   if (!account) {
     return { status: "not_eligible", reason: "account_not_found" };
+  }
+
+  if (operationalStatus !== "active") {
+    return {
+      status: "not_eligible",
+      reason: operationalStatus === "archived" ? "account_closed" : "account_paused",
+    };
   }
 
   if (billing.billingPolicy === "comped") {

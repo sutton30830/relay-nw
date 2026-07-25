@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { requirePlatformOperatorWrite } from "@/lib/auth";
+import { requirePlatformOperatorAction } from "@/lib/auth";
+import { OPS_ACTIONS } from "@/lib/ops-actions";
 import { normalizePhoneNumber } from "@/lib/phone";
 import {
   getOpsAccountBySlug,
@@ -19,7 +20,7 @@ function value(form: FormData, key: string, max = 200) {
 }
 
 export async function POST(request: Request) {
-  const operator = await requirePlatformOperatorWrite();
+  const operator = await requirePlatformOperatorAction(OPS_ACTIONS.profileEdit);
   const form = await request.formData();
   const slug = value(form, "account_slug", 80);
   if (!slug) redirect("/ops");

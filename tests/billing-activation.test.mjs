@@ -60,6 +60,7 @@ function subscription(overrides = {}) {
 async function runActivation({
   accountBilling = billingRecord(),
   technicalStatus = "live",
+  operationalStatus = "active",
   a2pStatus = "approved",
   smsEnabled = true,
   blockedBy = "none",
@@ -131,6 +132,7 @@ async function runActivation({
     "@/lib/supabase": {
       getAccountBillingRecord: async () => accountBilling,
       getAccountTechnicalSetupStatus: async () => technicalStatus,
+      getAccountOperationalStatus: async () => operationalStatus,
       getA2pRegistrationStatus: async () => a2pStatus,
       getAccountOpsBlocker: async () => ({
         blockedBy,
@@ -176,6 +178,18 @@ test("A2P approval without automatic text-back does not consume trial time", asy
   const { result, calls } = await runActivation({ smsEnabled: false });
   assert.equal(result.status, "not_eligible");
   assert.deepEqual(calls.creates, []);
+});
+
+test("paused and closed accounts cannot start a Stripe trial", async () => {
+  for (const operationalStatus of ["paused", "archived"]) {
+    const { result, calls } = await runActivation({ operationalStatus });
+    assert.deepEqual(result, {
+      status: "not_eligible",
+      reason: operationalStatus === "archived" ? "account_closed" : "account_paused",
+    });
+    assert.deepEqual(calls.customerLookups, []);
+    assert.deepEqual(calls.creates, []);
+  }
 });
 
 test("an explicit Operations blocker prevents trial activation", async () => {

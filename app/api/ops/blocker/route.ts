@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
-import { requirePlatformOperatorWrite } from "@/lib/auth";
+import { requirePlatformOperatorAction } from "@/lib/auth";
 import type { OperationsBlocker } from "@/lib/customer-experience-contract";
+import { OPS_ACTIONS } from "@/lib/ops-actions";
 import {
   getOpsAccountBySlug,
   recordPlatformAuditEvent,
@@ -19,7 +20,7 @@ function go(slug: string, result: string): never {
 }
 
 export async function POST(request: Request) {
-  const operator = await requirePlatformOperatorWrite();
+  const operator = await requirePlatformOperatorAction(OPS_ACTIONS.blockerManage);
   const form = await request.formData();
   const slug = String(form.get("account_slug") ?? "").trim().slice(0, 80);
   const blockedByValue = String(form.get("blocked_by") ?? "").trim();

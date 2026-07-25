@@ -108,6 +108,8 @@ export async function recordPlatformAuditEvent(input: {
   summary: string;
   targetUserId?: string | null;
   targetAccountId?: string | null;
+}, options?: {
+  required?: boolean;
 }): Promise<void> {
   if (shouldSkipDatabaseWrite("platform audit event", input)) return;
 
@@ -125,5 +127,8 @@ export async function recordPlatformAuditEvent(input: {
       action: input.action,
       error: error.message,
     });
+    if (options?.required) {
+      throw error;
+    }
   }
 }

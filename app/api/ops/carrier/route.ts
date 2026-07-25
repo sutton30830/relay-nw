@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
-import { after } from "next/server";
-import { activateStripeTrialForAccount } from "@/lib/billing-activation";
-import { requirePlatformOperatorWrite } from "@/lib/auth";
+import { requirePlatformOperatorAction } from "@/lib/auth";
+import { OPS_ACTIONS } from "@/lib/ops-actions";
 import {
   getOpsBillingAccountBySlug,
   recordAccountAuditEvents,
@@ -34,8 +33,7 @@ function mapCampaignStatus(value: string | null | undefined) {
 }
 
 export async function POST(request: Request) {
-  const operator = await requirePlatformOperatorWrite();
-  if (operator.role === "support") redirect("/ops?error=forbidden");
+  const operator = await requirePlatformOperatorAction(OPS_ACTIONS.a2pSync);
 
   const form = await request.formData();
   const slug = String(form.get("account_slug") ?? "").trim().slice(0, 80);
@@ -73,42 +71,37 @@ export async function POST(request: Request) {
       ? "Twilio reports that this A2P campaign needs attention."
       : "Twilio or the carrier is reviewing this A2P campaign.";
 
-  await upsertCarrierProfile(account.accountId, {
-    status: next.profile,
-    twilio_campaign_sid: campaignSid,
-    messaging_service_sid: messagingServiceSid,
-    status_detail: detail,
-  });
-  await updateAccountSettings(account.accountId, {
-    a2p_registration_status: next.a2p,
-  });
-
-  const summary = `Synchronized Twilio A2P campaign status: ${externalStatus}`;
-  await recordAccountAuditEvents({
-    accountId: account.accountId,
-    actorUserId: operator.userId,
-    actorEmail: operator.email,
-    events: [{ action: "carrier.status_synchronized", summary }],
-  });
-  await recordPlatformAuditEvent({
-    actorUserId: operator.userId,
-    actorEmail: operator.email,
-    targetAccountId: account.accountId,
-    action: "carrier.status_synchronized",
-    summary,
-  });
-
-  if (next.a2p === "approved") {
-    after(async () => {
-      try {
-        await activateStripeTrialForAccount(account.accountId);
-      } catch (error) {
-        console.error("Deferred trial activation after A2P synchronization failed", {
-          accountId: account.accountId,
-          error: error instanceof Error ? error.message : error,
-        });
-      }
+  try {
+    await upsertCarrierProfile(account.accountId, {
+      status: next.profile,
+      twilio_campaign_sid: campaignSid,
+      messaging_service_sid: messagingServiceSid,
+      status_detail: detail,
     });
+    await updateAccountSettings(account.accountId, {
+      a2p_registration_status: next.a2p,
+    });
+
+    const summary = `Synchronized Twilio A2P campaign status: ${externalStatus}`;
+    await recordAccountAuditEvents({
+      accountId: account.accountId,
+      actorUserId: operator.userId,
+      actorEmail: operator.email,
+      events: [{ action: "carrier.status_synchronized", summary }],
+    });
+    await recordPlatformAuditEvent({
+      actorUserId: operator.userId,
+      actorEmail: operator.email,
+      targetAccountId: account.accountId,
+      action: "carrier.status_synchronized",
+      summary,
+    });
+  } catch (error) {
+    console.error("Twilio A2P status persistence failed", {
+      accountId: account.accountId,
+      error: error instanceof Error ? error.message : error,
+    });
+    go(slug, "save_failed");
   }
 
   go(slug, externalStatus.toLowerCase());

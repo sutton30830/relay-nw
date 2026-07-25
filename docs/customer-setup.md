@@ -74,8 +74,9 @@ Billing is not an onboarding phase:
 - A scheduled cancellation remains active through the paid period.
 - Failed payments show a clear Manage billing action without automatically
   disabling missed-call capture.
-- Customers request refunds from Relay. Operators issue approved refunds in
-  Stripe; Relay displays the result only after Stripe confirms it.
+- Customers request refunds from Relay. Authorized staff execute approved
+  refunds in Stripe, never in Relay; Relay displays the result only after
+  Stripe confirms it.
 
 ## Handoff
 

@@ -235,6 +235,7 @@ test("account_users email lookup escapes ilike wildcards so j_doe cannot match j
       }),
     },
     "@/lib/env": { env: { supabaseUrl: "http://localhost", supabaseAnonKey: "anon" } },
+    "@/lib/ops-actions": { canPerformOpsAction: () => true },
     "@/lib/supabase": {
       supabaseAdmin: { from: () => accountUsersQuery() },
       getAccountConfigByAccountId: async () => null,

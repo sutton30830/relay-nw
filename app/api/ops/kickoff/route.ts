@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
-import { requirePlatformOperatorWrite } from "@/lib/auth";
+import { requirePlatformOperatorAction } from "@/lib/auth";
 import { commercialTermsForOffer } from "@/lib/customer-experience-contract";
 import { notifyOwnerKickoffPayment } from "@/lib/email";
+import { OPS_ACTIONS } from "@/lib/ops-actions";
 import {
   createStripePaymentMethodCheckoutSession,
   createStripeSetupFeeCheckoutSession,
@@ -10,6 +11,7 @@ import {
 import {
   getAccountConfigByAccountId,
   getOpsBillingAccountBySlug,
+  recordAccountAuditEvents,
   recordPlatformAuditEvent,
   updateAccountBillingRecord,
 } from "@/lib/supabase";
@@ -44,7 +46,7 @@ async function reusableCheckoutUrl(
 }
 
 export async function POST(request: Request) {
-  const operator = await requirePlatformOperatorWrite();
+  const operator = await requirePlatformOperatorAction(OPS_ACTIONS.billingLinkSend);
   const form = await request.formData();
   const slug = String(form.get("account_slug") ?? "").trim();
   const action = String(form.get("action") ?? "").trim();
@@ -86,6 +88,15 @@ export async function POST(request: Request) {
           feeWaived: true,
         });
         if (!delivery.sent) throw new Error("Kickoff card-setup email was not delivered.");
+        await recordAccountAuditEvents({
+          accountId: account.accountId,
+          actorUserId: operator.userId,
+          actorEmail: operator.email,
+          events: [{
+            action: "billing.kickoff.card_setup_started",
+            summary: "Sent founding-pilot Stripe card setup for the 30-day delayed trial",
+          }],
+        });
         await recordPlatformAuditEvent({
           actorUserId: operator.userId,
           actorEmail: operator.email,
@@ -125,6 +136,15 @@ export async function POST(request: Request) {
         feeWaived: false,
       });
       if (!delivery.sent) throw new Error("Kickoff payment email was not delivered.");
+      await recordAccountAuditEvents({
+        accountId: account.accountId,
+        actorUserId: operator.userId,
+        actorEmail: operator.email,
+        events: [{
+          action: "billing.kickoff.checkout_started",
+          summary: "Sent the secure $150 Stripe setup-payment link",
+        }],
+      });
       await recordPlatformAuditEvent({ actorUserId: operator.userId, actorEmail: operator.email, targetAccountId: account.accountId, action: "billing.kickoff.checkout_started", summary: "Started $150 kickoff payment" });
       return resultResponse(request, account.accountSlug, "payment_link_sent");
     }

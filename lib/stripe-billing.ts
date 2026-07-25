@@ -868,39 +868,12 @@ export async function createStripeTrialSubscription(input: {
   return stripeSubscriptionSnapshot(body);
 }
 
-export async function createStripeRefund(input: {
-  paymentIntentId: string;
-  amountCents?: number | null;
-  accountId: string;
-  reason: string;
-  idempotencyKey: string;
-}) {
-  if (!env.stripeSecretKey) throw new Error("Stripe refunds are not configured. Set STRIPE_SECRET_KEY.");
-  const params = new URLSearchParams({
-    payment_intent: input.paymentIntentId,
-    "metadata[account_id]": input.accountId,
-    "metadata[refund_reason]": input.reason.slice(0, 240),
-  });
-  if (input.amountCents && input.amountCents > 0) params.set("amount", String(Math.round(input.amountCents)));
-  const response = await fetch(`${STRIPE_API_BASE}/refunds`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.stripeSecretKey}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-      "Idempotency-Key": input.idempotencyKey,
-    },
-    body: params,
-  });
-  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!response.ok) {
-    const message = typeof body.error === "object" && body.error
-      ? stringValue((body.error as Record<string, unknown>).message)
-      : null;
-    throw new Error(message ?? `Stripe refund failed with status ${response.status}`);
+export function stripeDashboardPaymentUrl(paymentIntentId: string) {
+  if (!/^pi_[a-zA-Z0-9_]+$/.test(paymentIntentId)) {
+    return null;
   }
-  const id = stringValue(body.id);
-  if (!id) throw new Error("Stripe refund did not return a refund id.");
-  return { id, status: stringValue(body.status), amount: numberValue(body.amount) ?? 0 };
+  const modePath = expectedStripeLivemode() === false ? "/test" : "";
+  return `https://dashboard.stripe.com${modePath}/payments/${encodeURIComponent(paymentIntentId)}`;
 }
 
 export function setupFeeStateFromPayment(payment: StripePaymentIntentSnapshot): Pick<

@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 const JOBS = [
   ["Work the queue", "Start in Work queue. Calls, Texting, Billing, and Blocked by are independent; the next action is derived from those facts and never typed by an operator."],
-  ["Handle money", "Stripe is the source of truth. Collect or waive the $150 setup fee and securely collect the card; Stripe starts the $99 trial only after automatic text-back is active and nobody remains blocked."],
+  ["Handle money", "Stripe is the source of truth. Operators send secure setup/card links; only a super admin can confirm a waiver or comp. The $99 trial uses the gated Stripe operation only after automatic text-back is active and nobody remains blocked."],
   ["Find an account", "Use Accounts as the searchable directory, then open the account. Keep diagnostics collapsed until a normal-language state points you there."],
   ["Accept new work", "New requests sit at the top of Onboarding. Accept and invite creates a separate customer tenant with the setup fee due; it never assigns a number or starts monthly billing."],
   ["Manage operators", "Team access is explicit. Super admins can invite, change roles, and revoke. Never revoke yourself, and never remove the last active super admin."],

@@ -54,7 +54,9 @@ Run `npm run test:activation` locally before high-risk releases. This is determi
 - Use `Resend account invite` if delivery fails. Relay sends the custom password email through Resend so Supabase's hosted-email rate limit is not part of normal onboarding.
 - Verify every customer account with `npm run verify:account -- <slug>` before handing over access.
 - Reuse the business name, owner login/contact, call mode, and public number already collected at intake. Do not ask the customer to re-enter carrier-registration details in the app.
-- Assign an owned Twilio number from the account page after acceptance, or deliberately purchase one there. Purchasing creates a real Twilio charge.
+- Assign a number already owned by the configured Twilio account. Number
+  purchasing stays outside Relay so an operator action cannot create an
+  unexpected Twilio charge.
 - Help forwarding customers complete the one carrier-specific forwarding step on `/setup`. Do not run synthetic forwarding or SMS tests.
 - The first signed, newly inserted real missed call marks call capture `live`. A2P work is separate and happens primarily in Twilio.
 - Copy the Messaging Service and A2P Campaign SIDs into the account workspace,
@@ -80,6 +82,20 @@ or cancellation, texting issue, commercial setup, call setup, A2P work,
 automatic text-back activation, then delayed trial activation. A healthy
 Stripe trial, active subscription, or audited comp needs no action.
 
+### Operator action boundary
+
+| Actor | Allowed in Relay |
+|---|---|
+| Support | Read accounts and diagnostics |
+| Operator | Edit setup/customer details; attach an existing Twilio number; synchronize A2P from Twilio; set/clear blockers; send Stripe setup/card links; pause or resume onboarding; request the gated initial-trial operation |
+| Super admin | All operator actions; confirmed setup-fee waivers and comps; close/reopen accounts; explicitly pause paid service |
+| Stripe | Payment methods, invoices, refunds, retries, disputes, and cancellation |
+
+Commercial exceptions require a meaningful reason and explicit confirmation.
+Successful exceptions have an account audit event from the policy RPC and a
+required platform authorization event. Support routes render without mutation
+controls, and every mutation endpoint rechecks its action permission.
+
 ### Commercial Terms and Activation Billing
 
 - Standard accounts start with a one-time `$150 setup fee` due. Founding pilots
@@ -92,16 +108,21 @@ Stripe trial, active subscription, or audited comp needs no action.
   reuse disclosure. Founding-pilot card Checkout charges nothing.
 - Monthly service is `$99/month`. The initial Stripe-owned trial is 14 days for
   standard customers and 30 days for founding pilots.
-- Trial creation is automatic and idempotent only after calls are live, A2P is
+- Trial creation uses one idempotent Stripe operation only after calls are live, A2P is
   approved, automatic text-back is enabled, the setup terms are settled,
-  Stripe has a default payment method, and no operational blocker is present.
+  Stripe has a default payment method, the account is not paused or closed, no
+  operational blocker is present, and Stripe has no active or incomplete
+  subscription.
   Calls alone never start trial time.
 - Subscription Checkout is only for a canceled customer restarting after the
   one-time trial. Never grant a second trial.
 - Configure a separate Stripe one-time Price for `STRIPE_SETUP_FEE_PRICE_ID`. The existing `STRIPE_PRICE_ID` remains the recurring monthly Price.
 - Stripe webhooks are the immediate source for payments, cancellations, refunds, disputes, and deleted customers. `/api/cron/billing-reconciliation` re-reads all connected Stripe records daily as a repair path when an event is delayed or missed.
 - If setup-fee payment succeeds, confirm `paid`. A partial/full refund or dispute must appear after its Stripe event or after `Sync with Stripe`. Never change a payment to refunded only in Relay.
-- Only a super admin can issue a real setup-fee refund from Relay. Waivers and refunds are different actions and remain separately audited.
+- Relay never executes a refund. A super admin follows the selected payment
+  link into Stripe, where Stripe permissions and confirmation control the
+  refund. Relay reflects the result only from signed Stripe events or
+  reconciliation.
 - Customers manage payment methods, invoices, and cancellation through Stripe Customer Portal from Settings. A deleted or wrong-mode Stripe customer is cleared and presented as a relink path instead of an error loop.
 - A scheduled cancellation remains live until the paid period ends. A failed payment shows a customer action but does not automatically disable missed-call capture without a separately approved grace-period policy.
 

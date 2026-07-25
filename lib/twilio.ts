@@ -59,20 +59,6 @@ export async function findAvailableRelayNumbers(areaCode: string, limit = 8) {
   return numbers.map((number) => ({ phoneNumber: number.phoneNumber, locality: number.locality, region: number.region }));
 }
 
-export async function purchaseAndConfigureRelayNumber(phoneNumber: string) {
-  const base = env.appBaseUrl;
-  const number = await twilioClient.incomingPhoneNumbers.create({
-    phoneNumber,
-    voiceUrl: `${base}/api/twilio/voice`,
-    voiceMethod: "POST",
-    voiceFallbackUrl: `${base}/api/twilio/voice`,
-    voiceFallbackMethod: "POST",
-    smsUrl: `${base}/api/twilio/sms`,
-    smsMethod: "POST",
-  });
-  return { sid: number.sid, phoneNumber: number.phoneNumber };
-}
-
 export async function configureExistingRelayNumber(phoneNumber: string) {
   const matches = await twilioClient.incomingPhoneNumbers.list({ phoneNumber, limit: 2 });
   const existing = matches.find((number) => number.phoneNumber === phoneNumber);
