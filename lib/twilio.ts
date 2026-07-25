@@ -24,9 +24,10 @@ type TwilioRequestSummary = {
 
 export const twilioClient = twilio(env.twilioAccountSid, env.twilioAuthToken);
 
-export async function fetchA2pCampaignStatus(
+export async function fetchA2pRegistrationEvidence(
   messagingServiceSid: string,
   campaignSid: string,
+  relayPhoneNumber: string,
 ) {
   if (!/^MG[0-9a-fA-F]{32}$/.test(messagingServiceSid)) {
     throw new Error("Invalid Twilio Messaging Service SID.");
@@ -34,17 +35,30 @@ export async function fetchA2pCampaignStatus(
   if (!/^QE[0-9a-fA-F]{32}$/.test(campaignSid)) {
     throw new Error("Invalid Twilio A2P Campaign SID.");
   }
+  if (!/^\+[1-9]\d{7,14}$/.test(relayPhoneNumber)) {
+    throw new Error("A valid Relay phone number is required for A2P verification.");
+  }
 
-  // Twilio's UsAppToPerson resource is authoritative for whether an A2P
-  // campaign is pending, in review, verified, failed, or suspended.
-  const campaign = await twilioClient.messaging.v1
-    .services(messagingServiceSid)
-    .usAppToPerson(campaignSid)
-    .fetch();
+  const serviceContext = twilioClient.messaging.v1.services(messagingServiceSid);
+  const [campaign, service, servicePhoneNumbers, incomingPhoneNumbers] = await Promise.all([
+    serviceContext.usAppToPerson(campaignSid).fetch(),
+    serviceContext.fetch(),
+    serviceContext.phoneNumbers.list({ limit: 1000 }),
+    twilioClient.incomingPhoneNumbers.list({ phoneNumber: relayPhoneNumber, limit: 2 }),
+  ]);
+  const incomingNumber = incomingPhoneNumbers.find(
+    (number) => number.phoneNumber === relayPhoneNumber,
+  );
 
   return {
     campaignStatus: campaign.campaignStatus,
+    brandRegistrationSid: campaign.brandRegistrationSid,
     errors: campaign.errors,
+    serviceA2pRegistered: service.usAppToPersonRegistered === true,
+    relayNumberInSenderPool: servicePhoneNumbers.some(
+      (number) => number.phoneNumber === relayPhoneNumber,
+    ),
+    relayNumberSmsCapable: incomingNumber?.capabilities?.sms === true,
   };
 }
 

@@ -210,3 +210,19 @@ Before handing a business live access:
 There is no app-managed trial or operator-invented subscription state. In
 Stripe test mode, test setup/card Checkout, activate automatic text-back, then
 confirm Stripe created the correct delayed trial.
+
+## A2P status authority
+
+Relay must never treat a campaign-level `VERIFIED` response by itself as proof
+that a customer's Relay number can send A2P traffic. Operations may display
+`Approved` only after the Twilio synchronization confirms all of the following:
+
+- the supplied campaign belongs to the supplied Messaging Service and is verified;
+- Twilio reports that Messaging Service as A2P registered;
+- the account's exact assigned Relay number is in that Messaging Service's sender pool;
+- Twilio reports that assigned number as SMS capable.
+
+If any piece of evidence is absent, synchronization leaves texting in review or
+marks it as needing attention. Operators cannot manually select `Approved`.
+Twilio Console remains the final diagnostic source for the backend number
+registration states (`REGISTERED`, pending, failed, or unregistered).

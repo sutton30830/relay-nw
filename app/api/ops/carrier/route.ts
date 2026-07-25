@@ -1,35 +1,18 @@
 import { redirect } from "next/navigation";
 import { requirePlatformOperatorAction } from "@/lib/auth";
 import { OPS_ACTIONS } from "@/lib/ops-actions";
+import { deriveA2pSyncDecision } from "@/lib/a2p-sync";
 import {
-  getOpsBillingAccountBySlug,
+  getOpsAccountBySlug,
   recordAccountAuditEvents,
   recordPlatformAuditEvent,
   updateAccountSettings,
   upsertCarrierProfile,
 } from "@/lib/supabase";
-import { fetchA2pCampaignStatus } from "@/lib/twilio";
+import { fetchA2pRegistrationEvidence } from "@/lib/twilio";
 
 function go(slug: string, result: string): never {
   redirect(`/ops/accounts/${encodeURIComponent(slug)}?carrier=${result}`);
-}
-
-function mapCampaignStatus(value: string | null | undefined) {
-  const normalized = (value ?? "").toUpperCase();
-  if (normalized === "VERIFIED") {
-    return { profile: "approved", a2p: "approved" } as const;
-  }
-  if (normalized === "FAILED" || normalized === "SUSPENDED") {
-    return { profile: "rejected", a2p: "rejected" } as const;
-  }
-  if (
-    normalized === "PENDING" ||
-    normalized === "IN_PROGRESS" ||
-    normalized === "IN_REVIEW"
-  ) {
-    return { profile: "in_progress", a2p: "in_progress" } as const;
-  }
-  return null;
 }
 
 function campaignErrorSummary(value: unknown) {
@@ -65,12 +48,17 @@ export async function POST(request: Request) {
     go(slug, "invalid_ids");
   }
 
-  const account = await getOpsBillingAccountBySlug(slug);
+  const account = await getOpsAccountBySlug(slug);
   if (!account) go(slug, "account_not_found");
+  if (!account.relayNumber) go(slug, "number_required");
 
   let external;
   try {
-    external = await fetchA2pCampaignStatus(messagingServiceSid, campaignSid);
+    external = await fetchA2pRegistrationEvidence(
+      messagingServiceSid,
+      campaignSid,
+      account.relayNumber,
+    );
   } catch (error) {
     console.error("Twilio A2P status synchronization failed", {
       accountId: account.accountId,
@@ -79,20 +67,19 @@ export async function POST(request: Request) {
     go(slug, "sync_failed");
   }
 
-  const next = mapCampaignStatus(external.campaignStatus);
+  const next = deriveA2pSyncDecision(external);
   if (!next) go(slug, "unknown_status");
 
   const externalStatus = String(external.campaignStatus).toUpperCase();
   const errorSummary = campaignErrorSummary(external.errors);
-  const detail = externalStatus === "VERIFIED"
-    ? "Twilio reports this A2P campaign as verified."
-    : externalStatus === "FAILED" || externalStatus === "SUSPENDED"
-      ? errorSummary ?? "Twilio reports that this A2P campaign needs attention."
-      : "Twilio or the carrier is reviewing this A2P campaign.";
+  const detail = externalStatus === "FAILED" || externalStatus === "SUSPENDED"
+    ? errorSummary ?? next.detail
+    : next.detail;
 
   try {
     await upsertCarrierProfile(account.accountId, {
       status: next.profile,
+      twilio_brand_sid: external.brandRegistrationSid,
       twilio_campaign_sid: campaignSid,
       messaging_service_sid: messagingServiceSid,
       status_detail: detail,
@@ -101,7 +88,8 @@ export async function POST(request: Request) {
       a2p_registration_status: next.a2p,
     });
 
-    const summary = `Synchronized Twilio A2P campaign status: ${externalStatus}`;
+    const summary =
+      `Synchronized Twilio A2P evidence: campaign ${externalStatus}; account ${next.a2p}`;
     await recordAccountAuditEvents({
       accountId: account.accountId,
       actorUserId: operator.userId,
