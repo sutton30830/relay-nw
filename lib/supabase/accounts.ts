@@ -1143,6 +1143,14 @@ export async function claimStripeEvent(input: StripeEventClaimInput): Promise<St
     throwIfSupabaseError(selectError);
   }
 
+  // Only a uniqueness collision means another worker already owns this event.
+  // If the insert failed for any other reason and no row exists, surface the
+  // original database error so Stripe retries instead of silently dropping it.
+  if (!existing) {
+    throwIfSupabaseError(inserted.error);
+    throw inserted.error;
+  }
+
   const status = existing?.processing_status as StripeEventProcessingStatus | undefined;
 
   if (status === "processed" || status === "ignored") {

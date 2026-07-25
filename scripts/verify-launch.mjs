@@ -129,16 +129,19 @@ function deriveCheckoutAllowed({ account }) {
   return { ok: false, detail: `Checkout should be blocked for billing_status=${billingStatus}, stripe_subscription_status=${stripeStatus ?? "none"}.` };
 }
 
-function deriveEffectiveOnboardingStatus(account, activationReady) {
+function deriveEffectiveOnboardingStatus(account, callCaptureReady) {
   const status = account?.onboarding_status ?? "setting_up";
   if (status === "paused" || status === "closed") return status;
-  if (activationReady) return "live";
+  if (callCaptureReady) return "live";
   return status === "waiting_for_forwarding" ? status : "setting_up";
 }
 
-function onboardingBlocker(account, activationReady) {
-  const status = deriveEffectiveOnboardingStatus(account, activationReady);
+function onboardingBlocker(account, callCaptureReady) {
+  const status = deriveEffectiveOnboardingStatus(account, callCaptureReady);
   if (status === "paused" || status === "closed") return "service_hold";
+  if (["relay", "customer", "carrier"].includes(account?.ops_blocked_by)) {
+    return account.ops_blocked_by;
+  }
   if (status === "live") return "none";
   return "setup";
 }
@@ -163,6 +166,14 @@ export function analyzeLaunchCertification(input) {
     true,
     "Stripe identifiers",
     `customer=${account.stripe_customer_id ?? "none"}, subscription=${account.stripe_subscription_id ?? "none"}, price=${account.stripe_price_id ?? "none"}.`,
+  );
+  addCheck(
+    checks,
+    account.setup_fee_cents === 15000 && account.monthly_price_cents === 9900,
+    "Relay commercial amounts",
+    account.setup_fee_cents === 15000 && account.monthly_price_cents === 9900
+      ? "Relay stores the $150 setup fee and $99 monthly price."
+      : `Expected setup_fee_cents=15000 and monthly_price_cents=9900; got ${account.setup_fee_cents ?? "missing"} and ${account.monthly_price_cents ?? "missing"}.`,
   );
   addCheck(checks, Boolean(settings), "account_settings exists", settings ? settings.business_name : "Missing account_settings row.");
   addCheck(
@@ -205,15 +216,16 @@ export function analyzeLaunchCertification(input) {
   const paymentMethodReady =
     account.billing_policy === "comped" ||
     Boolean(account.stripe_default_payment_method_id);
+  const blocker = onboardingBlocker(account, technicalReady);
   const activationReady =
     technicalReady &&
     smsRegistrationReady &&
     settings?.sms_enabled === true &&
     setupFeeSettled &&
-    paymentMethodReady;
+    paymentMethodReady &&
+    blocker === "none";
   const effectiveOnboardingStatus = deriveEffectiveOnboardingStatus(account, technicalReady);
   const checkoutAllowed = deriveCheckoutAllowed({ account });
-  const blocker = onboardingBlocker(account, technicalReady);
 
   addCheck(
     checks,
@@ -258,7 +270,9 @@ export function analyzeLaunchCertification(input) {
       ? `effective_onboarding_status=${effectiveOnboardingStatus}.`
       : blocker === "service_hold"
         ? `Service is ${effectiveOnboardingStatus}.`
-        : `Blocked by call setup: effective_onboarding_status=${effectiveOnboardingStatus}.`,
+        : blocker === "setup"
+          ? `Blocked by call setup: effective_onboarding_status=${effectiveOnboardingStatus}.`
+          : `Blocked by ${blocker}${account.ops_blocker_note ? `: ${account.ops_blocker_note}` : "."}${account.ops_blocked_since ? ` Since ${account.ops_blocked_since}.` : ""}`,
     blocker === "none" ? "pass" : "warn",
   );
   addCheck(
@@ -358,7 +372,7 @@ async function loadAccountFacts(supabase, slug) {
   const account = await maybeSingle(
     supabase
       .from("accounts")
-      .select("id, slug, name, status, billing_status, billing_policy, commercial_offer, onboarding_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, stripe_default_payment_method_id, trial_ends_at, current_period_end, cancel_at_period_end, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, canceled_at, setup_fee_status, setup_fee_paid_at, setup_fee_waived_at")
+      .select("id, slug, name, status, billing_status, billing_policy, commercial_offer, onboarding_status, ops_blocked_by, ops_blocker_note, ops_blocked_since, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, stripe_default_payment_method_id, trial_ends_at, current_period_end, cancel_at_period_end, activated_at, first_paid_at, guarantee_ends_at, billing_attention_since, canceled_at, setup_fee_cents, setup_fee_status, setup_fee_paid_at, setup_fee_waived_at, monthly_price_cents")
       .eq("slug", slug),
     "account lookup",
   );

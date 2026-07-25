@@ -215,7 +215,7 @@ test("scheduled cancellation stays manageable and does not imply service shutdow
   assert.equal(state.label, "Active until end date");
   assert.equal(state.ownerAction, "manage_billing");
   assert.equal(state.tone, "warn");
-  assert.match(state.summary, /canceled/);
+  assert.match(state.summary, /scheduled to end/);
   assert.match(state.summary, /keeps catching missed calls/);
 });
 
@@ -254,8 +254,44 @@ test("stripe webhook signatures must be valid and recent", () => {
   const header = `t=${timestamp},v1=${signature}`;
 
   assert.equal(stripeBilling.verifyStripeWebhookSignature(rawBody, header, secret, timestamp * 1000), true);
+  assert.equal(
+    stripeBilling.verifyStripeWebhookSignature(
+      rawBody,
+      `t=${timestamp},v1=${signature},v1=${"0".repeat(64)}`,
+      secret,
+      timestamp * 1000,
+    ),
+    true,
+  );
   assert.equal(stripeBilling.verifyStripeWebhookSignature(rawBody, header, "wrong_secret", timestamp * 1000), false);
   assert.equal(stripeBilling.verifyStripeWebhookSignature(rawBody, header, secret, (timestamp + 1_000) * 1000), false);
+  assert.equal(stripeBilling.verifyStripeWebhookSignature(rawBody, `t=${timestamp},v1=invalid`, secret, timestamp * 1000), false);
+});
+
+test("setup-fee truth requires Stripe's exact configured amount and currency", () => {
+  const payment = {
+    id: "pi_setup",
+    customerId: "cus_1",
+    paymentMethodId: "pm_1",
+    status: "succeeded",
+    currency: "usd",
+    amount: 15000,
+    amountReceived: 15000,
+    amountRefunded: 0,
+    disputed: false,
+    disputeStatus: null,
+    livemode: false,
+  };
+
+  assert.equal(stripeBilling.setupFeeStateFromPayment(payment, 15000).setupFeeStatus, "paid");
+  assert.equal(
+    stripeBilling.setupFeeStateFromPayment({ ...payment, currency: "cad" }, 15000).setupFeeStatus,
+    "due",
+  );
+  assert.equal(
+    stripeBilling.setupFeeStateFromPayment({ ...payment, amount: 100, amountReceived: 100 }, 15000).setupFeeStatus,
+    "due",
+  );
 });
 
 test("setup fee checkout creates a customer when collecting a new card", async () => {
@@ -297,6 +333,20 @@ test("setup fee checkout creates a customer when collecting a new card", async (
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("setup fee Checkout refuses local pricing drift", async () => {
+  await assert.rejects(
+    stripeBilling.createStripeSetupFeeCheckoutSession({
+      accountId: "acct_123",
+      accountSlug: "demo-plumbing",
+      ownerEmail: "owner@example.com",
+      stripeCustomerId: null,
+      setupFeeCents: 100,
+      idempotencyKey: "idem_wrong_setup_fee",
+    }),
+    /exactly \$150/,
+  );
 });
 
 test("founding-pilot card collection uses Stripe setup mode and charges nothing", async () => {

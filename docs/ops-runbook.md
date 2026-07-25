@@ -183,6 +183,10 @@ For deletion work, identify the account slug, lead id, caller phone, `RecordingS
 
 ## Release Checklist
 
+For an actual pilot, complete
+[`docs/pilot-certification-checklist.md`](pilot-certification-checklist.md);
+the list below is the release-level preflight.
+
 Before handing a business live access:
 
 1. `npm run verify:account -- <slug>`

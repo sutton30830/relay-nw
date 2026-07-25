@@ -350,7 +350,9 @@ export function computeBillingLifecycle(input: {
             ? "Trial is active."
             : "Billing is active.",
       summary: scheduledToCancel
-        ? "Your subscription has been canceled. Relay keeps catching missed calls until the current billing period ends."
+        ? billingStatus === "trialing"
+          ? "Your subscription is scheduled to end with the trial. Relay keeps catching missed calls until then, and Stripe will not begin monthly billing."
+          : "Your subscription is scheduled to end at the current billing-period boundary. Relay keeps catching missed calls until then."
         : billingStatus === "comped"
           ? "Relay is intentionally not charging this account."
           : billingStatus === "trialing"

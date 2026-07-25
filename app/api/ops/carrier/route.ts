@@ -32,6 +32,24 @@ function mapCampaignStatus(value: string | null | undefined) {
   return null;
 }
 
+function campaignErrorSummary(value: unknown) {
+  if (!Array.isArray(value)) return null;
+  const messages = value
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const record = item as Record<string, unknown>;
+      if (typeof record.description === "string" && record.description.trim()) {
+        return record.description.trim();
+      }
+      if (typeof record.error_code === "number" || typeof record.error_code === "string") {
+        return `Twilio error ${String(record.error_code)}`;
+      }
+      return null;
+    })
+    .filter((message): message is string => Boolean(message));
+  return messages.length ? messages.join(" ").slice(0, 240) : null;
+}
+
 export async function POST(request: Request) {
   const operator = await requirePlatformOperatorAction(OPS_ACTIONS.a2pSync);
 
@@ -65,10 +83,11 @@ export async function POST(request: Request) {
   if (!next) go(slug, "unknown_status");
 
   const externalStatus = String(external.campaignStatus).toUpperCase();
+  const errorSummary = campaignErrorSummary(external.errors);
   const detail = externalStatus === "VERIFIED"
     ? "Twilio reports this A2P campaign as verified."
     : externalStatus === "FAILED" || externalStatus === "SUSPENDED"
-      ? "Twilio reports that this A2P campaign needs attention."
+      ? errorSummary ?? "Twilio reports that this A2P campaign needs attention."
       : "Twilio or the carrier is reviewing this A2P campaign.";
 
   try {

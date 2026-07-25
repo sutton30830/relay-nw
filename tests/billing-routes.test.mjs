@@ -63,7 +63,9 @@ async function runCheckout({
   authSession = session(),
   accountBilling = billingRecord(),
   technicalStatus = "live",
+  operationalStatus = "active",
   a2pStatus = "approved",
+  blockedBy = "none",
 } = {}) {
   const calls = {
     billingLookups: [],
@@ -95,6 +97,12 @@ async function runCheckout({
         return accountBilling;
       },
       getAccountTechnicalSetupStatus: async () => technicalStatus,
+      getAccountOperationalStatus: async () => operationalStatus,
+      getAccountOpsBlocker: async () => ({
+        blockedBy,
+        blockerNote: blockedBy === "none" ? null : "Waiting on account owner",
+        blockedSince: blockedBy === "none" ? null : "2026-07-23T00:00:00.000Z",
+      }),
       getA2pRegistrationStatus: async () => a2pStatus,
     },
   });
@@ -338,6 +346,30 @@ test("calls working alone cannot restart a canceled subscription", async () => {
   assert.deepEqual(calls.redirects, [
     "/settings?billing=setup_incomplete#billing",
   ]);
+});
+
+test("paused, closed, and explicitly blocked accounts cannot restart billing", async () => {
+  for (const input of [
+    { operationalStatus: "paused" },
+    { operationalStatus: "archived" },
+    { blockedBy: "customer" },
+  ]) {
+    const calls = await runCheckout({
+      ...input,
+      authSession: session({
+        account: { ...session().account, smsEnabled: true },
+      }),
+      accountBilling: billingRecord({
+        billingStatus: "canceled",
+        stripeSubscriptionStatus: "canceled",
+        stripeCustomerId: "cus_1",
+        activatedAt: "2026-07-23T00:00:00.000Z",
+      }),
+    });
+
+    assert.deepEqual(calls.checkoutInputs, []);
+    assert.deepEqual(calls.redirects, ["/settings?billing=setup_incomplete#billing"]);
+  }
 });
 
 test("active subscription cannot create duplicate Checkout", async () => {

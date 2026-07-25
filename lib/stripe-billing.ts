@@ -99,7 +99,9 @@ export type StripePaymentIntentSnapshot = {
   id: string;
   customerId: string | null;
   paymentMethodId: string | null;
+  metadataAccountId: string | null;
   status: string | null;
+  currency: string | null;
   amount: number;
   amountReceived: number;
   amountRefunded: number;
@@ -112,6 +114,7 @@ export type StripeSetupIntentSnapshot = {
   id: string;
   customerId: string | null;
   paymentMethodId: string | null;
+  metadataAccountId: string | null;
   status: string | null;
   livemode: boolean;
 };
@@ -145,6 +148,7 @@ export type StripeCustomerBillingSnapshot = {
 };
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
+export const RELAY_SETUP_FEE_CENTS = 15000;
 const WEBHOOK_TOLERANCE_SECONDS = 60 * 5;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -169,7 +173,9 @@ function paymentIntentSnapshot(body: Record<string, unknown>): StripePaymentInte
     id,
     customerId: stringValue(body.customer),
     paymentMethodId: stringValue(body.payment_method),
+    metadataAccountId: metadataAccountId(body),
     status: stringValue(body.status),
+    currency: stringValue(body.currency)?.toLowerCase() ?? null,
     amount: numberValue(body.amount) ?? 0,
     amountReceived: numberValue(body.amount_received) ?? 0,
     amountRefunded: charge ? numberValue(charge.amount_refunded) ?? 0 : 0,
@@ -186,6 +192,7 @@ function setupIntentSnapshot(body: Record<string, unknown>): StripeSetupIntentSn
     id,
     customerId: stringValue(body.customer),
     paymentMethodId: stringValue(body.payment_method),
+    metadataAccountId: metadataAccountId(body),
     status: stringValue(body.status),
     livemode: body.livemode === true,
   };
@@ -330,6 +337,15 @@ export function assertStripeObjectMode(livemode: boolean, label: string) {
   }
 }
 
+export function assertStripeSubscriptionPrice(priceId: string | null, label: string) {
+  if (!env.stripePriceId) {
+    throw new Error("Stripe subscription price is not configured. Set STRIPE_PRICE_ID.");
+  }
+  if (priceId !== env.stripePriceId) {
+    throw new Error(`${label} does not use Relay's configured $99 monthly price.`);
+  }
+}
+
 export function mapStripeSubscriptionStatus(status: string | null | undefined): AccountBillingStatus {
   if (status === "active") return "active";
   if (status === "trialing") return "trialing";
@@ -406,6 +422,9 @@ export async function createStripeSetupFeeCheckoutSession(
   input: StripeSetupFeeCheckoutSessionInput,
 ): Promise<StripeCheckoutSession> {
   assertStripeSetupFeeConfigured();
+  if (input.setupFeeCents !== RELAY_SETUP_FEE_CENTS) {
+    throw new Error("Relay's standard setup fee must be exactly $150.");
+  }
 
   const params = new URLSearchParams({
     mode: "payment",
@@ -876,10 +895,17 @@ export function stripeDashboardPaymentUrl(paymentIntentId: string) {
   return `https://dashboard.stripe.com${modePath}/payments/${encodeURIComponent(paymentIntentId)}`;
 }
 
-export function setupFeeStateFromPayment(payment: StripePaymentIntentSnapshot): Pick<
+export function setupFeeStateFromPayment(
+  payment: StripePaymentIntentSnapshot,
+  expectedSetupFeeCents = RELAY_SETUP_FEE_CENTS,
+): Pick<
   AccountBillingRecord,
   "setupFeeStatus" | "setupFeeRefundedCents" | "setupFeeDisputeStatus"
 > {
+  const matchesSetupTerms =
+    payment.currency === "usd" &&
+    payment.amount === expectedSetupFeeCents &&
+    payment.amountReceived === expectedSetupFeeCents;
   const fullyRefunded = payment.amountRefunded >= Math.max(payment.amountReceived, payment.amount);
   const disputeStatus = payment.disputeStatus ?? null;
   const unresolvedDispute = disputeStatus !== null &&
@@ -890,11 +916,11 @@ export function setupFeeStateFromPayment(payment: StripePaymentIntentSnapshot): 
       ? "charged_back"
       : unresolvedDispute || (payment.disputed && disputeStatus !== "won")
         ? "disputed"
-        : fullyRefunded
+        : matchesSetupTerms && fullyRefunded
           ? "refunded"
-          : payment.amountRefunded > 0
+          : matchesSetupTerms && payment.amountRefunded > 0
             ? "partially_refunded"
-            : payment.status === "succeeded"
+            : matchesSetupTerms && payment.status === "succeeded"
               ? "paid"
               : "due",
     setupFeeRefundedCents: payment.amountRefunded,
@@ -904,9 +930,10 @@ export function setupFeeStateFromPayment(payment: StripePaymentIntentSnapshot): 
 
 export function reconcileSetupFeeStateFromPayment(
   payment: StripePaymentIntentSnapshot,
-  current: Pick<AccountBillingRecord, "setupFeeStatus" | "setupFeeDisputeStatus">,
+  current: Pick<AccountBillingRecord, "setupFeeStatus" | "setupFeeDisputeStatus"> &
+    Partial<Pick<AccountBillingRecord, "setupFeeCents">>,
 ): Pick<AccountBillingRecord, "setupFeeStatus" | "setupFeeRefundedCents" | "setupFeeDisputeStatus"> {
-  const state = setupFeeStateFromPayment(payment);
+  const state = setupFeeStateFromPayment(payment, RELAY_SETUP_FEE_CENTS);
   const hasExplicitResolution = payment.disputeStatus === "won" || payment.disputeStatus === "lost";
 
   if (!hasExplicitResolution && current.setupFeeStatus === "charged_back") {
@@ -938,16 +965,16 @@ export function verifyStripeWebhookSignature(
   secret: string,
   nowMs = Date.now(),
 ) {
-  const parts = new Map(
-    (signatureHeader ?? "")
-      .split(",")
-      .map((part) => part.split("="))
-      .filter((part): part is [string, string] => part.length === 2),
-  );
-  const timestamp = Number(parts.get("t"));
-  const signature = parts.get("v1");
+  const parts = (signatureHeader ?? "")
+    .split(",")
+    .map((part) => part.trim().split("="))
+    .filter((part): part is [string, string] => part.length === 2);
+  const timestamp = Number(parts.find(([key]) => key === "t")?.[1]);
+  const signatures = parts
+    .filter(([key, value]) => key === "v1" && /^[a-fA-F0-9]{64}$/.test(value))
+    .map(([, value]) => value);
 
-  if (!Number.isFinite(timestamp) || !signature) {
+  if (!Number.isFinite(timestamp) || signatures.length === 0) {
     return false;
   }
 
@@ -957,10 +984,12 @@ export function verifyStripeWebhookSignature(
   }
 
   const expected = createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex");
-  const actualBuffer = Buffer.from(signature, "hex");
   const expectedBuffer = Buffer.from(expected, "hex");
 
-  return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
+  return signatures.some((signature) => {
+    const actualBuffer = Buffer.from(signature, "hex");
+    return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
+  });
 }
 
 export function getStripeEventIdentity(event: StripeEvent): StripeEventIdentity {

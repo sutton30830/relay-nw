@@ -6,6 +6,7 @@ import {
 import { isSetupFeeSettled } from "@/lib/billing";
 import {
   assertStripeObjectMode,
+  assertStripeSubscriptionPrice,
   billingUpdateFromSubscription,
   createStripeTrialSubscription,
   listStripeSubscriptionsForCustomer,
@@ -63,11 +64,32 @@ function isNonterminal(subscription: StripeSubscriptionSnapshot) {
   return Boolean(subscription.status && NONTERMINAL_SUBSCRIPTION_STATUSES.has(subscription.status));
 }
 
+function hasExpectedTrialDuration(
+  subscription: StripeSubscriptionSnapshot,
+  trialDays: number,
+) {
+  const startsAt = subscription.trialStartsAt
+    ? Date.parse(subscription.trialStartsAt)
+    : Number.NaN;
+  const endsAt = subscription.trialEndsAt
+    ? Date.parse(subscription.trialEndsAt)
+    : Number.NaN;
+  return (
+    Number.isFinite(startsAt) &&
+    Number.isFinite(endsAt) &&
+    endsAt - startsAt === trialDays * 24 * 60 * 60 * 1000
+  );
+}
+
 async function synchronizeSubscription(
   accountId: string,
   subscription: StripeSubscriptionSnapshot,
 ) {
   assertStripeObjectMode(subscription.livemode, "Stripe subscription");
+  assertStripeSubscriptionPrice(subscription.priceId, "Stripe subscription");
+  if (subscription.metadataAccountId !== accountId) {
+    throw new Error("Stripe subscription belongs to a different Relay account.");
+  }
   await updateAccountBillingRecord(
     accountId,
     billingUpdateFromSubscription(accountId, subscription),
@@ -199,6 +221,12 @@ export async function activateStripeTrialForAccount(
   const subscriptions = await listStripeSubscriptionsForCustomer(billing.stripeCustomerId);
   for (const subscription of subscriptions) {
     assertStripeObjectMode(subscription.livemode, "Stripe subscription");
+    if (
+      subscription.customerId &&
+      subscription.customerId !== billing.stripeCustomerId
+    ) {
+      throw new Error("Stripe subscription listing returned a different customer.");
+    }
   }
 
   const existing = subscriptions.find((subscription) =>
@@ -208,6 +236,9 @@ export async function activateStripeTrialForAccount(
       subscription.metadataAccountId === accountId
     ));
   if (existing) {
+    if (existing.metadataAccountId !== accountId) {
+      throw new Error("Stored Stripe subscription belongs to a different Relay account.");
+    }
     await synchronizeSubscription(accountId, existing);
     return {
       status: "already_started",
@@ -248,10 +279,12 @@ export async function activateStripeTrialForAccount(
     idempotencyKey: `relay-trial-activation:${accountId}:${priorTerminalId}:${billing.commercialOffer}:v1`,
   });
   assertStripeObjectMode(subscription.livemode, "Stripe subscription");
+  assertStripeSubscriptionPrice(subscription.priceId, "Stripe subscription");
   if (
     subscription.status !== "trialing" ||
     subscription.customerId !== billing.stripeCustomerId ||
-    subscription.metadataAccountId !== accountId
+    subscription.metadataAccountId !== accountId ||
+    !hasExpectedTrialDuration(subscription, terms.trialDays)
   ) {
     throw new Error("Stripe did not create the expected account-scoped trial subscription.");
   }

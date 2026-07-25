@@ -234,12 +234,19 @@ export async function notifyOwnerKickoffPayment(input: {
   businessName: string;
   checkoutUrl: string;
   feeWaived: boolean;
+  setupFeeAlreadyPaid?: boolean;
 }) {
+  const cardOnly = input.feeWaived || input.setupFeeAlreadyPaid;
   const lines = input.feeWaived
     ? [
         `Relay NW waived the setup fee for ${input.businessName}.`,
         "Use the secure Stripe link to save a payment method. Monthly billing does not start from this step.",
       ]
+    : input.setupFeeAlreadyPaid
+      ? [
+          `Relay NW has your setup payment for ${input.businessName}.`,
+          "Use the secure Stripe link to save a payment method. Nothing is charged from this step, and monthly billing does not start yet.",
+        ]
     : [
         `Relay NW setup for ${input.businessName} starts with a one-time $150 kickoff payment.`,
         "Use the secure Stripe link to pay and save your card. Monthly billing starts only after setup is approved and Relay activates the account.",
@@ -247,16 +254,16 @@ export async function notifyOwnerKickoffPayment(input: {
 
   return sendEmail({
     to: input.to,
-    subject: input.feeWaived ? "Save your Relay NW payment method" : "Complete your Relay NW kickoff payment",
+    subject: cardOnly ? "Save your Relay NW payment method" : "Complete your Relay NW kickoff payment",
     html: emailHtml({
-      title: input.feeWaived ? "Save payment method" : "Complete kickoff",
+      title: cardOnly ? "Save payment method" : "Complete kickoff",
       preview: lines[0],
       lines,
-      actionLabel: input.feeWaived ? "Save card securely" : "Pay $150 securely",
+      actionLabel: cardOnly ? "Save card securely" : "Pay $150 securely",
       actionUrl: input.checkoutUrl,
     }),
     text: `${lines.join("\n")}\n\nSecure Stripe link: ${input.checkoutUrl}`,
-    tag: input.feeWaived ? "owner_kickoff_card_save" : "owner_kickoff_payment",
+    tag: cardOnly ? "owner_kickoff_card_save" : "owner_kickoff_payment",
   });
 }
 
@@ -389,17 +396,27 @@ export async function notifyOwnerOptOut(input: {
 
 export async function notifyOwnerBillingPaymentFailed(input: {
   account: AccountRuntimeConfig;
-  eventType: "invoice.payment_failed" | "invoice.payment_action_required";
+  eventType:
+    | "invoice.finalization_failed"
+    | "invoice.payment_failed"
+    | "invoice.payment_action_required";
 }) {
   const recipient = await ownerEmail(input.account);
   const needsAction = input.eventType === "invoice.payment_action_required";
-  const title = needsAction ? "Payment needs approval" : "Payment did not go through";
+  const finalizationFailed = input.eventType === "invoice.finalization_failed";
+  const title = needsAction
+    ? "Payment needs approval"
+    : finalizationFailed
+      ? "Billing information needs attention"
+      : "Payment did not go through";
   const lines = [
     needsAction
       ? "Stripe needs you to approve or update the payment method for Relay NW."
-      : "Your payment didn’t go through.",
+      : finalizationFailed
+        ? "Stripe could not finalize your Relay NW invoice."
+        : "Your payment didn’t go through.",
     "Relay is still catching missed calls while you update your payment method.",
-    "Open Settings and use Update payment to fix billing securely in Stripe.",
+    "Open Settings and use Manage billing to resolve this securely in Stripe.",
   ];
 
   return sendEmail({
@@ -409,11 +426,15 @@ export async function notifyOwnerBillingPaymentFailed(input: {
       title,
       preview: "Relay is still catching missed calls while payment is fixed.",
       lines,
-      actionLabel: "Update payment",
+      actionLabel: "Manage billing",
       actionUrl: `${env.appBaseUrl}/settings#billing`,
     }),
-    text: `${lines.join("\n")}\n\nUpdate payment: ${env.appBaseUrl}/settings#billing`,
-    tag: needsAction ? "owner_billing_payment_action_required" : "owner_billing_payment_failed",
+    text: `${lines.join("\n")}\n\nManage billing: ${env.appBaseUrl}/settings#billing`,
+    tag: needsAction
+      ? "owner_billing_payment_action_required"
+      : finalizationFailed
+        ? "owner_billing_invoice_finalization_failed"
+        : "owner_billing_payment_failed",
   });
 }
 

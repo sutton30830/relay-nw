@@ -24,6 +24,10 @@ async function loadTsModule(path, mocks = {}) {
 }
 
 const opsActions = await loadTsModule("lib/ops-actions.ts");
+const customerExperienceContract = await loadTsModule("lib/customer-experience-contract.ts");
+const billing = await loadTsModule("lib/billing.ts", {
+  "@/lib/customer-experience-contract": customerExperienceContract,
+});
 
 function redirectRecorder(calls) {
   return {
@@ -294,4 +298,145 @@ test("A2P synchronization cannot activate billing and refund execution is absent
   await assert.rejects(
     access(new URL("../app/api/ops/billing/refund/route.ts", import.meta.url)),
   );
+});
+
+async function runKickoff({
+  ownerEmail = "owner@example.com",
+  accountOverrides = {},
+} = {}) {
+  const calls = {
+    setupFeeCheckouts: [],
+    cardCheckouts: [],
+    emails: [],
+    updates: [],
+    redirects: [],
+    responseLocation: null,
+  };
+  const account = {
+    accountId: "acct-1",
+    accountSlug: "demo",
+    commercialOffer: "standard",
+    billingPolicy: "standard",
+    setupFeeStatus: "due",
+    setupFeeCents: 15000,
+    setupFeeRefundedAt: null,
+    setupFeeCheckoutSessionId: null,
+    billingSetupCheckoutSessionId: null,
+    stripeCustomerId: null,
+    stripeDefaultPaymentMethodId: null,
+    firstPaidAt: null,
+    ...accountOverrides,
+  };
+  const { POST } = await loadTsModule("app/api/ops/kickoff/route.ts", {
+    "next/navigation": redirectRecorder(calls),
+    "@/lib/auth": {
+      requirePlatformOperatorAction: async () => ({
+        userId: "ops-1",
+        email: "ops@example.com",
+        role: "operator",
+      }),
+    },
+    "@/lib/billing": billing,
+    "@/lib/customer-experience-contract": customerExperienceContract,
+    "@/lib/email": {
+      notifyOwnerKickoffPayment: async (input) => {
+        calls.emails.push(input);
+        return { sent: true };
+      },
+    },
+    "@/lib/ops-actions": opsActions,
+    "@/lib/stripe-billing": {
+      retrieveStripeCheckoutSession: async () => {
+        throw new Error("unexpected Checkout retrieval");
+      },
+      createStripeSetupFeeCheckoutSession: async (input) => {
+        calls.setupFeeCheckouts.push(input);
+        return { id: "cs_fee", url: "https://stripe.test/fee" };
+      },
+      createStripePaymentMethodCheckoutSession: async (input) => {
+        calls.cardCheckouts.push(input);
+        return { id: "cs_card", url: "https://stripe.test/card" };
+      },
+    },
+    "@/lib/supabase": {
+      getOpsBillingAccountBySlug: async () => account,
+      getAccountConfigByAccountId: async () => ({
+        businessName: "Demo Plumbing",
+        ownerEmail,
+      }),
+      updateAccountBillingRecord: async (accountId, update) => {
+        calls.updates.push({ accountId, update });
+      },
+      recordAccountAuditEvents: async () => {},
+      recordPlatformAuditEvent: async () => {},
+    },
+  });
+  const body = new FormData();
+  body.set("account_slug", "demo");
+  body.set("action", "send_invoice");
+  try {
+    const response = await POST(new Request("https://relay.test/api/ops/kickoff", {
+      method: "POST",
+      body,
+    }));
+    calls.responseLocation = response.headers.get("location");
+  } catch (error) {
+    if (!String(error?.message ?? "").startsWith("REDIRECT:")) throw error;
+  }
+  return calls;
+}
+
+test("kickoff links go only to the customer and cannot double-charge a settled setup fee", async () => {
+  const missingOwner = await runKickoff({ ownerEmail: null });
+  assert.deepEqual(missingOwner.setupFeeCheckouts, []);
+  assert.deepEqual(missingOwner.cardCheckouts, []);
+  assert.deepEqual(missingOwner.emails, []);
+  assert.equal(missingOwner.redirects.at(-1), "/ops/accounts/demo?kickoff=owner_email_missing");
+
+  const paidNeedsCard = await runKickoff({
+    accountOverrides: {
+      setupFeeStatus: "paid",
+      firstPaidAt: "2026-07-23T00:00:00.000Z",
+    },
+  });
+  assert.deepEqual(paidNeedsCard.setupFeeCheckouts, []);
+  assert.equal(paidNeedsCard.cardCheckouts.length, 1);
+  assert.equal(paidNeedsCard.emails[0].to, "owner@example.com");
+  assert.equal(paidNeedsCard.emails[0].setupFeeAlreadyPaid, true);
+
+  const paidAndReady = await runKickoff({
+    accountOverrides: {
+      setupFeeStatus: "paid",
+      firstPaidAt: "2026-07-23T00:00:00.000Z",
+      stripeDefaultPaymentMethodId: "pm_ready",
+    },
+  });
+  assert.deepEqual(paidAndReady.setupFeeCheckouts, []);
+  assert.deepEqual(paidAndReady.cardCheckouts, []);
+  assert.equal(paidAndReady.responseLocation, "https://relay.test/ops/accounts/demo?kickoff=already_ready");
+});
+
+test("a founding-pilot card link requires the audited waiver state", async () => {
+  const incomplete = await runKickoff({
+    accountOverrides: {
+      commercialOffer: "founding_pilot",
+      billingPolicy: "standard",
+    },
+  });
+  assert.deepEqual(incomplete.cardCheckouts, []);
+  assert.equal(
+    incomplete.responseLocation,
+    "https://relay.test/ops/accounts/demo?kickoff=commercial_terms_incomplete",
+  );
+
+  const waived = await runKickoff({
+    accountOverrides: {
+      commercialOffer: "founding_pilot",
+      billingPolicy: "setup_fee_waived",
+      setupFeeStatus: "waived",
+    },
+  });
+  assert.equal(waived.cardCheckouts.length, 1);
+  assert.equal(waived.cardCheckouts[0].trialDays, 30);
+  assert.equal(waived.emails[0].feeWaived, true);
 });

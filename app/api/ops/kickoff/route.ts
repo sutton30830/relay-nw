@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { requirePlatformOperatorAction } from "@/lib/auth";
+import { isSetupFeeSettled } from "@/lib/billing";
 import { commercialTermsForOffer } from "@/lib/customer-experience-contract";
 import { notifyOwnerKickoffPayment } from "@/lib/email";
 import { OPS_ACTIONS } from "@/lib/ops-actions";
@@ -56,12 +57,30 @@ export async function POST(request: Request) {
   if (!account) go(slug, "account_not_found");
   const runtime = await getAccountConfigByAccountId(account.accountId);
   if (!runtime) go(account.accountSlug, "account_not_found");
-  const billingEmail = runtime.ownerEmail ?? operator.email;
+  const billingEmail = runtime.ownerEmail;
   if (!billingEmail) go(account.accountSlug, "owner_email_missing");
 
   try {
     if (action === "send_invoice") {
-      if (account.commercialOffer === "founding_pilot") {
+      if (account.billingPolicy === "comped") {
+        return resultResponse(request, account.accountSlug, "account_comped");
+      }
+      if (
+        account.commercialOffer === "founding_pilot" &&
+        account.billingPolicy !== "setup_fee_waived"
+      ) {
+        return resultResponse(request, account.accountSlug, "commercial_terms_incomplete");
+      }
+
+      const setupFeeSettled = isSetupFeeSettled(
+        account.setupFeeStatus,
+        account.firstPaidAt,
+        account.billingPolicy,
+      );
+      if (setupFeeSettled) {
+        if (account.stripeDefaultPaymentMethodId) {
+          return resultResponse(request, account.accountSlug, "already_ready");
+        }
         const terms = commercialTermsForOffer(account.commercialOffer);
         let checkoutUrl = await reusableCheckoutUrl(
           account.billingSetupCheckoutSessionId,
@@ -85,7 +104,8 @@ export async function POST(request: Request) {
           to: billingEmail,
           businessName: runtime.businessName,
           checkoutUrl,
-          feeWaived: true,
+          feeWaived: account.billingPolicy === "setup_fee_waived",
+          setupFeeAlreadyPaid: account.billingPolicy !== "setup_fee_waived",
         });
         if (!delivery.sent) throw new Error("Kickoff card-setup email was not delivered.");
         await recordAccountAuditEvents({
@@ -94,7 +114,7 @@ export async function POST(request: Request) {
           actorEmail: operator.email,
           events: [{
             action: "billing.kickoff.card_setup_started",
-            summary: "Sent founding-pilot Stripe card setup for the 30-day delayed trial",
+            summary: `Sent Stripe card setup for the delayed ${terms.trialDays}-day trial`,
           }],
         });
         await recordPlatformAuditEvent({
@@ -102,7 +122,7 @@ export async function POST(request: Request) {
           actorEmail: operator.email,
           targetAccountId: account.accountId,
           action: "billing.kickoff.card_setup_started",
-          summary: "Sent founding-pilot Stripe card setup for the 30-day delayed trial",
+          summary: `Sent Stripe card setup for the delayed ${terms.trialDays}-day trial`,
         });
         return resultResponse(request, account.accountSlug, "payment_link_sent");
       }

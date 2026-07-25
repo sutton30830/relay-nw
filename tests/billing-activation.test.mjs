@@ -85,6 +85,11 @@ async function runActivation({
     assertStripeObjectMode: (livemode, label) => {
       if (livemode !== false) throw new Error(`${label} belongs to the wrong Stripe mode.`);
     },
+    assertStripeSubscriptionPrice: (priceId, label) => {
+      if (priceId !== "price_99") {
+        throw new Error(`${label} does not use Relay's configured $99 monthly price.`);
+      }
+    },
     billingUpdateFromSubscription: (accountId, value) => ({
       accountId,
       billingStatus: value.status === "trialing" ? "trialing" : value.status,
@@ -269,6 +274,17 @@ test("founding-pilot activation creates a 30-day Stripe trial", async () => {
   assert.equal(calls.creates[0].commercialOffer, "founding_pilot");
 });
 
+test("activation rejects a Stripe trial with the wrong duration", async () => {
+  await assert.rejects(
+    runActivation({
+      createdSubscription: subscription({
+        trialEndsAt: "2026-08-05T00:00:00.000Z",
+      }),
+    }),
+    /expected account-scoped trial subscription/,
+  );
+});
+
 test("a matching nonterminal Stripe subscription is synchronized instead of duplicated", async () => {
   const existing = subscription();
   const { result, calls } = await runActivation({
@@ -297,6 +313,19 @@ test("an unrelated nonterminal subscription blocks tenant-unsafe activation", as
     reason: "stripe_customer_has_trialing_subscription",
   });
   assert.deepEqual(calls.creates, []);
+});
+
+test("a locally linked subscription with mismatched tenant metadata fails closed", async () => {
+  await assert.rejects(
+    runActivation({
+      accountBilling: billingRecord({ stripeSubscriptionId: "sub_wrong_tenant" }),
+      subscriptions: [subscription({
+        id: "sub_wrong_tenant",
+        metadataAccountId: "acct_other",
+      })],
+    }),
+    /different Relay account/,
+  );
 });
 
 test("ambiguous create retry reuses the exact Stripe idempotency key", async () => {

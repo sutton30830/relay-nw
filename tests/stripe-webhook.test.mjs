@@ -83,12 +83,15 @@ async function runWebhook({
     metadata: { account_id: "acct_1" },
   }),
   claim = { status: "claimed", attemptCount: 1 },
+  claimError = null,
   subscriptionSnapshot = subscription(),
   paymentSnapshot = {
     id: "pi_setup_1",
     customerId: "cus_1",
     paymentMethodId: "pm_1",
+    metadataAccountId: "acct_1",
     status: "succeeded",
+    currency: "usd",
     amount: 15000,
     amountReceived: 15000,
     amountRefunded: 0,
@@ -100,6 +103,7 @@ async function runWebhook({
     id: "seti_1",
     customerId: "cus_1",
     paymentMethodId: "pm_1",
+    metadataAccountId: "acct_1",
     status: "succeeded",
     livemode: false,
   },
@@ -120,7 +124,9 @@ async function runWebhook({
   existingBilling = {
     billingAttentionSince: null,
     cancelAtPeriodEnd: false,
+    stripeSubscriptionId: "sub_1",
     setupFeePaymentIntentId: "pi_setup_1",
+    setupFeeCents: 15000,
     setupFeeStatus: "paid",
     setupFeeDisputeStatus: null,
     setupFeeRefundedAt: null,
@@ -200,6 +206,7 @@ async function runWebhook({
         return {
           paymentMethodId: null,
           disputeStatus: null,
+          currency: "usd",
           livemode: false,
           ...paymentSnapshot,
           id: paymentIntentId,
@@ -225,6 +232,7 @@ async function runWebhook({
     "@/lib/supabase": {
       claimStripeEvent: async (input) => {
         calls.claims.push(input);
+        if (claimError) throw claimError;
         return claim;
       },
       resolveAccountIdByStripeSubscriptionId: async (stripeSubscriptionId) => {
@@ -381,6 +389,37 @@ test("paid setup-fee Checkout without a customer still marks setup paid", async 
   assert.equal(calls.processed.length, 1);
 });
 
+test("setup-fee Checkout cannot invent payment from the wrong amount or currency", async () => {
+  const { response, calls } = await runWebhook({
+    event: stripeEvent("checkout.session.completed", {
+      id: "cs_wrong_terms",
+      mode: "payment",
+      customer: "cus_1",
+      payment_intent: "pi_wrong_terms",
+      payment_status: "paid",
+      metadata: { account_id: "acct_1", charge_type: "setup_fee" },
+    }),
+    subscriptionAccountId: null,
+    paymentSnapshot: {
+      id: "pi_wrong_terms",
+      customerId: "cus_1",
+      paymentMethodId: "pm_1",
+      status: "succeeded",
+      currency: "cad",
+      amount: 15000,
+      amountReceived: 15000,
+      amountRefunded: 0,
+      disputed: false,
+      disputeStatus: null,
+      livemode: false,
+    },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls.updates, []);
+  assert.equal(calls.ignored[0].reason, "setup_fee_terms_mismatch");
+});
+
 test("pilot payment-method Checkout synchronizes the succeeded SetupIntent", async () => {
   const { response, calls } = await runWebhook({
     event: stripeEvent("checkout.session.completed", {
@@ -445,6 +484,46 @@ test("customer.updated keeps Stripe authoritative for the default payment method
   assert.equal(response.status, 200);
   assert.deepEqual(calls.retrievedCustomers, ["cus_1"]);
   assert.equal(calls.updates.at(-1).update.stripeDefaultPaymentMethodId, "pm_new");
+});
+
+test("restart Checkout associates only a verified account-scoped subscription", async () => {
+  const { response, calls } = await runWebhook({
+    event: stripeEvent("checkout.session.completed", {
+      id: "cs_restart",
+      mode: "subscription",
+      customer: "cus_1",
+      subscription: "sub_1",
+      metadata: { account_id: "acct_1" },
+    }),
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls.retrievedSubscriptions, ["sub_1"]);
+  assert.deepEqual(calls.updates, [{
+    accountId: "acct_1",
+    update: {
+      stripeCustomerId: "cus_1",
+      stripeSubscriptionId: "sub_1",
+      stripePriceId: "price_123",
+    },
+  }]);
+});
+
+test("restart Checkout rejects mismatched subscription metadata", async () => {
+  const { response, calls } = await runWebhook({
+    event: stripeEvent("checkout.session.completed", {
+      id: "cs_restart_mismatch",
+      mode: "subscription",
+      customer: "cus_1",
+      subscription: "sub_1",
+      metadata: { account_id: "acct_1" },
+    }),
+    subscriptionSnapshot: subscription({ metadataAccountId: "acct_other" }),
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls.updates, []);
+  assert.equal(calls.ignored[0].reason, "subscription_identity_mismatch");
 });
 
 test("full setup-fee refund is reflected from Stripe", async () => {
@@ -571,9 +650,44 @@ test("two concurrent copies leave only one processor owning the event", async ()
     claim: { status: "already_processing", attemptCount: 1 },
   });
 
-  assert.equal(response.status, 200);
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get("retry-after"), "60");
+  assert.equal(body.retry, true);
   assert.equal(body.processingStatus, "already_processing");
   assert.deepEqual(calls.updates, []);
+});
+
+test("database failure while claiming an event asks Stripe to retry", async () => {
+  const { response, body, calls } = await runWebhook({
+    claimError: new Error("Supabase unavailable"),
+  });
+
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get("retry-after"), "60");
+  assert.equal(body.retry, true);
+  assert.deepEqual(calls.updates, []);
+  assert.deepEqual(calls.processed, []);
+});
+
+test("conflicting Stripe identifiers cannot cross account boundaries", async () => {
+  const { response, calls } = await runWebhook({
+    subscriptionAccountId: "acct_1",
+    customerAccountId: "acct_2",
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls.updates, []);
+  assert.equal(calls.ignored[0].reason, "account_resolution_conflict");
+});
+
+test("a subscription using an unconfigured price fails closed", async () => {
+  const { response, calls } = await runWebhook({
+    subscriptionSnapshot: subscription({ priceId: "price_not_relay" }),
+  });
+
+  assert.equal(response.status, 500);
+  assert.deepEqual(calls.updates, []);
+  assert.match(calls.failed[0].errorCode, /configured \$99 monthly price/);
 });
 
 test("retry after database failure can safely process the same event later", async () => {
@@ -604,6 +718,27 @@ test("late subscription.updated after deletion cannot resurrect a canceled subsc
   assert.equal(calls.updates[0].update.stripeSubscriptionStatus, "canceled");
 });
 
+test("a delayed event from an old subscription cannot overwrite a restarted subscription", async () => {
+  const { response, calls } = await runWebhook({
+    event: stripeEvent("customer.subscription.deleted", {
+      id: "sub_old",
+      customer: "cus_1",
+      status: "canceled",
+      metadata: { account_id: "acct_1" },
+    }),
+    subscriptionSnapshot: subscription({ id: "sub_old", status: "canceled" }),
+    existingBilling: {
+      billingAttentionSince: null,
+      cancelAtPeriodEnd: false,
+      stripeSubscriptionId: "sub_new",
+    },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls.updates, []);
+  assert.equal(calls.ignored[0].reason, "superseded_subscription");
+});
+
 test("invoice.payment_failed before subscription update surfaces past-due attention", async () => {
   const { response, calls } = await runWebhook({
     event: stripeEvent("invoice.payment_failed", invoiceObject()),
@@ -628,6 +763,29 @@ test("invoice.payment_action_required notifies the owner to approve payment", as
   assert.equal(calls.updates[0].update.billingStatus, "past_due");
   assert.equal(calls.ownerEmails[0].type, "payment_failed");
   assert.equal(calls.ownerEmails[0].input.eventType, "invoice.payment_action_required");
+});
+
+test("invoice finalization failure surfaces billing attention", async () => {
+  const { response, calls } = await runWebhook({
+    event: stripeEvent("invoice.finalization_failed", invoiceObject()),
+    subscriptionSnapshot: subscription({ status: "active" }),
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(calls.updates[0].update.billingStatus, "past_due");
+  assert.equal(calls.ownerEmails[0].input.eventType, "invoice.finalization_failed");
+});
+
+test("a delayed payment failure cannot resurrect a canceled subscription", async () => {
+  const { response, calls } = await runWebhook({
+    event: stripeEvent("invoice.payment_failed", invoiceObject()),
+    subscriptionSnapshot: subscription({ status: "canceled" }),
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(calls.updates[0].update.billingStatus, "canceled");
+  assert.equal(calls.updates[0].update.stripeSubscriptionStatus, "canceled");
+  assert.deepEqual(calls.ownerEmails, []);
 });
 
 test("billing_attention_since is preserved across repeated failed-payment events", async () => {

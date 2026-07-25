@@ -44,6 +44,7 @@ const stripeBilling = await loadTsModule("lib/stripe-billing.ts", {
 function account(overrides = {}) {
   return {
     accountId: "acct_1",
+    setupFeeCents: 15000,
     setupFeeCheckoutSessionId: null,
     setupFeePaymentIntentId: "pi_setup_1",
     setupFeeStatus: "paid",
@@ -63,7 +64,9 @@ function payment(overrides = {}) {
     id: "pi_setup_1",
     customerId: "cus_1",
     paymentMethodId: "pm_1",
+    metadataAccountId: "acct_1",
     status: "succeeded",
+    currency: "usd",
     amount: 15000,
     amountReceived: 15000,
     amountRefunded: 0,

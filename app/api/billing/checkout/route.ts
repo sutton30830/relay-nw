@@ -9,6 +9,8 @@ import { createStripeCheckoutSession } from "@/lib/stripe-billing";
 import {
   getA2pRegistrationStatus,
   getAccountBillingRecord,
+  getAccountOperationalStatus,
+  getAccountOpsBlocker,
   getAccountTechnicalSetupStatus,
 } from "@/lib/supabase";
 
@@ -40,10 +42,12 @@ export async function POST() {
     billingRedirect("forbidden");
   }
 
-  const [billing, technicalStatus, a2pValue] = await Promise.all([
+  const [billing, technicalStatus, operationalStatus, a2pValue, blocker] = await Promise.all([
     getAccountBillingRecord(session.accountId),
     getAccountTechnicalSetupStatus(session.accountId),
+    getAccountOperationalStatus(session.accountId),
     getA2pRegistrationStatus(session.accountId),
+    getAccountOpsBlocker(session.accountId),
   ]);
   const a2pStatus: A2pRegistrationStatus =
     a2pValue === "in_progress" ||
@@ -55,12 +59,14 @@ export async function POST() {
       : "not_started";
   const eligibility = getBillingCheckoutEligibility({
     billing,
-    activationReady: canStartMonthlyTrial({
-      technicalStatus,
-      a2pStatus,
-      smsEnabled: session.account.smsEnabled,
-      blockedBy: "none",
-    }),
+    activationReady:
+      operationalStatus === "active" &&
+      canStartMonthlyTrial({
+        technicalStatus,
+        a2pStatus,
+        smsEnabled: session.account.smsEnabled,
+        blockedBy: blocker.blockedBy,
+      }),
   });
 
   if (!eligibility.ok) {

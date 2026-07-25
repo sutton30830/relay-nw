@@ -1,5 +1,6 @@
 import {
   assertStripeObjectMode,
+  assertStripeSubscriptionPrice,
   billingUpdateFromSubscription,
   reconcileSetupFeeStateFromPayment,
   retrieveStripeCustomerBillingProfile,
@@ -10,6 +11,29 @@ import {
   setStripeCustomerDefaultPaymentMethod,
 } from "@/lib/stripe-billing";
 import { updateAccountBillingRecord, type OpsBillingAccount } from "@/lib/supabase";
+
+function assertAccountScopedObject(
+  account: OpsBillingAccount,
+  object: {
+    customerId: string | null;
+    metadataAccountId?: string | null;
+  },
+  label: string,
+) {
+  if (
+    object.metadataAccountId &&
+    object.metadataAccountId !== account.accountId
+  ) {
+    throw new Error(`${label} belongs to a different Relay account.`);
+  }
+  if (
+    account.stripeCustomerId &&
+    object.customerId &&
+    object.customerId !== account.stripeCustomerId
+  ) {
+    throw new Error(`${label} belongs to a different Stripe customer.`);
+  }
+}
 
 export async function reconcileStripeBillingAccount(account: OpsBillingAccount) {
   let setupFeeChecked = false;
@@ -22,6 +46,7 @@ export async function reconcileStripeBillingAccount(account: OpsBillingAccount) 
     const payment = checkout.paymentIntent;
     if (payment) {
       assertStripeObjectMode(payment.livemode, "Stripe PaymentIntent");
+      assertAccountScopedObject(account, payment, "Stripe PaymentIntent");
       const state = reconcileSetupFeeStateFromPayment(payment, account);
       await updateAccountBillingRecord(account.accountId, {
         ...state,
@@ -40,6 +65,7 @@ export async function reconcileStripeBillingAccount(account: OpsBillingAccount) 
   if (!setupIntentId && account.billingSetupCheckoutSessionId) {
     const checkout = await retrieveStripeSetupCheckoutSession(account.billingSetupCheckoutSessionId);
     if (checkout.setupIntent) {
+      assertAccountScopedObject(account, checkout.setupIntent, "Stripe SetupIntent");
       setupIntentId = checkout.setupIntent.id;
       await updateAccountBillingRecord(account.accountId, {
         stripeCustomerId: checkout.customerId ?? checkout.setupIntent.customerId ?? account.stripeCustomerId,
@@ -52,6 +78,7 @@ export async function reconcileStripeBillingAccount(account: OpsBillingAccount) 
   if (setupIntentId) {
     const setupIntent = await retrieveStripeSetupIntent(setupIntentId);
     assertStripeObjectMode(setupIntent.livemode, "Stripe SetupIntent");
+    assertAccountScopedObject(account, setupIntent, "Stripe SetupIntent");
     let defaultPaymentMethodId = account.stripeDefaultPaymentMethodId;
     if (
       setupIntent.status === "succeeded" &&
@@ -79,6 +106,9 @@ export async function reconcileStripeBillingAccount(account: OpsBillingAccount) 
   if (account.stripeCustomerId) {
     const customer = await retrieveStripeCustomerBillingProfile(account.stripeCustomerId);
     assertStripeObjectMode(customer.livemode, "Stripe customer");
+    if (customer.id !== account.stripeCustomerId) {
+      throw new Error("Stripe customer lookup returned a different customer.");
+    }
     await updateAccountBillingRecord(account.accountId, {
       stripeDefaultPaymentMethodId: customer.defaultPaymentMethodId,
       paymentMethodUpdatedAt: new Date().toISOString(),
@@ -89,6 +119,7 @@ export async function reconcileStripeBillingAccount(account: OpsBillingAccount) 
   if (setupPaymentIntentId && !setupFeeChecked) {
     const payment = await retrieveStripePaymentIntent(setupPaymentIntentId);
     assertStripeObjectMode(payment.livemode, "Stripe PaymentIntent");
+    assertAccountScopedObject(account, payment, "Stripe PaymentIntent");
     const state = reconcileSetupFeeStateFromPayment(payment, account);
     await updateAccountBillingRecord(account.accountId, {
       ...state,
@@ -104,6 +135,14 @@ export async function reconcileStripeBillingAccount(account: OpsBillingAccount) 
     try {
       const subscription = await retrieveStripeSubscription(account.stripeSubscriptionId);
       assertStripeObjectMode(subscription.livemode, "Stripe subscription");
+      assertStripeSubscriptionPrice(subscription.priceId, "Stripe subscription");
+      if (
+        subscription.metadataAccountId !== account.accountId ||
+        (account.stripeCustomerId &&
+          subscription.customerId !== account.stripeCustomerId)
+      ) {
+        throw new Error("Stripe subscription belongs to a different Relay account or customer.");
+      }
       await updateAccountBillingRecord(account.accountId, billingUpdateFromSubscription(account.accountId, subscription));
     } catch (error) {
       if (/no such subscription|resource_missing/i.test(error instanceof Error ? error.message : String(error))) {

@@ -42,6 +42,10 @@ function kickoffNotice(status: string | undefined, foundingPilot: boolean) {
       : "Secure $150 setup-payment link emailed to the customer.";
   }
   if (status === "failed") return "Kickoff action failed. No billing state was changed unless shown above.";
+  if (status === "owner_email_missing") return "Add the customer's email before sending a secure billing link.";
+  if (status === "already_ready") return "Stripe already has the required setup payment or waiver and a saved payment method.";
+  if (status === "account_comped") return "This account is explicitly comped; no Stripe payment link is needed.";
+  if (status === "commercial_terms_incomplete") return "Complete and audit the founding-pilot setup-fee waiver before collecting a card.";
   return "Kickoff action received.";
 }
 

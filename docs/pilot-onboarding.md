@@ -75,6 +75,9 @@ capture or CRM access, and carrier/customer delay never consumes trial time.
 
 ## 5. Acceptance
 
+Use the executable [Pilot Certification Checklist](pilot-certification-checklist.md)
+and retain its evidence with the account.
+
 - `npm run verify:account -- <slug>` passes.
 - `npm run verify:billing` passes for the environment.
 - `npm run verify:launch -- <slug>` passes.

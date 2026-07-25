@@ -12,6 +12,9 @@ function readyFacts(overrides = {}) {
       status: "active",
       billing_status: "active",
       onboarding_status: "activated",
+      ops_blocked_by: "none",
+      ops_blocker_note: null,
+      ops_blocked_since: null,
       stripe_customer_id: "cus_123",
       stripe_subscription_id: "sub_123",
       stripe_price_id: "price_123",
@@ -20,6 +23,8 @@ function readyFacts(overrides = {}) {
       billing_policy: "standard",
       commercial_offer: "standard",
       setup_fee_status: "paid",
+      setup_fee_cents: 15000,
+      monthly_price_cents: 9900,
       ...overrides.account,
     },
     settings: {
@@ -78,6 +83,16 @@ test("launch verifier fails for unsafe or missing Stripe config", () => {
 
   assert.equal(result.ok, false);
   assert.match(result.checks.find((check) => check.label === "Stripe config launch-safe").detail, /blocking/);
+});
+
+test("launch verifier blocks customer-facing price drift", () => {
+  const result = analyzeLaunchCertification(readyFacts({
+    account: { monthly_price_cents: 4900 },
+  }));
+  const amounts = result.checks.find((check) => check.label === "Relay commercial amounts");
+
+  assert.equal(result.ok, false);
+  assert.match(amounts.detail, /monthly_price_cents=9900/);
 });
 
 test("launch verifier reports paused SMS as operational choice, not setup failure", () => {
@@ -160,6 +175,24 @@ test("calls live while texting is pending cannot report Stripe trial readiness",
   assert.equal(result.activationReady, false);
   assert.equal(activation.level, "warn");
   assert.match(activation.detail, /trial remains stopped/i);
+});
+
+test("an explicit operational blocker prevents trial activation and names its owner", () => {
+  const result = analyzeLaunchCertification(readyFacts({
+    account: {
+      billing_status: "not_started",
+      stripe_subscription_status: null,
+      stripe_subscription_id: null,
+      ops_blocked_by: "customer",
+      ops_blocker_note: "Needs consent form",
+      ops_blocked_since: "2026-08-02T12:00:00.000Z",
+    },
+  }));
+  const blocker = result.checks.find((check) => check.label === "onboarding blocker");
+
+  assert.equal(result.activationReady, false);
+  assert.equal(result.blocker, "customer");
+  assert.match(blocker.detail, /Blocked by customer: Needs consent form/);
 });
 
 test("launch verifier accepts the account slug", () => {

@@ -84,8 +84,14 @@ function billingHeadline(billing: AccountBillingRecord, lifecycle: BillingLifecy
   const periodDate = formatBillingDate(billing.currentPeriodEnd);
   const trialDate = formatBillingDate(billing.trialEndsAt);
 
-  if (billing.cancelAtPeriodEnd && billing.billingStatus === "active") {
-    return periodDate ? `Active until ${periodDate}` : "Active until the billing period ends";
+  if (
+    billing.cancelAtPeriodEnd &&
+    (billing.billingStatus === "active" || billing.billingStatus === "trialing")
+  ) {
+    const endDate = billing.billingStatus === "trialing" ? trialDate ?? periodDate : periodDate;
+    return endDate
+      ? `${billing.billingStatus === "trialing" ? "Trial" : "Active"} until ${endDate}`
+      : "Subscription scheduled to end";
   }
 
   if (billing.billingStatus === "trialing") {
@@ -106,10 +112,14 @@ function billingSummary(billing: AccountBillingRecord, lifecycle: BillingLifecyc
   const trialDate = formatBillingDate(billing.trialEndsAt);
   const trialDaysLeft = daysUntilBillingDate(billing.trialEndsAt);
 
-  if (billing.cancelAtPeriodEnd && billing.billingStatus === "active") {
-    return periodDate
-      ? `Your subscription has been canceled. Relay keeps working until ${periodDate}.`
-      : "Your subscription has been canceled. Relay keeps working until the current billing period ends.";
+  if (
+    billing.cancelAtPeriodEnd &&
+    (billing.billingStatus === "active" || billing.billingStatus === "trialing")
+  ) {
+    const endDate = billing.billingStatus === "trialing" ? trialDate ?? periodDate : periodDate;
+    return endDate
+      ? `Your subscription is scheduled to end on ${endDate}. Relay keeps working until then.`
+      : "Your subscription is scheduled to end at the current period boundary. Relay keeps working until then.";
   }
 
   if (billing.billingStatus === "trialing") {
@@ -346,7 +356,13 @@ function BillingSection({
       {showCancelWarning ? (
         <div className="panel settings-notice settings-notice--ok" role="status">
           <Icon name="info" size={14} />
-          Your subscription has been canceled and will end{periodDate ? ` on ${periodDate}` : " at the end of this billing period"}. Relay keeps working until then.
+          Your subscription is scheduled to end
+          {billing.billingStatus === "trialing" && trialDate
+            ? ` on ${trialDate}`
+            : periodDate
+              ? ` on ${periodDate}`
+              : " at the current period boundary"}.
+          {" "}Relay keeps working until then.
         </div>
       ) : null}
 
