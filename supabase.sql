@@ -13,6 +13,7 @@ create table if not exists public.accounts (
     billing_policy in ('standard', 'setup_fee_waived', 'comped')
   ),
   billing_policy_updated_at timestamptz,
+  free_access_review_at timestamptz,
   commercial_offer text not null default 'standard' check (
     commercial_offer in ('standard', 'founding_pilot')
   ),
@@ -66,6 +67,7 @@ create table if not exists public.accounts (
 alter table public.accounts add column if not exists billing_status text not null default 'not_started';
 alter table public.accounts add column if not exists billing_policy text not null default 'standard';
 alter table public.accounts add column if not exists billing_policy_updated_at timestamptz;
+alter table public.accounts add column if not exists free_access_review_at timestamptz;
 alter table public.accounts add column if not exists commercial_offer text not null default 'standard';
 alter table public.accounts add column if not exists stripe_customer_id text;
 alter table public.accounts add column if not exists stripe_subscription_id text;
@@ -118,6 +120,18 @@ begin
   alter table public.accounts
     add constraint accounts_billing_policy_check
     check (billing_policy in ('standard', 'setup_fee_waived', 'comped'));
+exception
+  when duplicate_object then null;
+end $$;
+update public.accounts
+set free_access_review_at = null
+where billing_policy <> 'comped'
+  and free_access_review_at is not null;
+do $$
+begin
+  alter table public.accounts
+    add constraint accounts_free_access_review_requires_comp_check
+    check (free_access_review_at is null or billing_policy = 'comped');
 exception
   when duplicate_object then null;
 end $$;
@@ -596,7 +610,11 @@ begin
   update public.accounts
   set
     billing_policy = p_policy,
-    billing_policy_updated_at = now()
+    billing_policy_updated_at = now(),
+    free_access_review_at = case
+      when p_policy = 'comped' then free_access_review_at
+      else null
+    end
   where id = p_account_id;
 
   insert into public.account_audit_events (
@@ -632,6 +650,131 @@ grant execute
 on function public.set_account_billing_policy(
   uuid,
   text,
+  text,
+  uuid,
+  text
+)
+to service_role;
+
+-- Free access is a Relay-owned policy, not a Stripe trial. The optional review
+-- date creates an Operations reminder only; it never charges or stops service.
+create or replace function public.set_account_free_access(
+  p_account_id uuid,
+  p_review_at timestamptz,
+  p_reason text,
+  p_actor_user_id uuid,
+  p_actor_email text
+)
+returns table (
+  previous_policy text,
+  current_policy text,
+  previous_review_at timestamptz,
+  current_review_at timestamptz
+)
+language plpgsql
+security invoker
+set search_path = public
+as $function$
+declare
+  v_previous_policy text;
+  v_previous_review_at timestamptz;
+  v_stripe_status text;
+  v_reason text := trim(coalesce(p_reason, ''));
+  v_action text;
+  v_review_summary text;
+begin
+  if length(v_reason) < 5 then
+    raise exception 'A meaningful free-access reason is required';
+  end if;
+
+  if p_review_at is not null and p_review_at <= now() then
+    raise exception 'The free-access review date must be in the future';
+  end if;
+
+  select
+    billing_policy,
+    free_access_review_at,
+    stripe_subscription_status
+  into
+    v_previous_policy,
+    v_previous_review_at,
+    v_stripe_status
+  from public.accounts
+  where id = p_account_id
+  for update;
+
+  if not found then
+    raise exception 'Account not found';
+  end if;
+
+  if v_stripe_status in (
+    'incomplete',
+    'trialing',
+    'active',
+    'past_due',
+    'unpaid',
+    'paused'
+  ) then
+    raise exception 'Cancel or finish the Stripe subscription before granting free access';
+  end if;
+
+  v_action := case
+    when v_previous_policy = 'comped' then 'billing.free_access.updated'
+    else 'billing.free_access.started'
+  end;
+  v_review_summary := case
+    when p_review_at is null then 'No review date scheduled'
+    else 'Review on ' || to_char(p_review_at at time zone 'UTC', 'YYYY-MM-DD')
+  end;
+
+  update public.accounts
+  set
+    billing_policy = 'comped',
+    billing_policy_updated_at = case
+      when billing_policy = 'comped' then billing_policy_updated_at
+      else now()
+    end,
+    free_access_review_at = p_review_at
+  where id = p_account_id;
+
+  insert into public.account_audit_events (
+    account_id,
+    actor_user_id,
+    actor_email,
+    action,
+    summary
+  )
+  values (
+    p_account_id,
+    p_actor_user_id,
+    nullif(trim(coalesce(p_actor_email, '')), ''),
+    v_action,
+    v_review_summary || ' — ' || v_reason
+  );
+
+  return query
+  select
+    v_previous_policy,
+    'comped'::text,
+    v_previous_review_at,
+    p_review_at;
+end;
+$function$;
+
+revoke all
+on function public.set_account_free_access(
+  uuid,
+  timestamptz,
+  text,
+  uuid,
+  text
+)
+from public, anon, authenticated;
+
+grant execute
+on function public.set_account_free_access(
+  uuid,
+  timestamptz,
   text,
   uuid,
   text

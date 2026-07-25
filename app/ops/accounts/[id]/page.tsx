@@ -41,21 +41,23 @@ function kickoffNotice(status: string | undefined, foundingPilot: boolean) {
       ? "Secure no-charge Stripe card link emailed to the founding pilot."
       : "Secure $150 setup-payment link emailed to the customer.";
   }
+  if (status === "card_link_sent") return "Secure no-charge Stripe card link emailed to the customer. The $150 setup fee will not be charged again.";
   if (status === "failed") return "Kickoff action failed. No billing state was changed unless shown above.";
   if (status === "owner_email_missing") return "Add the customer's email before sending a secure billing link.";
   if (status === "already_ready") return "Stripe already has the required setup payment or waiver and a saved payment method.";
-  if (status === "account_comped") return "This account is explicitly comped; no Stripe payment link is needed.";
+  if (status === "account_comped") return "This account has free access; no card, setup payment, or Stripe subscription is needed.";
   if (status === "commercial_terms_incomplete") return "Complete and audit the founding-pilot setup-fee waiver before collecting a card.";
   return "Kickoff action received.";
 }
 
 function billingActionNotice(status: string | undefined) {
   if (!status) return null;
-  if (status === "comp") return "Billing is now comped.";
-  if (status === "uncomp") return "Comp removed. Stripe billing details were left unchanged.";
+  if (status === "comp") return "Free pilot access saved. No setup payment, card, or Stripe subscription is required, and the optional review date cannot trigger a charge.";
+  if (status === "uncomp") return "Free access ended. No charge was created; paid terms still require an explicit Stripe setup.";
   if (status === "waive_setup_fee") return "The $150 setup fee was waived and recorded.";
   if (status === "require_setup_fee") return "The $150 setup fee is required.";
   if (status === "reason_required") return "Add a meaningful reason (at least five characters) before changing billing policy.";
+  if (status === "review_date_invalid") return "Choose a valid future review date or leave it blank.";
   if (status === "confirmation_required") return "Confirm this commercial exception before applying it.";
   if (status === "forbidden") return "Only a super admin can approve a commercial exception.";
   if (status === "reconciled") return "Billing state refreshed from Stripe.";
@@ -74,7 +76,7 @@ function billingActionNotice(status: string | undefined) {
   if (status === "activation_not_eligible") return "Trial not started: calls, approved A2P, automatic text-back, an unpaused account, and no blocker must all be ready.";
   if (status === "subscription_conflict") return "Stripe already has another active or incomplete subscription for this customer.";
   if (status === "restart_required") return "This account already used its initial trial. Restart through Stripe Checkout.";
-  if (status === "account_comped") return "No Stripe trial was started because Relay has explicitly comped this account.";
+  if (status === "account_comped") return "No Stripe trial was started because this account has free access.";
   if (status === "activation_failed") return "Stripe trial activation failed visibly. No favorable billing state was created locally.";
   if (status === "save_failed") return "Billing change failed. Check logs before trying again.";
   if (status === "invalid_action") return "Choose a valid billing action.";
@@ -122,7 +124,7 @@ function nextActionDestination(key: OpsNextActionKey) {
   if (key === "resolve_relay_blocker" || key === "follow_up_customer" || key === "monitor_carrier_blocker") return "#blocker";
   if (key === "review_call_hold" || key === "finish_call_setup" || key === "help_with_forwarding") return "#calls";
   if (key === "resolve_texting_issue" || key === "prepare_a2p" || key === "monitor_carrier_review" || key === "enable_text_back") return "#texting";
-  if (key === "resolve_billing" || key === "review_cancellation" || key === "review_canceled_subscription") return "#billing";
+  if (key === "resolve_billing" || key === "review_cancellation" || key === "review_canceled_subscription" || key === "review_free_access") return "#billing";
   return null;
 }
 
@@ -189,6 +191,7 @@ export default async function OpsAccountPage({
     smsEnabled: summary.smsEnabled,
     billingStatus: effectiveBillingStatus,
     billingPolicy: billing.billingPolicy,
+    freeAccessReviewAt: billing.freeAccessReviewAt,
     stripeSubscriptionStatus: billing.stripeSubscriptionStatus,
     setupFeeStatus: billing.setupFeeStatus,
     stripeDefaultPaymentMethodId: billing.stripeDefaultPaymentMethodId,
@@ -215,18 +218,20 @@ export default async function OpsAccountPage({
   );
   const kickoffCollectible = !kickoffSettled && (billing.setupFeeStatus === "due" || billing.setupFeeStatus === "refunded" ||
     billing.setupFeeStatus === "charged_back");
-  const pilotCardNeeded =
-    isFoundingPilot &&
+  const cardCollectionNeeded =
+    kickoffSettled &&
     !isComped &&
     !billing.stripeDefaultPaymentMethodId &&
     effectiveBillingStatus !== "active" &&
     effectiveBillingStatus !== "trialing";
   const kickoffState = isComped
-    ? "Comped"
+    ? billing.setupFeeStatus === "paid" || billing.setupFeeStatus === "partially_refunded"
+      ? billing.setupFeeStatus === "paid" ? "Paid" : "Partially refunded"
+      : "Waived for free access"
+    : billing.setupFeeStatus === "paid"
+    ? "Paid"
     : setupFeeWaived
       ? "Waived by policy"
-      : billing.setupFeeStatus === "paid"
-    ? "Paid"
     : billing.setupFeeStatus === "waived"
       ? "Waived"
       : billing.setupFeeStatus === "partially_refunded"
@@ -248,13 +253,16 @@ export default async function OpsAccountPage({
       : effectiveBillingStatus === "trialing"
         ? `Trial${billing.trialEndsAt ? ` — ends ${formatDate(billing.trialEndsAt)}` : ""}`
         : effectiveBillingStatus === "comped"
-          ? "Comped — Relay is intentionally not charging"
+          ? opsState.freeAccessReviewAt
+            ? `Free access — review ${formatDate(opsState.freeAccessReviewAt)}`
+            : "Free access — no Stripe subscription"
           : effectiveBillingStatus === "past_due"
             ? "Past due — payment failed"
             : effectiveBillingStatus === "canceled"
               ? "Canceled"
               : "Not started";
   const monthlyTone = effectiveBillingStatus === "past_due" ? "warn" : "neutral";
+  const freeReviewInputValue = billing.freeAccessReviewAt?.slice(0, 10) ?? "";
   const stripePaymentUrl = billing.setupFeePaymentIntentId
     ? stripeDashboardPaymentUrl(billing.setupFeePaymentIntentId)
     : null;
@@ -381,7 +389,7 @@ export default async function OpsAccountPage({
             <form action="/api/ops/kickoff" method="post">
               <input type="hidden" name="account_slug" value={summary.accountSlug} />
               <button className="btn btn-primary" name="action" value="send_invoice">
-                {pilotCardNeeded ? "Email secure card link" : billing.setupFeeStatus === "due" ? "Email $150 payment link" : "Collect $150 again"}
+                {opsState.nextAction.key === "collect_payment_method" ? "Send no-charge card link" : "Send $150 payment link"}
               </button>
             </form>
           ) : primaryDestination ? (
@@ -518,17 +526,21 @@ export default async function OpsAccountPage({
                 <div>
                   <dt>Setup fee</dt>
                   <dd>{kickoffState}</dd>
-                  <small>{isFoundingPilot ? "Founding pilot" : "$150 standard setup"}</small>
+                  <small>{isComped ? "No setup charge for free access" : isFoundingPilot ? "Founding pilot" : "$150 standard setup"}</small>
                 </div>
                 <div>
                   <dt>Payment method</dt>
-                  <dd>{billing.stripeDefaultPaymentMethodId ? "Ready" : "Needed"}</dd>
-                  <small>Stored securely by Stripe</small>
+                  <dd>{isComped ? "Not required" : billing.stripeDefaultPaymentMethodId ? "Ready" : "Needed"}</dd>
+                  <small>{isComped ? "No card needed for free access" : "Stored securely by Stripe"}</small>
                 </div>
                 <div>
                   <dt>Monthly</dt>
                   <dd>{monthlyState}</dd>
-                  <small>{effectiveBillingStatus === "not_started" ? `${isFoundingPilot ? "30" : "14"}-day trial starts after activation` : "$99 per month"}</small>
+                  <small>{isComped
+                    ? "No subscription or automatic charges"
+                    : effectiveBillingStatus === "not_started"
+                      ? `${isFoundingPilot ? "30" : "14"}-day trial starts after activation`
+                      : "$99 per month"}</small>
                 </div>
               </dl>
 
@@ -536,11 +548,11 @@ export default async function OpsAccountPage({
                 <details className="ops-secondary-menu" open={billingControlOpen}>
                   <summary>More billing actions <Icon name="chevronRight" size={15} /></summary>
                   <div className="ops-secondary-menu__body">
-                    {(pilotCardNeeded || kickoffCollectible) && opsState.nextAction.key !== "complete_setup_payment" && opsState.nextAction.key !== "collect_payment_method" ? (
+                    {(cardCollectionNeeded || kickoffCollectible) && opsState.nextAction.key !== "complete_setup_payment" && opsState.nextAction.key !== "collect_payment_method" ? (
                       <form action="/api/ops/kickoff" method="post">
                         <input type="hidden" name="account_slug" value={summary.accountSlug} />
                         <button className="btn btn-secondary" name="action" value="send_invoice">
-                          {pilotCardNeeded ? "Email secure card link" : billing.setupFeeStatus === "due" ? "Email $150 payment link" : "Collect $150 again"}
+                          {cardCollectionNeeded ? "Send no-charge card link" : "Send $150 payment link"}
                         </button>
                       </form>
                     ) : null}
@@ -559,19 +571,40 @@ export default async function OpsAccountPage({
                         {!canApplyOverride ? <p className="intake-error settings-notice">Locked while Stripe has a live subscription.</p> : null}
                         <form action="/api/ops/billing" method="post" className="ops-compact-form">
                           <input type="hidden" name="account_slug" value={summary.accountSlug} />
-                          <label className="form-field"><span className="field-label">Reason</span><input className="field" name="reason" maxLength={240} minLength={5} required placeholder="Why is this exception appropriate?" /></label>
-                          <label><input type="checkbox" name="confirmation" value="confirmed" required /> Confirm exception</label>
+                          <div>
+                            <strong>Free pilot access</strong>
+                            <p>No setup payment, card, trial, or subscription. The optional review date is a reminder only.</p>
+                          </div>
+                          <label className="form-field">
+                            <span className="field-label">Review date (optional)</span>
+                            <input className="field" type="date" name="free_access_review_at" defaultValue={freeReviewInputValue} />
+                          </label>
+                          <label className="form-field"><span className="field-label">Reason</span><input className="field" name="reason" maxLength={240} minLength={5} required placeholder="e.g. early product pilot" /></label>
+                          <label><input type="checkbox" name="confirmation" value="confirmed" required /> Confirm: no setup charge, card, or subscription will be created.</label>
                           <div className="ops-billing-actions" aria-label="Manual billing actions">
-                            <button className="btn btn-secondary" type="submit" name="action" value="comp" disabled={!canApplyOverride}>Comp account</button>
-                            <button className="btn btn-secondary" type="submit" name="action" value="uncomp" disabled={!canApplyOverride}>Remove comp</button>
+                            <button className="btn btn-secondary" type="submit" name="action" value="comp" disabled={!canApplyOverride}>
+                              {isComped ? "Update free access" : "Start free access"}
+                            </button>
                           </div>
                         </form>
+                        {isComped ? (
+                          <form action="/api/ops/billing" method="post" className="ops-compact-form">
+                            <input type="hidden" name="account_slug" value={summary.accountSlug} />
+                            <label className="form-field"><span className="field-label">Reason to end free access</span><input className="field" name="reason" maxLength={240} minLength={5} required /></label>
+                            <label><input type="checkbox" name="confirmation" value="confirmed" required /> Confirm: ending free access creates no charge; paid terms still require Stripe setup.</label>
+                            <button className="btn btn-secondary" type="submit" name="action" value="uncomp" disabled={!canApplyOverride}>End free access</button>
+                          </form>
+                        ) : null}
                         {canApplyOverride && !kickoffSettled ? (
                           <form action="/api/ops/billing" method="post" className="ops-compact-form">
                             <input type="hidden" name="account_slug" value={summary.accountSlug} />
-                            <label className="form-field"><span className="field-label">Waiver reason</span><input className="field" name="reason" maxLength={240} minLength={5} required placeholder="e.g. founding pilot" /></label>
-                            <label><input type="checkbox" name="confirmation" value="confirmed" required /> Confirm waiver</label>
-                            <button className="btn btn-secondary" type="submit" name="action" value="waive_setup_fee">Make founding pilot</button>
+                            <div>
+                              <strong>Setup-fee waiver only</strong>
+                              <p>Use for a paid pilot: the card is still required and the 30-day trial waits for activation.</p>
+                            </div>
+                            <label className="form-field"><span className="field-label">Waiver reason</span><input className="field" name="reason" maxLength={240} minLength={5} required placeholder="e.g. paid founding pilot" /></label>
+                            <label><input type="checkbox" name="confirmation" value="confirmed" required /> Confirm setup-fee waiver only</label>
+                            <button className="btn btn-secondary" type="submit" name="action" value="waive_setup_fee">Waive setup fee</button>
                           </form>
                         ) : null}
                         {billing.setupFeeStatus === "waived" && canApplyOverride ? (

@@ -27,6 +27,7 @@ function deriveAccountState(account: OpsAccountSummary) {
     smsEnabled: account.smsEnabled,
     billingStatus: account.billingStatus,
     billingPolicy: account.billingPolicy,
+    freeAccessReviewAt: account.freeAccessReviewAt,
     stripeSubscriptionStatus: account.stripeSubscriptionStatus,
     setupFeeStatus: account.setupFeeStatus,
     stripeDefaultPaymentMethodId: account.stripeDefaultPaymentMethodId,

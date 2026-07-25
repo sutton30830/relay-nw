@@ -102,6 +102,8 @@ test("billing foundation is account-scoped, Stripe-authoritative, and independen
   assert.match(sql, /billing_status text not null default 'not_started'/);
   assert.match(sql, /billing_policy text not null default 'standard'/);
   assert.match(sql, /billing_policy in \('standard', 'setup_fee_waived', 'comped'\)/);
+  assert.match(sql, /free_access_review_at timestamptz/);
+  assert.match(sql, /set_account_free_access/);
   assert.match(sql, /commercial_offer text not null default 'standard'/);
   assert.match(sql, /commercial_offer in \('standard', 'founding_pilot'\)/);
   assert.match(sql, /setup_fee_status text not null default 'due'/);
@@ -242,8 +244,8 @@ test("stripe checkout and webhooks update account billing without gating missed-
   assert.match(settingsPageTsx, /Relay is still catching missed calls/);
   assert.match(settingsPageTsx, /scheduled to end/);
   assert.match(settingsPageTsx, /Trial ends/);
-  assert.match(settingsPageTsx, /Free account/);
-  assert.match(settingsPageTsx, /Relay isn't charging this account/);
+  assert.match(settingsPageTsx, /Free access/);
+  assert.match(settingsPageTsx, /review cannot start billing/);
   assert.match(settingsPageTsx, /Monthly trial waits for text-back/);
   assert.match(settingsPageTsx, /trial waits for automatic text-back activation/);
   assert.match(settingsPageTsx, /Add payment method/);
@@ -332,7 +334,10 @@ test("ops runbook is documented outside the primary navigation", () => {
   assert.match(opsAccountPageTsx, /Stripe webhook processing/);
   assert.match(opsAccountPageTsx, /failedCount/);
   assert.match(opsAccountPageTsx, /Super-admin commercial exceptions/);
-  assert.match(opsAccountPageTsx, /Comp account/);
+  assert.match(opsAccountPageTsx, /Start free access/);
+  assert.match(opsAccountPageTsx, /Review date \(optional\)/);
+  assert.match(opsAccountPageTsx, /Send no-charge card link/);
+  assert.doesNotMatch(opsAccountPageTsx, /Collect \$150 again/);
   assert.match(opsAccountPageTsx, /billing\.billingPolicy === "comped"/);
   assert.match(opsAccountPageTsx, /billing\.billingPolicy === "setup_fee_waived"/);
   assert.match(opsAccountPageTsx, /effectiveBillingStatus/);
@@ -411,8 +416,8 @@ test("ops pages share the same internal tool actions", () => {
   assert.match(appHeaderTsx, /Back to my inbox/);
   assert.match(opsPageTsx, /listOpsAccounts\(\)/);
   assert.match(opsAccountPageTsx, /getOpsAccountBySlug\(id\)/);
-  assert.match(opsAccountPageTsx, /Email \$150 payment link/);
-  assert.match(opsAccountPageTsx, /Make founding pilot/);
+  assert.match(opsAccountPageTsx, /Send \$150 payment link/);
+  assert.match(opsAccountPageTsx, /Waive setup fee/);
   assert.match(opsAccountPageTsx, /aria-label="Primary operator action"/);
   assert.match(opsAccountDirectoryTsx, /Needs attention/);
   assert.match(opsAccountDirectoryTsx, /Open account/);

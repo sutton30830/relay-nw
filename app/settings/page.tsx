@@ -58,7 +58,7 @@ function centsToDollarInput(value: number | null) {
 }
 
 function billingStatusLabel(billing: AccountBillingRecord) {
-  if (billing.billingPolicy === "comped" || billing.billingStatus === "comped") return "Comped";
+  if (billing.billingPolicy === "comped" || billing.billingStatus === "comped") return "Free access";
   if (billing.billingStatus === "past_due" && !billing.stripeSubscriptionId && billing.trialEndsAt) return "Trial ended";
   if (billing.billingStatus === "past_due") return "Past due";
   if (billing.billingStatus === "canceled") return "Canceled";
@@ -98,7 +98,7 @@ function billingHeadline(billing: AccountBillingRecord, lifecycle: BillingLifecy
     return trialDate ? `Trial ends ${trialDate}` : "Trial active";
   }
 
-  if (billing.billingPolicy === "comped" || billing.billingStatus === "comped") return "Free account";
+  if (billing.billingPolicy === "comped" || billing.billingStatus === "comped") return "Free access";
   if (billing.billingStatus === "past_due" && !billing.stripeSubscriptionId && billing.trialEndsAt) return "Trial ended";
   if (billing.billingStatus === "past_due") return "Payment needs attention";
   if (billing.billingStatus === "canceled") return "Subscription canceled";
@@ -135,7 +135,10 @@ function billingSummary(billing: AccountBillingRecord, lifecycle: BillingLifecyc
   }
 
   if (billing.billingPolicy === "comped" || billing.billingStatus === "comped") {
-    return "Relay isn't charging this account.";
+    const reviewDate = formatBillingDate(billing.freeAccessReviewAt);
+    return reviewDate
+      ? `Relay is free with a review scheduled for ${reviewDate}. No card is required, and the review cannot start billing. Relay will contact you before any paid plan begins.`
+      : "Relay is free for this account. No card or Stripe subscription is required.";
   }
 
   if (billing.billingStatus === "past_due") {
@@ -293,6 +296,8 @@ function BillingSection({
   const showCancelWarning = billing.cancelAtPeriodEnd && billing.billingStatus !== "canceled";
   const setupFeeDate = formatBillingDate(billing.setupFeePaidAt ?? billing.setupFeeWaivedAt);
   const trialDays = billing.commercialOffer === "founding_pilot" ? 30 : 14;
+  const isFreeAccess = billing.billingPolicy === "comped" || billing.billingStatus === "comped";
+  const freeReviewDate = formatBillingDate(billing.freeAccessReviewAt);
   const setupFeeLabel = billing.setupFeeStatus === "paid"
     ? `Paid${setupFeeDate ? ` ${setupFeeDate}` : ""}`
     : billing.setupFeeStatus === "waived"
@@ -305,11 +310,15 @@ function BillingSection({
           ? "Payment disputed"
           : billing.setupFeeStatus === "charged_back"
             ? "Charged back"
-            : billing.firstPaidAt
+            : isFreeAccess
+              ? "Waived"
+              : billing.firstPaidAt
               ? "Settled through prior activation"
               : "$150 due";
-  const setupFeeDetail = billing.setupFeeStatus === "due"
-    ? "One time. Securely paid through Stripe."
+  const setupFeeDetail = isFreeAccess && billing.setupFeeStatus !== "paid" && billing.setupFeeStatus !== "partially_refunded"
+    ? "Waived while this account has free access."
+    : billing.setupFeeStatus === "due"
+      ? "One time. Securely paid through Stripe."
     : billing.setupFeeStatus === "waived"
       ? "Your founding-pilot setup fee is waived."
       : billing.billingPolicy === "comped"
@@ -324,7 +333,7 @@ function BillingSection({
       <div className="settings-billing__main">
         <div>
           <p className="t-eyebrow settings-section__title">Billing</p>
-          <h2 className="settings-billing__plan">Current plan: $99/month</h2>
+          <h2 className="settings-billing__plan">{isFreeAccess ? "Current plan: Free access" : "Current plan: $99/month"}</h2>
           <p className="settings-section__lead">{billingHeadline(billing, lifecycle)}</p>
           <p className="settings-section__meta">{billingSummary(billing, lifecycle)}</p>
           {lifecycle.ownerAction === "restart_subscription" ? (
@@ -373,8 +382,14 @@ function BillingSection({
         </div>
         <div>
           <dt>Monthly service</dt>
-          <dd>$99/month</dd>
-          <small>{billing.billingStatus === "trialing" ? "Your Stripe trial is active." : `${trialDays}-day trial starts after automatic text-back is on.`}</small>
+          <dd>{isFreeAccess ? "Included" : "$99/month"}</dd>
+          <small>{isFreeAccess
+            ? freeReviewDate
+              ? `Review scheduled for ${freeReviewDate}; it cannot trigger a charge.`
+              : "No card or subscription required."
+            : billing.billingStatus === "trialing"
+              ? "Your Stripe trial is active."
+              : `${trialDays}-day trial starts after automatic text-back is on.`}</small>
         </div>
         {periodDate ? (
           <div>

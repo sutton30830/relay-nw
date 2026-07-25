@@ -238,6 +238,7 @@ async function runOpsBillingOverride({
   const calls = {
     lookups: [],
     policies: [],
+    freeAccess: [],
     commercialOffers: [],
     platformAudits: [],
     redirects: [],
@@ -262,6 +263,9 @@ async function runOpsBillingOverride({
       },
       setAccountBillingPolicy: async (input) => {
         calls.policies.push(input);
+      },
+      setAccountFreeAccess: async (input) => {
+        calls.freeAccess.push(input);
       },
       setAccountCommercialOffer: async (input) => {
         calls.commercialOffers.push(input);
@@ -521,10 +525,11 @@ test("super admin can manually comp an account without a live Stripe subscriptio
   const calls = await runOpsBillingOverride();
 
   assert.deepEqual(calls.lookups, ["demo"]);
-  assert.deepEqual(calls.policies, [
+  assert.deepEqual(calls.policies, []);
+  assert.deepEqual(calls.freeAccess, [
     {
       accountId: "acct-1",
-      policy: "comped",
+      reviewAt: null,
       reason: "Approved pilot exception",
       actorUserId: "user-1",
       actorEmail: "ops@example.com",
@@ -532,6 +537,40 @@ test("super admin can manually comp an account without a live Stripe subscriptio
   ]);
   assert.equal(calls.platformAudits[0].action, "billing.operator.comp.authorized");
   assert.equal(calls.redirects.at(-1), "/ops/accounts/demo?billing_action=comp");
+});
+
+test("free access can use an operator-selected review date without creating billing", async () => {
+  const calls = await runOpsBillingOverride({
+    form: {
+      account_slug: "demo",
+      action: "comp",
+      reason: "Six month product pilot",
+      confirmation: "confirmed",
+      free_access_review_at: "2099-01-24",
+    },
+  });
+
+  assert.equal(calls.freeAccess[0].reviewAt, "2099-01-24T23:59:59.999Z");
+  assert.equal(calls.freeAccess[0].reason, "Six month product pilot");
+  assert.deepEqual(calls.policies, []);
+});
+
+test("free access rejects a past or malformed review date", async () => {
+  const calls = await runOpsBillingOverride({
+    form: {
+      account_slug: "demo",
+      action: "comp",
+      reason: "Product pilot",
+      confirmation: "confirmed",
+      free_access_review_at: "2020-01-01",
+    },
+  });
+
+  assert.deepEqual(calls.freeAccess, []);
+  assert.equal(
+    calls.redirects.at(-1),
+    "/ops/accounts/demo?billing_action=review_date_invalid",
+  );
 });
 
 test("super admin can waive a setup fee for a selected pilot account and audit the reason", async () => {

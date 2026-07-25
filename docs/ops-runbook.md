@@ -73,7 +73,7 @@ Every account exposes four independent facts:
 - **Calls:** setting up, waiting for forwarding, ready, or paused. A signed real missed call is the only positive readiness proof.
 - **Texting:** preparing, carrier review, approved, or issue. Relay reads the
   Twilio campaign result; Twilio/carrier status is authoritative.
-- **Billing:** setup due, card ready, trial, active, attention, or canceled. Stripe-synchronized state is authoritative for subscription outcomes.
+- **Billing:** setup due, card needed, card ready, free access, trial, active, attention, or canceled. “Card needed” means the setup fee is already settled and only Stripe’s no-charge card form remains. “Free access” is an audited Relay policy and never invents a Stripe subscription.
 - **Blocked by:** none, Relay, customer, or carrier. Relay operators own only this explanation and explicit call holds.
 
 Relay derives one queue group and one next action; neither is stored or directly
@@ -101,6 +101,10 @@ controls, and every mutation endpoint rechecks its action permission.
 - Standard accounts start with a one-time `$150 setup fee` due. Founding pilots
   are an explicit commercial offer with an audited setup-fee waiver and a
   30-day trial.
+- A super admin can instead start free pilot access. It creates no setup
+  charge, card requirement, or Stripe subscription. The super admin may choose
+  an optional review date or leave it open-ended; a review never charges or
+  stops service automatically.
 - A pilot waiver must be made from the selected account, include a short
   reason, and remain visible in the account audit history. It is never shown as
   paid or refunded.

@@ -67,6 +67,7 @@ Relay policy is one of `standard`, `setup_fee_waived`, or `comped`.
 - A waiver is not represented as a successful Stripe payment.
 - A founding pilot receives an audited setup-fee waiver; the setup fee is never labeled paid or refunded.
 - A comp is not represented as an active Stripe subscription.
+- Free pilot access uses the audited `comped` policy. It requires no setup payment, card, or Stripe subscription. A super admin may choose an optional review date; the date never creates an automatic charge or service cutoff. Moving to paid terms later requires an explicit operator decision and customer Stripe setup.
 - Policy exceptions require an operator audit event.
 
 ### Stripe billing state
@@ -77,6 +78,7 @@ Stripe is authoritative for payment methods, setup-fee payments, subscriptions, 
 
 - A standard account pays **$150 once** for setup.
 - A founding pilot receives an explicitly audited setup-fee waiver.
+- A free-access customer provides no card and incurs no setup or monthly charge. Any operator-selected review date is operational only and never begins billing automatically.
 - Service costs **$99 per month** unless the account is explicitly comped.
 - The customer sees what is charged now and what will be charged later before entering Checkout.
 - A standard customer's Stripe-owned trial is **14 days**.

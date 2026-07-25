@@ -124,7 +124,7 @@ export async function POST(request: Request) {
           action: "billing.kickoff.card_setup_started",
           summary: `Sent Stripe card setup for the delayed ${terms.trialDays}-day trial`,
         });
-        return resultResponse(request, account.accountSlug, "payment_link_sent");
+        return resultResponse(request, account.accountSlug, "card_link_sent");
       }
 
       let checkoutUrl = await reusableCheckoutUrl(

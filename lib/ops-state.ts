@@ -19,7 +19,9 @@ export type OpsTextingState =
 
 export type OpsBillingState =
   | "setup_due"
+  | "card_needed"
   | "card_ready"
+  | "free"
   | "trial"
   | "active"
   | "attention"
@@ -46,6 +48,7 @@ export type OpsNextActionKey =
   | "review_canceled_subscription"
   | "complete_setup_payment"
   | "collect_payment_method"
+  | "review_free_access"
   | "enable_text_back"
   | "check_trial_activation"
   | "none";
@@ -63,6 +66,7 @@ export type OpsStateInput = {
   smsEnabled: boolean;
   billingStatus: string | null | undefined;
   billingPolicy: BillingPolicy | string | null | undefined;
+  freeAccessReviewAt?: string | null;
   stripeSubscriptionStatus: string | null | undefined;
   setupFeeStatus: string | null | undefined;
   stripeDefaultPaymentMethodId: string | null | undefined;
@@ -80,6 +84,8 @@ export type OpsDerivedState = {
   blockedBy: OperationsBlocker;
   blockerNote: string | null;
   blockedAgeDays: number | null;
+  freeAccessReviewAt: string | null;
+  freeAccessReviewDue: boolean;
   queueGroup: OpsQueueGroup;
   queueLabel: string;
   labels: {
@@ -114,7 +120,9 @@ const TEXTING_LABELS: Record<OpsTextingState, string> = {
 
 const BILLING_LABELS: Record<OpsBillingState, string> = {
   setup_due: "Setup due",
+  card_needed: "Card needed",
   card_ready: "Card ready",
+  free: "Free access",
   trial: "Trial",
   active: "Active",
   attention: "Attention",
@@ -190,14 +198,6 @@ export function deriveOpsBillingState(input: OpsStateInput): OpsBillingState {
   const billingStatus = input.billingStatus;
 
   if (
-    stripeStatus === "canceled" ||
-    stripeStatus === "incomplete_expired" ||
-    billingStatus === "canceled"
-  ) {
-    return "canceled";
-  }
-
-  if (
     stripeStatus === "past_due" ||
     stripeStatus === "unpaid" ||
     stripeStatus === "incomplete" ||
@@ -217,12 +217,20 @@ export function deriveOpsBillingState(input: OpsStateInput): OpsBillingState {
     return "active";
   }
 
-  if (
-    !setupFeeSettled(input) ||
-    (!input.stripeDefaultPaymentMethodId && input.billingPolicy !== "comped")
-  ) {
-    return "setup_due";
+  if (input.billingPolicy === "comped") {
+    return "free";
   }
+
+  if (
+    stripeStatus === "canceled" ||
+    stripeStatus === "incomplete_expired" ||
+    billingStatus === "canceled"
+  ) {
+    return "canceled";
+  }
+
+  if (!setupFeeSettled(input)) return "setup_due";
+  if (!input.stripeDefaultPaymentMethodId) return "card_needed";
 
   return "card_ready";
 }
@@ -248,9 +256,10 @@ function deriveNextAction(input: {
   texting: OpsTextingState;
   billing: OpsBillingState;
   billingPolicy: string | null | undefined;
-  setupFeeSettled: boolean;
   smsEnabled: boolean;
   cancelAtPeriodEnd: boolean;
+  freeAccessReviewAt: string | null;
+  freeAccessReviewDue: boolean;
   blockedBy: OperationsBlocker;
   blockerNote: string | null;
 }): OpsNextAction {
@@ -310,6 +319,14 @@ function deriveNextAction(input: {
       "stripe",
     );
   }
+  if (input.billing === "free" && input.freeAccessReviewDue) {
+    return action(
+      "review_free_access",
+      "Review free access",
+      "The optional review date has arrived. Keep access free or explicitly offer paid terms; nothing charges automatically.",
+      "relay",
+    );
+  }
   if (input.texting === "issue") {
     return action(
       "resolve_texting_issue",
@@ -319,18 +336,18 @@ function deriveNextAction(input: {
     );
   }
   if (input.billing === "setup_due") {
-    if (!input.setupFeeSettled) {
-      return action(
-        "complete_setup_payment",
-        "Complete setup payment",
-        "Collect the standard setup fee or record an approved commercial exception.",
-        "customer",
-      );
-    }
+    return action(
+      "complete_setup_payment",
+      "Complete setup payment",
+      "Collect the standard setup fee or approve free pilot access.",
+      "customer",
+    );
+  }
+  if (input.billing === "card_needed") {
     return action(
       "collect_payment_method",
       "Collect payment method",
-      "Use Stripe's secure no-charge card setup before activation.",
+      "The setup fee is settled. Send Stripe's secure no-charge card form before paid-plan activation.",
       "customer",
     );
   }
@@ -378,7 +395,9 @@ function deriveNextAction(input: {
     return action(
       "none",
       "No action needed",
-      "Automatic text-back is running under an audited Relay comp.",
+      input.freeAccessReviewAt
+        ? `Automatic text-back is free with a review scheduled for ${new Date(input.freeAccessReviewAt).toLocaleDateString("en-US")}. No card or subscription is required.`
+        : "Automatic text-back is running under audited free access. No card or subscription is required.",
       "none",
     );
   }
@@ -407,6 +426,7 @@ function deriveQueueGroup(input: {
   billingPolicy: string | null | undefined;
   smsEnabled: boolean;
   cancelAtPeriodEnd: boolean;
+  freeAccessReviewDue: boolean;
   blockedBy: OperationsBlocker;
 }): OpsQueueGroup {
   if (input.calls === "paused") return "paused";
@@ -414,7 +434,8 @@ function deriveQueueGroup(input: {
     input.blockedBy !== "none" ||
     input.texting === "issue" ||
     input.billing === "attention" ||
-    input.billing === "canceled"
+    input.billing === "canceled" ||
+    input.freeAccessReviewDue
   ) {
     return "needs_attention";
   }
@@ -423,6 +444,7 @@ function deriveQueueGroup(input: {
     input.texting !== "approved" ||
     !input.smsEnabled ||
     input.billing === "setup_due" ||
+    input.billing === "card_needed" ||
     (input.billing === "card_ready" && input.billingPolicy !== "comped")
   ) {
     return "onboarding";
@@ -434,6 +456,14 @@ export function deriveOpsState(input: OpsStateInput): OpsDerivedState {
   const calls = deriveOpsCallsState(input.technicalStatus);
   const texting = deriveOpsTextingState(input.a2pStatus);
   const billing = deriveOpsBillingState(input);
+  const freeReviewAt =
+    input.billingPolicy === "comped" && input.freeAccessReviewAt
+      ? input.freeAccessReviewAt
+      : null;
+  const now = input.now ?? new Date();
+  const freeReviewDue = Boolean(
+    freeReviewAt && new Date(freeReviewAt).getTime() <= now.getTime(),
+  );
   const blockedBy = normalizeOpsBlocker(input.blockedBy);
   const blockerNote = blockedBy === "none"
     ? null
@@ -445,6 +475,7 @@ export function deriveOpsState(input: OpsStateInput): OpsDerivedState {
     billingPolicy: input.billingPolicy,
     smsEnabled: input.smsEnabled,
     cancelAtPeriodEnd: Boolean(input.cancelAtPeriodEnd),
+    freeAccessReviewDue: freeReviewDue,
     blockedBy,
   });
 
@@ -456,7 +487,9 @@ export function deriveOpsState(input: OpsStateInput): OpsDerivedState {
     blockerNote,
     blockedAgeDays: blockedBy === "none"
       ? null
-      : daysSince(input.blockedSince, input.now ?? new Date()),
+      : daysSince(input.blockedSince, now),
+    freeAccessReviewAt: freeReviewAt,
+    freeAccessReviewDue: freeReviewDue,
     queueGroup,
     queueLabel: QUEUE_LABELS[queueGroup],
     labels: {
@@ -470,9 +503,10 @@ export function deriveOpsState(input: OpsStateInput): OpsDerivedState {
       texting,
       billing,
       billingPolicy: input.billingPolicy,
-      setupFeeSettled: setupFeeSettled(input),
       smsEnabled: input.smsEnabled,
       cancelAtPeriodEnd: Boolean(input.cancelAtPeriodEnd),
+      freeAccessReviewAt: freeReviewAt,
+      freeAccessReviewDue: freeReviewDue,
       blockedBy,
       blockerNote,
     }),

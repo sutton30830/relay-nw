@@ -43,11 +43,25 @@ const canonicalBilling = {
     setupFeeStatus: "due",
     stripeDefaultPaymentMethodId: null,
   },
+  card_needed: {
+    billingStatus: "not_started",
+    stripeSubscriptionStatus: null,
+    setupFeeStatus: "paid",
+    stripeDefaultPaymentMethodId: null,
+  },
   card_ready: {
     billingStatus: "not_started",
     stripeSubscriptionStatus: null,
     setupFeeStatus: "paid",
     stripeDefaultPaymentMethodId: "pm_1",
+  },
+  free: {
+    billingStatus: "comped",
+    billingPolicy: "comped",
+    freeAccessReviewAt: "2026-12-01T12:00:00.000Z",
+    stripeSubscriptionStatus: null,
+    setupFeeStatus: "due",
+    stripeDefaultPaymentMethodId: null,
   },
   trial: {
     billingStatus: "trialing",
@@ -82,6 +96,7 @@ function input(overrides = {}) {
     smsEnabled: false,
     billingStatus: "not_started",
     billingPolicy: "standard",
+    freeAccessReviewAt: null,
     stripeSubscriptionStatus: null,
     setupFeeStatus: "due",
     stripeDefaultPaymentMethodId: null,
@@ -156,7 +171,7 @@ test("every domain combination produces one valid queue and one valid next actio
     }
   }
 
-  assert.equal(combinations, 1536);
+  assert.equal(combinations, 2048);
 });
 
 test("explicit blocker ownership always wins the next-action decision", () => {
@@ -237,14 +252,42 @@ test("Relay comp never manufactures Stripe trial or active state", () => {
     smsEnabled: true,
     billingStatus: "comped",
     billingPolicy: "comped",
+    freeAccessReviewAt: "2026-12-01T12:00:00.000Z",
     stripeSubscriptionStatus: null,
     setupFeeStatus: "waived",
     stripeDefaultPaymentMethodId: null,
   }));
 
-  assert.equal(state.billing, "card_ready");
+  assert.equal(state.billing, "free");
   assert.equal(state.queueGroup, "running");
   assert.equal(state.nextAction.key, "none");
+  assert.equal(state.freeAccessReviewAt, "2026-12-01T12:00:00.000Z");
+});
+
+test("a paid setup fee with no saved card asks only for a no-charge card setup", () => {
+  const state = deriveOpsState(input({
+    ...canonicalBilling.card_needed,
+  }));
+
+  assert.equal(state.billing, "card_needed");
+  assert.equal(state.labels.billing, "Card needed");
+  assert.equal(state.nextAction.key, "collect_payment_method");
+  assert.match(state.nextAction.detail, /setup fee is settled/i);
+});
+
+test("operator-selected free access review becomes attention without creating billing", () => {
+  const state = deriveOpsState(input({
+    technicalStatus: "live",
+    a2pStatus: "approved",
+    smsEnabled: true,
+    ...canonicalBilling.free,
+    freeAccessReviewAt: "2026-07-01T12:00:00.000Z",
+  }));
+
+  assert.equal(state.billing, "free");
+  assert.equal(state.queueGroup, "needs_attention");
+  assert.equal(state.nextAction.key, "review_free_access");
+  assert.match(state.nextAction.detail, /nothing charges automatically/i);
 });
 
 test("scheduled cancellation remains Stripe-owned and running through period end", () => {

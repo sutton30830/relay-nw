@@ -37,6 +37,8 @@ export type BillingOwnerAction =
 export type AccountBillingRecord = {
   billingStatus: AccountBillingStatus;
   billingPolicy: BillingPolicy;
+  billingPolicyUpdatedAt: string | null;
+  freeAccessReviewAt: string | null;
   commercialOffer: CommercialOffer;
   onboardingStatus: AccountOnboardingStatus;
   stripeCustomerId: string | null;
@@ -104,6 +106,8 @@ export type OperatorBillingOverrideAction =
 const DEFAULT_BILLING_RECORD: AccountBillingRecord = {
   billingStatus: "not_started",
   billingPolicy: "standard",
+  billingPolicyUpdatedAt: null,
+  freeAccessReviewAt: null,
   commercialOffer: "standard",
   onboardingStatus: "setting_up",
   stripeCustomerId: null,
@@ -335,6 +339,7 @@ export function computeBillingLifecycle(input: {
   if (billingStatus === "active" || billingStatus === "trialing" || billingStatus === "comped") {
     const scheduledToCancel = billing.cancelAtPeriodEnd && billingStatus !== "comped";
     const trialEndsAt = formatBillingLifecycleDate(billing.trialEndsAt);
+    const freeReviewDate = formatBillingLifecycleDate(billing.freeAccessReviewAt);
 
     return {
       activationReady,
@@ -354,7 +359,9 @@ export function computeBillingLifecycle(input: {
           ? "Your subscription is scheduled to end with the trial. Relay keeps catching missed calls until then, and Stripe will not begin monthly billing."
           : "Your subscription is scheduled to end at the current billing-period boundary. Relay keeps catching missed calls until then."
         : billingStatus === "comped"
-          ? "Relay is intentionally not charging this account."
+          ? freeReviewDate
+            ? `Relay is free with a review scheduled for ${freeReviewDate}. No card or Stripe subscription is required, and the review never charges automatically.`
+            : "Relay is intentionally free. No card or Stripe subscription is required."
           : billingStatus === "trialing"
             ? trialEndsAt
               ? `Your trial is active until ${trialEndsAt}.`

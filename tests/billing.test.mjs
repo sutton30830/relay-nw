@@ -102,6 +102,28 @@ test("billing lifecycle exposes one safe customer action", () => {
   assert.equal(lifecycle({ billingStatus: "comped", billingPolicy: "comped" }).ownerAction, "none");
 });
 
+test("free access uses an optional operator review date and never creates a payment action", () => {
+  const state = lifecycle({
+    billingStatus: "comped",
+    billingPolicy: "comped",
+    billingPolicyUpdatedAt: "2026-07-31T12:00:00.000Z",
+    freeAccessReviewAt: "2027-01-31T23:59:59.999Z",
+    setupFeeStatus: "due",
+    stripeDefaultPaymentMethodId: null,
+  });
+  assert.equal(state.ownerAction, "none");
+  assert.match(state.summary, /review scheduled for Jan 31, 2027/i);
+  assert.match(state.summary, /review never charges automatically/i);
+
+  const openEnded = lifecycle({
+    billingStatus: "comped",
+    billingPolicy: "comped",
+    freeAccessReviewAt: null,
+  });
+  assert.equal(openEnded.ownerAction, "none");
+  assert.match(openEnded.summary, /No card or Stripe subscription is required/i);
+});
+
 test("subscription Checkout is a restart path, never an initial-trial path", () => {
   assert.deepEqual(
     billing.getBillingCheckoutEligibility({

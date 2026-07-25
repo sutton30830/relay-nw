@@ -403,6 +403,10 @@ test("kickoff links go only to the customer and cannot double-charge a settled s
   assert.equal(paidNeedsCard.cardCheckouts.length, 1);
   assert.equal(paidNeedsCard.emails[0].to, "owner@example.com");
   assert.equal(paidNeedsCard.emails[0].setupFeeAlreadyPaid, true);
+  assert.equal(
+    paidNeedsCard.responseLocation,
+    "https://relay.test/ops/accounts/demo?kickoff=card_link_sent",
+  );
 
   const paidAndReady = await runKickoff({
     accountOverrides: {
