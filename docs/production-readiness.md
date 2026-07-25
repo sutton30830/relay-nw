@@ -32,7 +32,6 @@ Update after deep backend audit (June 2026):
 - Concurrent missed calls from the same caller now resolve deterministically: exactly one lead sends the text (earlier lead wins, id tie-break). Previously both could mark `skipped_recent` and the caller would never be texted.
 - Account resolution failures in Twilio webhook routes no longer 500 with no TwiML and no log; they downgrade to the unresolved-account path (200 TwiML + webhook event + admin alert).
 - The `account_users` email lookup escapes ilike wildcards (tenant-isolation fix).
-- `GET /api/sms-test/status` only returns messages involving the tenant's own phone numbers.
 - New test suite: `tests/audit-fixes.test.mjs`.
 - Deferred (documented, not changed): per-instance intake rate limiting; lead inbox pagination; per-account Twilio credentials (single Twilio account is assumed in recording playback and voicemail download).
 
@@ -127,8 +126,8 @@ Update after Phase 2 activation-proof pass (July 2026):
 
 Update after Phase 3 monitoring/privacy/retention pass (July 2026):
 - Privacy and Terms now explicitly disclose voicemail recording, transcription, AI summarization, service-provider processing, and retention/deletion requests.
-- Added `docs/ops-runbook.md` and an authenticated `/ops/runbook` page covering SMS failures, missing leads, voicemail/transcription failures, alert-email failures, retention posture, and the release checklist.
-- Contract tests now pin the recording/transcription disclosures and the ops runbook coverage.
+- Added `docs/ops-runbook.md` covering SMS failures, missing leads, voicemail/transcription failures, alert-email failures, retention posture, and the release checklist.
+- Contract tests pin the recording/transcription disclosures and the documented ops runbook coverage.
 - Retention remains partially manual: webhook debug logs and inbound SMS bodies are pruned by existing retention settings, but voicemail recordings/transcripts/lead records still require manual deletion until automated recording retention ships.
 - No schema changes; `supabase.sql` does not need to be re-run for this phase.
 

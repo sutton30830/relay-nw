@@ -55,8 +55,6 @@ const setupRequestDetailsTsx = await readFile(new URL("../app/leads/_components/
 const iconTsx = await readFile(new URL("../components/icon.tsx", import.meta.url), "utf8");
 const globalsCss = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 const opsPageTsx = await readFile(new URL("../app/ops/page.tsx", import.meta.url), "utf8");
-const opsBillingPageTsx = await readFile(new URL("../app/ops/billing/page.tsx", import.meta.url), "utf8");
-const opsRunbookPageTsx = await readFile(new URL("../app/ops/runbook/page.tsx", import.meta.url), "utf8");
 const opsSetupRequestsPageTsx = await readFile(new URL("../app/ops/setup-requests/page.tsx", import.meta.url), "utf8");
 const opsHeaderTsx = await readFile(new URL("../app/ops/_components/ops-header.tsx", import.meta.url), "utf8");
 const opsAccountPageTsx = await readFile(new URL("../app/ops/accounts/[id]/page.tsx", import.meta.url), "utf8");
@@ -328,14 +326,8 @@ test("privacy and terms disclose recording, transcription, AI processing, and re
   assert.match(termsPageTsx, /Businesses are responsible/);
 });
 
-test("ops runbook is authenticated and covers failure visibility plus retention", () => {
-  assert.match(appHeaderTsx, /href: "\/ops\/runbook"/);
-  assert.match(opsRunbookPageTsx, /requirePlatformOperator\(\)/);
-  assert.match(opsRunbookPageTsx, /OpsHeader/);
-  assert.match(opsRunbookPageTsx, /Five jobs, one shared language/);
-  assert.match(opsRunbookPageTsx, /Work the queue/);
-  assert.match(opsRunbookPageTsx, /Handle money/);
-  assert.match(opsRunbookPageTsx, /Manage operators/);
+test("ops runbook is documented outside the primary navigation", () => {
+  assert.doesNotMatch(appHeaderTsx, /href: "\/ops\/runbook"/);
   assert.match(opsAccountPageTsx, /getRecentStripeEventsForAccount/);
   assert.match(opsAccountPageTsx, /Stripe webhook processing/);
   assert.match(opsAccountPageTsx, /failedCount/);
@@ -355,10 +347,6 @@ test("ops runbook is authenticated and covers failure visibility plus retention"
   assert.match(opsBillingRouteTs, /setAccountBillingPolicy/);
   assert.doesNotMatch(opsBillingRouteTs, /updateAccountBillingRecord|recordAccountAuditEvents|grant_trial/);
   assert.match(verifyAccountScript, /Stripe event ledger healthy/);
-  assert.match(opsRunbookPageTsx, /New requests sit at the top of Onboarding/);
-  assert.match(opsRunbookPageTsx, /Stripe is the source of truth/);
-  assert.match(opsRunbookPageTsx, /Never revoke yourself/);
-
   assert.match(opsRunbookMd, /SMS Failed, Undelivered, or Not Sent/);
   assert.match(opsRunbookMd, /Voicemail or Transcription Failed/);
   assert.match(opsRunbookMd, /Alert Email Not Received/);
@@ -426,7 +414,6 @@ test("ops pages share the same internal tool actions", () => {
   assert.match(opsAccountPageTsx, /Email \$150 payment link/);
   assert.match(opsAccountPageTsx, /Make founding pilot/);
   assert.match(opsAccountPageTsx, /aria-label="Primary operator action"/);
-  assert.match(opsBillingPageTsx, /redirect\(`\/ops\/accounts\//);
   assert.match(opsAccountDirectoryTsx, /Needs attention/);
   assert.match(opsAccountDirectoryTsx, /Open account/);
   assert.doesNotMatch(opsAccountDirectoryTsx, /Diagnostics/);
@@ -435,12 +422,11 @@ test("ops pages share the same internal tool actions", () => {
   assert.match(appHeaderTsx, /Back to my inbox/);
   assert.match(opsAccountPageTsx, /ops-diagnostics/);
 
-  for (const source of [opsPageTsx, opsRunbookPageTsx, opsAccountPageTsx]) {
+  for (const source of [opsPageTsx, opsAccountPageTsx]) {
     assert.match(source, /requirePlatformOperator\(\)/);
     assert.match(source, /OpsHeader/);
     assert.doesNotMatch(source, /OpsToolbar/);
   }
-  assert.match(opsBillingPageTsx, /requirePlatformOperator\(\)/);
 });
 
 test("customer setup docs describe current assisted provisioning flow", () => {
@@ -615,7 +601,7 @@ test("authenticated app pages share the Relay brand header and owner menu", () =
 
   assert.match(reportsPageTsx, /title="What Relay recovered"/);
 
-  for (const source of [opsPageTsx, opsRunbookPageTsx, opsSetupRequestsPageTsx, opsAccountPageTsx]) {
+  for (const source of [opsPageTsx, opsSetupRequestsPageTsx, opsAccountPageTsx]) {
     assert.doesNotMatch(source, /AppHeader/);
   }
 
@@ -734,7 +720,7 @@ test("authenticated setup page presents one calls-first path without internal te
   assert.match(setupPageTsx, /Calls are live/);
   assert.match(setupPageTsx, /Calls and texting move independently/);
   assert.match(setupPageTsx, /CarrierForwarding relayNumber=/);
-  assert.doesNotMatch(setupPageTsx, /FullTestPanel|ReadinessFact|live-tests|carrier-registration/);
+  assert.doesNotMatch(setupPageTsx, /synthetic|questionnaire/i);
   assert.doesNotMatch(setupPageTsx, /Guide the owner|The owner should|customer&apos;s carrier instructions/);
   assert.doesNotMatch(setupPageTsx, /provisionAccount|signUp|createUser/i);
 });

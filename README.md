@@ -76,7 +76,7 @@ For the customer-by-customer onboarding checklist, see `docs/customer-setup.md`.
 - `/ops/accounts` searchable account directory
 - `/ops/accounts/[id]` independent Calls, Texting, Billing, and blocker workspace
 - `/ops/setup-requests` retired assisted-onboarding URL (redirects to Work queue)
-- `/ops/runbook` authenticated operational runbook
+- `docs/ops-runbook.md` operational runbook (kept outside the primary app navigation)
 - `/api/intake` intake form submission
 - `/api/leads/[id]` lead status update
 - `/api/twilio/voice` Twilio incoming call webhook

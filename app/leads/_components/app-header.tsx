@@ -51,7 +51,6 @@ export function AppHeader({
     ...navItems,
     ...(isOperations
       ? [
-          { key: "runbook", href: "/ops/runbook", icon: "info" as const, label: "Runbook" },
           { key: "back-to-inbox", href: "/leads", icon: "arrowLeft" as const, label: "Back to my inbox" },
         ]
       : []),
@@ -126,8 +125,8 @@ export function AppHeader({
             <div className="mobile-owner-menu__profile">
               <div className="mobile-owner-menu__avatar">{businessInitial}</div>
               <div>
-                <p>{businessName}</p>
-                <span>{isOperations ? "Operations" : "Missed-call inbox"}</span>
+                <p>{isOperations ? "Operations" : "Account menu"}</p>
+                <span>{isOperations ? "Work queue, accounts, and team" : "Inbox and account settings"}</span>
               </div>
             </div>
 

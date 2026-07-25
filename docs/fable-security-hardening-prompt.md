@@ -68,7 +68,6 @@ Key files:
 - `lib/supabase/voicemails.ts`
 - `lib/supabase/calls.ts`
 - `lib/supabase/webhooks.ts`
-- `lib/supabase/health-checks.ts`
 - `lib/supabase/reports.ts`
 - `lib/supabase/accounts.ts`
 - `lib/supabase/setup-requests.ts`
@@ -155,7 +154,6 @@ Audit the money path for failures that could leave a customer believing Relay wo
 - transcription
 - owner/admin notifications
 - weekly digest/cron
-- health-check start/status
 
 Verify or implement:
 

@@ -51,7 +51,7 @@ These are the things that prevent you from charging a stranger today.
 - **Real risk:** if you reuse local dev values in production. Make sure production `SUPABASE_SERVICE_ROLE_KEY`, `LEADS_PASSWORD`, and `LEADS_COOKIE_SECRET` are unique, strong, and rotated per environment. Your local `LEADS_PASSWORD="password"` is fine in dev; do not let that pattern reach prod.
 - **RLS posture:** every Supabase table has RLS enabled with no policies. Correct given service-role-only writes — but it means leaking the service key is total compromise, so guard it accordingly.
 - **Authorization model:** any user with the shared password sees every lead. With one customer this is fine. The instant you put two customers on one instance, customer A reads customer B's leads. Hard wall against multi-tenancy on the current schema.
-- **Toll fraud:** health-check and sms-test endpoints reuse the leads cookie. Bounded — they trigger calls/SMS to the owner's own number — but if you ever expose more endpoints, be deliberate.
+- **Toll fraud:** legacy automated call and SMS diagnostics were removed from the customer surface. Keep any future diagnostic tooling tightly scoped to the authenticated account.
 - **A2P 10DLC:** complete this before charging a customer. Without it, US carriers throttle or block your outbound SMS, which **is the entire product.** Your README knows this; treat it as a launch blocker.
 
 ## Polish & presentation
