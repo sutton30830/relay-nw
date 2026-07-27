@@ -14,6 +14,7 @@ const mutatingOpsRoutes = [
   "app/api/ops/setup-requests/route.ts",
   "app/api/ops/team/route.ts",
   "app/api/ops/twilio/assign/route.ts",
+  "app/api/ops/twilio/release/route.ts",
 ];
 
 test("every mutating Operations route requires an explicit operator action or write gate", async () => {

@@ -273,6 +273,18 @@ export default async function OpsAccountPage({
   const carrierMessage = carrierNotice(notices.carrier);
   const numberMessage = notices.number === "assigned"
     ? "Relay number assigned and configured."
+    : notices.number === "released"
+      ? "Relay number detached from this closed account. It remains in Twilio and can now be assigned elsewhere."
+      : notices.number === "none"
+        ? "No Relay number mapping was attached to this account."
+        : notices.number === "release_requires_closed"
+          ? "Close the account before detaching its Relay number. This protects active call routing."
+          : notices.number === "reason_required"
+            ? "Add a meaningful reason (at least five characters) before detaching the number."
+            : notices.number === "confirmation_required"
+              ? "Confirm the number detachment before applying it."
+              : notices.number === "release_failed"
+                ? "Number detachment failed. The account mapping was not changed."
     : notices.number === "invalid"
       ? "Enter a US number in +1 format."
       : notices.number
@@ -288,7 +300,7 @@ export default async function OpsAccountPage({
   const primaryDestination = nextActionDestination(opsState.nextAction.key);
   const callsControlOpen =
     primaryDestination === "#calls" ||
-    Boolean((notices.number && notices.number !== "assigned") || (notices.calls && notices.calls !== "saved"));
+    Boolean((notices.number && notices.number !== "assigned" && notices.number !== "released" && notices.number !== "none") || (notices.calls && notices.calls !== "saved"));
   const textingControlOpen =
     primaryDestination === "#texting" ||
     Boolean(notices.carrier && !carrierMessage?.startsWith("Twilio campaign status synchronized"));
@@ -432,6 +444,18 @@ export default async function OpsAccountPage({
                       <button className="btn btn-secondary" name="action" value="attach_existing">Attach number</button>
                     </div>
                   </form>
+                  {operator.role === "super_admin" && runtime?.twilioPhoneNumber && summary.accountStatus === "archived" && summary.technicalStatus === "closed" ? (
+                    <form action="/api/ops/twilio/release" method="post" className="ops-compact-form">
+                      <input type="hidden" name="account_slug" value={summary.accountSlug} />
+                      <div>
+                        <strong>Detach this Relay number</strong>
+                        <p>Use after closing the account. This removes the account mapping; the number stays in Twilio for another account.</p>
+                      </div>
+                      <label className="form-field"><span className="field-label">Reason</span><input className="field" name="reason" minLength={5} maxLength={240} required placeholder="e.g. reassigning pilot number" /></label>
+                      <label><input type="checkbox" name="confirmation" value="confirmed" required /> Confirm forwarding and text-back are disabled for this account.</label>
+                      <button className="btn btn-secondary" type="submit">Detach number</button>
+                    </form>
+                  ) : null}
                   <form action="/api/ops/calls" method="post" className="ops-compact-form">
                     <input type="hidden" name="account_slug" value={summary.accountSlug} />
                     <div>

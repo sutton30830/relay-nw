@@ -638,6 +638,17 @@ export async function assignPrimaryAccountPhoneNumber(input: {
   return { numberChanged, previousPhoneNumber: previousPhoneNumber || null };
 }
 
+/** Detach every Relay number mapping from a closed account for safe reassignment. */
+export async function releaseAccountPhoneNumbers(accountId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("account_phone_numbers")
+    .delete()
+    .eq("account_id", accountId)
+    .select("phone_number");
+  if (error) throw error;
+  return (data ?? []).map((row) => normalizePhoneNumber(String(row.phone_number ?? ""))).filter(Boolean);
+}
+
 export async function getAccountConfigByAccountId(accountId: string | null | undefined) {
   if (!accountId || isPlaceholderSupabaseConfig()) {
     return null;
