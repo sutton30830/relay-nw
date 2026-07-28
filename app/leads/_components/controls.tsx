@@ -51,9 +51,11 @@ export function PriorityControl({
 export function StatusControl({
   status,
   onChange,
+  disabled = false,
 }: {
   status: LeadStatus;
   onChange: (status: LeadStatus) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="lead-card__status-ctrl">
@@ -63,6 +65,8 @@ export function StatusControl({
           type="button"
           className={`status-seg ${status === option ? "status-seg--on" : ""}`}
           onClick={() => onChange(option)}
+          disabled={disabled}
+          aria-pressed={status === option}
         >
           {STATUS_LABELS[option]}
         </button>

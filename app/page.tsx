@@ -38,6 +38,7 @@ export default function HomePage() {
           </div>
         </div>
         <div className="app-head__right app-head__right--primary">
+          <Link className="text-link home-header__login" href="/login">Customer sign in</Link>
           <InboxLink className="btn btn-secondary btn-header home-header__inbox">
             <Icon name="inbox" size={13} /> Inbox
           </InboxLink>
@@ -61,7 +62,7 @@ export default function HomePage() {
               Request setup <Icon name="arrowRight" size={14} />
             </Link>
             <p className="home-hero__owner-link">
-              Already using Relay? <InboxLink className="text-link">Open your inbox</InboxLink>
+              Already using Relay? <Link className="text-link" href="/login">Sign in</Link> · <InboxLink className="text-link">Open your inbox</InboxLink>
             </p>
           </div>
           <p className="home-hero__note">$99/month · first 30 days free</p>

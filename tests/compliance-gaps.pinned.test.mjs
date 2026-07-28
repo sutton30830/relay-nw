@@ -105,12 +105,12 @@ test(
 );
 
 test(
-  "lead category changes optimistically update counts and reveal the destination bucket",
+  "lead category changes update immediately without navigating the entire inbox",
   () => {
     assert.match(leadsInboxHook, /optimisticCounts/);
     assert.match(leadsInboxHook, /applyCountDeltas/);
-    assert.match(leadsInboxHook, /filter !== status/);
-    assert.match(leadsInboxHook, /setFilter\(status\)/);
+    assert.doesNotMatch(leadsInboxHook, /setFilter\(status\)/);
+    assert.match(leadsInboxHook, /Status is an edit, not an inbox navigation/);
     assert.match(leadsInboxHook, /setItems\(\(current\) => applyPendingWrites\(leads, current\)\)/);
     assert.match(leadsInboxHook, /missingPendingItems/);
     assert.match(leadsInboxHook, /router\.prefetch\(buildInboxHref\(item\.key, query\)\)/);

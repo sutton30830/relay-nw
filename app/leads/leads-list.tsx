@@ -112,7 +112,7 @@ export function LeadsList({
         subtitle="Newest missed calls first. Call back, text, or update the status from each card."
       />
 
-      <nav className="filters clean-scroll" aria-label="Filter leads">
+      <nav className="filters clean-scroll" aria-label="Filter leads" aria-busy={inbox.isSearching}>
         {FILTERS.map((item) => {
           const count = inbox.counts[item.key];
           const active = inbox.filter === item.key;
@@ -123,12 +123,14 @@ export function LeadsList({
               className={`filter-pill ${active ? "filter-pill--on" : ""}`}
               onClick={() => inbox.setFilter(item.key)}
               aria-pressed={active}
+              disabled={inbox.isSearching}
             >
               {item.label}
               <span className="filter-pill__count">{count}</span>
             </button>
           );
         })}
+        {inbox.isSearching ? <span className="filters__loading" role="status">Loading leads…</span> : null}
       </nav>
 
       {hasPreviousPage || hasNextPage ? (

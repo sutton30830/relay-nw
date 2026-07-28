@@ -59,6 +59,10 @@ export function ConversationView({
   const [transcribingId, setTranscribingId] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [status, setStatus] = useState<LeadStatus>(lead.status);
+  const [statusSaveState, setStatusSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const confirmedStatusRef = useRef<LeadStatus>(lead.status);
+  const statusSaveVersionRef = useRef(0);
+  const statusSavedTimerRef = useRef<number | null>(null);
   const [priorityOverride, setPriorityOverride] = useState<ReplyPriorityOverride>(lead.reply_priority_override);
   const [bookedAt, setBookedAt] = useState<string | null>(lead.booked_at);
   const [jobValueCents, setJobValueCents] = useState<number | null>(lead.job_value_cents);
@@ -142,11 +146,19 @@ export function ConversationView({
     setName(lead.name ?? "");
     setNotes(lead.notes ?? "");
     setStatus(lead.status);
+    confirmedStatusRef.current = lead.status;
+    setStatusSaveState("idle");
     setPriorityOverride(lead.reply_priority_override);
     setBookedAt(lead.booked_at);
     setJobValueCents(lead.job_value_cents);
     setSaveError(null);
   }, [lead.id, lead.name, lead.notes, lead.status, lead.reply_priority_override, lead.booked_at, lead.job_value_cents]);
+
+  useEffect(() => {
+    return () => {
+      if (statusSavedTimerRef.current) window.clearTimeout(statusSavedTimerRef.current);
+    };
+  }, []);
 
   async function saveLeadPatch(body: Parameters<typeof patchLead>[1]) {
     setSaveError(null);
@@ -155,6 +167,31 @@ export function ConversationView({
       setSaveError("Could not save that change. Try again.");
     }
     return ok;
+  }
+
+  async function saveStatus(nextStatus: LeadStatus) {
+    if (nextStatus === status || statusSaveState === "saving") return;
+
+    const version = ++statusSaveVersionRef.current;
+    const previousStatus = confirmedStatusRef.current;
+    if (statusSavedTimerRef.current) window.clearTimeout(statusSavedTimerRef.current);
+    setStatus(nextStatus);
+    setStatusSaveState("saving");
+
+    const ok = await saveLeadPatch({ status: nextStatus });
+    if (version !== statusSaveVersionRef.current) return;
+
+    if (!ok) {
+      setStatus(previousStatus);
+      setStatusSaveState("error");
+      return;
+    }
+
+    confirmedStatusRef.current = nextStatus;
+    setStatusSaveState("saved");
+    statusSavedTimerRef.current = window.setTimeout(() => {
+      if (version === statusSaveVersionRef.current) setStatusSaveState("idle");
+    }, 1_500);
   }
 
   async function submitReply() {
@@ -248,14 +285,18 @@ export function ConversationView({
             <span className="t-eyebrow">Status</span>
             <StatusControl
               status={status}
-              onChange={(nextStatus: LeadStatus) => {
-                const previousStatus = status;
-                setStatus(nextStatus);
-                void saveLeadPatch({ status: nextStatus }).then((ok) => {
-                  if (!ok) setStatus(previousStatus);
-                });
-              }}
+              disabled={statusSaveState === "saving"}
+              onChange={(nextStatus: LeadStatus) => void saveStatus(nextStatus)}
             />
+            <span className={`convo__save-state convo__save-state--${statusSaveState}`} role="status">
+              {statusSaveState === "saving"
+                ? "Saving…"
+                : statusSaveState === "saved"
+                  ? "Saved"
+                  : statusSaveState === "error"
+                    ? "Not saved"
+                    : ""}
+            </span>
           </div>
           <div className="convo__detail">
             <span className="t-eyebrow">Callback timing</span>

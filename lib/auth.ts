@@ -165,14 +165,23 @@ async function findAccountUserRows(userId: string, email: string | null) {
 export async function getAccountMembershipsForUser(user: { id: string; email?: string | null }) {
   const email = user.email ?? null;
   const rows = await findAccountUserRows(user.id, email);
+  // Account config reads are independent of the platform-operator lookup.
+  // Starting them now removes one full Supabase round trip from every
+  // authenticated page and lead mutation without weakening tenant checks.
+  const accountConfigsPromise = Promise.all(
+    rows.map((row) => getAccountConfigByAccountId(row.account_id)),
+  );
   if (typeof claimPlatformOperatorInvite === "function") {
     await claimPlatformOperatorInvite({ userId: user.id, email });
   }
-  const platformOperator = await getPlatformOperatorByUserId(user.id);
+  const [platformOperator, accountConfigs] = await Promise.all([
+    getPlatformOperatorByUserId(user.id),
+    accountConfigsPromise,
+  ]);
   const memberships: AccountMembership[] = [];
 
-  for (const row of rows) {
-    const account = await getAccountConfigByAccountId(row.account_id);
+  for (const [index, row] of rows.entries()) {
+    const account = accountConfigs[index];
     if (!account?.accountId) {
       continue;
     }

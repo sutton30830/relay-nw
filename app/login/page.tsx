@@ -59,6 +59,7 @@ export default async function LoginPage({
         <p className="t-eyebrow gate-eyebrow">Relay NW · Protected</p>
         <h1 className="t-display gate-title">Owner sign in</h1>
         <p className="gate-sub">Use the email and password connected to your Relay NW account.</p>
+        <p className="gate-sub">New to Relay? <Link className="text-link" href="/intake">Request setup</Link>.</p>
 
         {params.sent ? (
           <p className="gate-sub">
@@ -121,7 +122,7 @@ export default async function LoginPage({
         {/* One recovery path — opens automatically after a failed sign-in or when
             a setup link was just requested. */}
         <details className="gate-disclosure" open={passwordError || resetError || Boolean(params.reset)}>
-          <summary>Forgot or create password?</summary>
+          <summary>Forgot your password or signing in for the first time?</summary>
           <form action="/api/auth/password-reset" method="POST" className="gate-form">
             <input type="hidden" name="next" value="/account/password" />
             <p className="gate-hint">We&apos;ll email a link to set a new password.</p>

@@ -115,6 +115,9 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
   const [optimisticCounts, setOptimisticCounts] = useState<LeadCounts>(server.counts);
   const [openingLeadId, setOpeningLeadId] = useState<string | null>(null);
   const [isNavigating, startNavigation] = useTransition();
+  const navigationStartedRef = useRef(false);
+  const navigationInFlightRef = useRef(false);
+  const queuedNavigationRef = useRef<{ filter: Filter; query: string } | null>(null);
   const activeItems = sampleMode ? sampleItems : items;
 
   useEffect(() => {
@@ -162,17 +165,41 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
   // so we don't fire a request per keystroke. Either one drops the page param,
   // so a new filter/search starts from page 1.
   function navigateToInbox(nextFilter: Filter, nextQuery: string) {
+    if (navigationInFlightRef.current) {
+      queuedNavigationRef.current = { filter: nextFilter, query: nextQuery };
+      return;
+    }
+    navigationInFlightRef.current = true;
     startNavigation(() => {
       router.push(buildInboxHref(nextFilter, nextQuery), { scroll: false });
     });
   }
 
   function setFilter(nextFilter: Filter) {
+    if (!sampleMode && (nextFilter === filter || navigationInFlightRef.current)) return;
     setFilterState(nextFilter);
     if (sampleMode) return;
     if (searchDebounceRef.current) window.clearTimeout(searchDebounceRef.current);
     navigateToInbox(nextFilter, query);
   }
+
+  // A transition can briefly report false before React begins it. Only unlock
+  // category navigation after we've observed the transition start and finish,
+  // preventing rapid clicks from launching competing server navigations.
+  useEffect(() => {
+    if (isNavigating) {
+      navigationStartedRef.current = true;
+      return;
+    }
+
+    if (navigationStartedRef.current) {
+      navigationStartedRef.current = false;
+      navigationInFlightRef.current = false;
+      const queued = queuedNavigationRef.current;
+      queuedNavigationRef.current = null;
+      if (queued) navigateToInbox(queued.filter, queued.query);
+    }
+  }, [isNavigating]);
 
   function setQuery(nextQuery: string) {
     setQueryState(nextQuery);
@@ -288,10 +315,10 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
   const counts = sampleMode ? sampleCounts : optimisticCounts;
   const filteredItems = useMemo(
     () =>
-      filter === "trash"
-        ? filterLeads(condensedTrash.leads, filter, query)
-        : filterLeads(condensed.leads, filter, query),
-    [condensed, condensedTrash, filter, query],
+      (sampleMode ? filter : server.filter) === "trash"
+        ? filterLeads(condensedTrash.leads, sampleMode ? filter : server.filter, sampleMode ? query : server.query)
+        : filterLeads(condensed.leads, sampleMode ? filter : server.filter, sampleMode ? query : server.query),
+    [condensed, condensedTrash, filter, query, sampleMode, server.filter, server.query],
   );
   const sortedItems = useMemo(
     () => sortLeadsForWork(filteredItems),
@@ -495,14 +522,11 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
   }
 
   async function updateStatus(id: string, status: LeadStatus) {
-    const shouldRevealDestination = !sampleMode && filter !== "all" && filter !== "trash" && filter !== status;
-    const saved = mutateLeads([{ id, fields: { status } }], () => patchLead(id, { status }));
-
-    if (shouldRevealDestination) {
-      setFilter(status);
-    }
-
-    await saved;
+    // Status is an edit, not an inbox navigation. The old flow also switched
+    // the entire inbox to the destination category, racing the PATCH with a
+    // server render and the periodic refresh. Keep the drawer/conversation
+    // stable and let the optimistic lead/count update render immediately.
+    await mutateLeads([{ id, fields: { status } }], () => patchLead(id, { status }));
   }
 
   // Trashing a caller trashes the whole thread: the visible card is just the

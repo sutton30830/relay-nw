@@ -1773,6 +1773,11 @@ code {
   font-weight: 650;
   text-align: left;
 }
+
+.home-header__login {
+  font-size: 13px;
+  font-weight: 700;
+}
 .gate-disclosure > summary::-webkit-details-marker {
   display: none;
 }
@@ -2914,6 +2919,21 @@ code {
 .filter-pill--on .filter-pill__count {
   background: var(--ink);
   color: var(--paper);
+}
+
+.filter-pill:disabled {
+  cursor: wait;
+}
+
+.filters__loading {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  color: var(--ink-3);
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
 }
 
 .inbox-page-meta {
@@ -6211,6 +6231,18 @@ code {
 }
 .convo__detail--wide {
   grid-column: 1 / -1;
+}
+.convo__save-state {
+  min-height: 16px;
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 650;
+}
+.convo__save-state--saved {
+  color: var(--good);
+}
+.convo__save-state--error {
+  color: var(--danger);
 }
 .convo__outcome {
   display: flex;
