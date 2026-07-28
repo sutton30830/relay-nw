@@ -51,7 +51,7 @@ export async function getLeadForVoicemailTranscription(id: string, inputAccountI
 
   const { data, error } = await supabaseAdmin
     .from("leads")
-    .select("id, phone, recording_sid, voicemail_transcript, voicemail_summary, voicemail_transcription_status, voicemail_transcribed_at")
+    .select("id, phone, recording_sid, recording_duration, voicemail_transcript, voicemail_summary, voicemail_transcription_status, voicemail_transcribed_at")
     .eq("id", id)
     .eq("account_id", accountId)
     .maybeSingle();
@@ -62,6 +62,7 @@ export async function getLeadForVoicemailTranscription(id: string, inputAccountI
     id: string;
     phone: string | null;
     recording_sid: string | null;
+    recording_duration: number | null;
     voicemail_transcript: string | null;
     voicemail_summary: string | null;
     voicemail_transcription_status: VoicemailTranscriptionStatus;
@@ -163,6 +164,7 @@ export async function listLeadsNeedingTranscriptionRetry(limit = 10) {
     .from("leads")
     .select("id, account_id, voicemail_transcription_status, voicemail_transcribed_at")
     .not("recording_sid", "is", null)
+    .or("recording_duration.is.null,recording_duration.gte.3")
     .not("voicemail_transcription_error", "ilike", "Twilio recording download failed with 404%")
     .is("deleted_at", null)
     .or(

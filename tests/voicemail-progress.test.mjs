@@ -18,6 +18,10 @@ async function loadUtils() {
       TODAY_REPLY_PATTERNS: [],
       LEGACY_FORWARDING_MESSAGE: "__legacy__",
     },
+    "@/lib/voicemail-quality": {
+      hasUsableVoicemail: (recordingSid, duration) =>
+        Boolean(recordingSid) && !(typeof duration === "number" && duration < 3),
+    },
   };
   const module = { exports: {} };
   const require = (specifier) => {
@@ -70,4 +74,8 @@ test("old voicemail, never transcribed => not in progress", () => {
 
 test("no recording => not in progress", () => {
   assert.equal(shouldShowVoicemailSummaryProgress(lead({ recording_sid: null }), now), false);
+});
+
+test("too-short recording is treated as no voicemail and never shows summary progress", () => {
+  assert.equal(shouldShowVoicemailSummaryProgress(lead({ recording_duration: 1 }), now), false);
 });

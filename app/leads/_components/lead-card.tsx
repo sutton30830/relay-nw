@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Icon } from "@/components/icon";
 import type { Lead, LeadStatus } from "@/lib/supabase";
+import { hasUsableVoicemail } from "@/lib/voicemail-quality";
 import { LEGACY_FORWARDING_MESSAGE, STATUS_LABELS, STATUS_OPTIONS } from "../_constants";
 import { formatCurrency, formatPhone, formatRelativeTime, getLeadPriority, initials, isBookedLead, needsAttention, parseSetupRequestMessage, setupRequestSummary, shouldShowVoicemailSummaryProgress, sourceLabel } from "../_utils";
 import { BookedValueInput } from "./controls";
@@ -75,25 +76,27 @@ export function LeadCard({
   const hasUsefulMessage = Boolean(lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE);
   const setupRequestFields = lead.source === "intake_form" ? parseSetupRequestMessage(lead.message) : [];
   const setupSummary = setupRequestSummary(setupRequestFields);
-  const summaryGenerating = !lead.voicemail_summary && lead.voicemail_transcription_status === "processing";
+  const hasVoicemail = hasUsableVoicemail(lead.recording_sid, lead.recording_duration);
+  const summaryGenerating =
+    hasVoicemail && !lead.voicemail_summary && lead.voicemail_transcription_status === "processing";
   const summaryPreparing =
     shouldShowVoicemailSummaryProgress(lead, now) && lead.voicemail_transcription_status !== "processing";
-  const requestLabel = lead.voicemail_summary
+  const requestLabel = hasVoicemail && lead.voicemail_summary
     ? "What they need"
     : hasUsefulMessage
       ? lead.source === "intake_form"
         ? "Setup request"
         : "Request"
-      : lead.recording_sid
+      : hasVoicemail
         ? "Voicemail"
         : "Missed call";
-  const requestText = lead.voicemail_summary
+  const requestText = hasVoicemail && lead.voicemail_summary
     ? lead.voicemail_summary
     : setupSummary
       ? setupSummary
     : hasUsefulMessage
       ? lead.message
-      : lead.recording_sid
+      : hasVoicemail
         ? lead.voicemail_transcription_status === "failed"
           ? "Voicemail saved. Summary unavailable. Open the lead to listen."
           : lead.voicemail_transcript
@@ -240,7 +243,7 @@ export function LeadCard({
       {/* Play the voicemail straight from the inbox — the core listen→call-back
           loop shouldn't need a click into the lead. Lazy (loads on play), so a
           full inbox doesn't fetch every recording. */}
-      {lead.recording_sid ? (
+      {hasVoicemail && lead.recording_sid ? (
         <div className="lead-card__voicemail" onClick={(event) => event.stopPropagation()}>
           <VoicemailPlayer recordingSid={lead.recording_sid} fallbackDuration={lead.recording_duration} />
         </div>

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
 import type { InboundMessage, Lead, LeadStatus, OutboundMessage, ReplyPriorityOverride } from "@/lib/supabase";
 import { smsDeliveryIssue, smsDeliveryStatusLabel } from "@/lib/twilio/sms-delivery";
+import { hasUsableVoicemail } from "@/lib/voicemail-quality";
 import { patchLead, requestVoicemailSummary, sendLeadReply } from "../_api";
 import { VoicemailPlayer } from "../_components/voicemail-player";
 import { formatPhone, getLeadPriority, initials, isBookedLead, sourceLabel } from "../_utils";
@@ -402,7 +403,7 @@ export function ConversationView({
                 <Icon name={item.lead.source === "missed_call" ? "phone" : "message"} size={12} />{" "}
                 {leadEventLabel(item.lead)} · {formatTime(item.created_at)}
               </p>
-              {item.lead.recording_sid ? (
+              {hasUsableVoicemail(item.lead.recording_sid, item.lead.recording_duration) && item.lead.recording_sid ? (
                 <div className="convo__msg convo__msg--in convo__vm">
                   <span className="convo__vm-label">Voicemail</span>
                   <VoicemailPlayer

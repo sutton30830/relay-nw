@@ -198,6 +198,16 @@ function makeMocks(state) {
       });
       return { updated: true, leadId: lead.id, matchedBy };
     },
+    updateLeadVoicemailTranscription: async (input) => {
+      const lead = state.leads.get(input.id);
+      if (!lead) return;
+      Object.assign(lead, {
+        voicemail_transcript: input.transcript,
+        voicemail_summary: input.summary,
+        voicemail_transcription_status: input.status,
+        voicemail_transcription_error: input.error ?? null,
+      });
+    },
     logWebhookEvent: async (input) => state.webhookEvents.push(input),
   };
 
@@ -275,6 +285,10 @@ function makeMocks(state) {
       transcribeLeadVoicemail: async (leadId, accountId) => {
         state.transcriptions.push({ leadId, accountId });
       },
+    },
+    "@/lib/voicemail-quality": {
+      NO_USABLE_VOICEMAIL_MESSAGE: "No usable voicemail was recorded. Relay did not generate a transcript.",
+      recordingIsTooShort: (duration) => typeof duration === "number" && duration < 3,
     },
   };
 }
@@ -383,6 +397,32 @@ test("activation flow: missed call creates lead, texts caller, reconciles delive
   assert.ok(tenantEvents.some((event) => event.source === "twilio_sms_status" && /MessageStatus: delivered/.test(event.error ?? "")));
   assert.ok(tenantEvents.some((event) => event.source === "twilio_inbound_sms" && /Forwarded inbound reply/.test(event.error ?? "")));
   assert.ok(tenantEvents.some((event) => event.source === "twilio_recording" && /Recording attached/.test(event.error ?? "")));
+});
+
+test("one-second recording is stored as no voicemail and never sent for transcription", async () => {
+  const state = makeState();
+  const modules = await loadActivationModules(makeMocks(state));
+  await runMissedCall(modules);
+
+  const response = await postForm(modules.recording, "https://relay.test/api/twilio/recording", {
+    CallSid: CALL_SID,
+    From: CALLER,
+    To: ACCOUNT.twilioPhoneNumber,
+    RecordingSid: "RE_too_short",
+    RecordingUrl: "https://api.twilio.com/2010-04-01/Accounts/AC123/Recordings/RE_too_short",
+    RecordingDuration: "1",
+    RecordingStatus: "completed",
+  });
+
+  const lead = state.leads.get("lead-1");
+  assert.equal(response.status, 200);
+  assert.equal(lead.recording_duration, 1);
+  assert.equal(lead.voicemail_transcript, null);
+  assert.equal(lead.voicemail_summary, null);
+  assert.equal(lead.voicemail_transcription_status, "failed");
+  assert.match(lead.voicemail_transcription_error, /No usable voicemail was recorded/);
+  assert.deepEqual(state.afterCallbacks, [], "short audio must never schedule AI transcription");
+  assert.deepEqual(state.transcriptions, []);
 });
 
 test("duplicate missed-call webhook does not create a second lead or double-text the caller", async () => {

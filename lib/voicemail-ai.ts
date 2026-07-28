@@ -9,6 +9,11 @@ import {
 } from "@/lib/supabase";
 import { sendOwnerSms } from "@/lib/twilio";
 import { notifyAdminOperationalIssue, notifyOwnerVoicemailReady } from "@/lib/email";
+import {
+  NO_USABLE_VOICEMAIL_MESSAGE,
+  recordingIsTooShort,
+  transcriptLooksLikeSilenceHallucination,
+} from "@/lib/voicemail-quality";
 
 type OpenAITranscriptionResponse = {
   text?: string;
@@ -167,7 +172,12 @@ export function isGenericVoicemailSummary(summary: string) {
 function normalizeSummary(summary: string): string | null {
   const trimmed = summary.trim();
 
-  if (!trimmed || /^no_details\.?$/i.test(trimmed) || isGenericVoicemailSummary(trimmed)) {
+  if (
+    !trimmed ||
+    /^no_details\.?$/i.test(trimmed) ||
+    /^non-service voicemail:\s*(?:no (?:usable )?details?|no message|nothing (?:was )?said)/i.test(trimmed) ||
+    isGenericVoicemailSummary(trimmed)
+  ) {
     return null;
   }
 
@@ -299,6 +309,18 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
     throw new Error("Lead does not have a voicemail recording.");
   }
 
+  if (recordingIsTooShort(lead.recording_duration)) {
+    await updateLeadVoicemailTranscription({
+      accountId,
+      id: leadId,
+      transcript: null,
+      summary: null,
+      status: "failed",
+      error: NO_USABLE_VOICEMAIL_MESSAGE,
+    });
+    throw new Error(NO_USABLE_VOICEMAIL_MESSAGE);
+  }
+
   if (lead.voicemail_summary && lead.voicemail_transcript) {
     return {
       transcript: lead.voicemail_transcript,
@@ -317,6 +339,11 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
   try {
     const audio = await fetchRecordingAudio(lead.recording_sid);
     const rawTranscript = await transcribeAudio(audio);
+
+    if (transcriptLooksLikeSilenceHallucination(rawTranscript, lead.recording_duration)) {
+      throw new Error(NO_USABLE_VOICEMAIL_MESSAGE);
+    }
+
     const transcript = await clarifyTranscript(rawTranscript);
     // null when the model had nothing specific to say — stored as null so the
     // UI can show "listen to the voicemail" instead of vague boilerplate.

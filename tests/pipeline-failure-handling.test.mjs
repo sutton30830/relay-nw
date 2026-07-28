@@ -30,6 +30,8 @@ async function loadTsModule(path, mocks) {
   return module.exports;
 }
 
+const voicemailQualityModule = await loadTsModule("lib/voicemail-quality.ts", {});
+
 const ACCOUNT = {
   accountId: "acct-1",
   accountSlug: "demo",
@@ -513,6 +515,7 @@ function makeVoicemailMocks(state) {
           ? { level: "fast", reason: "mentioned flooding" }
           : { level: "normal", reason: null },
     },
+    "@/lib/voicemail-quality": voicemailQualityModule,
     "@/lib/supabase": {
       claimVoicemailTranscription: async (input) => {
         const claimed = state.claimResult ?? true;

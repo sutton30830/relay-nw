@@ -8,6 +8,7 @@ import {
   resolveAccountByTwilioNumber,
   updateCallRecordingByCallSid,
   updateLeadRecordingByCallSid,
+  updateLeadVoicemailTranscription,
   type TenantAccountRuntimeConfig,
   resolveAccountSafely,
 } from "@/lib/supabase";
@@ -22,6 +23,7 @@ import {
 import { handleUnresolvedTwilioAccount } from "@/lib/twilio/unresolved-account";
 import { emptyTwiml, twimlResponse } from "@/lib/twiml";
 import { normalizePhoneNumber } from "@/lib/phone";
+import { NO_USABLE_VOICEMAIL_MESSAGE, recordingIsTooShort } from "@/lib/voicemail-quality";
 
 // Automatic voicemail transcription runs in after() within this function's lifetime.
 // Without an explicit maxDuration, Vercel's default function timeout can kill the
@@ -143,6 +145,10 @@ function shouldAutoTranscribeRecording(input: ReturnType<typeof parseRecordingPa
     return false;
   }
 
+  if (recordingIsTooShort(input.recordingDuration)) {
+    return false;
+  }
+
   return input.recordingStatus === "completed" || !input.recordingStatus;
 }
 
@@ -217,6 +223,17 @@ export async function POST(request: Request) {
 
   try {
     const result = await updateLeadRecording(account, recording, correlationId);
+
+    if (result.leadId && recordingIsTooShort(recording.recordingDuration)) {
+      await updateLeadVoicemailTranscription({
+        accountId: account.accountId,
+        id: result.leadId,
+        transcript: null,
+        summary: null,
+        status: "failed",
+        error: NO_USABLE_VOICEMAIL_MESSAGE,
+      });
+    }
 
     if (account.voicemailTranscriptionEnabled && result.leadId && shouldAutoTranscribeRecording(recording)) {
       after(async () => {

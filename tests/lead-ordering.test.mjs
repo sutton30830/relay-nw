@@ -25,6 +25,13 @@ async function loadLeadUtils() {
       };
     }
 
+    if (specifier === "@/lib/voicemail-quality") {
+      return {
+        hasUsableVoicemail: (recordingSid, duration) =>
+          Boolean(recordingSid) && !(typeof duration === "number" && duration < 3),
+      };
+    }
+
     throw new Error(`Missing test mock for ${specifier}`);
   };
 

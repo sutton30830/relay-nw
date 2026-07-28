@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "@/components/icon";
 import type { Lead, LeadStatus, ReplyPriorityOverride } from "@/lib/supabase";
 import { smsDeliveryIssue, smsDeliveryStatusLabel } from "@/lib/twilio/sms-delivery";
+import { hasUsableVoicemail } from "@/lib/voicemail-quality";
 import type { SendReplyResult } from "../_api";
 import { LEGACY_FORWARDING_MESSAGE, QUICK_REPLIES } from "../_constants";
 import { followUpStatusText, formatDuration, formatPhone, formatRelativeTime, getLeadPriority, initials, isBookedLead, parseSetupRequestMessage } from "../_utils";
@@ -73,22 +74,24 @@ export function LeadDrawer({
   const priority = getLeadPriority(lead);
   const hasUsefulMessage = Boolean(lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE);
   const setupRequestFields = lead.source === "intake_form" ? parseSetupRequestMessage(lead.message) : [];
-  const summaryGenerating = !lead.voicemail_summary && lead.voicemail_transcription_status === "processing";
+  const hasVoicemail = hasUsableVoicemail(lead.recording_sid, lead.recording_duration);
+  const summaryGenerating =
+    hasVoicemail && !lead.voicemail_summary && lead.voicemail_transcription_status === "processing";
   const autoTextIssue = smsDeliveryIssue(lead.sms_status, lead.sms_error);
-  const requestLabel = lead.voicemail_summary
+  const requestLabel = hasVoicemail && lead.voicemail_summary
     ? "What they need"
     : hasUsefulMessage
       ? lead.source === "intake_form"
         ? "Setup request"
         : "Request"
-      : lead.recording_sid
+      : hasVoicemail
         ? "Voicemail"
         : "Next step";
-  const requestText = lead.voicemail_summary
+  const requestText = hasVoicemail && lead.voicemail_summary
     ? lead.voicemail_summary
     : hasUsefulMessage
       ? lead.message
-      : lead.recording_sid
+      : hasVoicemail
         ? lead.voicemail_transcription_status === "failed"
           ? "Voicemail saved. Summary unavailable. Listen to the recording below."
           : lead.voicemail_transcript
@@ -283,7 +286,7 @@ export function LeadDrawer({
           />
         </div>
 
-        {lead.recording_sid ? (
+        {hasVoicemail && lead.recording_sid ? (
           <div className="drawer__message voicemail-card">
             <div>
               <p className="t-eyebrow">Voicemail</p>
@@ -481,7 +484,7 @@ export function LeadDrawer({
                   {previous.voicemail_summary ? (
                     <p style={{ margin: "0 0 6px" }}>{previous.voicemail_summary}</p>
                   ) : null}
-                  {previous.recording_sid ? (
+                  {hasUsableVoicemail(previous.recording_sid, previous.recording_duration) && previous.recording_sid ? (
                     <VoicemailAudio recordingSid={previous.recording_sid} />
                   ) : null}
                   {previous.voicemail_transcript ? (

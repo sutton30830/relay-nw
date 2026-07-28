@@ -1,4 +1,5 @@
 import type { Lead } from "@/lib/supabase";
+import { hasUsableVoicemail } from "@/lib/voicemail-quality";
 import type { Filter, LeadCounts, NextAction, ReplyPriority } from "./_types";
 import { AUTO_VOICEMAIL_SUMMARY_LOOKBACK_MS, FAST_REPLY_PATTERNS, LEGACY_FORWARDING_MESSAGE, TODAY_REPLY_PATTERNS } from "./_constants";
 
@@ -245,11 +246,13 @@ export function needsAttention(lead: Lead) {
 }
 
 export function leadPriorityText(lead: Lead) {
+  const usableVoicemail = hasUsableVoicemail(lead.recording_sid, lead.recording_duration);
+
   return [
     lead.inbound_messages?.map((message) => message.body).join(" "),
-    lead.voicemail_summary,
+    usableVoicemail ? lead.voicemail_summary : null,
     lead.message === LEGACY_FORWARDING_MESSAGE ? null : lead.message,
-    lead.voicemail_transcript,
+    usableVoicemail ? lead.voicemail_transcript : null,
     lead.notes,
   ]
     .filter(Boolean)
@@ -500,7 +503,7 @@ export function isRecentLead(lead: Lead, now: number) {
 }
 
 export function shouldShowVoicemailSummaryProgress(lead: Lead, now: number) {
-  if (!lead.recording_sid || lead.voicemail_summary) {
+  if (!hasUsableVoicemail(lead.recording_sid, lead.recording_duration) || lead.voicemail_summary) {
     return false;
   }
 
@@ -524,7 +527,11 @@ export function shouldAutoSummarizeVoicemail(lead: Lead, now: number, initiallyL
     return false;
   }
 
-  if (!lead.recording_sid || lead.voicemail_summary || lead.voicemail_transcript) {
+  if (
+    !hasUsableVoicemail(lead.recording_sid, lead.recording_duration) ||
+    lead.voicemail_summary ||
+    lead.voicemail_transcript
+  ) {
     return false;
   }
 
@@ -556,6 +563,10 @@ export function filterLeads(leads: Lead[], filter: Filter, query: string) {
 export function humanVoicemailError(error: string | null | undefined) {
   if (!error) {
     return "Unable to summarize this voicemail. Try again or listen to the recording.";
+  }
+
+  if (error.includes("No usable voicemail was recorded")) {
+    return "No voicemail was left, so Relay did not generate a transcript.";
   }
 
   if (error.includes("Twilio recording download failed with 404")) {

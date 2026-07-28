@@ -25,6 +25,8 @@ async function loadTsModule(path, mocks) {
   return module.exports;
 }
 
+const voicemailQualityModule = await loadTsModule("lib/voicemail-quality.ts", {});
+
 function makeClaimBuilder({ data = { id: "lead-1" }, error = null } = {}) {
   const calls = {
     table: null,
@@ -126,6 +128,7 @@ function makeVoicemailMocks({ lead, claimResult = true }) {
     "@/lib/priority": {
       classifyPriority: () => ({ level: "normal", reason: null }),
     },
+    "@/lib/voicemail-quality": voicemailQualityModule,
     "@/lib/supabase": {
       claimVoicemailTranscription: async (input) => {
         calls.claims.push(input);
@@ -182,6 +185,71 @@ test("transcribeLeadVoicemail aborts without calling OpenAI when the claim is lo
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("too-short recording is rejected before claim or AI and clears any generated text", async () => {
+  const originalFetch = globalThis.fetch;
+  const fetches = [];
+  globalThis.fetch = async (...args) => {
+    fetches.push(args);
+    throw new Error("fetch should not run");
+  };
+
+  try {
+    const { mocks, calls } = makeVoicemailMocks({
+      lead: {
+        id: "lead-short",
+        phone: "+12065550123",
+        recording_sid: "RE_short",
+        recording_duration: 1,
+        voicemail_transcript: "For more information, visit www.FEMA.gov.",
+        voicemail_summary: "Non-service voicemail: No details provided.",
+        voicemail_transcription_status: "completed",
+        voicemail_transcribed_at: "2026-07-27T00:00:00.000Z",
+      },
+    });
+    const { transcribeLeadVoicemail } = await loadTsModule("lib/voicemail-ai.ts", mocks);
+
+    await assert.rejects(
+      () => transcribeLeadVoicemail("lead-short", "acct-1"),
+      /No usable voicemail was recorded/,
+    );
+
+    assert.deepEqual(fetches, []);
+    assert.deepEqual(calls.claims, []);
+    assert.deepEqual(calls.transcriptionUpdates, [{
+      accountId: "acct-1",
+      id: "lead-short",
+      transcript: null,
+      summary: null,
+      status: "failed",
+      error: "No usable voicemail was recorded. Relay did not generate a transcript.",
+    }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("known silence hallucinations and short-domain transcripts fail quality checks", async () => {
+  const {
+    hasUsableVoicemail,
+    transcriptLooksLikeSilenceHallucination,
+  } = await loadTsModule("lib/voicemail-quality.ts", {});
+
+  assert.equal(hasUsableVoicemail("RE_1", 1), false);
+  assert.equal(hasUsableVoicemail("RE_1", 3), true);
+  assert.equal(
+    transcriptLooksLikeSilenceHallucination("For more information, visit www.FEMA.gov.", 1),
+    true,
+  );
+  assert.equal(
+    transcriptLooksLikeSilenceHallucination("Please visit example.com", 5),
+    true,
+  );
+  assert.equal(
+    transcriptLooksLikeSilenceHallucination("My water heater is leaking in the garage.", 8),
+    false,
+  );
 });
 
 test("completed lead returns cached summary without claiming", async () => {
