@@ -90,25 +90,28 @@ export default async function LoginPage({
         {/* Primary: email + password. */}
         <form action="/api/auth/password-login" method="POST" className="gate-form">
           <input type="hidden" name="next" value={next} />
-          <label className="field-label">
+          <label className="field-label" htmlFor="owner-email">
             <span>Email</span>
             <div className="gate-input">
               <input
+                id="owner-email"
                 className="field"
                 name="email"
                 type="email"
-                autoComplete="email"
-                autoFocus
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
                 required
                 placeholder="owner@example.com"
               />
             </div>
           </label>
 
-          <label className="field-label">
+          <label className="field-label" htmlFor="owner-password">
             <span>Password</span>
             <div className="gate-input">
               <input
+                id="owner-password"
                 className="field"
                 name="password"
                 type="password"
@@ -137,7 +140,9 @@ export default async function LoginPage({
                   className="field"
                   name="email"
                   type="email"
-                  autoComplete="email"
+                  autoComplete="section-setup username"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   required
                   placeholder="owner@example.com"
                 />
@@ -162,7 +167,9 @@ export default async function LoginPage({
                   className="field"
                   name="email"
                   type="email"
-                  autoComplete="email"
+                  autoComplete="section-recovery username"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   required
                   placeholder="owner@example.com"
                 />
@@ -187,7 +194,9 @@ export default async function LoginPage({
                   className="field"
                   name="email"
                   type="email"
-                  autoComplete="email"
+                  autoComplete="section-magic username"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   required
                   placeholder="owner@example.com"
                 />

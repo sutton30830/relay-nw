@@ -660,7 +660,9 @@ test("login throttling avoids repeated magic-link lockouts and explains recovery
 
 test("email password is the primary owner sign-in path with magic link as fallback", () => {
   assert.match(loginPageTsx, /action="\/api\/auth\/password-login"/);
+  assert.match(loginPageTsx, /autoComplete="username"/);
   assert.match(loginPageTsx, /autoComplete="current-password"/);
+  assert.doesNotMatch(loginPageTsx, /\bautoFocus\b/, "credential picker should wait for an intentional field click");
   assert.match(loginPageTsx, />\s*Sign in\s*</);
   // First-time setup and forgotten-password recovery are distinct customer
   // choices, while the magic link remains a secondary sign-in option.
