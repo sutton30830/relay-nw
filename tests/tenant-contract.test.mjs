@@ -617,13 +617,14 @@ test("authenticated app pages share the Relay brand header and owner menu", () =
   assert.match(globalsCss, /\.mobile-owner-menu\s*\{[\s\S]{0,100}flex:\s*0 0 auto/);
 });
 
-test("public homepage keeps an owner inbox path visible", () => {
-  assert.match(homePageTsx, /<InboxLink className="btn btn-secondary btn-header home-header__inbox">/);
-  assert.match(homePageTsx, /<InboxLink className="text-link">Open your inbox<\/InboxLink>/);
+test("public homepage keeps one clear customer sign-in path", () => {
+  assert.match(homePageTsx, /href="\/login">Customer sign in<\/Link>/);
+  assert.doesNotMatch(homePageTsx, /InboxLink/);
   assert.doesNotMatch(homePageTsx, /home-header__setup/);
-  assert.match(homePageTsx, /Get started/);
-  assert.match(homePageTsx, /Request a Relay account for your business/);
-  assert.match(globalsCss, /\.home-view \.home-header__inbox/);
+  assert.match(homePageTsx, /Request setup/);
+  assert.match(homePageTsx, /after carrier approval/);
+  assert.doesNotMatch(homePageTsx, /first 30 days free|answers every call|you don&apos;t pay/i);
+  assert.match(globalsCss, /\.home-view \.home-header__login/);
   assert.match(globalsCss, /\.leads-view \.app-head__right > \.btn/);
   assert.doesNotMatch(globalsCss, /\n\s*\.app-head__right > \.btn,\n\s*\.app-head__right > \.app-head__logout/);
 });

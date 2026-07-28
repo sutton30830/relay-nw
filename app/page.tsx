@@ -1,24 +1,23 @@
 import Link from "next/link";
 import { Icon } from "@/components/icon";
-import { InboxLink } from "@/app/inbox-link";
 import { publicBusinessName } from "@/lib/display-name";
 import { env } from "@/lib/env";
 
 const STEPS = [
   {
     number: "01",
-    title: "Forward your missed calls",
-    body: "Keep your number. One dial code sends the calls you can't answer to Relay.",
+    title: "Keep your business number",
+    body: "Relay helps you connect missed calls with conditional forwarding.",
   },
   {
     number: "02",
-    title: "Callers get a text in seconds",
-    body: "Before they dial the next company, they're already talking to yours.",
+    title: "See every missed-call lead",
+    body: "Caller details and voicemail arrive together in a simple inbox.",
   },
   {
     number: "03",
-    title: "You call back and win the job",
-    body: "The voicemail arrives summarized, with the lead waiting in a simple inbox.",
+    title: "Follow up from one place",
+    body: "Call back quickly, track the outcome, and add automatic text-back after carrier approval.",
   },
 ];
 
@@ -38,10 +37,7 @@ export default function HomePage() {
           </div>
         </div>
         <div className="app-head__right app-head__right--primary">
-          <Link className="text-link home-header__login" href="/login">Customer sign in</Link>
-          <InboxLink className="btn btn-secondary btn-header home-header__inbox">
-            <Icon name="inbox" size={13} /> Inbox
-          </InboxLink>
+          <Link className="btn btn-secondary btn-header home-header__login" href="/login">Customer sign in</Link>
         </div>
       </header>
 
@@ -49,36 +45,35 @@ export default function HomePage() {
         <div className="home-hero__copy">
           <p className="t-eyebrow">Missed-call recovery for local trades</p>
           <h2 className="t-display home-hero__title">
-            Miss a call?
+            Missed calls,
             <br />
-            That&apos;s a <em>lost job.</em>
+            <em>ready for follow-up.</em>
           </h2>
           <p className="home-hero__sub">
-            Relay answers every call you can&apos;t — an instant text back, the voicemail
-            summarized, and the lead waiting in your inbox. You keep your number.
+            Relay captures the calls you miss, keeps caller details and voicemail
+            together, and gives you one clear place to follow up.
           </p>
           <div className="home-hero__actions">
             <Link className="btn btn-primary home-hero__cta" href="/intake">
-              Get started <Icon name="arrowRight" size={14} />
+              Request setup <Icon name="arrowRight" size={14} />
             </Link>
-            <p className="home-hero__owner-link">
-              Already using Relay? <Link className="text-link" href="/login">Sign in</Link> · <InboxLink className="text-link">Open your inbox</InboxLink>
-            </p>
           </div>
-          <p className="home-hero__note">Request a Relay account for your business · $99/month · first 30 days free</p>
+          <p className="home-hero__note">Keep your number. Relay guides you through setup.</p>
         </div>
 
-        {/* The product loop in one glance: missed call → instant text → the
-            customer stays yours. Styled like a real thread, not a fake phone. */}
-        <aside className="hero-convo" aria-label="What a caller sees after a missed call">
+        <aside className="hero-convo" aria-label="How Relay handles a missed call">
           <p className="hero-convo__event">
             <Icon name="phoneMissed" size={12} /> Missed call · 4:12 PM
           </p>
+          <p className="hero-convo__saved">
+            <Icon name="check" size={13} /> Lead saved to your inbox
+          </p>
+          <p className="hero-convo__mode">With automatic text-back enabled</p>
           <div className="hero-convo__msg hero-convo__msg--relay">
             <p className="hero-convo__bubble">
               Sorry we missed your call — text us what you need and we&apos;ll get right back to you.
             </p>
-            <span className="hero-convo__meta">Sent by Relay, seconds later</span>
+            <span className="hero-convo__meta">Sent after carrier approval</span>
           </div>
           <div className="hero-convo__msg hero-convo__msg--caller">
             <p className="hero-convo__bubble">
@@ -86,9 +81,6 @@ export default function HomePage() {
             </p>
             <span className="hero-convo__meta">Customer replies</span>
           </div>
-          <p className="hero-convo__saved">
-            <Icon name="check" size={13} /> Lead saved to your inbox
-          </p>
         </aside>
       </section>
 
@@ -97,8 +89,8 @@ export default function HomePage() {
           <p className="t-eyebrow">How Relay works</p>
           <h2 className="t-display">Your next job calls while you&apos;re busy.</h2>
           <p>
-            Under a sink, driving between houses, or closed for the day — if nobody answers,
-            that customer calls the next company. Relay keeps them with you.
+            Start with reliable missed-call capture. Add automatic texting separately
+            after your business is approved for carrier messaging.
           </p>
         </div>
 
@@ -114,10 +106,10 @@ export default function HomePage() {
       </section>
 
       <section className="home-cta">
-        <h2 className="t-display">Stop losing calls you already earned.</h2>
-        <p>If Relay doesn&apos;t help you recover missed calls, you don&apos;t pay.</p>
+        <h2 className="t-display">Make missed calls easier to recover.</h2>
+        <p>Tell us about your business. Relay will confirm the fit and guide your setup.</p>
         <Link className="btn btn-primary home-hero__cta" href="/intake">
-          Get started
+          Request setup
         </Link>
       </section>
     </main>
