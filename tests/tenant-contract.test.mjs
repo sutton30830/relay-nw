@@ -618,13 +618,13 @@ test("authenticated app pages share the Relay brand header and owner menu", () =
 });
 
 test("public homepage keeps one clear customer sign-in path", () => {
-  assert.match(homePageTsx, /href="\/login">Customer sign in<\/Link>/);
+  assert.match(homePageTsx, /className="text-link home-header__login" href="\/login">Sign in<\/Link>/);
   assert.doesNotMatch(homePageTsx, /InboxLink/);
   assert.doesNotMatch(homePageTsx, /home-header__setup/);
   assert.match(homePageTsx, /Request setup/);
   assert.match(homePageTsx, /after carrier approval/);
   assert.doesNotMatch(homePageTsx, /first 30 days free|answers every call|you don&apos;t pay/i);
-  assert.match(globalsCss, /\.home-view \.home-header__login/);
+  assert.match(globalsCss, /\.home-header__login/);
   assert.match(globalsCss, /\.leads-view \.app-head__right > \.btn/);
   assert.doesNotMatch(globalsCss, /\n\s*\.app-head__right > \.btn,\n\s*\.app-head__right > \.app-head__logout/);
 });

@@ -5519,14 +5519,6 @@ code {
     justify-content: center;
   }
 
-  .home-view .home-header__login {
-    min-height: 36px;
-    border-radius: 999px;
-    padding: 0 13px;
-    font-size: 13px;
-    box-shadow: none;
-  }
-
   .mobile-owner-menu {
     display: block;
   }

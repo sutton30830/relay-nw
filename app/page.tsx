@@ -37,7 +37,7 @@ export default function HomePage() {
           </div>
         </div>
         <div className="app-head__right app-head__right--primary">
-          <Link className="btn btn-secondary btn-header home-header__login" href="/login">Customer sign in</Link>
+          <Link className="text-link home-header__login" href="/login">Sign in</Link>
         </div>
       </header>
 
