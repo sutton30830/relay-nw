@@ -110,7 +110,7 @@ async function attachOutboundMessages(leads: Lead[], accountId: string) {
   const leadIds = leads.map((lead) => lead.id);
   const { data, error } = await supabaseAdmin
     .from("messages")
-    .select("id, lead_id, twilio_message_sid, from_phone, to_phone, body, status, created_at")
+    .select("id, lead_id, twilio_message_sid, from_phone, to_phone, body, status, error, created_at, updated_at")
     .eq("account_id", accountId)
     .eq("direction", "outbound")
     .in("lead_id", leadIds)
@@ -733,7 +733,7 @@ export async function getLeadConversation(inputAccountId: string, id: string): P
       .limit(100),
     supabaseAdmin
       .from("messages")
-      .select("id, lead_id, twilio_message_sid, from_phone, to_phone, body, status, created_at")
+      .select("id, lead_id, twilio_message_sid, from_phone, to_phone, body, status, error, created_at, updated_at")
       .eq("account_id", accountId)
       .eq("direction", "outbound")
       .eq("to_phone", lead.phone)

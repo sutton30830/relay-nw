@@ -231,6 +231,7 @@ test("reply route never sends SMS when the guard rejects", async () => {
         response: Response.json({ error: "Viewers cannot send replies" }, { status: 403 }),
       }),
     },
+    "@/lib/env": { env: { appBaseUrl: "http://test" } },
     "@/lib/supabase": {
       createMessageIfNew: async () => {},
       getLeadByIdForAccount: async () => null,

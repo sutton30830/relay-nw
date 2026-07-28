@@ -731,7 +731,9 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
         to_phone: null,
         body,
         status: "sent",
+        error: null,
         created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       };
       appendOutboundReply(id, message);
       return { ok: true, message };

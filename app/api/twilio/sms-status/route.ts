@@ -1,6 +1,7 @@
 import { env } from "@/lib/env";
 import {
   assertTenantAccount,
+  getAccountConfigByAccountId,
   getOutboundMessageLeadIdBySid,
   logWebhookEvent,
   resolveAccountByMessageSid,
@@ -45,12 +46,25 @@ function parseSmsStatusPayload(payload: Record<string, string>) {
   };
 }
 
+function parseCallbackContext(request: Request) {
+  const url = new URL(request.url);
+  const messageType = url.searchParams.get("messageType") === "manual_reply"
+    ? "manual_reply" as const
+    : "auto_text" as const;
+
+  return {
+    messageType,
+    accountId: url.searchParams.get("accountId")?.trim() || null,
+  };
+}
+
 function webhookEventNote(input: {
   matchedUrl: string | null;
   messageSid: string;
   rawStatus: string;
   leadUpdated: boolean;
   reconciledLeadId?: string | null;
+  messageType: "auto_text" | "manual_reply";
 }) {
   const notes = [];
 
@@ -68,7 +82,9 @@ function webhookEventNote(input: {
     notes.push(`MessageStatus: ${input.rawStatus}`);
   }
 
-  if (input.reconciledLeadId) {
+  if (input.messageType === "manual_reply") {
+    notes.push("Manual reply status updated on its message row.");
+  } else if (input.reconciledLeadId) {
     notes.push(
       `Lead was stale (missing MessageSid after a partial failure); reconciled lead ${input.reconciledLeadId} to Twilio status via messages table.`,
     );
@@ -86,7 +102,21 @@ export async function POST(request: Request) {
   const requestSummary = summarizeTwilioRequest(request, payload);
   const validation = validateTwilioWebhook(request, payload);
   const status = parseSmsStatusPayload(payload);
-  const accountResolution = await resolveAccountSafely(() => resolveAccountByMessageSid(status.messageSid), "SMS status");
+  const callback = parseCallbackContext(request);
+  const accountResolution = await resolveAccountSafely(async () => {
+    if (callback.messageType === "manual_reply" && callback.accountId) {
+      const account = await getAccountConfigByAccountId(callback.accountId);
+      return account
+        ? { status: "resolved" as const, account }
+        : {
+            status: "unresolved" as const,
+            reason: "manual_reply_account_not_registered",
+            lookupValue: callback.accountId,
+          };
+    }
+
+    return resolveAccountByMessageSid(status.messageSid);
+  }, "SMS status");
   const resolvedAccount = accountResolution.status === "resolved" ? accountResolution.account : null;
   const xml = emptyTwiml();
 
@@ -98,6 +128,7 @@ export async function POST(request: Request) {
     ...requestSummary,
     messageSid: status.messageSid,
     messageStatus: status.rawStatus,
+    messageType: callback.messageType,
   });
 
   if (validation.shouldReject) {
@@ -127,7 +158,7 @@ export async function POST(request: Request) {
   const account = assertTenantAccount(accountResolution.account, "SMS status webhook");
 
   try {
-    const result = status.messageSid && status.smsStatus
+    const result = callback.messageType === "auto_text" && status.messageSid && status.smsStatus
       ? await updateLeadSmsStatusByMessageSid({
         accountId: account.accountId,
         twilioMessageSid: status.messageSid,
@@ -140,7 +171,7 @@ export async function POST(request: Request) {
     // but the lead update failed, leaving the lead stuck on "pending"), recover the lead
     // through the messages table and converge it to Twilio's true delivery status.
     let reconciledLeadId: string | null = null;
-    if (!result.updated && status.messageSid && status.smsStatus) {
+    if (callback.messageType === "auto_text" && !result.updated && status.messageSid && status.smsStatus) {
       const leadId = await getOutboundMessageLeadIdBySid({
         accountId: account.accountId,
         twilioMessageSid: status.messageSid,
@@ -187,6 +218,7 @@ export async function POST(request: Request) {
         rawStatus: status.rawStatus,
         leadUpdated: result.updated || Boolean(reconciledLeadId),
         reconciledLeadId,
+        messageType: callback.messageType,
       }),
     });
   } catch (error) {

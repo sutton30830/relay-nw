@@ -55,7 +55,9 @@ export type OutboundMessage = {
   to_phone: string | null;
   body: string | null;
   status: string | null;
+  error: string | null;
   created_at: string;
+  updated_at: string | null;
 };
 
 

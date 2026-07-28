@@ -1,4 +1,5 @@
 import { requireWriteAccessJson } from "@/lib/auth";
+import { env } from "@/lib/env";
 import {
   createMessageIfNew,
   getLeadByIdForAccount,
@@ -104,17 +105,21 @@ export async function POST(
   }
 
   let messageSid: string;
+  let initialStatus = "queued";
 
   try {
-    // No statusCallback on manual replies: the SMS status webhook reconciles delivery
-    // state onto lead.sms_status, which tracks the automatic missed-call text. A manual
-    // reply's callback would overwrite it and corrupt the "auto-text failed" signal.
+    const statusCallback = new URL("/api/twilio/sms-status", env.appBaseUrl);
+    statusCallback.searchParams.set("messageType", "manual_reply");
+    statusCallback.searchParams.set("accountId", accountId);
+
     const message = await twilioClient.messages.create({
       to: lead.phone,
       from: account.twilioPhoneNumber,
       body,
+      statusCallback: statusCallback.toString(),
     });
     messageSid = message.sid;
+    initialStatus = message.status || initialStatus;
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Unknown SMS send error";
     console.error("Reply SMS send failed", {
@@ -137,7 +142,7 @@ export async function POST(
       fromPhone: account.twilioPhoneNumber,
       toPhone: lead.phone,
       body,
-      status: "sent",
+      status: initialStatus,
     });
   } catch (error) {
     console.error("Twilio accepted reply, but Relay could not record the message row", {
@@ -173,8 +178,10 @@ export async function POST(
       from_phone: account.twilioPhoneNumber,
       to_phone: lead.phone,
       body,
-      status: "sent",
+      status: initialStatus,
+      error: null,
       created_at: sentAt,
+      updated_at: sentAt,
     },
   });
 }

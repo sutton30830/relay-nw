@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "@/components/icon";
 import type { Lead, LeadStatus, ReplyPriorityOverride } from "@/lib/supabase";
+import { smsDeliveryIssue, smsDeliveryStatusLabel } from "@/lib/twilio/sms-delivery";
 import type { SendReplyResult } from "../_api";
 import { LEGACY_FORWARDING_MESSAGE, QUICK_REPLIES } from "../_constants";
 import { followUpStatusText, formatDuration, formatPhone, formatRelativeTime, getLeadPriority, initials, isBookedLead, parseSetupRequestMessage } from "../_utils";
@@ -55,12 +56,16 @@ export function LeadDrawer({
       direction: "inbound" as const,
       body: message.body,
       created_at: message.created_at,
+      status: null,
+      error: null,
     })),
     ...(lead.outbound_messages ?? []).map((message) => ({
       id: `out-${message.id}`,
       direction: "outbound" as const,
       body: message.body ?? "",
       created_at: message.created_at,
+      status: message.status,
+      error: message.error,
     })),
   ]
     .filter((message) => message.body)
@@ -69,6 +74,7 @@ export function LeadDrawer({
   const hasUsefulMessage = Boolean(lead.message && lead.message !== LEGACY_FORWARDING_MESSAGE);
   const setupRequestFields = lead.source === "intake_form" ? parseSetupRequestMessage(lead.message) : [];
   const summaryGenerating = !lead.voicemail_summary && lead.voicemail_transcription_status === "processing";
+  const autoTextIssue = smsDeliveryIssue(lead.sms_status, lead.sms_error);
   const requestLabel = lead.voicemail_summary
     ? "What they need"
     : hasUsefulMessage
@@ -333,32 +339,60 @@ export function LeadDrawer({
         </div>
 
         <div className="follow-up-panel">
-          <div className={`follow-up-status ${lead.sms_status === "failed" || lead.sms_status === "undelivered" ? "follow-up-status--warn" : ""}`}>
-            <Icon name={lead.sms_status === "failed" || lead.sms_status === "undelivered" ? "alertTriangle" : "message"} size={15} />
-            <span>{followUpStatusText(lead)}</span>
+          <div className={`follow-up-status ${autoTextIssue ? "follow-up-status--warn" : ""}`}>
+            <Icon name={autoTextIssue ? "alertTriangle" : "message"} size={15} />
+            {autoTextIssue ? (
+              <div className="sms-delivery-issue">
+                <strong>{autoTextIssue.title}</strong>
+                <span>{autoTextIssue.guidance}</span>
+                <details>
+                  <summary>Delivery details</summary>
+                  <span>{autoTextIssue.diagnostic}</span>
+                </details>
+              </div>
+            ) : (
+              <span>{followUpStatusText(lead)}</span>
+            )}
           </div>
           {thread.length > 0 ? (
             <div className="follow-up-replies">
               <div style={{ display: "grid", gap: 8 }}>
-                {thread.map((message) => (
-                  <div
-                    key={message.id}
-                    style={{
-                      background: message.direction === "outbound" ? "var(--panel-2, var(--panel))" : "var(--panel)",
-                      border: "1px solid var(--line)",
-                      borderRadius: "var(--r-sm)",
-                      padding: "10px 12px",
-                      marginLeft: message.direction === "outbound" ? 24 : 0,
-                      marginRight: message.direction === "outbound" ? 0 : 24,
-                    }}
-                  >
-                    <p style={{ margin: 0 }}>{message.body}</p>
-                    <p style={{ color: "var(--ink-4)", fontSize: 12, margin: "6px 0 0" }}>
-                      {message.direction === "outbound" ? "You · " : ""}
-                      {formatRelativeTime(message.created_at, Date.now())}
-                    </p>
-                  </div>
-                ))}
+                {thread.map((message) => {
+                  const issue = message.direction === "outbound"
+                    ? smsDeliveryIssue(message.status, message.error)
+                    : null;
+                  const statusLabel = message.direction === "outbound"
+                    ? smsDeliveryStatusLabel(message.status)
+                    : null;
+
+                  return (
+                    <div
+                      key={message.id}
+                      className={issue ? "message-bubble message-bubble--failed" : "message-bubble"}
+                      style={{
+                        background: message.direction === "outbound" ? "var(--panel-2, var(--panel))" : "var(--panel)",
+                        marginLeft: message.direction === "outbound" ? 24 : 0,
+                        marginRight: message.direction === "outbound" ? 0 : 24,
+                      }}
+                    >
+                      <p style={{ margin: 0 }}>{message.body}</p>
+                      <p className="message-bubble__meta">
+                        {message.direction === "outbound" ? "You · " : ""}
+                        {formatRelativeTime(message.created_at, Date.now())}
+                        {statusLabel ? ` · ${statusLabel}` : ""}
+                      </p>
+                      {issue ? (
+                        <div className="message-bubble__issue">
+                          <span>{issue.guidance}</span>
+                          <details className="message-bubble__diagnostic">
+                            <summary>Delivery details</summary>
+                            <span>{issue.diagnostic}</span>
+                          </details>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ) : null}

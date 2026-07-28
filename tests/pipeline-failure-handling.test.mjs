@@ -261,6 +261,60 @@ test("owner SMS failure never breaks the customer-facing flow", async () => {
   assert.ok(calls.ownerNotifications.some((n) => n.smsStatus === "sent"), "email fallback still fires");
 });
 
+test("manual replies request delivery callbacks and record Twilio's initial status", async () => {
+  const twilioSends = [];
+  const recordedMessages = [];
+  const { POST } = await loadTsModule("app/api/leads/[id]/reply/route.ts", {
+    "@/lib/auth": {
+      requireWriteAccessJson: async () => ({
+        response: null,
+        session: { account: ACCOUNT, accountId: ACCOUNT.accountId },
+      }),
+    },
+    "@/lib/env": { env: { appBaseUrl: "https://relay.example" } },
+    "@/lib/supabase": {
+      createMessageIfNew: async (input) => recordedMessages.push(input),
+      getLeadByIdForAccount: async () => ({
+        id: "lead-1",
+        phone: "+14305558502",
+        status: "contacted",
+        deleted_at: null,
+      }),
+      isOptedOut: async () => false,
+      updateLead: async () => {},
+    },
+    "@/lib/twilio": {
+      phoneLast4: (phone) => phone.slice(-4),
+      twilioClient: {
+        messages: {
+          create: async (input) => {
+            twilioSends.push(input);
+            return { sid: "SM_manual_1", status: "queued" };
+          },
+        },
+      },
+    },
+  });
+
+  const response = await POST(
+    new Request("https://relay.example/api/leads/lead-1/reply", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ body: "We can help this afternoon." }),
+    }),
+    { params: Promise.resolve({ id: "lead-1" }) },
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(
+    twilioSends[0].statusCallback,
+    "https://relay.example/api/twilio/sms-status?messageType=manual_reply&accountId=acct-1",
+  );
+  assert.equal(recordedMessages[0].status, "queued");
+  const payload = await response.json();
+  assert.equal(payload.message.status, "queued");
+});
+
 // --- SMS status callback reconciliation (production-readiness item #8) ---
 
 function makeSmsStatusRouteMocks(state) {
@@ -268,6 +322,7 @@ function makeSmsStatusRouteMocks(state) {
     "@/lib/env": { env: { allowUnsignedTwilioWebhooks: true } },
     "@/lib/supabase": {
       assertTenantAccount: (account) => account,
+      getAccountConfigByAccountId: async (accountId) => accountId === ACCOUNT.accountId ? ACCOUNT : null,
       resolveAccountByMessageSid: async () => ({ status: "resolved", account: ACCOUNT }),
       resolveAccountSafely: async (resolve) => resolve(),
       updateLeadSmsStatusByMessageSid: async (input) => {
@@ -308,10 +363,10 @@ function makeSmsStatusRouteMocks(state) {
   };
 }
 
-async function postSmsStatus(mocks, payload) {
+async function postSmsStatus(mocks, payload, url = "https://example.com/api/twilio/sms-status") {
   const { POST } = await loadTsModule("app/api/twilio/sms-status/route.ts", mocks);
   const body = new URLSearchParams(payload);
-  const request = new Request("https://example.com/api/twilio/sms-status", {
+  const request = new Request(url, {
     method: "POST",
     body,
     headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -377,6 +432,26 @@ test("failed delivery status reconciles too: stale lead converges to failed with
   assert.match(state.leadUpdatesById[0].smsError ?? "", /30003/);
 });
 
+test("manual reply callback updates only its message and preserves the auto-text lead status", async () => {
+  const state = smsStatusState({ leadHasMessageSid: false, messageRowLeadId: "lead-1" });
+  await postSmsStatus(
+    makeSmsStatusRouteMocks(state),
+    {
+      MessageSid: "SM_manual_1",
+      MessageStatus: "undelivered",
+      ErrorCode: "30006",
+    },
+    "https://example.com/api/twilio/sms-status?messageType=manual_reply&accountId=acct-1",
+  );
+
+  assert.equal(state.leadUpdatesBySid.length, 0, "manual replies must not overwrite lead.sms_status");
+  assert.equal(state.leadUpdatesById.length, 0, "manual replies must not trigger auto-text reconciliation");
+  assert.equal(state.messageStatusUpdates.length, 1);
+  assert.equal(state.messageStatusUpdates[0].status, "undelivered");
+  assert.equal(state.messageStatusUpdates[0].error, "30006");
+  assert.match(state.webhookEvents[0].error ?? "", /Manual reply status updated/i);
+});
+
 test("orphan callback (no lead, no message row): webhook event records the miss", async () => {
   const state = smsStatusState({ leadHasMessageSid: false, messageRowLeadId: null });
   await postSmsStatus(makeSmsStatusRouteMocks(state), {
@@ -390,6 +465,19 @@ test("orphan callback (no lead, no message row): webhook event records the miss"
 });
 
 // --- Voicemail transcription failure visibility ---
+
+test("SMS delivery errors become actionable customer-facing guidance", async () => {
+  const { smsDeliveryIssue, smsDeliveryStatusLabel } = await loadTsModule("lib/twilio/sms-delivery.ts", {});
+
+  assert.deepEqual(smsDeliveryIssue("undelivered", "30006"), {
+    title: "Text could not be delivered",
+    guidance: "This may be a landline or a number that cannot receive texts. Call the customer instead.",
+    diagnostic: "Twilio error 30006 · Landline or unreachable carrier",
+  });
+  assert.equal(smsDeliveryIssue("delivered", null), null);
+  assert.equal(smsDeliveryStatusLabel("delivered"), "Delivered");
+  assert.equal(smsDeliveryStatusLabel("failed"), "Not delivered");
+});
 
 test("classifyPriority: emergencies are fast, time-sensitive is today, quotes are normal", async () => {
   const { classifyPriority } = await loadTsModule("lib/priority.ts", {});

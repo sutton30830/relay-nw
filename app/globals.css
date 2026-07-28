@@ -5204,6 +5204,74 @@ code {
   color: var(--danger);
 }
 
+.sms-delivery-issue,
+.sms-delivery-banner > div {
+  display: grid;
+  gap: 3px;
+}
+
+.sms-delivery-issue > span,
+.sms-delivery-banner span {
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+.sms-delivery-issue details,
+.sms-delivery-banner details {
+  color: var(--ink-3);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.sms-delivery-issue summary,
+.sms-delivery-banner summary {
+  cursor: pointer;
+  width: fit-content;
+}
+
+.message-bubble {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+}
+
+.message-bubble--failed,
+.convo__msg--failed {
+  border-color: color-mix(in oklab, var(--danger) 38%, var(--line));
+}
+
+.message-bubble__meta {
+  margin: 6px 0 0;
+  color: var(--ink-4);
+  font-size: 12px;
+}
+
+.message-bubble__issue,
+.convo__msg-issue {
+  display: grid;
+  gap: 3px;
+  margin-top: 7px;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.message-bubble__diagnostic,
+.convo__msg-issue details {
+  color: var(--ink-4);
+  font-size: 11px;
+}
+
+.message-bubble__diagnostic summary,
+.convo__msg-issue summary {
+  cursor: pointer;
+  width: fit-content;
+}
+
+.sms-delivery-banner {
+  align-items: start;
+}
+
 .follow-up-quick {
   display: flex;
   flex-wrap: wrap;

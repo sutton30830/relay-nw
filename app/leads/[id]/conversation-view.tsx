@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
 import type { InboundMessage, Lead, LeadStatus, OutboundMessage, ReplyPriorityOverride } from "@/lib/supabase";
+import { smsDeliveryIssue, smsDeliveryStatusLabel } from "@/lib/twilio/sms-delivery";
 import { patchLead, requestVoicemailSummary, sendLeadReply } from "../_api";
 import { VoicemailPlayer } from "../_components/voicemail-player";
 import { formatPhone, getLeadPriority, initials, isBookedLead, sourceLabel } from "../_utils";
@@ -13,7 +14,15 @@ import { BookedToggle, BookedValueInput, PriorityControl, StatusControl } from "
 type ThreadItem =
   | { kind: "call"; lead: Lead; created_at: string }
   | { kind: "autotext"; id: string; created_at: string }
-  | { kind: "sms"; id: string; direction: "inbound" | "outbound"; body: string; created_at: string };
+  | {
+      kind: "sms";
+      id: string;
+      direction: "inbound" | "outbound";
+      body: string;
+      created_at: string;
+      status: string | null;
+      error: string | null;
+    };
 
 const AUTO_TEXT_SENT_STATUSES = new Set(["queued", "sending", "sent", "delivered"]);
 
@@ -88,7 +97,7 @@ export function ConversationView({
   }, []);
 
   const priority = getLeadPriority(currentLead);
-  const smsTrouble = lead.sms_status === "failed" || lead.sms_status === "undelivered";
+  const autoTextIssue = smsDeliveryIssue(lead.sms_status, lead.sms_error);
 
   const thread = useMemo<ThreadItem[]>(() => {
     const optimisticIds = new Set(sentMessages.map((message) => message.twilio_message_sid));
@@ -122,6 +131,8 @@ export function ConversationView({
           direction: "inbound" as const,
           body: message.body ?? "",
           created_at: message.created_at,
+          status: null,
+          error: null,
         })),
       ...[...outbound.filter((message) => !optimisticIds.has(message.twilio_message_sid)), ...sentMessages]
         .filter((message) => message.body)
@@ -131,6 +142,8 @@ export function ConversationView({
           direction: "outbound" as const,
           body: message.body ?? "",
           created_at: message.created_at,
+          status: message.status,
+          error: message.error,
         })),
     ];
 
@@ -254,10 +267,18 @@ export function ConversationView({
           {priority.reason ? ` · ${priority.reason}` : ""}
         </p>
       ) : null}
-      {smsTrouble ? (
-        <p className="convo__banner convo__banner--fast">
-          <Icon name="alertTriangle" size={13} /> Text failed to deliver. Call them instead.
-        </p>
+      {autoTextIssue ? (
+        <div className="convo__banner convo__banner--fast sms-delivery-banner">
+          <Icon name="alertTriangle" size={13} />
+          <div>
+            <strong>{autoTextIssue.title}</strong>
+            <span>{autoTextIssue.guidance}</span>
+            <details>
+              <summary>Delivery details</summary>
+              <span>{autoTextIssue.diagnostic}</span>
+            </details>
+          </div>
+        </div>
       ) : null}
 
       {detailsOpen && !readOnly ? (
@@ -420,17 +441,36 @@ export function ConversationView({
             <p key={item.id} className="convo__event-line convo__event-line--sent" suppressHydrationWarning>
               <Icon name="message" size={12} /> Missed-call text sent automatically
             </p>
-          ) : (
-            <div
-              key={item.id}
-              className={`convo__msg ${item.direction === "outbound" ? "convo__msg--out" : "convo__msg--in"}`}
-            >
-              <p className="convo__msg-body">{item.body}</p>
-              <p className="convo__msg-meta" suppressHydrationWarning>
-                {formatTime(item.created_at)}
-              </p>
-            </div>
-          ),
+          ) : (() => {
+            const issue = item.direction === "outbound"
+              ? smsDeliveryIssue(item.status, item.error)
+              : null;
+            const statusLabel = item.direction === "outbound"
+              ? smsDeliveryStatusLabel(item.status)
+              : null;
+
+            return (
+              <div
+                key={item.id}
+                className={`convo__msg ${item.direction === "outbound" ? "convo__msg--out" : "convo__msg--in"} ${issue ? "convo__msg--failed" : ""}`}
+              >
+                <p className="convo__msg-body">{item.body}</p>
+                <p className="convo__msg-meta" suppressHydrationWarning>
+                  {formatTime(item.created_at)}
+                  {statusLabel ? ` · ${statusLabel}` : ""}
+                </p>
+                {issue ? (
+                  <div className="convo__msg-issue">
+                    <span>{issue.guidance}</span>
+                    <details>
+                      <summary>Delivery details</summary>
+                      <span>{issue.diagnostic}</span>
+                    </details>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })(),
         )}
         <div ref={threadEndRef} />
       </div>
