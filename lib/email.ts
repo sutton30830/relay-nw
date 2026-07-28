@@ -208,23 +208,29 @@ export async function notifyOwnerTestEmail(input: {
 export async function notifyOwnerPasswordSetup(input: {
   to: string;
   setupUrl: string;
+  purpose?: "setup" | "reset";
 }) {
+  const resetting = input.purpose === "reset";
   const lines = [
-    "Use this secure link to set your Relay NW password.",
-    "The link is single-use. If it expires, request a fresh setup link from the sign-in page.",
+    resetting
+      ? "Use this secure link to reset your Relay NW password."
+      : "Use this secure link to set your Relay NW password for the first time.",
+    `The link is single-use. If it expires, request a fresh ${resetting ? "reset" : "setup"} link from the sign-in page.`,
   ];
 
   return sendEmail({
     to: input.to,
-    subject: "Set your Relay NW password",
+    subject: resetting ? "Reset your Relay NW password" : "Set your Relay NW password",
     html: emailHtml({
-      title: "Set your password",
-      preview: "Use this secure link to set your Relay NW password.",
+      title: resetting ? "Reset your password" : "Set your password",
+      preview: resetting
+        ? "Use this secure link to reset your Relay NW password."
+        : "Use this secure link to set your Relay NW password.",
       lines,
-      actionLabel: "Set password",
+      actionLabel: resetting ? "Reset password" : "Set password",
       actionUrl: input.setupUrl,
     }),
-    text: `${lines.join("\n")}\n\nSet password: ${input.setupUrl}`,
+    text: `${lines.join("\n")}\n\n${resetting ? "Reset" : "Set"} password: ${input.setupUrl}`,
     tag: "owner_password_setup",
   });
 }

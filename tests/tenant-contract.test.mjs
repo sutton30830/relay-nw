@@ -621,7 +621,8 @@ test("public homepage keeps an owner inbox path visible", () => {
   assert.match(homePageTsx, /<InboxLink className="btn btn-secondary btn-header home-header__inbox">/);
   assert.match(homePageTsx, /<InboxLink className="text-link">Open your inbox<\/InboxLink>/);
   assert.doesNotMatch(homePageTsx, /home-header__setup/);
-  assert.match(homePageTsx, /Request setup/);
+  assert.match(homePageTsx, /Get started/);
+  assert.match(homePageTsx, /Request a Relay account for your business/);
   assert.match(globalsCss, /\.home-view \.home-header__inbox/);
   assert.match(globalsCss, /\.leads-view \.app-head__right > \.btn/);
   assert.doesNotMatch(globalsCss, /\n\s*\.app-head__right > \.btn,\n\s*\.app-head__right > \.app-head__logout/);
@@ -660,11 +661,13 @@ test("email password is the primary owner sign-in path with magic link as fallba
   assert.match(loginPageTsx, /action="\/api\/auth\/password-login"/);
   assert.match(loginPageTsx, /autoComplete="current-password"/);
   assert.match(loginPageTsx, />\s*Sign in\s*</);
-  // Recovery is one disclosed action; the magic link is tucked behind
-  // "Other sign-in options" so the password form stays primary.
+  // First-time setup and forgotten-password recovery are distinct customer
+  // choices, while the magic link remains a secondary sign-in option.
   assert.match(loginPageTsx, /action="\/api\/auth\/password-reset"/);
-  assert.match(loginPageTsx, /Forgot or create password\?/);
-  assert.match(loginPageTsx, /Email setup link/);
+  assert.match(loginPageTsx, /First time signing in\?/);
+  assert.match(loginPageTsx, /Set up my password/);
+  assert.match(loginPageTsx, /Forgot your password\?/);
+  assert.match(loginPageTsx, /Reset my password/);
   assert.match(loginPageTsx, /action="\/api\/auth\/login"/);
   assert.match(loginPageTsx, /Other sign-in options/);
   assert.match(authPasswordLoginRouteTs, /signInWithPassword\(\{/);

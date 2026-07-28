@@ -16,6 +16,7 @@ export async function POST(request: Request) {
   const formData = await request.formData();
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const next = safeNext(formData.get("next"));
+  const intent = formData.get("intent") === "forgot" ? "forgot" : "setup";
 
   if (!email) {
     redirect(`/login?error=email&next=${encodeURIComponent("/leads")}`);
@@ -62,6 +63,7 @@ export async function POST(request: Request) {
   const result = await notifyOwnerPasswordSetup({
     to: email,
     setupUrl: setupUrl.toString(),
+    purpose: intent === "forgot" ? "reset" : "setup",
   });
 
   if (!result.sent) {
@@ -72,5 +74,5 @@ export async function POST(request: Request) {
     redirect(`/login?error=reset&next=${encodeURIComponent("/leads")}`);
   }
 
-  redirect(`/login?reset=1&next=${encodeURIComponent("/leads")}`);
+  redirect(`/login?reset=${intent}&next=${encodeURIComponent("/leads")}`);
 }

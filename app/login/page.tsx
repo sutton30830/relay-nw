@@ -15,6 +15,8 @@ export default async function LoginPage({
   const passwordError = params.error === "password";
   const passwordMissing = params.error === "password_missing";
   const resetError = params.error === "reset";
+  const firstTimeLinkSent = params.reset === "setup";
+  const resetLinkSent = params.reset === "forgot" || params.reset === "1";
   const sessionExpired = params.error === "session_expired";
   const notInvited = params.error === "not_invited";
   const shouldPauseRequests = Boolean(params.sent) || rateLimited;
@@ -27,7 +29,7 @@ export default async function LoginPage({
         : passwordError
           ? "Password sign-in failed."
           : resetError
-            ? "Password setup email failed."
+            ? "Password email failed."
             : sessionExpired
               ? "Session expired."
               : notInvited
@@ -42,9 +44,9 @@ export default async function LoginPage({
       : passwordMissing
         ? "Enter both fields and try again."
         : passwordError
-          ? "Check the password, or use “Forgot or create password?” below."
+          ? "Check the password, or use “Forgot your password?” below."
           : resetError
-            ? "Wait a few minutes before requesting another setup email."
+            ? "Wait a few minutes before requesting another password email."
             : sessionExpired
               ? "Request a fresh setup link and try again."
               : notInvited
@@ -59,7 +61,7 @@ export default async function LoginPage({
         <p className="t-eyebrow gate-eyebrow">Relay NW · Protected</p>
         <h1 className="t-display gate-title">Owner sign in</h1>
         <p className="gate-sub">Use the email and password connected to your Relay NW account.</p>
-        <p className="gate-sub">New to Relay? <Link className="text-link" href="/intake">Request setup</Link>.</p>
+        <p className="gate-sub">Don&apos;t have a Relay account? <Link className="text-link" href="/intake">Request setup</Link>.</p>
 
         {params.sent ? (
           <p className="gate-sub">
@@ -72,7 +74,10 @@ export default async function LoginPage({
 
         {params.reset ? (
           <p className="gate-sub">
-            <strong>Check your email.</strong> Your password setup link is on the way.
+            <strong>Check your email.</strong>{" "}
+            {firstTimeLinkSent
+              ? "Your first-time password setup link is on the way."
+              : "Your password reset link is on the way."}
           </p>
         ) : null}
 
@@ -119,13 +124,12 @@ export default async function LoginPage({
           </button>
         </form>
 
-        {/* One recovery path — opens automatically after a failed sign-in or when
-            a setup link was just requested. */}
-        <details className="gate-disclosure" open={passwordError || resetError || Boolean(params.reset)}>
-          <summary>Forgot your password or signing in for the first time?</summary>
+        <details className="gate-disclosure" open={firstTimeLinkSent}>
+          <summary>First time signing in?</summary>
           <form action="/api/auth/password-reset" method="POST" className="gate-form">
             <input type="hidden" name="next" value="/account/password" />
-            <p className="gate-hint">We&apos;ll email a link to set a new password.</p>
+            <input type="hidden" name="intent" value="setup" />
+            <p className="gate-hint">If Relay has created your account, use your invited email to set your password.</p>
             <label className="field-label">
               <span>Email</span>
               <div className="gate-input">
@@ -140,7 +144,32 @@ export default async function LoginPage({
               </div>
             </label>
             <button className="btn btn-secondary gate-submit-secondary" type="submit">
-              Email setup link
+              Set up my password
+            </button>
+          </form>
+        </details>
+
+        <details className="gate-disclosure" open={passwordError || resetError || resetLinkSent}>
+          <summary>Forgot your password?</summary>
+          <form action="/api/auth/password-reset" method="POST" className="gate-form">
+            <input type="hidden" name="next" value="/account/password" />
+            <input type="hidden" name="intent" value="forgot" />
+            <p className="gate-hint">We&apos;ll email a secure link so you can choose a new password.</p>
+            <label className="field-label">
+              <span>Email</span>
+              <div className="gate-input">
+                <input
+                  className="field"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  placeholder="owner@example.com"
+                />
+              </div>
+            </label>
+            <button className="btn btn-secondary gate-submit-secondary" type="submit">
+              Reset my password
             </button>
           </form>
         </details>

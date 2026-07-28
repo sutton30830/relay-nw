@@ -59,13 +59,13 @@ export default function HomePage() {
           </p>
           <div className="home-hero__actions">
             <Link className="btn btn-primary home-hero__cta" href="/intake">
-              Request setup <Icon name="arrowRight" size={14} />
+              Get started <Icon name="arrowRight" size={14} />
             </Link>
             <p className="home-hero__owner-link">
               Already using Relay? <Link className="text-link" href="/login">Sign in</Link> · <InboxLink className="text-link">Open your inbox</InboxLink>
             </p>
           </div>
-          <p className="home-hero__note">$99/month · first 30 days free</p>
+          <p className="home-hero__note">Request a Relay account for your business · $99/month · first 30 days free</p>
         </div>
 
         {/* The product loop in one glance: missed call → instant text → the
@@ -117,7 +117,7 @@ export default function HomePage() {
         <h2 className="t-display">Stop losing calls you already earned.</h2>
         <p>If Relay doesn&apos;t help you recover missed calls, you don&apos;t pay.</p>
         <Link className="btn btn-primary home-hero__cta" href="/intake">
-          Request setup
+          Get started
         </Link>
       </section>
     </main>
