@@ -127,6 +127,11 @@ function createSupabaseFake(seed) {
       return this;
     }
 
+    delete() {
+      this.action = "delete";
+      return this;
+    }
+
     upsert(payload, options = {}) {
       this.action = "upsert";
       this.payload = payload;
@@ -213,6 +218,13 @@ function createSupabaseFake(seed) {
         resultRows = rows.filter((row) => matches(row, this.filters));
         for (const row of resultRows) {
           Object.assign(row, this.payload);
+        }
+      }
+
+      if (this.action === "delete") {
+        resultRows = rows.filter((row) => matches(row, this.filters));
+        for (let index = rows.length - 1; index >= 0; index -= 1) {
+          if (matches(rows[index], this.filters)) rows.splice(index, 1);
         }
       }
 
@@ -544,8 +556,16 @@ async function loadStores(fake) {
     "./client": clientMock,
     "./tenant": tenantMock,
   });
+  const carrierProfiles = await loadTsModule("lib/supabase/carrier-profiles.ts", {
+    "./client": clientMock,
+    "./tenant": tenantMock,
+  });
+  const audit = await loadTsModule("lib/supabase/audit.ts", {
+    "./client": clientMock,
+    "./tenant": tenantMock,
+  });
 
-  return { accounts, calls, leads, messages, voicemails };
+  return { accounts, audit, calls, carrierProfiles, leads, messages, voicemails };
 }
 
 function seedData() {
@@ -595,6 +615,44 @@ function seedData() {
     account_phone_numbers: [
       { id: "num-a", account_id: "acct-a", phone_number: "+15550001000", is_primary: true },
       { id: "num-b", account_id: "acct-b", phone_number: "+15550002000", is_primary: true },
+    ],
+    account_carrier_profiles: [
+      {
+        account_id: "acct-a",
+        status: "approved",
+        twilio_brand_sid: "BN_A",
+        twilio_campaign_sid: "QE_A",
+        messaging_service_sid: "MG_A",
+        status_detail: "Account A approved",
+        updated_at: "2026-01-01T00:00:00.000Z",
+      },
+      {
+        account_id: "acct-b",
+        status: "in_progress",
+        twilio_brand_sid: "BN_B",
+        twilio_campaign_sid: "QE_B",
+        messaging_service_sid: "MG_B",
+        status_detail: "Account B pending",
+        updated_at: "2026-01-02T00:00:00.000Z",
+      },
+    ],
+    account_audit_events: [
+      {
+        id: "audit-a",
+        account_id: "acct-a",
+        actor_user_id: "user-a",
+        actor_email: "a@example.com",
+        action: "fixture.a",
+        summary: "Account A event",
+      },
+      {
+        id: "audit-b",
+        account_id: "acct-b",
+        actor_user_id: "user-b",
+        actor_email: "b@example.com",
+        action: "fixture.b",
+        summary: "Account B event",
+      },
     ],
     leads: [
       {
@@ -659,9 +717,76 @@ function seedData() {
     inbound_messages: [],
     calls: [],
     messages: [],
-    opt_outs: [],
+    opt_outs: [
+      { id: "opt-a", account_id: "acct-a", phone: "+15553330001" },
+      { id: "opt-b", account_id: "acct-b", phone: "+15553330002" },
+    ],
   };
 }
+
+test("carrier profiles, account audit events, and opt-outs remain account scoped", async () => {
+  const fake = createSupabaseFake(seedData());
+  const { audit, carrierProfiles, messages } = await loadStores(fake);
+
+  const profileA = await carrierProfiles.getCarrierProfile("acct-a");
+  assert.equal(profileA?.accountId, "acct-a");
+  assert.equal(profileA?.twilioBrandSid, "BN_A");
+
+  const profileBBefore = structuredClone(
+    fake.tables.account_carrier_profiles.find((row) => row.account_id === "acct-b"),
+  );
+  await carrierProfiles.upsertCarrierProfile("acct-a", {
+    status: "ready",
+    status_detail: "Account A is ready",
+  });
+  assert.equal(
+    fake.tables.account_carrier_profiles.find((row) => row.account_id === "acct-a")?.status,
+    "ready",
+  );
+  assert.deepEqual(
+    fake.tables.account_carrier_profiles.find((row) => row.account_id === "acct-b"),
+    profileBBefore,
+  );
+
+  const accountBAuditBefore = structuredClone(
+    fake.tables.account_audit_events.filter((row) => row.account_id === "acct-b"),
+  );
+  await audit.recordAccountAuditEvents({
+    accountId: "acct-a",
+    actorUserId: "user-a",
+    actorEmail: "a@example.com",
+    events: [{
+      action: "settings.updated",
+      summary: "Account A settings changed",
+    }],
+  }, { required: true });
+  assert.equal(
+    fake.tables.account_audit_events.filter(
+      (row) => row.account_id === "acct-a" && row.action === "settings.updated",
+    ).length,
+    1,
+  );
+  assert.deepEqual(
+    fake.tables.account_audit_events.filter((row) => row.account_id === "acct-b"),
+    accountBAuditBefore,
+  );
+
+  assert.equal(await messages.isOptedOut("+15553330002", "acct-a"), false);
+  assert.equal(await messages.isOptedOut("+15553330002", "acct-b"), true);
+  await messages.clearOptOut("+15553330002", "acct-a");
+  assert.equal(await messages.isOptedOut("+15553330002", "acct-b"), true);
+
+  const sharedPhone = "+15553339999";
+  await messages.recordOptOut(sharedPhone, "acct-a");
+  await messages.recordOptOut(sharedPhone, "acct-b");
+  assert.deepEqual(
+    fake.tables.opt_outs
+      .filter((row) => row.phone === sharedPhone)
+      .map((row) => row.account_id)
+      .sort(),
+    ["acct-a", "acct-b"],
+  );
+});
 
 test("account B cannot read account A leads", async () => {
   const fake = createSupabaseFake(seedData());

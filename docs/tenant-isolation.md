@@ -92,4 +92,13 @@ Supabase modules.
 5. Run signed missed-call, SMS reply, recording, playback, and manual-reply
    smoke tests for two non-production businesses.
 
-The migration is additive and idempotent. It has not been executed by Codex.
+The migration is additive and idempotent.
+
+Deployment record (2026-07-28): the migration was applied to the current
+Supabase production project after a database export. Postflight verification
+confirmed the tenant `NOT NULL` columns, account-aware foreign keys, uniqueness
+indexes, phone-number conflict checks, and service-role-only function grants.
+The signed two-business live Twilio/Supabase smoke test in step 5 remains the
+final Phase 2 acceptance gate. It is intentionally deferred until a second
+non-production Relay number is A2P-approved; do not substitute a real pilot
+account merely to satisfy the test.

@@ -104,6 +104,7 @@ test("the adversarial fixture has two non-overlapping businesses and every custo
     "relayNumber",
     "publicNumber",
     "customerPhone",
+    "optOutPhone",
     "callSid",
     "messageSid",
     "recordingSid",
@@ -134,9 +135,12 @@ test("the adversarial fixture has two non-overlapping businesses and every custo
     "account_carrier_profiles",
     "account_phone_numbers",
     "account_users",
+    "account_audit_events",
     "leads",
+    "inbound_messages",
     "calls",
     "messages",
+    "opt_outs",
   ]) {
     assert.ok(aRows[table].length > 0, `${table} must include Business A`);
     assert.ok(bRows[table].length > 0, `${table} must include Business B`);
