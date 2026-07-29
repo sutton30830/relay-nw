@@ -1271,6 +1271,7 @@ create table if not exists public.leads (
   recording_url text,
   recording_duration integer,
   recording_status text,
+  voicemail_raw_transcript text,
   voicemail_transcript text,
   voicemail_summary text,
   voicemail_transcription_status text check (voicemail_transcription_status is null or voicemail_transcription_status in ('pending', 'processing', 'completed', 'failed')),
@@ -1296,6 +1297,7 @@ alter table public.leads add column if not exists recording_sid text;
 alter table public.leads add column if not exists recording_url text;
 alter table public.leads add column if not exists recording_duration integer;
 alter table public.leads add column if not exists recording_status text;
+alter table public.leads add column if not exists voicemail_raw_transcript text;
 alter table public.leads add column if not exists voicemail_transcript text;
 alter table public.leads add column if not exists voicemail_summary text;
 alter table public.leads add column if not exists voicemail_transcription_status text;
@@ -1330,6 +1332,9 @@ alter table public.leads
     or voicemail_transcription_status in ('pending', 'processing', 'completed', 'failed')
   );
 alter table public.leads alter column account_id set not null;
+
+comment on column public.leads.voicemail_raw_transcript is
+  'Original text returned by the speech-to-text provider before trimming, formatting, summarization, or other downstream processing.';
 
 create index if not exists leads_created_at_idx on public.leads (created_at desc);
 create index if not exists leads_account_created_at_idx on public.leads (account_id, created_at desc);

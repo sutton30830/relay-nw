@@ -228,6 +228,7 @@ export async function POST(request: Request) {
       await updateLeadVoicemailTranscription({
         accountId: account.accountId,
         id: result.leadId,
+        rawTranscript: null,
         transcript: null,
         summary: null,
         status: "failed",

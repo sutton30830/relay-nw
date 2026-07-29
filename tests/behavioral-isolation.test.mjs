@@ -720,11 +720,13 @@ test("account B cannot play or transcribe account A voicemail", async () => {
     accountId: "acct-b",
     id: "lead-a",
     status: "completed",
+    rawTranscript: "wrong tenant raw evidence",
     transcript: "wrong tenant",
     summary: "wrong tenant",
   });
 
   const accountALead = fake.tables.leads.find((lead) => lead.id === "lead-a");
+  assert.equal(accountALead.voicemail_raw_transcript ?? null, null);
   assert.equal(accountALead.voicemail_transcript, null);
   assert.equal(accountALead.voicemail_summary, null);
   assert.equal(accountALead.voicemail_transcription_status, "pending");

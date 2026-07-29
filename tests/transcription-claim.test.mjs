@@ -220,6 +220,7 @@ test("too-short recording is rejected before claim or AI and clears any generate
     assert.deepEqual(calls.transcriptionUpdates, [{
       accountId: "acct-1",
       id: "lead-short",
+      rawTranscript: null,
       transcript: null,
       summary: null,
       status: "failed",
@@ -277,7 +278,7 @@ test("completed lead returns cached summary without claiming", async () => {
   assert.deepEqual(calls.claims, []);
 });
 
-test("non-service voicemails persist a useful summary instead of no-details", async () => {
+test("non-service voicemails preserve raw evidence and persist a useful summary", async () => {
   const originalFetch = globalThis.fetch;
   const transcript = "Hello, this is Sophia from AT&T. Your monthly bill discount will be removed today.";
   const summary = "Non-service voicemail: AT&T billing discount notice.";
@@ -296,8 +297,7 @@ test("non-service voicemails persist a useful summary instead of no-details", as
 
     if (String(url).endsWith("/responses")) {
       const responseIndex = fetches.filter((item) => item.endsWith("/responses")).length;
-      if (responseIndex === 1) return Response.json({ output_text: transcript });
-      if (responseIndex === 2) return Response.json({ output_text: summary });
+      if (responseIndex === 1) return Response.json({ output_text: summary });
       return Response.json({ output_text: "normal - billing notice" });
     }
 
@@ -323,10 +323,103 @@ test("non-service voicemails persist a useful summary instead of no-details", as
     assert.equal(result.status, "completed");
     assert.equal(result.summary, summary);
     assert.equal(calls.claims.length, 1);
-    assert.deepEqual(calls.transcriptionUpdates.at(-1), {
+    assert.deepEqual(calls.transcriptionUpdates[0], {
+      accountId: "acct-1",
+      id: "lead-1",
+      rawTranscript: transcript,
+      transcript: null,
+      summary: null,
+      status: "processing",
+      error: null,
+    });
+    assert.deepEqual(calls.transcriptionUpdates[1], {
       accountId: "acct-1",
       id: "lead-1",
       transcript,
+      status: "processing",
+      error: null,
+    });
+    assert.deepEqual(calls.transcriptionUpdates.at(-1), {
+      accountId: "acct-1",
+      id: "lead-1",
+      rawTranscript: transcript,
+      transcript,
+      summary,
+      status: "completed",
+      error: null,
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("casual voicemail stays verbatim and is never sent through transcript rewriting", async () => {
+  const originalFetch = globalThis.fetch;
+  const rawTranscript = "  Hey Sutton, it's Joe. Just calling to say what's up. Give me a call. Peace.  ";
+  const displayTranscript = rawTranscript.trim();
+  const summary = "Personal call from Joe asking Sutton to call him back.";
+  const responseInputs = [];
+  let transcriptionForm = null;
+
+  globalThis.fetch = async (url, init = {}) => {
+    if (String(url).includes("Recordings/RE_joe.mp3")) {
+      return new Response("fake-audio", { status: 200 });
+    }
+
+    if (String(url).endsWith("/audio/transcriptions")) {
+      transcriptionForm = init.body;
+      return Response.json({ text: rawTranscript });
+    }
+
+    if (String(url).endsWith("/responses")) {
+      const body = JSON.parse(init.body);
+      responseInputs.push(body.input?.[1]?.content ?? "");
+      return Response.json({
+        output_text: responseInputs.length === 1 ? summary : "normal - personal callback",
+      });
+    }
+
+    throw new Error(`Unexpected fetch: ${url}`);
+  };
+
+  try {
+    const { mocks, calls } = makeVoicemailMocks({
+      lead: {
+        id: "lead-joe",
+        phone: "+12065557678",
+        recording_sid: "RE_joe",
+        recording_duration: 7,
+        voicemail_transcript: null,
+        voicemail_summary: null,
+        voicemail_transcription_status: "pending",
+        voicemail_transcribed_at: null,
+      },
+    });
+    const { transcribeLeadVoicemail } = await loadTsModule("lib/voicemail-ai.ts", mocks);
+
+    const result = await transcribeLeadVoicemail("lead-joe", "acct-1");
+
+    assert.equal(result.transcript, displayTranscript);
+    assert.equal(result.summary, summary);
+    assert.equal(transcriptionForm.get("prompt"), null, "biased home-service prompt must be absent");
+    assert.deepEqual(responseInputs, [
+      displayTranscript,
+      `${displayTranscript} ${summary}`,
+    ], "only summary and priority may use the Responses API");
+    assert.deepEqual(calls.transcriptionUpdates[0], {
+      accountId: "acct-1",
+      id: "lead-joe",
+      rawTranscript,
+      transcript: null,
+      summary: null,
+      status: "processing",
+      error: null,
+    });
+    assert.deepEqual(calls.transcriptionUpdates.at(-1), {
+      accountId: "acct-1",
+      id: "lead-joe",
+      rawTranscript,
+      transcript: displayTranscript,
       summary,
       status: "completed",
       error: null,

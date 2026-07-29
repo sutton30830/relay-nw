@@ -30,17 +30,6 @@ type OpenAIResponsesResponse = {
 
 const STALE_PROCESSING_MS = 10 * 60 * 1000;
 
-const TRANSCRIPTION_CONTEXT =
-  "This voicemail is for a local home service business. Common words include sink, faucet, toilet, drain, leak, leaking, water heater, HVAC, furnace, electrical, breaker, outlet, estimate, quote, appointment, callback, and service call.";
-
-const TRANSCRIPT_REPLACEMENTS: Array<[RegExp, string]> = [
-  [/\bsync\b/gi, "sink"],
-  [/\bsynced\b/gi, "sink"],
-  [/\bfoss it\b/gi, "faucet"],
-  [/\bfaucett\b/gi, "faucet"],
-  [/\bhot water tank\b/gi, "water heater"],
-];
-
 function twilioRecordingUrl(recordingSid: string) {
   return `https://api.twilio.com/2010-04-01/Accounts/${env.twilioAccountSid}/Recordings/${recordingSid}.mp3`;
 }
@@ -70,7 +59,6 @@ async function transcribeAudio(audio: Blob) {
   form.append("file", audio, "voicemail.mp3");
   form.append("model", env.openaiTranscriptionModel);
   form.append("response_format", "json");
-  form.append("prompt", TRANSCRIPTION_CONTEXT);
 
   const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
     method: "POST",
@@ -85,20 +73,14 @@ async function transcribeAudio(audio: Blob) {
   }
 
   const data = await response.json() as OpenAITranscriptionResponse;
-  const transcript = data.text?.trim();
+  const rawTranscript = data.text;
+  const transcript = rawTranscript?.trim();
 
   if (!transcript) {
     throw new Error("OpenAI transcription returned no text.");
   }
 
-  return cleanTranscript(transcript);
-}
-
-function cleanTranscript(transcript: string) {
-  return TRANSCRIPT_REPLACEMENTS.reduce(
-    (cleaned, [pattern, replacement]) => cleaned.replace(pattern, replacement),
-    transcript,
-  );
+  return { rawTranscript, transcript };
 }
 
 async function summarizeTranscript(transcript: string) {
@@ -182,44 +164,6 @@ function normalizeSummary(summary: string): string | null {
   }
 
   return trimmed;
-}
-
-async function clarifyTranscript(transcript: string) {
-  if (!env.openaiApiKey) {
-    throw new Error("OPENAI_API_KEY is not configured.");
-  }
-
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.openaiApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: env.openaiSummaryModel,
-      max_output_tokens: 180,
-      input: [
-        {
-          role: "system",
-          content:
-            "Clean up a voicemail transcript for a local home service business. Fix obvious transcription mistakes and home-service homophones. Preserve the caller's meaning. Do not summarize. Do not change names, pronouns, or personal identifiers. Do not add urgency, names, dates, problems, or details that are not clearly present. If a phrase is unclear, leave it plain rather than guessing.",
-        },
-        {
-          role: "user",
-          content: transcript.slice(0, 4000),
-        },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(await openAIError("OpenAI transcript cleanup", response));
-  }
-
-  const data = await response.json() as OpenAIResponsesResponse;
-  const clarified = extractResponseText(data)?.trim();
-
-  return clarified || transcript;
 }
 
 // Keyword regex first (fast, free, predictable), then an LLM pass only when the regex
@@ -313,6 +257,7 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
     await updateLeadVoicemailTranscription({
       accountId,
       id: leadId,
+      rawTranscript: null,
       transcript: null,
       summary: null,
       status: "failed",
@@ -338,13 +283,35 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
 
   try {
     const audio = await fetchRecordingAudio(lead.recording_sid);
-    const rawTranscript = await transcribeAudio(audio);
+    const transcription = await transcribeAudio(audio);
 
-    if (transcriptLooksLikeSilenceHallucination(rawTranscript, lead.recording_duration)) {
+    // Persist the provider's exact output before validating or transforming
+    // anything. Even a rejected hallucination is useful diagnostic evidence.
+    await updateLeadVoicemailTranscription({
+      accountId,
+      id: leadId,
+      rawTranscript: transcription.rawTranscript,
+      transcript: null,
+      summary: null,
+      status: "processing",
+      error: null,
+    });
+
+    if (transcriptLooksLikeSilenceHallucination(transcription.transcript, lead.recording_duration)) {
       throw new Error(NO_USABLE_VOICEMAIL_MESSAGE);
     }
 
-    const transcript = await clarifyTranscript(rawTranscript);
+    // The customer-facing transcript is only whitespace-normalized. It is not
+    // sent through an LLM rewrite or an industry-specific substitution list.
+    await updateLeadVoicemailTranscription({
+      accountId,
+      id: leadId,
+      transcript: transcription.transcript,
+      status: "processing",
+      error: null,
+    });
+
+    const transcript = transcription.transcript;
     // null when the model had nothing specific to say — stored as null so the
     // UI can show "listen to the voicemail" instead of vague boilerplate.
     const summary = normalizeSummary(await summarizeTranscript(transcript));
@@ -352,6 +319,7 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
     await updateLeadVoicemailTranscription({
       accountId,
       id: leadId,
+      rawTranscript: transcription.rawTranscript,
       transcript,
       summary,
       status: "completed",

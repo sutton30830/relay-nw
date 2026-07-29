@@ -73,6 +73,7 @@ export async function getLeadForVoicemailTranscription(id: string, inputAccountI
 export async function updateLeadVoicemailTranscription(input: {
   accountId: string;
   id: string;
+  rawTranscript?: string | null;
   transcript?: string | null;
   summary?: string | null;
   status: VoicemailTranscriptionStatus;
@@ -85,6 +86,7 @@ export async function updateLeadVoicemailTranscription(input: {
   }
 
   const updates: {
+    voicemail_raw_transcript?: string | null;
     voicemail_transcript?: string | null;
     voicemail_summary?: string | null;
     voicemail_transcription_status: VoicemailTranscriptionStatus;
@@ -100,6 +102,10 @@ export async function updateLeadVoicemailTranscription(input: {
         ? new Date().toISOString()
         : null,
   };
+
+  if (typeof input.rawTranscript !== "undefined") {
+    updates.voicemail_raw_transcript = input.rawTranscript;
+  }
 
   if (typeof input.transcript !== "undefined") {
     updates.voicemail_transcript = input.transcript;
