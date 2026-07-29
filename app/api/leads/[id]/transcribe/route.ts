@@ -1,8 +1,11 @@
 import { requireWriteAccessJson } from "@/lib/auth";
-import { transcribeLeadVoicemail } from "@/lib/voicemail-ai";
+import {
+  isExpectedVoicemailQualityErrorMessage,
+  transcribeLeadVoicemail,
+} from "@/lib/voicemail-ai";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 export async function POST(
   _request: Request,
@@ -18,12 +21,17 @@ export async function POST(
     return Response.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to summarize voicemail.";
+    const isExpectedQualityOutcome = isExpectedVoicemailQualityErrorMessage(message);
 
-    console.error("Failed to summarize voicemail", {
+    const log = isExpectedQualityOutcome ? console.info : console.error;
+    log("Failed to summarize voicemail", {
       leadId: id,
       error: message,
     });
 
-    return Response.json({ error: message }, { status: 500 });
+    return Response.json(
+      { error: message },
+      { status: isExpectedQualityOutcome ? 422 : 500 },
+    );
   }
 }

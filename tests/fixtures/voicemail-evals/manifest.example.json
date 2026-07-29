@@ -1,0 +1,12 @@
+{
+  "primaryModel": "gpt-4o-transcribe",
+  "verificationModel": "gpt-4o-mini-transcribe",
+  "maxWordErrorRate": 0.15,
+  "cases": [
+    {
+      "id": "joe-personal-call",
+      "audio": "audio/joe-personal-call.mp3",
+      "expectedTranscript": "Hey Sutton, it's Joe. Just calling to say what's up. Give me a call. Peace."
+    }
+  ]
+}

@@ -7,6 +7,8 @@ tsconfig.tsbuildinfo
 .vercel
 public/audio/
 New Recording *.mp3
+tests/fixtures/voicemail-evals/audio/
+tests/fixtures/voicemail-evals/manifest.json
 .DS_Store
 
 # Sentry Config File

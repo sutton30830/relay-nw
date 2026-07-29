@@ -1,6 +1,7 @@
 import { isPlaceholderSupabaseConfig, shouldSkipDatabaseWrite, supabaseAdmin, throwIfSupabaseError } from "./client";
 import { assertAccountId } from "./tenant";
 import type { VoicemailTranscriptionStatus } from "./types";
+import type { TranscriptionQuality } from "@/lib/voicemail-confidence";
 
 export async function recordingBelongsToLead(recordingSid: string, inputAccountId: string) {
   const accountId = assertAccountId(inputAccountId, "recordingBelongsToLead");
@@ -74,8 +75,16 @@ export async function updateLeadVoicemailTranscription(input: {
   accountId: string;
   id: string;
   rawTranscript?: string | null;
+  transcriptionModel?: string | null;
+  transcriptionConfidence?: number | null;
+  transcriptionQuality?: TranscriptionQuality | null;
+  transcriptionQualityReasons?: string[] | null;
+  transcriptionMetrics?: Record<string, number | null> | null;
   transcript?: string | null;
   summary?: string | null;
+  summaryClassification?: string | null;
+  summaryEvidence?: string[] | null;
+  summaryValidationReasons?: string[] | null;
   status: VoicemailTranscriptionStatus;
   error?: string | null;
 }) {
@@ -87,8 +96,16 @@ export async function updateLeadVoicemailTranscription(input: {
 
   const updates: {
     voicemail_raw_transcript?: string | null;
+    voicemail_transcription_model?: string | null;
+    voicemail_transcription_confidence?: number | null;
+    voicemail_transcription_quality?: TranscriptionQuality | null;
+    voicemail_transcription_quality_reasons?: string[] | null;
+    voicemail_transcription_metrics?: Record<string, number | null> | null;
     voicemail_transcript?: string | null;
     voicemail_summary?: string | null;
+    voicemail_summary_classification?: string | null;
+    voicemail_summary_evidence?: string[] | null;
+    voicemail_summary_validation_reasons?: string[] | null;
     voicemail_transcription_status: VoicemailTranscriptionStatus;
     voicemail_transcription_error: string | null;
     voicemail_transcribed_at: string | null;
@@ -107,12 +124,44 @@ export async function updateLeadVoicemailTranscription(input: {
     updates.voicemail_raw_transcript = input.rawTranscript;
   }
 
+  if (typeof input.transcriptionModel !== "undefined") {
+    updates.voicemail_transcription_model = input.transcriptionModel;
+  }
+
+  if (typeof input.transcriptionConfidence !== "undefined") {
+    updates.voicemail_transcription_confidence = input.transcriptionConfidence;
+  }
+
+  if (typeof input.transcriptionQuality !== "undefined") {
+    updates.voicemail_transcription_quality = input.transcriptionQuality;
+  }
+
+  if (typeof input.transcriptionQualityReasons !== "undefined") {
+    updates.voicemail_transcription_quality_reasons = input.transcriptionQualityReasons;
+  }
+
+  if (typeof input.transcriptionMetrics !== "undefined") {
+    updates.voicemail_transcription_metrics = input.transcriptionMetrics;
+  }
+
   if (typeof input.transcript !== "undefined") {
     updates.voicemail_transcript = input.transcript;
   }
 
   if (typeof input.summary !== "undefined") {
     updates.voicemail_summary = input.summary;
+  }
+
+  if (typeof input.summaryClassification !== "undefined") {
+    updates.voicemail_summary_classification = input.summaryClassification;
+  }
+
+  if (typeof input.summaryEvidence !== "undefined") {
+    updates.voicemail_summary_evidence = input.summaryEvidence;
+  }
+
+  if (typeof input.summaryValidationReasons !== "undefined") {
+    updates.voicemail_summary_validation_reasons = input.summaryValidationReasons;
   }
 
   const { error } = await supabaseAdmin
@@ -172,6 +221,7 @@ export async function listLeadsNeedingTranscriptionRetry(limit = 10) {
     .not("recording_sid", "is", null)
     .or("recording_duration.is.null,recording_duration.gte.3")
     .not("voicemail_transcription_error", "ilike", "Twilio recording download failed with 404%")
+    .not("voicemail_transcription_error", "ilike", "Relay could not confidently transcribe%")
     .is("deleted_at", null)
     .or(
       `voicemail_transcription_status.in.(pending,failed),` +

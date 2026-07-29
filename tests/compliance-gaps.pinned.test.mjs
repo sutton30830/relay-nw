@@ -73,10 +73,11 @@ test(
 );
 
 test(
-  "non-service voicemails still get useful summaries",
+  "voicemail summaries require structured transcript evidence",
   () => {
-    assert.match(voicemailAi, /Non-service voicemail:/);
-    assert.match(voicemailAi, /vendor notice, billing notice, sales call, wrong number, or spam/);
+    assert.match(voicemailAi, /VOICEMAIL_SUMMARY_JSON_SCHEMA/);
+    assert.match(voicemailAi, /validateStructuredVoicemailSummary/);
+    assert.match(voicemailAi, /summaryEvidence/);
   },
 );
 

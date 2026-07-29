@@ -1,6 +1,18 @@
 import { env } from "@/lib/env";
 import { classifyPriority, type PriorityClassification } from "@/lib/priority";
 import {
+  assessTranscriptionConfidence,
+  transcriptsMateriallyDisagree,
+  transcriptWordErrorRate,
+  type TranscriptionLogprob,
+} from "@/lib/voicemail-confidence";
+import {
+  parseStructuredVoicemailSummary,
+  validateStructuredVoicemailSummary,
+  VOICEMAIL_SUMMARY_JSON_SCHEMA,
+  type ValidatedVoicemailSummary,
+} from "@/lib/voicemail-summary";
+import {
   claimVoicemailTranscription,
   getAccountConfigByAccountId,
   getLeadForVoicemailTranscription,
@@ -17,6 +29,7 @@ import {
 
 type OpenAITranscriptionResponse = {
   text?: string;
+  logprobs?: TranscriptionLogprob[];
 };
 
 type OpenAIResponsesResponse = {
@@ -29,6 +42,18 @@ type OpenAIResponsesResponse = {
 };
 
 const STALE_PROCESSING_MS = 10 * 60 * 1000;
+const VERIFICATION_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
+const UNCERTAIN_TRANSCRIPTION_MESSAGE =
+  "Relay could not confidently transcribe this voicemail. Listen to the recording instead.";
+
+class ExpectedVoicemailQualityError extends Error {}
+
+export function isExpectedVoicemailQualityErrorMessage(message: string) {
+  return (
+    message === NO_USABLE_VOICEMAIL_MESSAGE ||
+    message === UNCERTAIN_TRANSCRIPTION_MESSAGE
+  );
+}
 
 function twilioRecordingUrl(recordingSid: string) {
   return `https://api.twilio.com/2010-04-01/Accounts/${env.twilioAccountSid}/Recordings/${recordingSid}.mp3`;
@@ -50,15 +75,18 @@ async function fetchRecordingAudio(recordingSid: string) {
   return response.blob();
 }
 
-async function transcribeAudio(audio: Blob) {
+async function transcribeAudio(audio: Blob, model: string) {
   if (!env.openaiApiKey) {
     throw new Error("OPENAI_API_KEY is not configured.");
   }
 
   const form = new FormData();
   form.append("file", audio, "voicemail.mp3");
-  form.append("model", env.openaiTranscriptionModel);
+  form.append("model", model);
   form.append("response_format", "json");
+  form.append("language", "en");
+  form.append("temperature", "0");
+  form.append("include[]", "logprobs");
 
   const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
     method: "POST",
@@ -80,10 +108,17 @@ async function transcribeAudio(audio: Blob) {
     throw new Error("OpenAI transcription returned no text.");
   }
 
-  return { rawTranscript, transcript };
+  return {
+    rawTranscript,
+    transcript,
+    logprobs: data.logprobs ?? [],
+  };
 }
 
-async function summarizeTranscript(transcript: string) {
+async function summarizeTranscript(transcript: string): Promise<{
+  summary: ValidatedVoicemailSummary | null;
+  validationReasons: string[];
+}> {
   if (!env.openaiApiKey) {
     throw new Error("OPENAI_API_KEY is not configured.");
   }
@@ -96,12 +131,20 @@ async function summarizeTranscript(transcript: string) {
     },
     body: JSON.stringify({
       model: env.openaiSummaryModel,
-      max_output_tokens: 120,
+      max_output_tokens: 300,
+      text: {
+        format: {
+          type: "json_schema",
+          name: "voicemail_summary",
+          strict: true,
+          schema: VOICEMAIL_SUMMARY_JSON_SCHEMA,
+        },
+      },
       input: [
         {
           role: "system",
           content:
-            "Summarize a voicemail for a local service business owner. Use one short sentence that names the specific problem, appliance, location, or request the caller mentioned (e.g. \"Water heater leaking in the garage; wants someone this week.\"). If the voicemail is clearly not a customer job request — for example a vendor notice, billing notice, sales call, wrong number, or spam — still summarize it as `Non-service voicemail: ...` with the specific reason. State only what the caller explicitly said. Do not infer urgency. Do not say urgent, emergency, ASAP, today, or immediate unless the caller clearly said that. Include callback timing only if the caller mentioned one. Do not invent details. Never pad with filler like \"has a request\" or \"needs attention\". If the audio has no understandable details at all, reply with exactly NO_DETAILS.",
+            "Extract a short, factual voicemail summary. Copy 1-3 exact transcript excerpts into evidence. Every specific person, company, problem, appliance, place, date, timing, and urgency claim in the summary must be supported by those exact excerpts. Never infer a service request from context. Use classification unknown, an empty summary, and empty evidence when the transcript does not support a useful summary. urgency must be normal with empty urgency_evidence unless the transcript explicitly supports fast or today; urgency_evidence must be an exact transcript excerpt.",
         },
         {
           role: "user",
@@ -116,113 +159,39 @@ async function summarizeTranscript(transcript: string) {
   }
 
   const data = await response.json() as OpenAIResponsesResponse;
-  const summary = extractResponseText(data);
+  const output = extractResponseText(data);
 
-  if (!summary) {
+  if (!output) {
     throw new Error("OpenAI summary returned no text.");
   }
 
-  return summary;
-}
+  const candidate = parseStructuredVoicemailSummary(output);
 
-// Words that carry no information about what the caller actually needs. A
-// summary made only of these ("The caller has an urgent request that needs
-// immediate attention.") tells the owner nothing — worse, near-identical
-// filler on every card destroys trust in the summaries that ARE specific.
-const GENERIC_SUMMARY_WORDS = new Set([
-  "a", "an", "and", "as", "asap", "attention", "back", "call", "callback", "caller",
-  "for", "get", "has", "have", "help", "immediate", "immediately", "in", "is", "it",
-  "left", "like", "message", "need", "needs", "of", "on", "please", "possible",
-  "request", "requests", "respond", "response", "someone", "soon", "that", "the",
-  "their", "them", "they", "to", "urgent", "voicemail", "wants", "was", "with", "would",
-]);
-
-export function isGenericVoicemailSummary(summary: string) {
-  const words = summary
-    .toLowerCase()
-    .replace(/[^a-z\s]/g, " ")
-    .split(/\s+/)
-    .filter(Boolean);
-
-  if (words.length === 0) return true;
-
-  return words.every((word) => GENERIC_SUMMARY_WORDS.has(word));
-}
-
-// A vague summary is worse than none: the UI shows an honest "listen to the
-// voicemail" fallback when this returns null.
-function normalizeSummary(summary: string): string | null {
-  const trimmed = summary.trim();
-
-  if (
-    !trimmed ||
-    /^no_details\.?$/i.test(trimmed) ||
-    /^non-service voicemail:\s*(?:no (?:usable )?details?|no message|nothing (?:was )?said)/i.test(trimmed) ||
-    isGenericVoicemailSummary(trimmed)
-  ) {
-    return null;
+  if (!candidate) {
+    return { summary: null, validationReasons: ["invalid_structured_summary"] };
   }
 
-  return trimmed;
+  const validation = validateStructuredVoicemailSummary(transcript, candidate);
+  return {
+    summary: validation.result,
+    validationReasons: validation.reasons,
+  };
 }
 
-// Keyword regex first (fast, free, predictable), then an LLM pass only when the regex
-// finds nothing — it catches phrasings no keyword list can ("my tenant is furious",
-// "the ceiling is dripping onto the breaker box"). The LLM can only upgrade a
-// "normal", never veto a regex hit, and any failure falls back to the regex result.
-async function classifyVoicemailPriority(text: string): Promise<PriorityClassification> {
-  const regexResult = classifyPriority(text);
+function classifyVoicemailPriority(
+  transcript: string,
+  summary: ValidatedVoicemailSummary | null,
+): PriorityClassification {
+  const regexResult = classifyPriority(transcript);
 
-  if (regexResult.level !== "normal" || !env.openaiApiKey || !text.trim()) {
+  if (regexResult.level !== "normal" || !summary || summary.urgency === "normal") {
     return regexResult;
   }
 
-  try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${env.openaiApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: env.openaiSummaryModel,
-        max_output_tokens: 40,
-        input: [
-          {
-            role: "system",
-            content:
-              "Classify the urgency of a voicemail left for a local home services business. Reply with exactly one line in the format `level - reason`. level is one of: fast, today, normal. fast = active damage, safety risk, or the caller explicitly says it is urgent or an emergency. today = the caller wants service today or tomorrow, or the problem is clearly time-sensitive. normal = everything else, including quotes and routine requests. The reason must be 3-8 words describing only what the caller actually said. Do not invent urgency.",
-          },
-          {
-            role: "user",
-            content: text.slice(0, 4000),
-          },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(await openAIError("OpenAI urgency classification", response));
-    }
-
-    const data = await response.json() as OpenAIResponsesResponse;
-    const raw = extractResponseText(data) ?? "";
-    const match = raw.match(/^\s*(fast|today|normal)\s*[-–—:]?\s*(.*)$/i);
-
-    if (!match) {
-      return regexResult;
-    }
-
-    const level = match[1].toLowerCase() as PriorityClassification["level"];
-    const reason = match[2]?.trim().slice(0, 120) || null;
-
-    return { level, reason: level === "normal" ? null : reason };
-  } catch (error) {
-    console.warn("LLM urgency classification failed; using keyword result", {
-      error: error instanceof Error ? error.message : error,
-    });
-    return regexResult;
-  }
+  return {
+    level: summary.urgency,
+    reason: summary.urgency_evidence.slice(0, 120),
+  };
 }
 
 async function openAIError(label: string, response: Response) {
@@ -258,8 +227,16 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
       accountId,
       id: leadId,
       rawTranscript: null,
+      transcriptionModel: env.openaiTranscriptionModel,
+      transcriptionConfidence: null,
+      transcriptionQuality: "unavailable",
+      transcriptionQualityReasons: ["recording_too_short"],
+      transcriptionMetrics: null,
       transcript: null,
       summary: null,
+      summaryClassification: null,
+      summaryEvidence: null,
+      summaryValidationReasons: null,
       status: "failed",
       error: NO_USABLE_VOICEMAIL_MESSAGE,
     });
@@ -283,7 +260,45 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
 
   try {
     const audio = await fetchRecordingAudio(lead.recording_sid);
-    const transcription = await transcribeAudio(audio);
+    const transcription = await transcribeAudio(audio, env.openaiTranscriptionModel);
+    const verificationModel =
+      env.openaiTranscriptionModel === VERIFICATION_TRANSCRIPTION_MODEL
+        ? "gpt-4o-transcribe"
+        : VERIFICATION_TRANSCRIPTION_MODEL;
+    const verification = await transcribeAudio(audio, verificationModel);
+    const confidenceAssessment = assessTranscriptionConfidence(transcription.logprobs);
+    const disagreementRate = transcriptWordErrorRate(
+      transcription.transcript,
+      verification.transcript,
+    );
+    const qualityReasons = [...confidenceAssessment.reasons];
+    const knownHallucination = transcriptLooksLikeSilenceHallucination(
+      transcription.transcript,
+      lead.recording_duration,
+    );
+    const modelDisagreement = transcriptsMateriallyDisagree(
+      transcription.transcript,
+      verification.transcript,
+    );
+
+    if (knownHallucination) {
+      qualityReasons.push("known_hallucination_pattern");
+    }
+
+    if (modelDisagreement) {
+      qualityReasons.push("transcription_models_disagree");
+    }
+
+    const quality =
+      confidenceAssessment.quality === "reliable" && !knownHallucination && !modelDisagreement
+        ? "reliable"
+        : confidenceAssessment.quality === "unavailable" || knownHallucination
+          ? "unavailable"
+          : "review_recommended";
+    const transcriptionMetrics = {
+      ...confidenceAssessment.metrics,
+      verification_word_error_rate: Math.round(disagreementRate * 10_000) / 10_000,
+    };
 
     // Persist the provider's exact output before validating or transforming
     // anything. Even a rejected hallucination is useful diagnostic evidence.
@@ -291,14 +306,32 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
       accountId,
       id: leadId,
       rawTranscript: transcription.rawTranscript,
+      transcriptionModel: env.openaiTranscriptionModel,
+      transcriptionConfidence: confidenceAssessment.confidence,
+      transcriptionQuality: quality,
+      transcriptionQualityReasons: qualityReasons,
+      transcriptionMetrics,
       transcript: null,
       summary: null,
+      summaryClassification: null,
+      summaryEvidence: null,
+      summaryValidationReasons: null,
       status: "processing",
       error: null,
     });
 
-    if (transcriptLooksLikeSilenceHallucination(transcription.transcript, lead.recording_duration)) {
-      throw new Error(NO_USABLE_VOICEMAIL_MESSAGE);
+    if (quality !== "reliable") {
+      const message = knownHallucination
+        ? NO_USABLE_VOICEMAIL_MESSAGE
+        : UNCERTAIN_TRANSCRIPTION_MESSAGE;
+
+      await updateLeadVoicemailTranscription({
+        accountId,
+        id: leadId,
+        status: "failed",
+        error: message,
+      });
+      throw new ExpectedVoicemailQualityError(message);
     }
 
     // The customer-facing transcript is only whitespace-normalized. It is not
@@ -307,21 +340,44 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
       accountId,
       id: leadId,
       transcript: transcription.transcript,
+      transcriptionQuality: "reliable",
       status: "processing",
       error: null,
     });
 
     const transcript = transcription.transcript;
-    // null when the model had nothing specific to say — stored as null so the
-    // UI can show "listen to the voicemail" instead of vague boilerplate.
-    const summary = normalizeSummary(await summarizeTranscript(transcript));
+    let structuredSummary: ValidatedVoicemailSummary | null = null;
+    let summaryValidationReasons: string[] = [];
+
+    try {
+      const summaryResult = await summarizeTranscript(transcript);
+      structuredSummary = summaryResult.summary;
+      summaryValidationReasons = summaryResult.validationReasons;
+    } catch (error) {
+      summaryValidationReasons = ["summary_request_failed"];
+      console.warn("Structured voicemail summary failed; keeping reliable transcript", {
+        leadId,
+        accountId,
+        error: error instanceof Error ? error.message : error,
+      });
+    }
+
+    const summary = structuredSummary?.summary ?? null;
 
     await updateLeadVoicemailTranscription({
       accountId,
       id: leadId,
       rawTranscript: transcription.rawTranscript,
+      transcriptionModel: env.openaiTranscriptionModel,
+      transcriptionConfidence: confidenceAssessment.confidence,
+      transcriptionQuality: "reliable",
+      transcriptionQualityReasons: qualityReasons,
+      transcriptionMetrics,
       transcript,
       summary,
+      summaryClassification: structuredSummary?.classification ?? null,
+      summaryEvidence: structuredSummary?.evidence ?? null,
+      summaryValidationReasons,
       status: "completed",
       error: null,
     });
@@ -329,7 +385,7 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
     // Classify urgency from what the caller actually said, persist it, and escalate
     // fast-priority voicemails to the owner by SMS immediately. Never fatal: the
     // transcription result stands even if classification or notification fails.
-    const classification = await classifyVoicemailPriority([transcript, summary].filter(Boolean).join(" "));
+    const classification = classifyVoicemailPriority(transcript, structuredSummary);
 
     try {
       await updateLeadPriority({
@@ -392,12 +448,17 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
       });
     }
 
-    const account = await getAccountConfigByAccountId(accountId);
-    await notifyAdminOperationalIssue({
-      account,
-      issue: "Voicemail transcription failed",
-      detail: message,
-    });
+    if (
+      !(error instanceof ExpectedVoicemailQualityError) &&
+      !isExpectedVoicemailQualityErrorMessage(message)
+    ) {
+      const account = await getAccountConfigByAccountId(accountId);
+      await notifyAdminOperationalIssue({
+        account,
+        issue: "Voicemail transcription failed",
+        detail: message,
+      });
+    }
 
     throw error;
   }

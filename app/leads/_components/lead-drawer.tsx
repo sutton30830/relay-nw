@@ -77,6 +77,8 @@ export function LeadDrawer({
   const hasVoicemail = hasUsableVoicemail(lead.recording_sid, lead.recording_duration);
   const summaryGenerating =
     hasVoicemail && !lead.voicemail_summary && lead.voicemail_transcription_status === "processing";
+  const transcriptionWasUncertain =
+    lead.voicemail_transcription_error?.includes("could not confidently transcribe") ?? false;
   const autoTextIssue = smsDeliveryIssue(lead.sms_status, lead.sms_error);
   const requestLabel = hasVoicemail && lead.voicemail_summary
     ? "What they need"
@@ -315,7 +317,8 @@ export function LeadDrawer({
               ) : null}
               {!lead.voicemail_summary &&
               !lead.voicemail_transcript &&
-              lead.voicemail_transcription_status !== "processing" ? (
+              lead.voicemail_transcription_status !== "processing" &&
+              !transcriptionWasUncertain ? (
                 <button
                   className="btn btn-secondary btn-sm"
                   type="button"

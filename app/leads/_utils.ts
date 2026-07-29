@@ -569,6 +569,10 @@ export function humanVoicemailError(error: string | null | undefined) {
     return "No voicemail was left, so Relay did not generate a transcript.";
   }
 
+  if (error.includes("could not confidently transcribe")) {
+    return "Relay could not confidently transcribe this voicemail. Listen to the recording instead.";
+  }
+
   if (error.includes("Twilio recording download failed with 404")) {
     return "Twilio no longer has this recording available. Try a newer voicemail or listen from Twilio.";
   }

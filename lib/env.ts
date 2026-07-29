@@ -74,6 +74,26 @@ function getAllowUnsignedTwilioWebhooks() {
   return value;
 }
 
+const SUPPORTED_TRANSCRIPTION_MODELS = new Set([
+  "gpt-4o-transcribe",
+  "gpt-4o-mini-transcribe",
+  "gpt-4o-mini-transcribe-2025-12-15",
+]);
+
+function getOpenAITranscriptionModel() {
+  const value =
+    getOptionalEnvAliases("OPENAI_TRANSCRIPTION_MODEL", "OPEN_AI_TRANSCRIPTION_MODEL") ??
+    "gpt-4o-transcribe";
+
+  if (!SUPPORTED_TRANSCRIPTION_MODELS.has(value)) {
+    throw new Error(
+      "Invalid OPENAI_TRANSCRIPTION_MODEL. Relay requires a confidence-capable GPT-4o transcription model.",
+    );
+  }
+
+  return value;
+}
+
 export const env = {
   callMode: getCallMode(),
   smsEnabled: getOptionalBooleanEnv("SMS_ENABLED", false),
@@ -90,9 +110,7 @@ export const env = {
   webhookEventRetentionDays: getOptionalNumberEnv("WEBHOOK_EVENT_RETENTION_DAYS", 30),
   inboundMessageRetentionDays: getOptionalNumberEnv("INBOUND_MESSAGE_RETENTION_DAYS", 90),
   openaiApiKey: getOptionalEnvAliases("OPENAI_API_KEY", "OPEN_AI_KEY"),
-  openaiTranscriptionModel:
-    getOptionalEnvAliases("OPENAI_TRANSCRIPTION_MODEL", "OPEN_AI_TRANSCRIPTION_MODEL") ??
-    "whisper-1",
+  openaiTranscriptionModel: getOpenAITranscriptionModel(),
   openaiSummaryModel: getOptionalEnv("OPENAI_SUMMARY_MODEL") ?? "gpt-4o-mini",
   resendApiKey: getOptionalEnv("RESEND_API_KEY"),
   cronSecret: getOptionalEnv("CRON_SECRET"),

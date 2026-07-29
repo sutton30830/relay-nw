@@ -31,6 +31,26 @@ async function loadTsModule(path, mocks) {
 }
 
 const voicemailQualityModule = await loadTsModule("lib/voicemail-quality.ts", {});
+const voicemailConfidenceModule = {
+  assessTranscriptionConfidence: () => ({
+    confidence: 0.99,
+    quality: "reliable",
+    reasons: [],
+    metrics: {
+      average_logprob: -0.01,
+      minimum_logprob: -0.01,
+      low_confidence_token_fraction: 0,
+      token_count: 1,
+    },
+  }),
+  transcriptWordErrorRate: () => 0,
+  transcriptsMateriallyDisagree: () => false,
+};
+const voicemailSummaryModule = {
+  parseStructuredVoicemailSummary: () => null,
+  validateStructuredVoicemailSummary: () => ({ result: null, reasons: [] }),
+  VOICEMAIL_SUMMARY_JSON_SCHEMA: {},
+};
 
 const ACCOUNT = {
   accountId: "acct-1",
@@ -505,7 +525,7 @@ function makeVoicemailMocks(state) {
         twilioAccountSid: "AC_test",
         twilioAuthToken: "token",
         openaiApiKey: null,
-        openaiTranscriptionModel: "whisper-1",
+        openaiTranscriptionModel: "gpt-4o-transcribe",
         openaiSummaryModel: "gpt-test",
       },
     },
@@ -515,6 +535,8 @@ function makeVoicemailMocks(state) {
           ? { level: "fast", reason: "mentioned flooding" }
           : { level: "normal", reason: null },
     },
+    "@/lib/voicemail-confidence": voicemailConfidenceModule,
+    "@/lib/voicemail-summary": voicemailSummaryModule,
     "@/lib/voicemail-quality": voicemailQualityModule,
     "@/lib/supabase": {
       claimVoicemailTranscription: async (input) => {

@@ -1272,8 +1272,16 @@ create table if not exists public.leads (
   recording_duration integer,
   recording_status text,
   voicemail_raw_transcript text,
+  voicemail_transcription_model text,
+  voicemail_transcription_confidence double precision,
+  voicemail_transcription_quality text,
+  voicemail_transcription_quality_reasons text[],
+  voicemail_transcription_metrics jsonb,
   voicemail_transcript text,
   voicemail_summary text,
+  voicemail_summary_classification text,
+  voicemail_summary_evidence text[],
+  voicemail_summary_validation_reasons text[],
   voicemail_transcription_status text check (voicemail_transcription_status is null or voicemail_transcription_status in ('pending', 'processing', 'completed', 'failed')),
   voicemail_transcription_error text,
   voicemail_transcribed_at timestamptz,
@@ -1298,8 +1306,16 @@ alter table public.leads add column if not exists recording_url text;
 alter table public.leads add column if not exists recording_duration integer;
 alter table public.leads add column if not exists recording_status text;
 alter table public.leads add column if not exists voicemail_raw_transcript text;
+alter table public.leads add column if not exists voicemail_transcription_model text;
+alter table public.leads add column if not exists voicemail_transcription_confidence double precision;
+alter table public.leads add column if not exists voicemail_transcription_quality text;
+alter table public.leads add column if not exists voicemail_transcription_quality_reasons text[];
+alter table public.leads add column if not exists voicemail_transcription_metrics jsonb;
 alter table public.leads add column if not exists voicemail_transcript text;
 alter table public.leads add column if not exists voicemail_summary text;
+alter table public.leads add column if not exists voicemail_summary_classification text;
+alter table public.leads add column if not exists voicemail_summary_evidence text[];
+alter table public.leads add column if not exists voicemail_summary_validation_reasons text[];
 alter table public.leads add column if not exists voicemail_transcription_status text;
 alter table public.leads add column if not exists voicemail_transcription_error text;
 alter table public.leads add column if not exists voicemail_transcribed_at timestamptz;
@@ -1331,10 +1347,33 @@ alter table public.leads
     voicemail_transcription_status is null
     or voicemail_transcription_status in ('pending', 'processing', 'completed', 'failed')
   );
+alter table public.leads drop constraint if exists leads_voicemail_transcription_confidence_check;
+alter table public.leads
+  add constraint leads_voicemail_transcription_confidence_check check (
+    voicemail_transcription_confidence is null
+    or (
+      voicemail_transcription_confidence >= 0
+      and voicemail_transcription_confidence <= 1
+    )
+  );
+alter table public.leads drop constraint if exists leads_voicemail_transcription_quality_check;
+alter table public.leads
+  add constraint leads_voicemail_transcription_quality_check check (
+    voicemail_transcription_quality is null
+    or voicemail_transcription_quality in ('reliable', 'review_recommended', 'unavailable')
+  );
 alter table public.leads alter column account_id set not null;
 
 comment on column public.leads.voicemail_raw_transcript is
   'Original text returned by the speech-to-text provider before trimming, formatting, summarization, or other downstream processing.';
+comment on column public.leads.voicemail_transcription_confidence is
+  'Geometric-mean token confidence derived from provider log probabilities, in the range 0 to 1.';
+comment on column public.leads.voicemail_transcription_quality is
+  'Fail-closed quality decision. Only reliable transcripts may be shown or summarized.';
+comment on column public.leads.voicemail_transcription_metrics is
+  'Aggregate confidence metrics only; token-level text/logprobs are not duplicated here.';
+comment on column public.leads.voicemail_summary_evidence is
+  'Exact transcript excerpts supplied as evidence for the generated summary.';
 
 create index if not exists leads_created_at_idx on public.leads (created_at desc);
 create index if not exists leads_account_created_at_idx on public.leads (account_id, created_at desc);

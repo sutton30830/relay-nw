@@ -26,6 +26,24 @@ async function loadTsModule(path, mocks) {
 }
 
 const voicemailQualityModule = await loadTsModule("lib/voicemail-quality.ts", {});
+const voicemailConfidenceModule = await loadTsModule("lib/voicemail-confidence.ts", {
+  "./voicemail-confidence-config.json": {
+    lowLogprobThreshold: -1.25,
+    veryLowLogprobThreshold: -2.5,
+    minimumReliableConfidence: 0.72,
+    minimumReviewConfidence: 0.5,
+    maximumReliableLowTokenFraction: 0.15,
+    maximumReviewLowTokenFraction: 0.35,
+    maximumReliableTranscriptDisagreement: 0.3,
+  },
+});
+const voicemailSummaryModule = await loadTsModule("lib/voicemail-summary.ts", {});
+
+const reliableLogprobs = [
+  { token: " Hello", logprob: -0.02 },
+  { token: " caller", logprob: -0.02 },
+  { token: " message", logprob: -0.02 },
+];
 
 function makeClaimBuilder({ data = { id: "lead-1" }, error = null } = {}) {
   const calls = {
@@ -121,13 +139,15 @@ function makeVoicemailMocks({ lead, claimResult = true }) {
         twilioAccountSid: "AC_test",
         twilioAuthToken: "token",
         openaiApiKey: "sk-test",
-        openaiTranscriptionModel: "whisper-test",
+        openaiTranscriptionModel: "gpt-4o-transcribe",
         openaiSummaryModel: "gpt-test",
       },
     },
     "@/lib/priority": {
       classifyPriority: () => ({ level: "normal", reason: null }),
     },
+    "@/lib/voicemail-confidence": voicemailConfidenceModule,
+    "@/lib/voicemail-summary": voicemailSummaryModule,
     "@/lib/voicemail-quality": voicemailQualityModule,
     "@/lib/supabase": {
       claimVoicemailTranscription: async (input) => {
@@ -221,8 +241,16 @@ test("too-short recording is rejected before claim or AI and clears any generate
       accountId: "acct-1",
       id: "lead-short",
       rawTranscript: null,
+      transcriptionModel: "gpt-4o-transcribe",
+      transcriptionConfidence: null,
+      transcriptionQuality: "unavailable",
+      transcriptionQualityReasons: ["recording_too_short"],
+      transcriptionMetrics: null,
       transcript: null,
       summary: null,
+      summaryClassification: null,
+      summaryEvidence: null,
+      summaryValidationReasons: null,
       status: "failed",
       error: "No usable voicemail was recorded. Relay did not generate a transcript.",
     }]);
@@ -281,7 +309,14 @@ test("completed lead returns cached summary without claiming", async () => {
 test("non-service voicemails preserve raw evidence and persist a useful summary", async () => {
   const originalFetch = globalThis.fetch;
   const transcript = "Hello, this is Sophia from AT&T. Your monthly bill discount will be removed today.";
-  const summary = "Non-service voicemail: AT&T billing discount notice.";
+  const summary = "AT&T monthly bill discount notice.";
+  const structuredSummary = {
+    classification: "vendor_notice",
+    summary,
+    evidence: ["this is Sophia from AT&T", "Your monthly bill discount will be removed today"],
+    urgency: "today",
+    urgency_evidence: "today",
+  };
   const fetches = [];
 
   globalThis.fetch = async (url) => {
@@ -292,13 +327,11 @@ test("non-service voicemails preserve raw evidence and persist a useful summary"
     }
 
     if (String(url).endsWith("/audio/transcriptions")) {
-      return Response.json({ text: transcript });
+      return Response.json({ text: transcript, logprobs: reliableLogprobs });
     }
 
     if (String(url).endsWith("/responses")) {
-      const responseIndex = fetches.filter((item) => item.endsWith("/responses")).length;
-      if (responseIndex === 1) return Response.json({ output_text: summary });
-      return Response.json({ output_text: "normal - billing notice" });
+      return Response.json({ output_text: JSON.stringify(structuredSummary) });
     }
 
     throw new Error(`Unexpected fetch: ${url}`);
@@ -323,31 +356,25 @@ test("non-service voicemails preserve raw evidence and persist a useful summary"
     assert.equal(result.status, "completed");
     assert.equal(result.summary, summary);
     assert.equal(calls.claims.length, 1);
-    assert.deepEqual(calls.transcriptionUpdates[0], {
-      accountId: "acct-1",
-      id: "lead-1",
-      rawTranscript: transcript,
-      transcript: null,
-      summary: null,
-      status: "processing",
-      error: null,
-    });
+    assert.equal(calls.transcriptionUpdates[0].rawTranscript, transcript);
+    assert.equal(calls.transcriptionUpdates[0].transcriptionModel, "gpt-4o-transcribe");
+    assert.equal(calls.transcriptionUpdates[0].transcriptionQuality, "reliable");
+    assert.equal(calls.transcriptionUpdates[0].transcriptionConfidence, 0.9802);
+    assert.equal(calls.transcriptionUpdates[0].transcriptionMetrics.verification_word_error_rate, 0);
+    assert.equal(calls.transcriptionUpdates[0].transcript, null);
     assert.deepEqual(calls.transcriptionUpdates[1], {
       accountId: "acct-1",
       id: "lead-1",
       transcript,
+      transcriptionQuality: "reliable",
       status: "processing",
       error: null,
     });
-    assert.deepEqual(calls.transcriptionUpdates.at(-1), {
-      accountId: "acct-1",
-      id: "lead-1",
-      rawTranscript: transcript,
-      transcript,
-      summary,
-      status: "completed",
-      error: null,
-    });
+    assert.equal(calls.transcriptionUpdates.at(-1).summary, summary);
+    assert.equal(calls.transcriptionUpdates.at(-1).summaryClassification, "vendor_notice");
+    assert.deepEqual(calls.transcriptionUpdates.at(-1).summaryEvidence, structuredSummary.evidence);
+    assert.deepEqual(calls.transcriptionUpdates.at(-1).summaryValidationReasons, []);
+    assert.equal(calls.transcriptionUpdates.at(-1).status, "completed");
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -357,9 +384,16 @@ test("casual voicemail stays verbatim and is never sent through transcript rewri
   const originalFetch = globalThis.fetch;
   const rawTranscript = "  Hey Sutton, it's Joe. Just calling to say what's up. Give me a call. Peace.  ";
   const displayTranscript = rawTranscript.trim();
-  const summary = "Personal call from Joe asking Sutton to call him back.";
+  const summary = "Personal call from Joe asking Sutton to call back.";
+  const structuredSummary = {
+    classification: "personal_call",
+    summary,
+    evidence: ["Hey Sutton, it's Joe", "Give me a call"],
+    urgency: "normal",
+    urgency_evidence: "",
+  };
   const responseInputs = [];
-  let transcriptionForm = null;
+  const transcriptionForms = [];
 
   globalThis.fetch = async (url, init = {}) => {
     if (String(url).includes("Recordings/RE_joe.mp3")) {
@@ -367,15 +401,15 @@ test("casual voicemail stays verbatim and is never sent through transcript rewri
     }
 
     if (String(url).endsWith("/audio/transcriptions")) {
-      transcriptionForm = init.body;
-      return Response.json({ text: rawTranscript });
+      transcriptionForms.push(init.body);
+      return Response.json({ text: rawTranscript, logprobs: reliableLogprobs });
     }
 
     if (String(url).endsWith("/responses")) {
       const body = JSON.parse(init.body);
       responseInputs.push(body.input?.[1]?.content ?? "");
       return Response.json({
-        output_text: responseInputs.length === 1 ? summary : "normal - personal callback",
+        output_text: JSON.stringify(structuredSummary),
       });
     }
 
@@ -401,29 +435,81 @@ test("casual voicemail stays verbatim and is never sent through transcript rewri
 
     assert.equal(result.transcript, displayTranscript);
     assert.equal(result.summary, summary);
-    assert.equal(transcriptionForm.get("prompt"), null, "biased home-service prompt must be absent");
-    assert.deepEqual(responseInputs, [
-      displayTranscript,
-      `${displayTranscript} ${summary}`,
-    ], "only summary and priority may use the Responses API");
-    assert.deepEqual(calls.transcriptionUpdates[0], {
-      accountId: "acct-1",
-      id: "lead-joe",
-      rawTranscript,
-      transcript: null,
-      summary: null,
-      status: "processing",
-      error: null,
+    assert.equal(transcriptionForms.length, 2, "the new system requires agreement between two GPT-4o transcribers");
+    assert.equal(transcriptionForms[0].get("prompt"), null, "biased home-service prompt must be absent");
+    assert.equal(transcriptionForms[0].get("include[]"), "logprobs");
+    assert.equal(transcriptionForms[0].get("language"), "en");
+    assert.deepEqual(responseInputs, [displayTranscript], "the transcript is summarized once and never rewritten");
+    assert.equal(calls.transcriptionUpdates[0].rawTranscript, rawTranscript);
+    assert.equal(calls.transcriptionUpdates[0].transcriptionQuality, "reliable");
+    assert.equal(calls.transcriptionUpdates[0].transcript, null);
+    assert.equal(calls.transcriptionUpdates.at(-1).rawTranscript, rawTranscript);
+    assert.equal(calls.transcriptionUpdates.at(-1).transcript, displayTranscript);
+    assert.equal(calls.transcriptionUpdates.at(-1).summary, summary);
+    assert.deepEqual(calls.transcriptionUpdates.at(-1).summaryEvidence, structuredSummary.evidence);
+    assert.equal(calls.transcriptionUpdates.at(-1).status, "completed");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("conflicting GPT-4o transcriptions are stored as evidence but never shown as a transcript", async () => {
+  const originalFetch = globalThis.fetch;
+  const responseCalls = [];
+  let transcriptionCount = 0;
+
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("Recordings/RE_conflict.mp3")) {
+      return new Response("fake-audio", { status: 200 });
+    }
+
+    if (String(url).endsWith("/audio/transcriptions")) {
+      transcriptionCount += 1;
+      return Response.json({
+        text: transcriptionCount === 1
+          ? "Hey Sutton, it's Joe. Give me a call."
+          : "For more information visit FEMA dot gov.",
+        logprobs: reliableLogprobs,
+      });
+    }
+
+    if (String(url).endsWith("/responses")) {
+      responseCalls.push(url);
+      throw new Error("uncertain transcripts must not be summarized");
+    }
+
+    throw new Error(`Unexpected fetch: ${url}`);
+  };
+
+  try {
+    const { mocks, calls } = makeVoicemailMocks({
+      lead: {
+        id: "lead-conflict",
+        phone: "+12065557678",
+        recording_sid: "RE_conflict",
+        recording_duration: 7,
+        voicemail_transcript: null,
+        voicemail_summary: null,
+        voicemail_transcription_status: "pending",
+        voicemail_transcribed_at: null,
+      },
     });
-    assert.deepEqual(calls.transcriptionUpdates.at(-1), {
-      accountId: "acct-1",
-      id: "lead-joe",
-      rawTranscript,
-      transcript: displayTranscript,
-      summary,
-      status: "completed",
-      error: null,
-    });
+    const { transcribeLeadVoicemail } = await loadTsModule("lib/voicemail-ai.ts", mocks);
+
+    await assert.rejects(
+      () => transcribeLeadVoicemail("lead-conflict", "acct-1"),
+      /could not confidently transcribe/,
+    );
+
+    assert.deepEqual(responseCalls, []);
+    assert.equal(calls.transcriptionUpdates[0].rawTranscript, "Hey Sutton, it's Joe. Give me a call.");
+    assert.equal(calls.transcriptionUpdates[0].transcript, null);
+    assert.equal(calls.transcriptionUpdates[0].transcriptionQuality, "review_recommended");
+    assert.ok(
+      calls.transcriptionUpdates[0].transcriptionQualityReasons.includes("transcription_models_disagree"),
+    );
+    assert.equal(calls.transcriptionUpdates.at(-1).status, "failed");
+    assert.equal(calls.adminIssues.length, 0, "expected uncertainty is not an operational outage");
   } finally {
     globalThis.fetch = originalFetch;
   }

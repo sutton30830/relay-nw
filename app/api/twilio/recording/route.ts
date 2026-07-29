@@ -12,7 +12,10 @@ import {
   type TenantAccountRuntimeConfig,
   resolveAccountSafely,
 } from "@/lib/supabase";
-import { transcribeLeadVoicemail } from "@/lib/voicemail-ai";
+import {
+  isExpectedVoicemailQualityErrorMessage,
+  transcribeLeadVoicemail,
+} from "@/lib/voicemail-ai";
 import {
   formDataToRecord,
   phoneLast4,
@@ -30,7 +33,7 @@ import { NO_USABLE_VOICEMAIL_MESSAGE, recordingIsTooShort } from "@/lib/voicemai
 // download + transcription + summary chain mid-flight, leaving summaries to only ever
 // complete via manual retry (the stale-processing takeover).
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const RECORDING_WEBHOOK_SOURCE = "twilio_recording";
 
@@ -229,8 +232,16 @@ export async function POST(request: Request) {
         accountId: account.accountId,
         id: result.leadId,
         rawTranscript: null,
+        transcriptionModel: env.openaiTranscriptionModel,
+        transcriptionConfidence: null,
+        transcriptionQuality: "unavailable",
+        transcriptionQualityReasons: ["recording_too_short"],
+        transcriptionMetrics: null,
         transcript: null,
         summary: null,
+        summaryClassification: null,
+        summaryEvidence: null,
+        summaryValidationReasons: null,
         status: "failed",
         error: NO_USABLE_VOICEMAIL_MESSAGE,
       });
@@ -248,6 +259,16 @@ export async function POST(request: Request) {
               correlationId,
               leadId: result.leadId,
               recordingSid: recording.recordingSid,
+            });
+            return;
+          }
+
+          if (isExpectedVoicemailQualityErrorMessage(message)) {
+            console.info("Automatic voicemail transcription suppressed an uncertain result", {
+              correlationId,
+              leadId: result.leadId,
+              recordingSid: recording.recordingSid,
+              outcome: message,
             });
             return;
           }
