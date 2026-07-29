@@ -113,6 +113,7 @@ async function bindEmailInvitesToUser(rows: AccountUserRow[], userId: string) {
         .from("account_users")
         .update({ user_id: userId })
         .eq("id", row.id)
+        .eq("account_id", row.account_id)
         .is("user_id", null);
 
       if (error) {

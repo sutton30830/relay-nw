@@ -46,6 +46,15 @@ function formDataToRecord(formData) {
   return Object.fromEntries([...formData.entries()].map(([key, value]) => [key, String(value)]));
 }
 
+function resolveConsistentAccountEvidence(evidence) {
+  const resolved = evidence.filter((item) => item.resolution.status === "resolved");
+  const accountIds = new Set(resolved.map((item) => item.resolution.account.accountId));
+  if (accountIds.size > 1) {
+    return { status: "unresolved", reason: "provider_account_evidence_mismatch", lookupValue: null };
+  }
+  return resolved[0]?.resolution ?? evidence[0].resolution;
+}
+
 function makeMocks() {
   const calls = {
     clearOptOuts: [],
@@ -85,7 +94,13 @@ function makeMocks() {
       },
       logWebhookEvent: async (input) => calls.webhookEvents.push(input),
       recordOptOut: async (phone, accountId) => calls.recordOptOuts.push({ phone, accountId }),
+      resolveAccountByMessageSid: async () => ({
+        status: "unresolved",
+        reason: "message_sid_not_registered",
+        lookupValue: null,
+      }),
       resolveAccountByTwilioNumber: async () => ({ status: "resolved", account: ACCOUNT }),
+      resolveConsistentAccountEvidence,
       resolveAccountSafely: async (resolver) => resolver(),
     },
     "@/lib/twilio": {
@@ -193,4 +208,3 @@ test("a plain conversational reply still forwards and does not touch opt-outs", 
   assert.equal(calls.ownerForwards.length, 1);
   assert.match(calls.webhookEvents[0].error, /Forwarded inbound reply to owner/);
 });
-

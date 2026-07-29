@@ -63,6 +63,15 @@ const ACCOUNT = {
   ownerEmail: "owner@example.com",
 };
 
+function resolveConsistentAccountEvidence(evidence) {
+  const resolved = evidence.filter((item) => item.resolution.status === "resolved");
+  const accountIds = new Set(resolved.map((item) => item.resolution.account.accountId));
+  if (accountIds.size > 1) {
+    return { status: "unresolved", reason: "provider_account_evidence_mismatch", lookupValue: null };
+  }
+  return resolved[0]?.resolution ?? evidence[0].resolution;
+}
+
 function makeMissedCallMocks(overrides = {}) {
   const calls = {
     leadSmsStatusUpdates: [],
@@ -346,6 +355,7 @@ function makeSmsStatusRouteMocks(state) {
       assertTenantAccount: (account) => account,
       getAccountConfigByAccountId: async (accountId) => accountId === ACCOUNT.accountId ? ACCOUNT : null,
       resolveAccountByMessageSid: async () => ({ status: "resolved", account: ACCOUNT }),
+      resolveConsistentAccountEvidence,
       resolveAccountSafely: async (resolve) => resolve(),
       updateLeadSmsStatusByMessageSid: async (input) => {
         state.leadUpdatesBySid.push(input);

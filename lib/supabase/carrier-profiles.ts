@@ -1,4 +1,5 @@
 import { shouldSkipDatabaseWrite, supabaseAdmin } from "./client";
+import { assertAccountId } from "./tenant";
 
 export type CarrierProfileStatus = "draft" | "ready" | "submitted" | "in_progress" | "approved" | "needs_changes" | "rejected";
 
@@ -25,6 +26,8 @@ function map(row: Record<string, unknown>): CarrierProfile {
 }
 
 export async function getCarrierProfile(accountId: string): Promise<CarrierProfile | null> {
+  accountId = assertAccountId(accountId, "getCarrierProfile");
+
   const { data, error } = await supabaseAdmin
     .from("account_carrier_profiles")
     .select("account_id, status, twilio_brand_sid, twilio_campaign_sid, messaging_service_sid, status_detail, updated_at")
@@ -38,6 +41,8 @@ export async function getCarrierProfile(accountId: string): Promise<CarrierProfi
 }
 
 export async function upsertCarrierProfile(accountId: string, update: Record<string, unknown>) {
+  accountId = assertAccountId(accountId, "upsertCarrierProfile");
+
   if (shouldSkipDatabaseWrite("carrier profile", { accountId })) return;
   const { error } = await supabaseAdmin.from("account_carrier_profiles").upsert({
     account_id: accountId,

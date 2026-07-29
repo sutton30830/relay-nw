@@ -174,6 +174,12 @@ async function loadAccountsModule() {
       supabaseAdmin: {},
       throwIfSupabaseError: () => {},
     },
+    "./tenant": {
+      assertAccountId: (accountId) => {
+        if (!accountId) throw new Error("Missing account_id");
+        return accountId;
+      },
+    },
   });
 }
 

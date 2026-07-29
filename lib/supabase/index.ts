@@ -1,3 +1,5 @@
+import "server-only";
+
 export { supabaseAdmin } from "./client";
 export * from "./accounts";
 export * from "./auth-rate-limits";

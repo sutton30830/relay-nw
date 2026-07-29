@@ -6,6 +6,7 @@ import {
   logWebhookEvent,
   resolveAccountByCallSid,
   resolveAccountByTwilioNumber,
+  resolveConsistentAccountEvidence,
   updateCallRecordingByCallSid,
   updateLeadRecordingByCallSid,
   updateLeadVoicemailTranscription,
@@ -163,26 +164,24 @@ export async function POST(request: Request) {
   const validation = validateTwilioWebhook(request, payload);
   const recording = parseRecordingPayload(payload);
   const accountResolution = await resolveAccountSafely(async () => {
-    const byCallSid = await resolveAccountByCallSid(recording.callSid);
+    const [byCallSid, byNumber] = await Promise.all([
+      resolveAccountByCallSid(recording.callSid),
+      resolveAccountByTwilioNumber(payload.To),
+    ]);
+    const resolution = resolveConsistentAccountEvidence([
+      { label: "CallSid", resolution: byCallSid },
+      { label: "To", resolution: byNumber },
+    ]);
 
-    if (byCallSid.status === "resolved") {
-      return byCallSid;
-    }
-
-    // The calls row may be missing if earlier bookkeeping failed. The To number
-    // identifies the tenant and lets the existing recording matchers recover.
-    const byNumber = await resolveAccountByTwilioNumber(payload.To);
-
-    if (byNumber.status === "resolved") {
+    if (byCallSid.status === "unresolved" && byNumber.status === "resolved") {
       console.warn("recording resolved by To-number fallback; calls row was missing", {
         correlationId,
         callSid: recording.callSid,
         recordingSid: recording.recordingSid,
       });
-      return byNumber;
     }
 
-    return byCallSid;
+    return resolution;
   }, "recording");
   const resolvedAccount = accountResolution.status === "resolved" ? accountResolution.account : null;
   const xml = emptyTwiml();

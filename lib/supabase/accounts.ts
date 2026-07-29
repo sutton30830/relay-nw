@@ -13,6 +13,7 @@ import type {
 } from "@/lib/customer-experience-contract";
 import { normalizePhoneNumber } from "@/lib/phone";
 import { isPlaceholderSupabaseConfig, shouldSkipDatabaseWrite, supabaseAdmin, throwIfSupabaseError } from "./client";
+import { assertAccountId } from "./tenant";
 
 export type AccountRuntimeConfig = {
   accountId: string | null;
@@ -57,6 +58,63 @@ export type AccountRuntimeConfig = {
 export type AccountResolution =
   | { status: "resolved"; account: AccountRuntimeConfig }
   | { status: "unresolved"; reason: string; lookupValue: string | null };
+
+export type AccountResolutionEvidence = {
+  label: string;
+  resolution: AccountResolution;
+};
+
+/**
+ * Provider callbacks often carry more than one tenant identifier (for example
+ * CallSid plus To). A valid signature proves Twilio sent the fields; it does
+ * not prove our database mappings agree. Conflicting resolved identifiers must
+ * fail closed instead of allowing whichever lookup happened first to win.
+ */
+export function resolveConsistentAccountEvidence(
+  evidence: AccountResolutionEvidence[],
+): AccountResolution {
+  const resolved = evidence.filter(
+    (
+      item,
+    ): item is AccountResolutionEvidence & {
+      resolution: Extract<AccountResolution, { status: "resolved" }>;
+    } => item.resolution.status === "resolved",
+  );
+  const accountIds = new Set(
+    resolved
+      .map((item) => item.resolution.account.accountId?.trim())
+      .filter((accountId): accountId is string => Boolean(accountId)),
+  );
+
+  if (
+    resolved.some((item) => !item.resolution.account.accountId?.trim()) ||
+    accountIds.size > 1
+  ) {
+    return {
+      status: "unresolved",
+      reason: "provider_account_evidence_mismatch",
+      lookupValue: evidence
+        .map((item) =>
+          `${item.label}:${
+            item.resolution.status === "resolved"
+              ? item.resolution.account.accountId ?? "missing-account-id"
+              : item.resolution.lookupValue ?? "unresolved"
+          }`,
+        )
+        .join("|"),
+    };
+  }
+
+  if (resolved.length > 0) {
+    return resolved[0].resolution;
+  }
+
+  return evidence[0]?.resolution ?? {
+    status: "unresolved",
+    reason: "missing_provider_account_evidence",
+    lookupValue: null,
+  };
+}
 
 // Webhook routes resolve the tenant before their try/catch blocks. If resolution itself
 // throws (e.g. transient Supabase outage), the route would 500 with no TwiML, no webhook
@@ -388,7 +446,9 @@ function normalizeAccountOnboardingStatus(value: string | null | undefined): Acc
 export async function getAccountTechnicalSetupStatus(
   accountId: string | null | undefined,
 ): Promise<TechnicalSetupStatus> {
-  if (!accountId || isPlaceholderSupabaseConfig()) {
+  accountId = assertAccountId(accountId, "getAccountTechnicalSetupStatus");
+
+  if (isPlaceholderSupabaseConfig()) {
     return "setting_up";
   }
 
@@ -399,13 +459,18 @@ export async function getAccountTechnicalSetupStatus(
     .maybeSingle();
 
   throwIfSupabaseError(error);
+  if (!data) {
+    throw new Error("Account not found while loading technical setup status");
+  }
   return normalizeTechnicalSetupStatus(data?.onboarding_status as string | null | undefined);
 }
 
 export async function getAccountOperationalStatus(
   accountId: string | null | undefined,
 ): Promise<"active" | "paused" | "archived"> {
-  if (!accountId || isPlaceholderSupabaseConfig()) {
+  accountId = assertAccountId(accountId, "getAccountOperationalStatus");
+
+  if (isPlaceholderSupabaseConfig()) {
     return "active";
   }
 
@@ -416,6 +481,9 @@ export async function getAccountOperationalStatus(
     .maybeSingle();
 
   throwIfSupabaseError(error);
+  if (!data) {
+    throw new Error("Account not found while loading operational status");
+  }
   return data?.status === "paused" || data?.status === "archived"
     ? data.status
     : "active";
@@ -428,7 +496,9 @@ export async function getAccountOpsBlocker(
   blockerNote: string | null;
   blockedSince: string | null;
 }> {
-  if (!accountId || isPlaceholderSupabaseConfig()) {
+  accountId = assertAccountId(accountId, "getAccountOpsBlocker");
+
+  if (isPlaceholderSupabaseConfig()) {
     return { blockedBy: "none", blockerNote: null, blockedSince: null };
   }
 
@@ -439,6 +509,9 @@ export async function getAccountOpsBlocker(
     .maybeSingle();
 
   throwIfSupabaseError(error);
+  if (!data) {
+    throw new Error("Account not found while loading Operations blocker");
+  }
   return {
     blockedBy: normalizeOperationsBlocker(
       data?.ops_blocked_by as string | null | undefined,
@@ -596,61 +669,61 @@ export async function assignPrimaryAccountPhoneNumber(input: {
   twilioSid: string;
   label?: string;
 }) {
+  const accountId = assertAccountId(input.accountId, "assignPrimaryAccountPhoneNumber");
   const phoneNumber = normalizePhoneNumber(input.phoneNumber);
-  const previousPhoneNumber = normalizePhoneNumber(
-    await getPrimaryAccountPhoneNumber(input.accountId),
-  );
-  const cleared = await supabaseAdmin.from("account_phone_numbers").update({ is_primary: false, updated_at: new Date().toISOString() }).eq("account_id", input.accountId).eq("is_primary", true);
-  if (cleared.error) throw cleared.error;
-  const { error } = await supabaseAdmin.from("account_phone_numbers").upsert({
-    account_id: input.accountId,
-    phone_number: phoneNumber,
-    twilio_sid: input.twilioSid,
-    label: input.label ?? "Primary Relay number",
-    is_primary: true,
-    updated_at: new Date().toISOString(),
-  }, { onConflict: "phone_number" });
-  if (error) throw error;
-
-  const numberChanged = previousPhoneNumber !== phoneNumber;
-  if (numberChanged) {
-    const { data: settings, error: settingsError } = await supabaseAdmin
-      .from("account_settings")
-      .select("call_mode")
-      .eq("account_id", input.accountId)
-      .maybeSingle();
-    if (settingsError) throw settingsError;
-
-    const nextStatus = settings?.call_mode === "forwarding"
-      ? "waiting_for_forwarding"
-      : "setting_up";
-    const { error: statusError } = await supabaseAdmin
-      .from("accounts")
-      .update({
-        onboarding_status: nextStatus,
-        onboarding_status_updated_at: new Date().toISOString(),
-      })
-      .eq("id", input.accountId)
-      .not("onboarding_status", "in", '("paused","closed")');
-    if (statusError) throw statusError;
+  if (!/^\+[1-9]\d{7,14}$/.test(phoneNumber)) {
+    throw new Error("assignPrimaryAccountPhoneNumber requires an E.164 Relay number");
   }
 
-  return { numberChanged, previousPhoneNumber: previousPhoneNumber || null };
+  const { data, error } = await supabaseAdmin.rpc(
+    "assign_primary_account_phone_number",
+    {
+      p_account_id: accountId,
+      p_phone_number: phoneNumber,
+      p_twilio_sid: input.twilioSid,
+      p_label: input.label ?? "Primary Relay number",
+    },
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || typeof row.number_changed !== "boolean") {
+    throw new Error(
+      "Atomic Relay-number assignment is unavailable. Apply the tenant-isolation migration.",
+    );
+  }
+
+  return {
+    numberChanged: row.number_changed,
+    previousPhoneNumber:
+      typeof row.previous_phone_number === "string"
+        ? normalizePhoneNumber(row.previous_phone_number)
+        : null,
+  };
 }
 
 /** Detach every Relay number mapping from a closed account for safe reassignment. */
 export async function releaseAccountPhoneNumbers(accountId: string) {
-  const { data, error } = await supabaseAdmin
-    .from("account_phone_numbers")
-    .delete()
-    .eq("account_id", accountId)
-    .select("phone_number");
+  accountId = assertAccountId(accountId, "releaseAccountPhoneNumbers");
+
+  const { data, error } = await supabaseAdmin.rpc(
+    "release_closed_account_phone_numbers",
+    { p_account_id: accountId },
+  );
   if (error) throw error;
-  return (data ?? []).map((row) => normalizePhoneNumber(String(row.phone_number ?? ""))).filter(Boolean);
+  const rows = Array.isArray(data) ? data : data ? [data] : [];
+  return rows
+    .map((row) => normalizePhoneNumber(String(row.phone_number ?? "")))
+    .filter(Boolean);
 }
 
 export async function getAccountConfigByAccountId(accountId: string | null | undefined) {
-  if (!accountId || isPlaceholderSupabaseConfig()) {
+  accountId = assertAccountId(accountId, "getAccountConfigByAccountId");
+
+  if (isPlaceholderSupabaseConfig()) {
     return null;
   }
 
@@ -724,11 +797,17 @@ export async function getDefaultAccountConfig() {
     throw error;
   }
 
-  return (await getAccountConfigByAccountId(data?.id)) ?? envAccountConfig();
+  if (!data?.id) {
+    return envAccountConfig();
+  }
+
+  return (await getAccountConfigByAccountId(data.id)) ?? envAccountConfig();
 }
 
 export async function getAccountBillingRecord(accountId: string | null | undefined): Promise<AccountBillingRecord> {
-  if (!accountId || isPlaceholderSupabaseConfig()) {
+  accountId = assertAccountId(accountId, "getAccountBillingRecord");
+
+  if (isPlaceholderSupabaseConfig()) {
     return defaultAccountBillingRecord();
   }
 
@@ -771,7 +850,7 @@ export async function getAccountBillingRecord(accountId: string | null | undefin
 
   const row = data as AccountBillingRow | null;
   if (!row) {
-    return defaultAccountBillingRecord();
+    throw new Error("Account not found while loading billing record");
   }
 
   return {
@@ -818,6 +897,8 @@ export async function updateAccountBillingRecord(
   accountId: string,
   update: Partial<AccountBillingRecord>,
 ) {
+  accountId = assertAccountId(accountId, "updateAccountBillingRecord");
+
   if (isPlaceholderSupabaseConfig()) {
     return;
   }
@@ -1624,7 +1705,7 @@ export async function resolveAccountByTwilioNumber(phoneNumber: string | null | 
     .from("account_phone_numbers")
     .select("account_id")
     .eq("phone_number", normalizedPhone)
-    .maybeSingle();
+    .limit(2);
 
   if (error) {
     if (error.message.includes("account_phone_numbers")) {
@@ -1637,7 +1718,25 @@ export async function resolveAccountByTwilioNumber(phoneNumber: string | null | 
     throw error;
   }
 
-  const account = await getAccountConfigByAccountId(data?.account_id);
+  const accountIds = [
+    ...new Set(
+      (data ?? [])
+        .map((row) => String(row.account_id ?? "").trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (accountIds.length !== 1) {
+    return {
+      status: "unresolved",
+      reason:
+        accountIds.length > 1
+          ? "twilio_number_ambiguous"
+          : "twilio_number_not_registered",
+      lookupValue: normalizedPhone,
+    } satisfies AccountResolution;
+  }
+
+  const account = await getAccountConfigByAccountId(accountIds[0]);
 
   return account
     ? { status: "resolved", account } satisfies AccountResolution
@@ -1653,23 +1752,51 @@ export async function resolveAccountByCallSid(callSid: string | null | undefined
       : { status: "resolved", account: envAccountConfig() } satisfies AccountResolution;
   }
 
-  const { data, error } = await supabaseAdmin
-    .from("calls")
-    .select("account_id")
-    .eq("call_sid", normalizedCallSid)
-    .maybeSingle();
+  // A calls row can be absent during a partial/rolling webhook sequence while
+  // the missed-call lead already exists. Both are authoritative tenant evidence.
+  const [callsResult, leadsResult] = await Promise.all([
+    supabaseAdmin
+      .from("calls")
+      .select("account_id")
+      .eq("call_sid", normalizedCallSid)
+      .limit(2),
+    supabaseAdmin
+      .from("leads")
+      .select("account_id")
+      .eq("call_sid", normalizedCallSid)
+      .limit(2),
+  ]);
+  const error = callsResult.error ?? leadsResult.error;
 
   if (error) {
-    if (error.message.includes("calls")) {
+    if (/calls|leads/.test(error.message)) {
       return process.env.NODE_ENV === "production"
-        ? { status: "unresolved", reason: "calls_table_missing", lookupValue: normalizedCallSid } satisfies AccountResolution
+        ? { status: "unresolved", reason: "call_tenant_evidence_unavailable", lookupValue: normalizedCallSid } satisfies AccountResolution
         : { status: "resolved", account: envAccountConfig() } satisfies AccountResolution;
     }
 
     throw error;
   }
 
-  const account = await getAccountConfigByAccountId(data?.account_id);
+  const accountIds = [
+    ...new Set(
+      [...(callsResult.data ?? []), ...(leadsResult.data ?? [])]
+        .map((row) => String(row.account_id ?? "").trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (accountIds.length !== 1) {
+    return {
+      status: "unresolved",
+      reason:
+        accountIds.length > 1
+          ? "call_sid_ambiguous"
+          : "call_sid_not_registered",
+      lookupValue: normalizedCallSid,
+    } satisfies AccountResolution;
+  }
+
+  const account = await getAccountConfigByAccountId(accountIds[0]);
 
   return account
     ? { status: "resolved", account } satisfies AccountResolution
@@ -1685,23 +1812,61 @@ export async function resolveAccountByMessageSid(messageSid: string | null | und
       : { status: "resolved", account: envAccountConfig() } satisfies AccountResolution;
   }
 
-  const { data, error } = await supabaseAdmin
-    .from("messages")
-    .select("account_id")
-    .eq("twilio_message_sid", normalizedMessageSid)
-    .maybeSingle();
+  // A provider MessageSid may first land in any one of these tables depending
+  // on webhook order and partial bookkeeping failures. Reconcile all durable
+  // evidence so a replay with another account's To number cannot cross tenants.
+  const [messagesResult, inboundResult, leadsResult] = await Promise.all([
+    supabaseAdmin
+      .from("messages")
+      .select("account_id")
+      .eq("twilio_message_sid", normalizedMessageSid)
+      .limit(2),
+    supabaseAdmin
+      .from("inbound_messages")
+      .select("account_id")
+      .eq("message_sid", normalizedMessageSid)
+      .limit(2),
+    supabaseAdmin
+      .from("leads")
+      .select("account_id")
+      .eq("twilio_message_sid", normalizedMessageSid)
+      .limit(2),
+  ]);
+  const error = messagesResult.error ?? inboundResult.error ?? leadsResult.error;
 
   if (error) {
-    if (error.message.includes("messages")) {
+    if (/messages|inbound_messages|leads/.test(error.message)) {
       return process.env.NODE_ENV === "production"
-        ? { status: "unresolved", reason: "messages_table_missing", lookupValue: normalizedMessageSid } satisfies AccountResolution
+        ? { status: "unresolved", reason: "message_tenant_evidence_unavailable", lookupValue: normalizedMessageSid } satisfies AccountResolution
         : { status: "resolved", account: envAccountConfig() } satisfies AccountResolution;
     }
 
     throw error;
   }
 
-  const account = await getAccountConfigByAccountId(data?.account_id);
+  const accountIds = [
+    ...new Set(
+      [
+        ...(messagesResult.data ?? []),
+        ...(inboundResult.data ?? []),
+        ...(leadsResult.data ?? []),
+      ]
+        .map((row) => String(row.account_id ?? "").trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (accountIds.length !== 1) {
+    return {
+      status: "unresolved",
+      reason:
+        accountIds.length > 1
+          ? "message_sid_ambiguous"
+          : "message_sid_not_registered",
+      lookupValue: normalizedMessageSid,
+    } satisfies AccountResolution;
+  }
+
+  const account = await getAccountConfigByAccountId(accountIds[0]);
 
   return account
     ? { status: "resolved", account } satisfies AccountResolution
@@ -1866,9 +2031,7 @@ export type AccountSettingsUpdate = Partial<{
 }>;
 
 export async function updateAccountSettings(accountId: string, update: AccountSettingsUpdate) {
-  if (!accountId) {
-    throw new Error("Missing account_id for settings update.");
-  }
+  accountId = assertAccountId(accountId, "updateAccountSettings");
 
   const { error } = await supabaseAdmin
     .from("account_settings")
@@ -1881,6 +2044,8 @@ export async function updateAccountSettings(accountId: string, update: AccountSe
 }
 
 export async function getA2pRegistrationStatus(accountId: string) {
+  accountId = assertAccountId(accountId, "getA2pRegistrationStatus");
+
   const { data, error } = await supabaseAdmin
     .from("account_settings")
     .select("a2p_registration_status")

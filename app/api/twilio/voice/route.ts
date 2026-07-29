@@ -4,7 +4,9 @@ import {
   type AccountRuntimeConfig,
   type TenantAccountRuntimeConfig,
   logWebhookEvent,
+  resolveAccountByCallSid,
   resolveAccountByTwilioNumber,
+  resolveConsistentAccountEvidence,
   upsertCall,
   resolveAccountSafely,
 } from "@/lib/supabase";
@@ -253,7 +255,17 @@ export async function POST(request: Request) {
   const correlationId = payload.CallSid || payload.MessageSid || payload.RecordingSid || crypto.randomUUID();
   const requestSummary = summarizeTwilioRequest(request, payload);
   const validation = validateTwilioWebhook(request, payload);
-  const accountResolution = await resolveAccountSafely(() => resolveAccountByTwilioNumber(payload.To), "voice");
+  const accountResolution = await resolveAccountSafely(async () => {
+    const [byCallSid, byNumber] = await Promise.all([
+      resolveAccountByCallSid(payload.CallSid),
+      resolveAccountByTwilioNumber(payload.To),
+    ]);
+
+    return resolveConsistentAccountEvidence([
+      { label: "CallSid", resolution: byCallSid },
+      { label: "To", resolution: byNumber },
+    ]);
+  }, "voice");
   const resolvedAccount = accountResolution.status === "resolved" ? accountResolution.account : null;
 
   console.info("Twilio voice webhook received", {

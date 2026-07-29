@@ -51,6 +51,15 @@ function formDataToRecord(formData) {
   return Object.fromEntries([...formData.entries()].map(([key, value]) => [key, String(value)]));
 }
 
+function resolveConsistentAccountEvidence(evidence) {
+  const resolved = evidence.filter((item) => item.resolution.status === "resolved");
+  const accountIds = new Set(resolved.map((item) => item.resolution.account.accountId));
+  if (accountIds.size > 1) {
+    return { status: "unresolved", reason: "provider_account_evidence_mismatch", lookupValue: null };
+  }
+  return resolved[0]?.resolution ?? evidence[0].resolution;
+}
+
 function makeMocks({
   callSidResolution = { status: "resolved", account: ACCOUNT },
   numberResolution = { status: "resolved", account: ACCOUNT },
@@ -98,6 +107,7 @@ function makeMocks({
         calls.numberLookups.push(phoneNumber);
         return numberResolution;
       },
+      resolveConsistentAccountEvidence,
       resolveAccountSafely: async (resolver) => resolver(),
       upsertCall: async (input) => calls.upsertCalls.push(input),
     },
@@ -175,7 +185,7 @@ test("unknown CallSid with a registered To number resolves and texts the caller"
   }
 });
 
-test("known CallSid never consults the To-number fallback", async () => {
+test("known CallSid remains authoritative when To is unregistered, after checking for conflicts", async () => {
   const { mocks, calls } = makeMocks({
     callSidResolution: { status: "resolved", account: ACCOUNT },
     numberResolution: NUMBER_UNRESOLVED,
@@ -185,9 +195,33 @@ test("known CallSid never consults the To-number fallback", async () => {
 
   assert.equal(response.status, 200);
   assert.deepEqual(calls.callSidLookups, ["CA_missing"]);
-  assert.deepEqual(calls.numberLookups, []);
+  assert.deepEqual(calls.numberLookups, ["+14253689655"]);
   assert.equal(calls.unresolved.length, 0);
   assert.equal(calls.missedCalls.length, 1);
+});
+
+test("conflicting CallSid and To-number accounts fail closed before any tenant write", async () => {
+  const otherAccount = {
+    ...ACCOUNT,
+    accountId: "acct-2",
+    accountSlug: "other",
+    twilioPhoneNumber: "+19995550123",
+  };
+  const { mocks, calls } = makeMocks({
+    callSidResolution: { status: "resolved", account: ACCOUNT },
+    numberResolution: { status: "resolved", account: otherAccount },
+  });
+
+  const response = await postDialStatus(mocks, { To: otherAccount.twilioPhoneNumber });
+
+  assert.equal(response.status, 200);
+  assert.equal(calls.missedCalls.length, 0);
+  assert.equal(calls.upsertCalls.length, 0);
+  assert.equal(calls.unresolved.length, 1);
+  assert.equal(
+    calls.unresolved[0].resolution.reason,
+    "provider_account_evidence_mismatch",
+  );
 });
 
 test("unknown CallSid and unregistered To number stays unresolved with the CallSid reason", async () => {

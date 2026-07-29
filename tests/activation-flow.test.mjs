@@ -84,6 +84,15 @@ function unresolved(reason, lookupValue) {
   return { status: "unresolved", reason, lookupValue };
 }
 
+function resolveConsistentAccountEvidence(evidence) {
+  const resolved = evidence.filter((item) => item.resolution.status === "resolved");
+  const accountIds = new Set(resolved.map((item) => item.resolution.account.accountId));
+  if (accountIds.size > 1) {
+    return { status: "unresolved", reason: "provider_account_evidence_mismatch", lookupValue: null };
+  }
+  return resolved[0]?.resolution ?? evidence[0].resolution;
+}
+
 function makeMocks(state) {
   const resolveByNumber = (value) =>
     normalizePhoneNumber(value) === state.account.twilioPhoneNumber
@@ -98,6 +107,7 @@ function makeMocks(state) {
     resolveAccountByTwilioNumber: async (phoneNumber) => resolveByNumber(phoneNumber),
     resolveAccountByMessageSid: async (messageSid) =>
       state.messages.has(messageSid) ? { status: "resolved", account: state.account } : unresolved("message_sid_not_registered", messageSid),
+    resolveConsistentAccountEvidence,
     upsertCall: async (input) => {
       const existing = state.calls.get(input.callSid) ?? {};
       state.calls.set(input.callSid, { ...existing, ...input });

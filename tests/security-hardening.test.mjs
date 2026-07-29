@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { glob, readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
@@ -100,6 +100,56 @@ test("password-reset limiter is database-backed, atomic, and service-role-only",
   assert.match(authRateLimitMigration, /as restrictive for all to anon, authenticated/);
   assert.match(authRateLimitMigration, /grant execute[\s\S]*to service_role/);
   assert.doesNotMatch(authRateLimitMigration, /grant execute[\s\S]*to authenticated/);
+});
+
+test("service-role credentials are behind server-only module boundaries", async () => {
+  for (const path of [
+    "lib/env.ts",
+    "lib/supabase/client.ts",
+    "lib/supabase/index.ts",
+  ]) {
+    const contents = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
+    assert.match(contents, /^import "server-only";/);
+  }
+
+  const root = new URL("../", import.meta.url);
+  for await (const relativePath of glob(["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}"], {
+    cwd: root,
+  })) {
+    const contents = await readFile(new URL(relativePath, root), "utf8");
+    if (!/^\s*["']use client["'];/m.test(contents)) continue;
+    const parsed = ts.createSourceFile(
+      relativePath,
+      contents,
+      ts.ScriptTarget.ES2020,
+      true,
+      relativePath.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+    );
+    for (const statement of parsed.statements) {
+      if (!ts.isImportDeclaration(statement)) continue;
+      const specifier = statement.moduleSpecifier.text;
+      if (
+        typeof specifier !== "string" ||
+        !/^@\/lib\/(?:env|supabase(?:\/.*)?)$/.test(specifier)
+      ) continue;
+      const clause = statement.importClause;
+      const namedImports = clause?.namedBindings &&
+        ts.isNamedImports(clause.namedBindings)
+        ? clause.namedBindings.elements
+        : [];
+      const isTypeOnly =
+        clause?.isTypeOnly === true ||
+        (namedImports.length > 0 && namedImports.every((item) => item.isTypeOnly));
+      assert.equal(
+        isTypeOnly,
+        true,
+        `${relativePath} must not value-import server credentials or the service-role Supabase client`,
+      );
+    }
+  }
+
+  const envSource = await readFile(new URL("../lib/env.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(envSource, /NEXT_PUBLIC_SUPABASE_SERVICE_ROLE/);
 });
 
 function resetRouteMocks({

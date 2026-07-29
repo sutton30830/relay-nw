@@ -5,6 +5,7 @@ import {
   getOutboundMessageLeadIdBySid,
   logWebhookEvent,
   resolveAccountByMessageSid,
+  resolveConsistentAccountEvidence,
   type SmsStatus,
   updateLeadSmsStatus,
   updateLeadSmsStatusByMessageSid,
@@ -104,18 +105,25 @@ export async function POST(request: Request) {
   const status = parseSmsStatusPayload(payload);
   const callback = parseCallbackContext(request);
   const accountResolution = await resolveAccountSafely(async () => {
+    const byMessageSid = await resolveAccountByMessageSid(status.messageSid);
+
     if (callback.messageType === "manual_reply" && callback.accountId) {
       const account = await getAccountConfigByAccountId(callback.accountId);
-      return account
+      const byCallbackAccount = account
         ? { status: "resolved" as const, account }
         : {
             status: "unresolved" as const,
             reason: "manual_reply_account_not_registered",
             lookupValue: callback.accountId,
           };
+
+      return resolveConsistentAccountEvidence([
+        { label: "MessageSid", resolution: byMessageSid },
+        { label: "accountId", resolution: byCallbackAccount },
+      ]);
     }
 
-    return resolveAccountByMessageSid(status.messageSid);
+    return byMessageSid;
   }, "SMS status");
   const resolvedAccount = accountResolution.status === "resolved" ? accountResolution.account : null;
   const xml = emptyTwiml();

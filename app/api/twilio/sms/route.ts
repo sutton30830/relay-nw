@@ -8,7 +8,9 @@ import {
   clearOptOut,
   logWebhookEvent,
   recordOptOut,
+  resolveAccountByMessageSid,
   resolveAccountByTwilioNumber,
+  resolveConsistentAccountEvidence,
   type TenantAccountRuntimeConfig,
   resolveAccountSafely,
 } from "@/lib/supabase";
@@ -203,7 +205,17 @@ export async function POST(request: Request) {
   const requestSummary = summarizeTwilioRequest(request, payload);
   const validation = validateTwilioWebhook(request, payload);
   const message = parseInboundSmsPayload(payload);
-  const accountResolution = await resolveAccountSafely(() => resolveAccountByTwilioNumber(message.to || payload.To), "inbound SMS");
+  const accountResolution = await resolveAccountSafely(async () => {
+    const [byMessageSid, byNumber] = await Promise.all([
+      resolveAccountByMessageSid(message.messageSid),
+      resolveAccountByTwilioNumber(message.to || payload.To),
+    ]);
+
+    return resolveConsistentAccountEvidence([
+      { label: "MessageSid", resolution: byMessageSid },
+      { label: "To", resolution: byNumber },
+    ]);
+  }, "inbound SMS");
   const resolvedAccount = accountResolution.status === "resolved" ? accountResolution.account : null;
   let responseXml = emptyTwiml();
 

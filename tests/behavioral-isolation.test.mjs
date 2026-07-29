@@ -407,6 +407,74 @@ function createSupabaseFake(seed) {
             became_live: false,
           }]);
         }
+        if (name === "assign_primary_account_phone_number") {
+          const numbers = table("account_phone_numbers");
+          const account = table("accounts").find(
+            (row) => row.id === params.p_account_id,
+          );
+          if (!account || account.status === "archived") {
+            return rpcResult(null, new Error("Target account cannot receive a number"));
+          }
+          const existing = numbers.find(
+            (row) => row.phone_number === params.p_phone_number,
+          );
+          if (existing && existing.account_id !== params.p_account_id) {
+            return rpcResult(
+              null,
+              Object.assign(
+                new Error("Relay number is already assigned to another account"),
+                { code: "23505" },
+              ),
+            );
+          }
+          const previous = numbers.find(
+            (row) => row.account_id === params.p_account_id && row.is_primary,
+          )?.phone_number ?? null;
+          for (const row of numbers) {
+            if (row.account_id === params.p_account_id) row.is_primary = false;
+          }
+          if (existing) {
+            existing.is_primary = true;
+            existing.twilio_sid = params.p_twilio_sid;
+          } else {
+            numbers.push({
+              id: randomUUID(),
+              account_id: params.p_account_id,
+              phone_number: params.p_phone_number,
+              twilio_sid: params.p_twilio_sid,
+              is_primary: true,
+            });
+          }
+          return rpcResult([{
+            number_changed: previous !== params.p_phone_number,
+            previous_phone_number: previous,
+          }]);
+        }
+        if (name === "release_closed_account_phone_numbers") {
+          const account = table("accounts").find(
+            (row) => row.id === params.p_account_id,
+          );
+          if (
+            !account ||
+            account.status !== "archived" ||
+            account.onboarding_status !== "closed"
+          ) {
+            return rpcResult(
+              null,
+              new Error("Relay numbers can only be released from a closed archived account"),
+            );
+          }
+          const numbers = table("account_phone_numbers");
+          const released = numbers
+            .filter((row) => row.account_id === params.p_account_id)
+            .map((row) => ({ phone_number: row.phone_number }));
+          for (let index = numbers.length - 1; index >= 0; index -= 1) {
+            if (numbers[index].account_id === params.p_account_id) {
+              numbers.splice(index, 1);
+            }
+          }
+          return rpcResult(released);
+        }
 
         throw new Error(`Unsupported rpc ${name}`);
       },
@@ -474,6 +542,7 @@ async function loadStores(fake) {
     },
     "@/lib/phone": { normalizePhoneNumber },
     "./client": clientMock,
+    "./tenant": tenantMock,
   });
 
   return { accounts, calls, leads, messages, voicemails };
@@ -769,4 +838,149 @@ test("webhook resolution for number A and B writes rows under the resolved accou
   assert.equal(fake.tables.calls.find((call) => call.call_sid === "CA_WEBHOOK_A").account_id, "acct-a");
   assert.equal(fake.tables.leads.find((lead) => lead.call_sid === "CA_WEBHOOK_A").account_id, "acct-a");
   assert.equal(fake.tables.inbound_messages.find((message) => message.message_sid === "SM_WEBHOOK_B").account_id, "acct-b");
+});
+
+test("ambiguous provider identifiers and conflicting account evidence fail closed", async () => {
+  const seed = seedData();
+  seed.inbound_messages.push({
+    id: "inbound-a-only",
+    account_id: "acct-a",
+    message_sid: "SM_INBOUND_ONLY",
+    from_phone: "+15551110000",
+    to_phone: "+15550001000",
+    body: "inbound evidence",
+  });
+  seed.calls.push(
+    {
+      id: "call-a-ambiguous",
+      account_id: "acct-a",
+      call_sid: "CA_AMBIGUOUS",
+    },
+    {
+      id: "call-b-ambiguous",
+      account_id: "acct-b",
+      call_sid: "CA_AMBIGUOUS",
+    },
+  );
+  seed.messages.push(
+    {
+      id: "message-a-ambiguous",
+      account_id: "acct-a",
+      twilio_message_sid: "SM_AMBIGUOUS",
+    },
+    {
+      id: "message-b-ambiguous",
+      account_id: "acct-b",
+      twilio_message_sid: "SM_AMBIGUOUS",
+    },
+  );
+  const fake = createSupabaseFake(seed);
+  const { accounts } = await loadStores(fake);
+
+  const callFromLeadOnly = await accounts.resolveAccountByCallSid("CA_A");
+  const messageFromLeadOnly = await accounts.resolveAccountByMessageSid("SM_A");
+  const messageFromInboundOnly = await accounts.resolveAccountByMessageSid("SM_INBOUND_ONLY");
+  assert.equal(callFromLeadOnly.status, "resolved");
+  assert.equal(callFromLeadOnly.account.accountId, "acct-a");
+  assert.equal(messageFromLeadOnly.status, "resolved");
+  assert.equal(messageFromLeadOnly.account.accountId, "acct-a");
+  assert.equal(messageFromInboundOnly.status, "resolved");
+  assert.equal(messageFromInboundOnly.account.accountId, "acct-a");
+
+  const ambiguousCall = await accounts.resolveAccountByCallSid("CA_AMBIGUOUS");
+  const ambiguousMessage = await accounts.resolveAccountByMessageSid("SM_AMBIGUOUS");
+  assert.equal(ambiguousCall.status, "unresolved");
+  assert.equal(ambiguousCall.reason, "call_sid_ambiguous");
+  assert.equal(ambiguousMessage.status, "unresolved");
+  assert.equal(ambiguousMessage.reason, "message_sid_ambiguous");
+
+  const [byA, byB] = await Promise.all([
+    accounts.resolveAccountByTwilioNumber("+15550001000"),
+    accounts.resolveAccountByTwilioNumber("+15550002000"),
+  ]);
+  const mismatch = accounts.resolveConsistentAccountEvidence([
+    { label: "CallSid", resolution: byA },
+    { label: "To", resolution: byB },
+  ]);
+  assert.equal(mismatch.status, "unresolved");
+  assert.equal(mismatch.reason, "provider_account_evidence_mismatch");
+
+  const consistent = accounts.resolveConsistentAccountEvidence([
+    { label: "CallSid", resolution: byA },
+    {
+      label: "To",
+      resolution: {
+        status: "unresolved",
+        reason: "twilio_number_not_registered",
+        lookupValue: "+15559999999",
+      },
+    },
+  ]);
+  assert.equal(consistent.status, "resolved");
+  assert.equal(consistent.account.accountId, "acct-a");
+});
+
+test("relay-number assignment cannot steal or race another account's number, and release stays scoped", async () => {
+  const seed = seedData();
+  seed.accounts[0].onboarding_status = "live";
+  seed.accounts[1].onboarding_status = "live";
+  const fake = createSupabaseFake(seed);
+  const { accounts } = await loadStores(fake);
+
+  await assert.rejects(
+    () => accounts.assignPrimaryAccountPhoneNumber({
+      accountId: "acct-a",
+      phoneNumber: "+15550002000",
+      twilioSid: "PN_B",
+    }),
+    /already assigned to another account/,
+  );
+  assert.equal(
+    fake.tables.account_phone_numbers.find(
+      (row) => row.phone_number === "+15550002000",
+    ).account_id,
+    "acct-b",
+  );
+
+  const race = await Promise.allSettled([
+    accounts.assignPrimaryAccountPhoneNumber({
+      accountId: "acct-a",
+      phoneNumber: "+15550003000",
+      twilioSid: "PN_NEW",
+    }),
+    accounts.assignPrimaryAccountPhoneNumber({
+      accountId: "acct-b",
+      phoneNumber: "+15550003000",
+      twilioSid: "PN_NEW",
+    }),
+  ]);
+  assert.equal(race.filter((result) => result.status === "fulfilled").length, 1);
+  assert.equal(race.filter((result) => result.status === "rejected").length, 1);
+  assert.equal(
+    fake.tables.account_phone_numbers.filter(
+      (row) => row.phone_number === "+15550003000",
+    ).length,
+    1,
+  );
+
+  await assert.rejects(
+    () => accounts.releaseAccountPhoneNumbers("acct-b"),
+    /closed archived account/,
+  );
+  const accountARow = fake.tables.accounts.find((row) => row.id === "acct-a");
+  accountARow.status = "archived";
+  accountARow.onboarding_status = "closed";
+  const bNumbersBefore = fake.tables.account_phone_numbers
+    .filter((row) => row.account_id === "acct-b")
+    .map((row) => row.phone_number)
+    .sort();
+  const released = await accounts.releaseAccountPhoneNumbers("acct-a");
+  assert.ok(released.length > 0);
+  assert.deepEqual(
+    fake.tables.account_phone_numbers
+      .filter((row) => row.account_id === "acct-b")
+      .map((row) => row.phone_number)
+      .sort(),
+    bNumbersBefore,
+  );
 });
