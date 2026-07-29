@@ -422,7 +422,7 @@ test("ops pages share the same internal tool actions", () => {
   assert.match(opsAccountDirectoryTsx, /Needs attention/);
   assert.match(opsAccountDirectoryTsx, /Open account/);
   assert.doesNotMatch(opsAccountDirectoryTsx, /Diagnostics/);
-  assert.match(emailTestRouteTs, /requirePlatformOperatorJson/);
+  assert.match(emailTestRouteTs, /requirePlatformOperatorWriteJson/);
   assert.match(emailTestRouteTs, /getOpsAccountBySlug/);
   assert.match(appHeaderTsx, /Back to my inbox/);
   assert.match(opsAccountPageTsx, /ops-diagnostics/);
@@ -691,7 +691,7 @@ test("email password is the primary owner sign-in path with magic link as fallba
   assert.match(authUpdatePasswordRouteTs, /resolveAccountUserSessionForUser\(userData\.user\)/);
   assert.match(authUpdatePasswordRouteTs, /updateUser\(\{ password \}\)/);
   assert.match(middlewareTs, /"\/account\/:path\*"/);
-  assert.match(middlewareTs, /"\/api\/auth\/update-password"/);
+  assert.match(middlewareTs, /"\/api\/auth\/:path\*"/);
 });
 
 test("magic-link callback resolves account from exchanged user, not same-request cookies", () => {

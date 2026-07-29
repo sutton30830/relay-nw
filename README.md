@@ -125,6 +125,7 @@ Optional:
 - `INBOUND_MESSAGE_RETENTION_DAYS`: defaults to `90`; old inbound SMS reply bodies are pruned during normal webhook activity
 - `OPENAI_API_KEY`: optional; enables voicemail transcription and quick summaries from the lead drawer
 - `OPENAI_TRANSCRIPTION_MODEL`: optional; defaults to `gpt-4o-transcribe`; only confidence-capable GPT-4o transcription models are accepted
+- `AUTH_RATE_LIMIT_SALT`: optional dedicated HMAC secret for durable authentication rate-limit identifiers; defaults to the server-only Supabase service-role key
 - `OPENAI_SUMMARY_MODEL`: optional; defaults to `gpt-4o-mini`
 - `ALLOW_UNSIGNED_TWILIO_WEBHOOKS`: defaults to `false`; use `true` only for local manual webhook testing, never production
 

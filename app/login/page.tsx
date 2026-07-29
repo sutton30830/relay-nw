@@ -74,10 +74,10 @@ export default async function LoginPage({
 
         {params.reset ? (
           <p className="gate-sub">
-            <strong>Check your email.</strong>{" "}
+            <strong>Check your email if it matches a Relay account.</strong>{" "}
             {firstTimeLinkSent
-              ? "Your first-time password setup link is on the way."
-              : "Your password reset link is on the way."}
+              ? "If eligible, a first-time password setup link will arrive shortly."
+              : "If eligible, a password reset link will arrive shortly."}
           </p>
         ) : null}
 

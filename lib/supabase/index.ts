@@ -1,5 +1,6 @@
 export { supabaseAdmin } from "./client";
 export * from "./accounts";
+export * from "./auth-rate-limits";
 export * from "./audit";
 export * from "./calls";
 export * from "./carrier-profiles";

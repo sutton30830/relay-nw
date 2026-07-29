@@ -1,11 +1,11 @@
-import { requirePlatformOperatorJson } from "@/lib/auth";
+import { requirePlatformOperatorWriteJson } from "@/lib/auth";
 import { notifyOwnerTestEmail } from "@/lib/email";
 import { getAccountConfigByAccountId, getOpsAccountBySlug } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const auth = await requirePlatformOperatorJson();
+  const auth = await requirePlatformOperatorWriteJson();
   if (auth.response) return auth.response;
 
   const formData = await request.formData();

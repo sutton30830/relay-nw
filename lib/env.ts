@@ -131,6 +131,8 @@ export const env = {
   supabaseUrl: getOptionalEnv("SUPABASE_URL") ?? getRequiredEnv("NEXT_PUBLIC_SUPABASE_URL"),
   supabaseAnonKey: getRequiredEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
   supabaseServiceRoleKey: getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY"),
+  authRateLimitSalt:
+    getOptionalEnv("AUTH_RATE_LIMIT_SALT") ?? getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY"),
 };
 
 // Admin email alerts are the failure-visibility backstop when Supabase itself is

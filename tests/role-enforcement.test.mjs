@@ -157,6 +157,56 @@ test("requirePlatformOperatorWrite denies support users", async () => {
   await assert.rejects(auth.requirePlatformOperatorWrite(), /redirect:\/leads\?error=ops_read_only/);
 });
 
+test("requirePlatformOperatorWriteJson denies support without redirecting", async () => {
+  const auth = await loadAuthModule({
+    role: "owner",
+    platformOperator: { userId: "user-1", email: "owner@example.com", role: "support", status: "active" },
+  });
+
+  const result = await auth.requirePlatformOperatorWriteJson();
+  assert.equal(result.session, null);
+  assert.equal(result.response.status, 403);
+  assert.deepEqual(await result.response.json(), {
+    error: "Support users have read-only access",
+  });
+});
+
+test("email-test route stops before sending when platform write access is denied", async () => {
+  let sends = 0;
+  const route = await loadTsModule("app/api/email-test/start/route.ts", {
+    "@/lib/auth": {
+      requirePlatformOperatorWriteJson: async () => ({
+        session: null,
+        response: Response.json({ error: "Support users have read-only access" }, { status: 403 }),
+      }),
+    },
+    "@/lib/email": {
+      notifyOwnerTestEmail: async () => {
+        sends += 1;
+        return { sent: true };
+      },
+    },
+    "@/lib/supabase": {
+      getAccountConfigByAccountId: async () => {
+        throw new Error("must not resolve account");
+      },
+      getOpsAccountBySlug: async () => {
+        throw new Error("must not resolve account");
+      },
+    },
+  });
+
+  const response = await route.POST(
+    new Request("https://www.relay-nw.com/api/email-test/start", {
+      method: "POST",
+      body: new FormData(),
+    }),
+  );
+
+  assert.equal(response.status, 403);
+  assert.equal(sends, 0);
+});
+
 test("requirePlatformOperatorAction enforces the centralized role matrix", async () => {
   const operatorAuth = await loadAuthModule({
     role: "owner",

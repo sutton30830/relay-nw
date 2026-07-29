@@ -1,5 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  isTrustedBrowserMutation,
+  rejectedMutationResponse,
+} from "@/lib/request-security";
 
 function requiredEnv(name: string) {
   const value = process.env[name];
@@ -10,6 +14,10 @@ function requiredEnv(name: string) {
 }
 
 export async function middleware(request: NextRequest) {
+  if (!isTrustedBrowserMutation(request, process.env.APP_BASE_URL)) {
+    return rejectedMutationResponse();
+  }
+
   let response = NextResponse.next({
     request,
   });
@@ -52,9 +60,13 @@ export const config = {
     "/ops/:path*",
     "/login",
     "/auth/:path*",
-    "/api/auth/update-password",
+    "/api/auth/:path*",
+    "/api/billing/:path*",
     "/api/leads/:path*",
+    "/api/leads-logout",
+    "/api/ops/:path*",
     "/api/recordings/:path*",
     "/api/email-test/:path*",
+    "/api/settings/:path*",
   ],
 };

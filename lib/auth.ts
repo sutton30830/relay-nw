@@ -453,6 +453,26 @@ export async function requirePlatformOperatorJson() {
   return { session: operator, response: null };
 }
 
+export async function requirePlatformOperatorWriteJson() {
+  const auth = await requirePlatformOperatorJson();
+
+  if (auth.response) {
+    return auth;
+  }
+
+  if (auth.session.role === "support") {
+    return {
+      session: null,
+      response: Response.json(
+        { error: "Support users have read-only access" },
+        { status: 403 },
+      ),
+    };
+  }
+
+  return auth;
+}
+
 export async function requireRelayOperator() {
   const operator = await requirePlatformOperator();
   const session = await requireAccountUser();
