@@ -504,6 +504,39 @@ test("manual reply callback updates only its message and preserves the auto-text
   assert.match(state.webhookEvents[0].error ?? "", /Manual reply status updated/i);
 });
 
+test("invalid SMS status signatures fail closed before any tenant write", async () => {
+  const state = smsStatusState({ leadHasMessageSid: false, messageRowLeadId: null });
+  const mocks = makeSmsStatusRouteMocks(state);
+  let rejected = 0;
+  mocks["@/lib/twilio"] = {
+    ...mocks["@/lib/twilio"],
+    validateTwilioWebhook: () => ({
+      shouldReject: true,
+      wasAllowedByOverride: false,
+      matchedUrl: null,
+      candidateUrls: ["https://example.com/api/twilio/sms-status"],
+      hasSignature: true,
+    }),
+    rejectInvalidTwilioSignature: () => {
+      rejected += 1;
+      return new Response("Forbidden", { status: 403 });
+    },
+  };
+
+  const response = await postSmsStatus(mocks, {
+    MessageSid: "SM_invalid_signature",
+    MessageStatus: "delivered",
+  });
+
+  assert.equal(response.status, 403);
+  assert.equal(rejected, 1);
+  assert.deepEqual(state.leadUpdatesBySid, []);
+  assert.deepEqual(state.leadUpdatesById, []);
+  assert.deepEqual(state.messageStatusUpdates, []);
+  assert.deepEqual(state.onboardingEvidence, []);
+  assert.deepEqual(state.webhookEvents, []);
+});
+
 test("orphan callback (no lead, no message row): webhook event records the miss", async () => {
   const state = smsStatusState({ leadHasMessageSid: false, messageRowLeadId: null });
   await postSmsStatus(makeSmsStatusRouteMocks(state), {

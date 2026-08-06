@@ -52,6 +52,9 @@ test("Twilio media URL allowlist only accepts https api.twilio.com URLs", async 
     },
     "@/lib/email": { notifyAdminOperationalIssue: async () => ({ sent: true }) },
     "@/lib/supabase": { logWebhookEvent: async () => {} },
+    "@/lib/twilio-webhook-urls": {
+      twilioWebhookUrlCandidates: ({ requestUrl }) => [requestUrl],
+    },
   });
 
   assert.equal(isTrustedTwilioMediaUrl("https://api.twilio.com/2010-04-01/Accounts/AC/Recordings/RE.mp3"), true);

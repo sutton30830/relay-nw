@@ -3,6 +3,7 @@ import { env } from "@/lib/env";
 import { notifyAdminOperationalIssue } from "@/lib/email";
 import { logWebhookEvent, type WebhookEventSource } from "@/lib/supabase";
 import type { AccountRuntimeConfig } from "@/lib/supabase/accounts";
+import { twilioWebhookUrlCandidates } from "@/lib/twilio-webhook-urls";
 
 async function providerActionTools() {
   return import("@/lib/supabase/provider-actions");
@@ -405,11 +406,6 @@ export async function logUnsignedTwilioWebhook(input: {
   }
 }
 
-function requestPathAndSearch(requestUrl: string) {
-  const url = new URL(requestUrl);
-  return `${url.pathname}${url.search}`;
-}
-
 function forwardedOrigin(request: Request) {
   const forwardedProto = request.headers.get("x-forwarded-proto");
   const forwardedHost =
@@ -423,18 +419,11 @@ function forwardedOrigin(request: Request) {
 }
 
 export function twilioWebhookUrls(request: Request) {
-  const pathAndSearch = requestPathAndSearch(request.url);
-  const proxyOrigin = forwardedOrigin(request);
-
-  const candidates = new Set<string>();
-  candidates.add(request.url);
-  candidates.add(`${env.appBaseUrl}${pathAndSearch}`);
-
-  if (proxyOrigin) {
-    candidates.add(`${proxyOrigin}${pathAndSearch}`);
-  }
-
-  return Array.from(candidates);
+  return twilioWebhookUrlCandidates({
+    requestUrl: request.url,
+    appBaseUrl: env.appBaseUrl,
+    forwardedOrigin: forwardedOrigin(request),
+  });
 }
 
 export function formDataToRecord(formData: FormData) {
