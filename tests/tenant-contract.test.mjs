@@ -27,6 +27,8 @@ const billingPaymentMethodRouteTs = await readFile(new URL("../app/api/billing/p
 const billingPortalRouteTs = await readFile(new URL("../app/api/billing/portal/route.ts", import.meta.url), "utf8");
 const billingActivationTs = await readFile(new URL("../lib/billing-activation.ts", import.meta.url), "utf8");
 const opsStateTs = await readFile(new URL("../lib/ops-state.ts", import.meta.url), "utf8");
+const onboardingReadinessTs = await readFile(new URL("../lib/onboarding-readiness.ts", import.meta.url), "utf8");
+const onboardingEvidenceTs = await readFile(new URL("../lib/supabase/onboarding-evidence.ts", import.meta.url), "utf8");
 const opsBlockerRouteTs = await readFile(new URL("../app/api/ops/blocker/route.ts", import.meta.url), "utf8");
 const opsCallsRouteTs = await readFile(new URL("../app/api/ops/calls/route.ts", import.meta.url), "utf8");
 const stripeWebhookRouteTs = await readFile(new URL("../app/api/stripe/webhook/route.ts", import.meta.url), "utf8");
@@ -83,6 +85,7 @@ test("tenant core tables are present", () => {
     "public.account_phone_numbers",
     "public.account_users",
     "public.account_settings",
+    "public.account_onboarding_evidence",
     "public.calls",
     "public.messages",
   ]) {
@@ -153,7 +156,9 @@ test("billing foundation is account-scoped, Stripe-authoritative, and independen
   assert.match(billingTs, /canApplyOperatorBillingOverride/);
   assert.match(billingTs, /canStartMonthlyTrial\(\{/);
   assert.doesNotMatch(billingTs, /canStartMonthlyBilling/);
-  assert.match(setupPageTsx, /getAccountTechnicalSetupStatus\(accountId\)/);
+  assert.match(setupPageTsx, /loadAccountOnboardingReadiness\(accountId\)/);
+  assert.match(onboardingReadinessTs, /getAccountTechnicalSetupStatus\(accountId\)/);
+  assert.match(onboardingReadinessTs, /getAccountOnboardingEvidence\(accountId\)/);
   assert.match(setupPageTsx, /technicalStatus === "live"/);
   assert.doesNotMatch(setupPageTsx, /computeBillingReadiness|ownerOnboardingDelayMessage|Billing activation/);
   assert.match(verifyAccountScript, /deriveBillingVerification/);
@@ -398,7 +403,10 @@ test("launch certification verifies account readiness without mutating state", (
   assert.match(verifyLaunchScript, /call capture readiness/);
   assert.match(verifyLaunchScript, /A2P\/SMS registration readiness/);
   assert.match(verifyLaunchScript, /automatic SMS mode/);
-  assert.match(verifyLaunchScript, /paused by owner choice/);
+  assert.match(verifyLaunchScript, /production readiness requires the owner to enable it/);
+  assert.match(verifyLaunchScript, /SMS delivery evidence/);
+  assert.match(verifyLaunchScript, /non-SMS failure evidence/);
+  assert.match(verifyLaunchScript, /customer go-live approval/);
   assert.match(verifyLaunchScript, /Checkout allowed/);
   assert.match(verifyLaunchScript, /Customer Portal available/);
   assert.match(verifyLaunchScript, /service_hold/);
@@ -723,17 +731,20 @@ test("selected account cookie cannot strand later sign-ins", () => {
   assert.match(authLogoutRouteTs, /supabase\.auth\.signOut\(\)/);
 });
 
-test("authenticated setup page presents one calls-first path without internal tests", () => {
-  assert.match(setupPageTsx, /getAccountTechnicalSetupStatus\(accountId\)/);
-  assert.match(setupPageTsx, /getA2pRegistrationStatus\(accountId\)/);
+test("authenticated setup page presents evidence-derived onboarding with customer-owned approvals", () => {
+  assert.match(setupPageTsx, /loadAccountOnboardingReadiness\(accountId\)/);
+  assert.match(onboardingReadinessTs, /getAccountTechnicalSetupStatus\(accountId\)/);
+  assert.match(onboardingReadinessTs, /getA2pRegistrationStatus\(accountId\)/);
   assert.match(setupPageTsx, /Turn on missed-call forwarding/);
   assert.match(setupPageTsx, /getting your Relay line ready/);
-  assert.match(setupPageTsx, /Calls are live/);
-  assert.match(setupPageTsx, /Calls and texting move independently/);
+  assert.match(setupPageTsx, /Production ready/);
+  assert.match(setupPageTsx, /approve_go_live/);
+  assert.match(setupPageTsx, /confirm_owner_notification/);
   assert.match(setupPageTsx, /CarrierForwarding relayNumber=/);
   assert.doesNotMatch(setupPageTsx, /synthetic|questionnaire/i);
   assert.doesNotMatch(setupPageTsx, /Guide the owner|The owner should|customer&apos;s carrier instructions/);
   assert.doesNotMatch(setupPageTsx, /provisionAccount|signUp|createUser/i);
+  assert.match(onboardingEvidenceTs, /\.eq\("account_id", accountId\)/);
 });
 
 test("README documents Supabase Auth instead of legacy leads password auth", () => {

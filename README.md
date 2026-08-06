@@ -36,7 +36,8 @@ The product is multi-account at the data and auth layer, while early customers a
 16. Confirm the caller receives SMS only when texting is approved and enabled.
 17. Explain the $150 setup fee, $99 monthly plan, and Stripe-hosted billing controls.
 
-For the customer-by-customer onboarding checklist, see `docs/customer-setup.md`.
+For the customer-by-customer workflow, see `docs/onboarding-runbook.md` and
+`docs/customer-setup.md`.
 
 ## Core Flow
 

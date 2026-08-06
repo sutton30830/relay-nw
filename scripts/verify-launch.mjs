@@ -153,6 +153,7 @@ export function analyzeLaunchCertification(input) {
     primaryNumber,
     adminUsers = [],
     latestLead,
+    onboardingEvidence,
     billingConfigResult,
   } = input;
   const checks = [];
@@ -203,6 +204,35 @@ export function analyzeLaunchCertification(input) {
       : "No owner/admin membership rows.",
   );
 
+  const profileFields = [
+    ["legal business name", settings?.legal_business_name],
+    ["public business name", settings?.business_name],
+    ["owner name", settings?.owner_name],
+    ["owner email", settings?.owner_email],
+    ["owner mobile", settings?.owner_phone_number],
+    ["business hours", settings?.business_hours && Object.keys(settings.business_hours).length > 0],
+    ["coverage expectations", settings?.coverage_expectations],
+    ["missed-call SMS wording", settings?.sms_template],
+    ["voicemail greeting", settings?.missed_call_voice_message || settings?.missed_call_greeting_audio_url],
+  ];
+  if (settings?.call_mode === "forwarding") {
+    profileFields.push(
+      ["existing public business number", settings?.public_business_number],
+      ["forwarding carrier", settings?.forwarding_carrier],
+    );
+  }
+  const missingProfileFields = profileFields
+    .filter(([, value]) => !value)
+    .map(([label]) => label);
+  addCheck(
+    checks,
+    missingProfileFields.length === 0,
+    "repeatable onboarding profile",
+    missingProfileFields.length === 0
+      ? "Required business, owner, forwarding, hours, wording, and greeting details are present."
+      : `Missing ${missingProfileFields.join(", ")}.`,
+  );
+
   const callCapture = deriveCallCaptureReady({ settings, latestLead });
   const smsRegistrationReady = READY_A2P_STATUSES.has(settings?.a2p_registration_status ?? "not_started");
   const technicalReady = callCapture.ready;
@@ -237,12 +267,48 @@ export function analyzeLaunchCertification(input) {
   addCheck(checks, callCapture.ready, "call capture readiness", callCapture.detail);
   addCheck(
     checks,
+    Boolean(onboardingEvidence?.sms_delivery_verified_at && onboardingEvidence?.sms_delivery_message_sid),
+    "SMS delivery evidence",
+    onboardingEvidence?.sms_delivery_verified_at
+      ? `Twilio delivered ${onboardingEvidence.sms_delivery_message_sid} at ${onboardingEvidence.sms_delivery_verified_at}.`
+      : "No tenant-scoped Twilio delivered callback has been retained.",
+  );
+  addCheck(
+    checks,
+    Boolean(
+      onboardingEvidence?.non_sms_failure_verified_at &&
+      onboardingEvidence?.non_sms_failure_message_sid &&
+      onboardingEvidence?.non_sms_failure_code === "30006"
+    ),
+    "non-SMS failure evidence",
+    onboardingEvidence?.non_sms_failure_verified_at
+      ? `Twilio recorded ${onboardingEvidence.non_sms_failure_code ?? "unknown"} for ${onboardingEvidence.non_sms_failure_message_sid ?? "unknown"}.`
+      : "No provider-confirmed landline/non-SMS failure test has been retained.",
+  );
+  addCheck(
+    checks,
+    Boolean(onboardingEvidence?.owner_notification_confirmed_at),
+    "owner notification evidence",
+    onboardingEvidence?.owner_notification_confirmed_at
+      ? `The authenticated owner confirmed receipt at ${onboardingEvidence.owner_notification_confirmed_at}.`
+      : "The owner has not confirmed receipt of the real notification test.",
+  );
+  addCheck(
+    checks,
+    Boolean(onboardingEvidence?.customer_go_live_approved_at),
+    "customer go-live approval",
+    onboardingEvidence?.customer_go_live_approved_at
+      ? `The authenticated owner approved go-live at ${onboardingEvidence.customer_go_live_approved_at}.`
+      : "Explicit authenticated owner approval is missing.",
+  );
+  addCheck(
+    checks,
     smsRegistrationReady,
     "A2P/SMS registration readiness",
     smsRegistrationReady
       ? "Carrier registration is approved."
       : `a2p_registration_status=${settings?.a2p_registration_status ?? "missing"}; calls remain available and monthly trial time has not started.`,
-    smsRegistrationReady ? "pass" : "warn",
+    smsRegistrationReady ? "pass" : "fail",
   );
   addCheck(
     checks,
@@ -250,8 +316,8 @@ export function analyzeLaunchCertification(input) {
     "automatic SMS mode",
     settings?.sms_enabled
       ? "Auto-texting is on."
-      : "Auto-texting is paused by owner choice; this is not a setup failure, but launch handoff should mention callers are not receiving immediate replies.",
-    settings?.sms_enabled ? "pass" : "warn",
+      : "Auto-texting is off; production readiness requires the owner to enable it after carrier approval.",
+    settings?.sms_enabled ? "pass" : "fail",
   );
   addCheck(
     checks,
@@ -273,14 +339,14 @@ export function analyzeLaunchCertification(input) {
         : blocker === "setup"
           ? `Blocked by call setup: effective_onboarding_status=${effectiveOnboardingStatus}.`
           : `Blocked by ${blocker}${account.ops_blocker_note ? `: ${account.ops_blocker_note}` : "."}${account.ops_blocked_since ? ` Since ${account.ops_blocked_since}.` : ""}`,
-    blocker === "none" ? "pass" : "warn",
+    blocker === "none" ? "pass" : "fail",
   );
   addCheck(
     checks,
     ACTIVE_BILLING_STATUSES.has(account.billing_status ?? "not_started"),
     "billing status",
     `billing_status=${account.billing_status ?? "not_started"}, stripe_subscription_status=${account.stripe_subscription_status ?? "none"}.`,
-    ACTIVE_BILLING_STATUSES.has(account.billing_status ?? "not_started") ? "pass" : "warn",
+    ACTIVE_BILLING_STATUSES.has(account.billing_status ?? "not_started") ? "pass" : "fail",
   );
   addCheck(
     checks,
@@ -293,9 +359,7 @@ export function analyzeLaunchCertification(input) {
         : setupFeeStatus === "partially_refunded"
           ? "The one-time setup fee was paid and partially refunded."
           : `The one-time setup fee is unresolved (status=${setupFeeStatus}); the initial Stripe trial cannot start.`,
-    setupFeeSettled
-      ? "pass"
-      : "warn",
+    setupFeeSettled ? "pass" : "fail",
   );
   addCheck(
     checks,
@@ -306,7 +370,7 @@ export function analyzeLaunchCertification(input) {
         ? "Comped account does not require a Stripe payment method."
         : `Stripe default payment method ${account.stripe_default_payment_method_id} is ready.`
       : "No Stripe default payment method is ready; trial activation remains stopped.",
-    paymentMethodReady ? "pass" : "warn",
+    paymentMethodReady ? "pass" : "fail",
   );
 
   const dangerousStripeDisagreement =
@@ -381,11 +445,11 @@ async function loadAccountFacts(supabase, slug) {
     return { account: null };
   }
 
-  const [settings, phoneNumbers, adminUsers, leads] = await Promise.all([
+  const [settings, phoneNumbers, adminUsers, leads, onboardingEvidence] = await Promise.all([
     maybeSingle(
       supabase
         .from("account_settings")
-        .select("account_id, business_name, owner_email, owner_phone_number, call_mode, sms_enabled, a2p_registration_status")
+        .select("account_id, business_name, legal_business_name, owner_name, owner_email, owner_phone_number, public_business_number, call_mode, forwarding_carrier, business_hours, coverage_expectations, sms_enabled, sms_template, missed_call_voice_message, missed_call_greeting_audio_url, a2p_registration_status")
         .eq("account_id", account.id),
       "account_settings lookup",
     ),
@@ -415,6 +479,13 @@ async function loadAccountFacts(supabase, slug) {
         .limit(1),
       "latest lead lookup",
     ),
+    maybeSingle(
+      supabase
+        .from("account_onboarding_evidence")
+        .select("account_id, sms_delivery_verified_at, sms_delivery_message_sid, non_sms_failure_verified_at, non_sms_failure_message_sid, non_sms_failure_code, owner_notification_confirmed_at, customer_go_live_approved_at")
+        .eq("account_id", account.id),
+      "account_onboarding_evidence lookup",
+    ),
   ]);
 
   return {
@@ -423,6 +494,7 @@ async function loadAccountFacts(supabase, slug) {
     primaryNumber: phoneNumbers.find((row) => row.is_primary) ?? null,
     adminUsers,
     latestLead: firstRow(leads),
+    onboardingEvidence,
   };
 }
 

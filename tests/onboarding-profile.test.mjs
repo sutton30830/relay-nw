@@ -11,6 +11,7 @@ new vm.Script(`(function(module,exports){${compiled}\n})`).runInThisContext()(mo
 const { isCustomerProfileComplete, missingCustomerProfileFields } = module.exports;
 
 const complete = {
+  legalBusinessName: "Cascade Plumbing LLC",
   businessName: "Cascade Plumbing",
   ownerName: "Sutton Lowry",
   ownerEmail: "owner@example.com",
@@ -18,24 +19,33 @@ const complete = {
   publicBusinessNumber: "+12065550124",
   businessType: "llc",
   callMode: "forwarding",
+  forwardingCarrier: "Verizon",
+  businessHours: { summary: "Mon-Fri 8-5" },
+  coverageExpectations: "Capture every unanswered call.",
+  smsTemplate: "Sorry we missed you. Reply STOP to opt out.",
+  missedCallVoiceMessage: "Please leave a recorded message.",
 };
 
 test("customer profile completion never depends on a Relay-assigned number", () => {
   assert.equal(isCustomerProfileComplete(complete), true);
 });
 
-test("forwarding requires the public number but not cosmetic profile fields", () => {
-  const profile = { ...complete, ownerName: null, publicBusinessNumber: "" };
-  assert.deepEqual(missingCustomerProfileFields(profile), ["Existing public business number"]);
+test("forwarding requires owner identity, the public number, and carrier", () => {
+  const profile = { ...complete, ownerName: null, publicBusinessNumber: "", forwardingCarrier: "" };
+  assert.deepEqual(missingCustomerProfileFields(profile), [
+    "Owner name",
+    "Existing public business number",
+    "Forwarding carrier",
+  ]);
 });
 
 test("direct mode does not require an existing public number", () => {
   const profile = {
     ...complete,
     callMode: "direct",
-    ownerName: null,
     businessType: null,
     publicBusinessNumber: null,
+    forwardingCarrier: null,
   };
 
   assert.equal(isCustomerProfileComplete(profile), true);

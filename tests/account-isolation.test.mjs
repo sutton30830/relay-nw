@@ -13,6 +13,7 @@ function compact(value) {
 const files = {
   leadsPage: await source("app/leads/page.tsx"),
   setupPage: await source("app/setup/page.tsx"),
+  onboardingReadiness: await source("lib/onboarding-readiness.ts"),
   opsPage: await source("app/ops/page.tsx"),
   opsAccountPage: await source("app/ops/accounts/[id]/page.tsx"),
   leadApi: await source("app/api/leads/[id]/route.ts"),
@@ -40,8 +41,10 @@ test("authenticated lead, ops, recording, and transcription routes use session a
 
   assert.match(files.setupPage, /const session = await requireAccountUser\(\)/);
   assert.match(files.setupPage, /const \{ account, accountId, membershipCount \} = session/);
-  assert.match(files.setupPage, /getAccountTechnicalSetupStatus\(accountId\)/);
-  assert.match(files.setupPage, /getA2pRegistrationStatus\(accountId\)/);
+  assert.match(files.setupPage, /loadAccountOnboardingReadiness\(accountId\)/);
+  assert.match(files.onboardingReadiness, /getAccountTechnicalSetupStatus\(accountId\)/);
+  assert.match(files.onboardingReadiness, /getA2pRegistrationStatus\(accountId\)/);
+  assert.match(files.onboardingReadiness, /getAccountOnboardingEvidence\(accountId\)/);
 
   // Ops pages authorize via the platform-operator gate and look accounts up by
   // explicit slug — never by the operator's own session account.

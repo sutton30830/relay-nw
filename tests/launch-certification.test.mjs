@@ -29,10 +29,18 @@ function readyFacts(overrides = {}) {
     },
     settings: {
       business_name: "Demo Plumbing",
+      legal_business_name: "Demo Plumbing LLC",
+      owner_name: "Demo Owner",
       owner_email: "owner@example.com",
       owner_phone_number: "+12065550123",
+      public_business_number: "+12065550124",
       call_mode: "forwarding",
+      forwarding_carrier: "Verizon",
+      business_hours: { summary: "Mon-Fri 8-5" },
+      coverage_expectations: "Capture every unanswered call.",
       sms_enabled: true,
+      sms_template: "Sorry we missed you. Reply STOP to opt out.",
+      missed_call_voice_message: "Please leave a recorded message.",
       a2p_registration_status: "approved",
       ...overrides.settings,
     },
@@ -49,6 +57,16 @@ function readyFacts(overrides = {}) {
     latestLead: Object.hasOwn(overrides, "latestLead")
       ? overrides.latestLead
       : { id: "lead_1", created_at: "2026-08-01T00:00:00.000Z" },
+    onboardingEvidence: {
+      sms_delivery_verified_at: "2026-08-01T00:01:00.000Z",
+      sms_delivery_message_sid: "SM_delivered",
+      non_sms_failure_verified_at: "2026-08-01T00:02:00.000Z",
+      non_sms_failure_message_sid: "SM_landline",
+      non_sms_failure_code: "30006",
+      owner_notification_confirmed_at: "2026-08-01T00:03:00.000Z",
+      customer_go_live_approved_at: "2026-08-01T00:04:00.000Z",
+      ...overrides.onboardingEvidence,
+    },
     billingConfigResult: overrides.billingConfigResult ?? {
       ok: true,
       checks: [
@@ -95,15 +113,15 @@ test("launch verifier blocks customer-facing price drift", () => {
   assert.match(amounts.detail, /monthly_price_cents=9900/);
 });
 
-test("launch verifier reports paused SMS as operational choice, not setup failure", () => {
+test("launch verifier blocks production while automatic SMS is paused", () => {
   const result = analyzeLaunchCertification(readyFacts({
     settings: { sms_enabled: false },
   }));
   const sms = result.checks.find((check) => check.label === "automatic SMS mode");
 
-  assert.equal(sms.level, "warn");
-  assert.match(sms.detail, /paused by owner choice/);
-  assert.equal(result.ok, true);
+  assert.equal(sms.level, "fail");
+  assert.match(sms.detail, /production readiness requires/i);
+  assert.equal(result.ok, false);
 });
 
 test("launch verifier blocks duplicate Checkout even when setup-fee truth changes", () => {
@@ -111,7 +129,7 @@ test("launch verifier blocks duplicate Checkout even when setup-fee truth change
     account: { setup_fee_status: "refunded" },
   }));
 
-  assert.equal(result.ok, true);
+  assert.equal(result.ok, false);
   assert.equal(result.checkoutAllowed.ok, false, "an already active account cannot open another Checkout session");
 });
 
@@ -156,6 +174,20 @@ test("launch verifier treats carrier approval as separate from call-capture read
   assert.equal(carrier.blocker, "none");
   assert.match(setup.checks.find((check) => check.label === "onboarding blocker").detail, /blocked by call setup/i);
   assert.match(carrier.checks.find((check) => check.label === "A2P\/SMS registration readiness").detail, /trial time has not started/i);
+});
+
+test("launch verifier refuses missing delivery, landline, notification, or customer evidence", () => {
+  for (const field of [
+    "sms_delivery_verified_at",
+    "non_sms_failure_verified_at",
+    "owner_notification_confirmed_at",
+    "customer_go_live_approved_at",
+  ]) {
+    const result = analyzeLaunchCertification(readyFacts({
+      onboardingEvidence: { [field]: null },
+    }));
+    assert.equal(result.ok, false, `${field} must block launch certification`);
+  }
 });
 
 test("calls live while texting is pending cannot report Stripe trial readiness", () => {

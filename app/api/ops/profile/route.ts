@@ -4,9 +4,14 @@ import { OPS_ACTIONS } from "@/lib/ops-actions";
 import { normalizePhoneNumber } from "@/lib/phone";
 import {
   getOpsAccountBySlug,
+  getAccountConfigByAccountId,
+  clearCustomerGoLiveApproval,
+  clearMessagingOnboardingEvidence,
+  clearOwnerNotificationEvidence,
   recordAccountAuditEvents,
   recordPlatformAuditEvent,
   updateAccountSettings,
+  updateAccountTechnicalSetupStatus,
   type AccountSettingsUpdate,
 } from "@/lib/supabase";
 
@@ -27,14 +32,23 @@ export async function POST(request: Request) {
 
   const account = await getOpsAccountBySlug(slug);
   if (!account) redirect("/ops");
+  const previous = await getAccountConfigByAccountId(account.accountId);
 
   const businessName = value(form, "business_name", 120);
+  const legalBusinessName = value(form, "legal_business_name", 160);
   const ownerName = value(form, "owner_name", 120);
   const ownerEmail = value(form, "owner_email").toLowerCase();
   const ownerPhone = value(form, "owner_phone_number", 30);
   const publicNumber = value(form, "public_business_number", 30);
   const businessType = value(form, "business_type", 40);
+  const forwardingCarrier = value(form, "forwarding_carrier", 80);
+  const businessHoursSummary = value(form, "business_hours_summary", 500);
+  const coverageExpectations = value(form, "coverage_expectations", 500);
+  const smsTemplate = value(form, "sms_template", 600);
   const callMode = value(form, "call_mode", 20);
+  const effectiveCallMode = callMode === "forwarding" || callMode === "direct"
+    ? callMode
+    : previous?.callMode ?? "forwarding";
   const schedulingUrl = value(form, "scheduling_url", 500);
 
   if (!businessName) {
@@ -49,14 +63,19 @@ export async function POST(request: Request) {
 
   const update: AccountSettingsUpdate = {
     business_name: businessName,
+    legal_business_name: legalBusinessName || null,
     owner_name: ownerName || null,
     owner_email: ownerEmail || null,
     public_business_number: publicNumber ? normalizePhoneNumber(publicNumber) : null,
     business_type: businessType || null,
+    forwarding_carrier: effectiveCallMode === "forwarding" ? forwardingCarrier || null : null,
+    business_hours: businessHoursSummary ? { summary: businessHoursSummary } : null,
+    coverage_expectations: coverageExpectations || null,
+    sms_template: smsTemplate || null,
     scheduling_url: schedulingUrl || null,
   };
   if (ownerPhone) update.owner_phone_number = normalizePhoneNumber(ownerPhone);
-  if (callMode === "forwarding" || callMode === "direct") update.call_mode = callMode;
+  update.call_mode = effectiveCallMode;
 
   const voiceMessage = value(form, "missed_call_voice_message", 600);
   update.missed_call_voice_message = voiceMessage || null;
@@ -71,6 +90,27 @@ export async function POST(request: Request) {
 
   try {
     await updateAccountSettings(account.accountId, update);
+    const routingChanged = previous !== null && (
+      previous.callMode !== effectiveCallMode ||
+      (previous.publicBusinessNumber ?? "") !== (update.public_business_number ?? "") ||
+      (previous.forwardingCarrier ?? "") !== (update.forwarding_carrier ?? "")
+    );
+    const messagingChanged = previous !== null &&
+      (previous.smsTemplate ?? "") !== (update.sms_template ?? "");
+    const ownerEmailChanged = previous !== null &&
+      (previous.ownerEmail ?? "").toLowerCase() !== (update.owner_email ?? "").toLowerCase();
+
+    if (routingChanged) {
+      await updateAccountTechnicalSetupStatus(
+        account.accountId,
+        effectiveCallMode === "forwarding" ? "waiting_for_forwarding" : "setting_up",
+      );
+    }
+    if (messagingChanged) await clearMessagingOnboardingEvidence(account.accountId);
+    if (ownerEmailChanged) await clearOwnerNotificationEvidence(account.accountId);
+    if (!messagingChanged && !ownerEmailChanged) {
+      await clearCustomerGoLiveApproval(account.accountId);
+    }
   } catch (error) {
     console.error("Ops profile update failed", {
       accountId: account.accountId,

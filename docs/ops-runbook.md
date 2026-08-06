@@ -4,6 +4,10 @@
 > independent Operations states are live. Calls, Texting, Billing, and blocker
 > ownership are separate facts; the queue and next action are derived.
 
+For provisioning and launch handoff, follow the concise
+[Repeatable Onboarding Runbook](onboarding-runbook.md). The account workspace is
+the single onboarding workflow; do not maintain a parallel checklist in notes.
+
 Use this when Relay NW is live for a business and something important may have failed. The goal is simple: protect the missed-call recovery loop, notify the right person, and avoid silently losing caller data.
 
 ## Operator Boundary

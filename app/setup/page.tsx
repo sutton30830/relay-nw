@@ -3,11 +3,7 @@ import { PageHead } from "@/app/leads/_components/page-head";
 import { Icon } from "@/components/icon";
 import Link from "next/link";
 import { isRelayOperator, requireAccountUser } from "@/lib/auth";
-import {
-  getA2pRegistrationStatus,
-  getAccountTechnicalSetupStatus,
-  getLastRecoveredCallAt,
-} from "@/lib/supabase";
+import { loadAccountOnboardingReadiness } from "@/lib/onboarding-readiness";
 import { CarrierForwarding } from "./carrier-forwarding";
 
 export const dynamic = "force-dynamic";
@@ -22,14 +18,32 @@ function RelayHelpLink({ businessName }: { businessName: string }) {
   );
 }
 
-export default async function SetupPage() {
+function onboardingNotice(status: string | undefined) {
+  if (status === "notification_confirmed") return "Thanks — your notification receipt is now part of the launch evidence.";
+  if (status === "approved") return "Go-live approved. Relay recorded your authenticated approval.";
+  if (status === "owner_required") return "Only the account owner can confirm tests or approve go-live.";
+  if (status === "confirmation_required") return "Check the confirmation box before continuing.";
+  if (status === "notification_not_sent") return "Relay must send the owner notification test before you can confirm it.";
+  if (status === "not_ready") return "Go-live approval is locked until every earlier readiness check is complete.";
+  if (status === "invalid_action") return "That onboarding action is not available.";
+  return null;
+}
+
+export default async function SetupPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ onboarding?: string }>;
+}) {
   const session = await requireAccountUser();
   const { account, accountId, membershipCount } = session;
-  const [technicalStatus, a2pStatus, lastRecoveredCallAt] = await Promise.all([
-    getAccountTechnicalSetupStatus(accountId),
-    getA2pRegistrationStatus(accountId),
-    getLastRecoveredCallAt(accountId),
+  const [onboarding, notices] = await Promise.all([
+    loadAccountOnboardingReadiness(accountId),
+    searchParams,
   ]);
+  const { readiness, evidence, facts } = onboarding;
+  const technicalStatus = facts.technicalStatus;
+  const a2pStatus = facts.a2pStatus;
+  const lastRecoveredCallAt = facts.signedCallVerifiedAt;
   const callsAreLive = technicalStatus === "live";
   const waitingForForwarding = technicalStatus === "waiting_for_forwarding";
   const serviceUnavailable = technicalStatus === "paused" || technicalStatus === "closed";
@@ -63,6 +77,11 @@ export default async function SetupPage() {
       : textingNeedsAttention
         ? "Calls and your inbox continue to work normally."
         : "This happens separately from call setup.";
+  const notice = onboardingNotice(notices.onboarding);
+  const noticeIsSuccess = notices.onboarding === "notification_confirmed" || notices.onboarding === "approved";
+  const approvalReady = readiness.checks.every(
+    (check) => check.key === "customer_approval" || check.status === "complete",
+  ) && readiness.state !== "blocked";
 
   return (
     <main className="leads-view">
@@ -77,7 +96,9 @@ export default async function SetupPage() {
         <PageHead
           eyebrow="Relay setup"
           title={
-            callsAreLive
+            readiness.ready
+              ? "Your account is approved for production"
+              : callsAreLive
               ? "Your missed calls are covered"
               : technicalStatus === "closed"
                 ? "Account closed"
@@ -88,8 +109,10 @@ export default async function SetupPage() {
                     : "We’re getting your Relay line ready"
           }
           subtitle={
-            callsAreLive
-              ? "Relay confirmed your inbox with a real missed call."
+            readiness.ready
+              ? "Every required setup test and your explicit approval are recorded."
+              : callsAreLive
+              ? "Relay confirmed your inbox with a real missed call. Texting and launch approval are tracked separately."
               : serviceUnavailable
                 ? "Contact Relay if you need help with this account."
                 : waitingForForwarding
@@ -98,13 +121,20 @@ export default async function SetupPage() {
           }
         />
 
+        {notice ? (
+          <div className={noticeIsSuccess ? "settings-notice" : "intake-error settings-notice"} aria-live="polite">
+            {notice}
+          </div>
+        ) : null}
+
         <section className="panel customer-setup-overview" aria-label="Relay service status">
           <div className="customer-setup-overview__intro">
             <div>
               <p className="t-eyebrow">Your service</p>
-              <h2>{callsAreLive ? "Calls are live" : "Calls and texting move independently"}</h2>
+              <h2>{readiness.stateLabel}</h2>
+              <p>Launch readiness comes from completed setup evidence, not simply having an account or Relay number.</p>
             </div>
-            {callsAreLive ? <span className="readiness__badge"><Icon name="check" size={13} /> Live</span> : null}
+            {readiness.ready ? <span className="readiness__badge"><Icon name="check" size={13} /> Production ready</span> : null}
           </div>
           <dl className="customer-setup-overview__states">
             <div className={callsAreLive ? "customer-setup-overview__state--good" : waitingForForwarding ? "customer-setup-overview__state--attention" : ""}>
@@ -127,6 +157,52 @@ export default async function SetupPage() {
           ) : null}
         </section>
 
+        <section className="panel customer-onboarding" id="approval" aria-label="Onboarding evidence and approval">
+          <header className="customer-onboarding__head">
+            <div>
+              <p className="t-eyebrow">Your next action</p>
+              <h2>{readiness.customerAction.label}</h2>
+              <p>{readiness.customerAction.detail}</p>
+            </div>
+            {readiness.customerAction.href ? (
+              <Link className="btn btn-secondary" href={readiness.customerAction.href}>Open next step</Link>
+            ) : null}
+          </header>
+
+          <ol className="customer-onboarding__checks">
+            {readiness.checks.map((check) => (
+              <li className={`customer-onboarding__check customer-onboarding__check--${check.status}`} key={check.key}>
+                <Icon name={check.status === "complete" ? "check" : check.status === "blocked" ? "alertTriangle" : "clock"} size={14} />
+                <span><strong>{check.label}</strong><small>{check.detail}</small></span>
+              </li>
+            ))}
+          </ol>
+
+          {session.role === "owner" && evidence.ownerNotificationSentAt && !evidence.ownerNotificationConfirmedAt ? (
+            <form action="/api/onboarding/confirm" method="post" className="customer-onboarding__confirmation">
+              <input type="hidden" name="action" value="confirm_owner_notification" />
+              <div>
+                <strong>Did the owner notification reach you?</strong>
+                <label><input type="checkbox" name="confirmation" value="confirmed" required /> I received Relay&apos;s real notification test.</label>
+              </div>
+              <button className="btn btn-secondary" type="submit">Confirm receipt</button>
+            </form>
+          ) : null}
+
+          {session.role === "owner" && approvalReady && !evidence.customerGoLiveApprovedAt ? (
+            <form action="/api/onboarding/confirm" method="post" className="customer-onboarding__confirmation">
+              <input type="hidden" name="action" value="approve_go_live" />
+              <div>
+                <strong>Final production approval</strong>
+                <label><input type="checkbox" name="confirmation" value="confirmed" required /> I reviewed the completed tests and approve Relay going live for this business.</label>
+              </div>
+              <button className="btn btn-primary" type="submit">Approve go-live</button>
+            </form>
+          ) : session.role !== "owner" && !evidence.customerGoLiveApprovedAt ? (
+            <p className="customer-onboarding__owner-note">The account owner must complete notification confirmation and final go-live approval.</p>
+          ) : null}
+        </section>
+
         {serviceUnavailable ? (
           <section className="panel customer-setup-help" aria-label="Service status">
             <div>
@@ -137,7 +213,7 @@ export default async function SetupPage() {
             <RelayHelpLink businessName={account.businessName} />
           </section>
         ) : waitingForForwarding ? (
-          <section className="panel customer-setup-task" aria-label="Call forwarding instructions">
+          <section className="panel customer-setup-task" id="forwarding" aria-label="Call forwarding instructions">
             <div className="customer-setup-task__head">
               <div>
                 <p className="t-eyebrow">Your next step</p>

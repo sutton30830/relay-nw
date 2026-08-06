@@ -15,8 +15,10 @@ test("account workspace has one compact status strip and one primary action", ()
   assert.match(page, /<dt>Texting<\/dt>/);
   assert.match(page, /<dt>Billing<\/dt>/);
   assert.match(page, /<dt>Blocked by<\/dt>/);
-  assert.match(page, /\{opsState\.nextAction\.label\}/);
-  assert.match(page, /\{opsState\.nextAction\.detail\}/);
+  assert.match(page, /onboarding\.readiness\.ready \? opsState\.nextAction\.label : onboardingAction\.label/);
+  assert.match(page, /onboarding\.readiness\.ready \? opsState\.nextAction\.detail : onboardingAction\.detail/);
+  assert.equal((page.match(/aria-label="Repeatable onboarding workflow"/g) ?? []).length, 1);
+  assert.match(page, /Derived from customer, provider, authentication, and billing evidence/);
 });
 
 test("the working surface is one setup card and one billing card", () => {

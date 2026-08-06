@@ -8,6 +8,7 @@ import {
   type OpsAction,
 } from "@/lib/ops-actions";
 import {
+  clearCustomerGoLiveApproval,
   getOpsBillingAccountBySlug,
   recordPlatformAuditEvent,
   setAccountBillingPolicy,
@@ -172,6 +173,8 @@ export async function POST(request: Request) {
         actorEmail: session.email,
       });
     }
+
+    await clearCustomerGoLiveApproval(account.accountId);
 
   } catch (error) {
     console.error("Operator billing override failed", {

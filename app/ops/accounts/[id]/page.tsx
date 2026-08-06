@@ -7,6 +7,7 @@ import {
   deriveOpsState,
   type OpsNextActionKey,
 } from "@/lib/ops-state";
+import { loadAccountOnboardingReadiness } from "@/lib/onboarding-readiness";
 import { stripeDashboardPaymentUrl } from "@/lib/stripe-billing";
 import {
   getOpsAccountBySlug,
@@ -14,7 +15,6 @@ import {
   getRecentStripeEventsForAccount,
   getRecentWebhookEventsForAccount,
   getCarrierProfile,
-  getAccountConfigByAccountId,
 } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -153,6 +153,7 @@ export default async function OpsAccountPage({
     profile?: string;
     calls?: string;
     blocker?: string;
+    onboarding_test?: string;
   }>;
 }) {
   const operator = await requirePlatformOperator();
@@ -201,12 +202,13 @@ export default async function OpsAccountPage({
     blockedSince: summary.opsBlockedSince,
   });
 
-  const [stripeEvents, systemEvents, carrierProfile, runtime] = await Promise.all([
+  const [stripeEvents, systemEvents, carrierProfile, onboarding] = await Promise.all([
     getRecentStripeEventsForAccount(billing.accountId, 25),
     getRecentWebhookEventsForAccount(billing.accountId, 25),
     getCarrierProfile(billing.accountId),
-    getAccountConfigByAccountId(billing.accountId),
+    loadAccountOnboardingReadiness(billing.accountId),
   ]);
+  const runtime = onboarding.runtime;
   const failedCount = stripeEvents.filter((event) => event.processing_status === "failed").length;
 
   const canApplyOverride = canApplyOperatorBillingOverride(billing);
@@ -270,6 +272,13 @@ export default async function OpsAccountPage({
   const billingMessage = billingActionNotice(notices.billing_action);
   const blockerMessage = blockerNotice(notices.blocker);
   const accountControlMessage = accountControlNotice(notices.calls);
+  const onboardingTestMessage = notices.onboarding_test === "sent"
+    ? "Owner notification test sent. Ask the owner to confirm receipt from Setup."
+    : notices.onboarding_test === "skipped"
+      ? "Owner notification test was not sent. Check the recipient and Resend configuration."
+      : notices.onboarding_test === "failed"
+        ? "Owner notification provider rejected the test. Check Diagnostics before retrying."
+        : null;
   const carrierMessage = carrierNotice(notices.carrier);
   const numberMessage = notices.number === "assigned"
     ? "Relay number assigned and configured."
@@ -297,7 +306,10 @@ export default async function OpsAccountPage({
       : notices.profile
         ? "Business-details save failed. Check logs before retrying."
         : null;
-  const primaryDestination = nextActionDestination(opsState.nextAction.key);
+  const onboardingAction = onboarding.readiness.operatorAction;
+  const primaryDestination = onboarding.readiness.ready
+    ? nextActionDestination(opsState.nextAction.key)
+    : onboardingAction.href;
   const callsControlOpen =
     primaryDestination === "#calls" ||
     Boolean((notices.number && notices.number !== "assigned" && notices.number !== "released" && notices.number !== "none") || (notices.calls && notices.calls !== "saved"));
@@ -315,8 +327,12 @@ export default async function OpsAccountPage({
     carrierMessage ||
     numberMessage ||
     profileMessage ||
-    accountControlMessage,
+    accountControlMessage ||
+    onboardingTestMessage
   );
+  const businessHoursSummary = typeof runtime.businessHours?.summary === "string"
+    ? runtime.businessHours.summary
+    : "";
   const callsDetail = opsState.calls === "ready"
     ? `${runtime?.twilioPhoneNumber || "Relay number assigned"} · verified by a real missed call`
     : opsState.calls === "waiting_for_forwarding"
@@ -365,6 +381,7 @@ export default async function OpsAccountPage({
             {numberMessage ? <div className={notices.number === "assigned" ? "settings-notice" : "intake-error settings-notice"}>{numberMessage}</div> : null}
             {profileMessage ? <div className={notices.profile === "saved" ? "settings-notice" : "intake-error settings-notice"}>{profileMessage}</div> : null}
             {accountControlMessage ? <div className={notices.calls === "saved" ? "settings-notice" : "intake-error settings-notice"}>{accountControlMessage}</div> : null}
+            {onboardingTestMessage ? <div className={notices.onboarding_test === "sent" ? "settings-notice" : "intake-error settings-notice"}>{onboardingTestMessage}</div> : null}
           </div>
         ) : null}
 
@@ -388,11 +405,15 @@ export default async function OpsAccountPage({
           <div className="ops-workspace-primary__copy">
             <span className="ops-workspace-primary__label">Next step</span>
             <div>
-              <h2>{opsState.nextAction.label}</h2>
-              <p>{opsState.nextAction.detail}</p>
+              <h2>{onboarding.readiness.ready ? opsState.nextAction.label : onboardingAction.label}</h2>
+              <p>{onboarding.readiness.ready ? opsState.nextAction.detail : onboardingAction.detail}</p>
             </div>
           </div>
-          {operator.role !== "support" && opsState.nextAction.key === "check_trial_activation" ? (
+          {!onboarding.readiness.ready && onboardingAction.href ? (
+            <Link className="btn btn-primary" href={onboardingAction.href}>
+              Open onboarding step
+            </Link>
+          ) : operator.role !== "support" && opsState.nextAction.key === "check_trial_activation" ? (
             <form action="/api/ops/billing/activate" method="post">
               <input type="hidden" name="account_slug" value={summary.accountSlug} />
               <button className="btn btn-primary" type="submit">Start eligible Stripe trial</button>
@@ -408,6 +429,60 @@ export default async function OpsAccountPage({
             <Link className="btn btn-primary" href={primaryDestination}>
               {nextActionButtonLabel(opsState.nextAction.key)}
             </Link>
+          ) : null}
+        </section>
+
+        <section className="panel onboarding-workflow" id="onboarding" aria-label="Repeatable onboarding workflow">
+          <header className="onboarding-workflow__head">
+            <div>
+              <p className="t-eyebrow">Onboarding readiness</p>
+              <h2>{onboarding.readiness.stateLabel}</h2>
+              <p>
+                {onboarding.readiness.state === "blocked"
+                  ? `${onboarding.readiness.blockedBy} owns this blocker: ${onboarding.readiness.blockerReason}`
+                  : "Derived from customer, provider, authentication, and billing evidence — never an editable label."}
+              </p>
+            </div>
+            <span className={`chip ${onboarding.readiness.ready ? "readiness__badge" : onboarding.readiness.state === "blocked" ? "chip-danger" : ""}`}>
+              {onboarding.readiness.checks.filter((check) => check.status === "complete").length}/{onboarding.readiness.checks.length} complete
+            </span>
+          </header>
+
+          <ol className="onboarding-checklist">
+            {onboarding.readiness.checks.map((check) => (
+              <li className={`onboarding-checklist__item onboarding-checklist__item--${check.status}`} key={check.key}>
+                <span className="onboarding-checklist__mark" aria-hidden="true">
+                  <Icon name={check.status === "complete" ? "check" : check.status === "blocked" ? "alertTriangle" : "clock"} size={14} />
+                </span>
+                <span><strong>{check.label}</strong><small>{check.detail}</small></span>
+                {check.evidenceAt ? <time dateTime={check.evidenceAt}>{formatDateTime(check.evidenceAt)}</time> : null}
+              </li>
+            ))}
+          </ol>
+
+          <div className="onboarding-workflow__handoff">
+            <div>
+              <span>Operator next action</span>
+              <strong>{onboarding.readiness.operatorAction.label}</strong>
+              <small>{onboarding.readiness.operatorAction.detail}</small>
+            </div>
+            <div>
+              <span>Customer next action</span>
+              <strong>{onboarding.readiness.customerAction.label}</strong>
+              <small>{onboarding.readiness.customerAction.detail}</small>
+            </div>
+          </div>
+
+          {operator.role !== "support" && !onboarding.evidence.ownerNotificationConfirmedAt ? (
+            <form className="onboarding-workflow__test" action="/api/email-test/start" method="post">
+              <input type="hidden" name="account_slug" value={summary.accountSlug} />
+              <input type="hidden" name="return_to" value="ops_onboarding" />
+              <div>
+                <strong>Owner notification test</strong>
+                <p>Sends a real email to the configured owner. Provider acceptance is recorded; the owner confirms receipt from Setup.</p>
+              </div>
+              <button className="btn btn-secondary" type="submit">Send notification test</button>
+            </form>
           ) : null}
         </section>
 
@@ -649,18 +724,23 @@ export default async function OpsAccountPage({
           </aside>
         </div>
 
-        <details className="panel setup-panel ops-customer-details" open={Boolean(notices.profile && notices.profile !== "saved")}>
+        <details className="panel setup-panel ops-customer-details" id="customer-details" open={Boolean(notices.profile && notices.profile !== "saved")}>
           <summary>
             <span><strong>Customer details</strong><small>Contact, routing, and account settings</small></span>
           </summary>
           <div className="ops-customer-details__body">
             <dl className="ops-workspace-facts">
+              <div><dt>Legal name</dt><dd>{runtime?.legalBusinessName || "Not set"}</dd></div>
+              <div><dt>Public name</dt><dd>{runtime?.businessName || summary.businessName}</dd></div>
               <div><dt>Owner</dt><dd>{runtime?.ownerName || "Not set"}</dd></div>
               <div><dt>Owner email</dt><dd>{runtime?.ownerEmail || summary.ownerEmail || "Not set"}</dd></div>
               <div><dt>Owner phone</dt><dd>{runtime?.ownerPhoneNumber || "Not set"}</dd></div>
               <div><dt>Public number</dt><dd>{runtime?.publicBusinessNumber || "Not set"}</dd></div>
               <div><dt>Relay number</dt><dd>{runtime?.twilioPhoneNumber || "Not assigned"}</dd></div>
               <div><dt>Call mode</dt><dd>{runtime?.callMode || "forwarding"}</dd></div>
+              <div><dt>Carrier</dt><dd>{runtime?.forwardingCarrier || (runtime?.callMode === "direct" ? "Direct" : "Not set")}</dd></div>
+              <div><dt>Business hours</dt><dd>{businessHoursSummary || "Not set"}</dd></div>
+              <div><dt>Coverage</dt><dd>{runtime?.coverageExpectations || "Not set"}</dd></div>
               <div><dt>Account</dt><dd>{summary.accountSlug}</dd></div>
               <div><dt>Activated</dt><dd>{formatDate(summary.activatedAt)}</dd></div>
             </dl>
@@ -668,15 +748,20 @@ export default async function OpsAccountPage({
               <form action="/api/ops/profile" method="post" className="setup-panel__action ops-form">
                 <input type="hidden" name="account_slug" value={summary.accountSlug} />
                 <p className="t-eyebrow">Edit customer details</p>
+                <label className="form-field"><span className="form-field__label">Legal business name</span><input className="field" name="legal_business_name" required defaultValue={runtime?.legalBusinessName ?? ""} /></label>
                 <label className="form-field"><span className="form-field__label">Business display name</span><input className="field" name="business_name" required defaultValue={runtime?.businessName ?? summary.businessName} /></label>
-                <label className="form-field"><span className="form-field__label">Owner / admin name</span><input className="field" name="owner_name" defaultValue={runtime?.ownerName ?? ""} /></label>
+                <label className="form-field"><span className="form-field__label">Owner / admin name</span><input className="field" name="owner_name" required defaultValue={runtime?.ownerName ?? ""} /></label>
                 <label className="form-field"><span className="form-field__label">Business type</span><input className="field" name="business_type" defaultValue={runtime?.businessType ?? ""} placeholder="e.g. Plumbing" /></label>
-                <label className="form-field"><span className="form-field__label">Notification email</span><input className="field" type="email" name="owner_email" defaultValue={runtime?.ownerEmail ?? summary.ownerEmail ?? ""} /></label>
-                <label className="form-field"><span className="form-field__label">Owner alert phone</span><input className="field" name="owner_phone_number" defaultValue={runtime?.ownerPhoneNumber ?? ""} /></label>
+                <label className="form-field"><span className="form-field__label">Owner email</span><input className="field" type="email" name="owner_email" required defaultValue={runtime?.ownerEmail ?? summary.ownerEmail ?? ""} /></label>
+                <label className="form-field"><span className="form-field__label">Owner mobile number</span><input className="field" name="owner_phone_number" required defaultValue={runtime?.ownerPhoneNumber ?? ""} /></label>
                 <label className="form-field"><span className="form-field__label">Existing public business number</span><input className="field" name="public_business_number" defaultValue={runtime?.publicBusinessNumber ?? ""} /></label>
                 <label className="form-field"><span className="form-field__label">Call mode</span><select className="field" name="call_mode" defaultValue={runtime?.callMode ?? "forwarding"}><option value="forwarding">Forwarding (keep their number)</option><option value="direct">Direct (Relay number is public)</option></select></label>
+                <label className="form-field"><span className="form-field__label">Forwarding carrier</span><input className="field" name="forwarding_carrier" defaultValue={runtime?.forwardingCarrier ?? ""} placeholder="e.g. Verizon, AT&T, T-Mobile" /></label>
+                <label className="form-field"><span className="form-field__label">Business hours</span><textarea className="field" name="business_hours_summary" required defaultValue={businessHoursSummary} placeholder="Mon–Fri 8:00am–5:00pm; closed weekends" /></label>
+                <label className="form-field"><span className="form-field__label">Missed-call coverage expectations</span><textarea className="field" name="coverage_expectations" required defaultValue={runtime?.coverageExpectations ?? ""} placeholder="When Relay should capture missed calls and how quickly the owner follows up" /></label>
+                <label className="form-field"><span className="form-field__label">Customer-approved missed-call SMS</span><textarea className="field" name="sms_template" required defaultValue={runtime?.smsTemplate ?? ""} /></label>
                 <label className="form-field"><span className="form-field__label">Scheduling link (optional)</span><input className="field" name="scheduling_url" defaultValue={runtime?.schedulingUrl ?? ""} placeholder="https://…" /></label>
-                <label className="form-field"><span className="form-field__label">Voicemail greeting (optional)</span><input className="field" name="missed_call_voice_message" defaultValue={runtime?.missedCallVoiceMessage ?? ""} /></label>
+                <label className="form-field"><span className="form-field__label">Voicemail greeting</span><textarea className="field" name="missed_call_voice_message" required={!runtime?.missedCallGreetingAudioUrl} defaultValue={runtime?.missedCallVoiceMessage ?? ""} /></label>
                 <label className="form-field"><span className="form-field__label">Ring seconds before voicemail (5–60)</span><input className="field" name="dial_timeout_seconds" type="number" min={5} max={60} defaultValue={runtime?.dialTimeoutSeconds ?? 18} /></label>
                 <label className="form-field"><span className="form-field__label">Max voicemail seconds (10–300)</span><input className="field" name="voicemail_max_seconds" type="number" min={10} max={300} defaultValue={runtime?.voicemailMaxSeconds ?? 60} /></label>
                 <button className="btn btn-primary" type="submit">Save customer details</button>

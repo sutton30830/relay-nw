@@ -270,6 +270,7 @@ async function runOpsBillingOverride({
       setAccountCommercialOffer: async (input) => {
         calls.commercialOffers.push(input);
       },
+      clearCustomerGoLiveApproval: async () => {},
       recordPlatformAuditEvent: async (input) => {
         calls.platformAudits.push(input);
       },

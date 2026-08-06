@@ -122,6 +122,7 @@ async function runNumberAssignment({ action = "attach_existing", configureError 
     permissions: [],
     configured: [],
     assignments: [],
+    evidenceClears: [],
     redirects: [],
   };
   const { POST } = await loadTsModule("app/api/ops/twilio/assign/route.ts", {
@@ -149,6 +150,9 @@ async function runNumberAssignment({ action = "attach_existing", configureError 
         calls.assignments.push(input);
         return { numberChanged: true };
       },
+      clearMessagingOnboardingEvidence: async (accountId) => {
+        calls.evidenceClears.push(accountId);
+      },
       recordAccountAuditEvents: async () => {},
       recordPlatformAuditEvent: async () => {},
     },
@@ -171,6 +175,7 @@ test("Operations can attach only an already-owned Twilio number", async () => {
   assert.deepEqual(attach.permissions, [opsActions.OPS_ACTIONS.assignExistingNumber]);
   assert.deepEqual(attach.configured, ["+12065550123"]);
   assert.equal(attach.assignments.length, 1);
+  assert.deepEqual(attach.evidenceClears, ["acct-1"]);
 });
 
 test("Twilio failure is visible and cannot create favorable local assignment state", async () => {

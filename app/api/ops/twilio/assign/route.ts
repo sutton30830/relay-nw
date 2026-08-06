@@ -4,6 +4,7 @@ import { OPS_ACTIONS } from "@/lib/ops-actions";
 import { configureExistingRelayNumber } from "@/lib/twilio";
 import {
   assignPrimaryAccountPhoneNumber,
+  clearMessagingOnboardingEvidence,
   getOpsBillingAccountBySlug,
   recordAccountAuditEvents,
   recordPlatformAuditEvent,
@@ -31,6 +32,9 @@ export async function POST(request: Request) {
       phoneNumber: configured.phoneNumber,
       twilioSid: configured.sid,
     });
+    if (assignment.numberChanged) {
+      await clearMessagingOnboardingEvidence(account.accountId);
+    }
     const summary = assignment.numberChanged
       ? `Assigned Relay number ${configured.phoneNumber}; call capture must be reconfirmed on the new routing configuration`
       : `Confirmed Relay number ${configured.phoneNumber}`;

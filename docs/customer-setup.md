@@ -1,6 +1,8 @@
 # Relay Customer Setup
 
-Relay onboarding has two customer-visible phases. Billing is separate.
+Relay onboarding keeps calls, texting, billing configuration, and launch
+approval as separate evidence. `/setup` shows the current derived state and the
+customer's one next action.
 
 ## Phase 1: Get calls live
 
@@ -80,7 +82,8 @@ Billing is not an onboarding phase:
 
 ## Handoff
 
-Before handoff:
+Before handoff, use the single readiness workflow in the
+[Repeatable Onboarding Runbook](onboarding-runbook.md):
 
 1. Run `npm run verify:account -- <slug>`.
 2. Run `npm run verify:launch -- <slug>`.
@@ -90,3 +93,7 @@ Before handoff:
 5. Explain that call capture works independently from automatic texting.
 6. Explain the $150 one-time fee, $99 monthly price, Stripe billing controls,
    and refund-support path.
+7. Confirm a real SMS delivery callback, a safe Twilio `30006` non-SMS failure,
+   and owner notification receipt.
+8. Ask the authenticated owner to approve go-live only after every prior check
+   is complete. A Relay number or live call alone is never production approval.

@@ -435,6 +435,8 @@ alter table public.account_settings add column if not exists address_postal_code
 alter table public.account_settings add column if not exists address_country text not null default 'US';
 alter table public.account_settings add column if not exists business_hours jsonb;
 alter table public.account_settings add column if not exists implementation_notes text;
+alter table public.account_settings add column if not exists forwarding_carrier text;
+alter table public.account_settings add column if not exists coverage_expectations text;
 alter table public.account_settings drop constraint if exists account_settings_a2p_registration_status_check;
 alter table public.account_settings
   add constraint account_settings_a2p_registration_status_check
@@ -540,6 +542,35 @@ create table if not exists public.account_audit_events (
 create index if not exists account_audit_events_account_created_at_idx
   on public.account_audit_events (account_id, created_at desc);
 alter table public.account_audit_events enable row level security;
+
+-- Provider/customer evidence for the consolidated onboarding workflow. The
+-- overall readiness state is always derived in application code; no editable
+-- status column can claim that an account is ready for production.
+create table if not exists public.account_onboarding_evidence (
+  account_id uuid primary key references public.accounts(id) on delete cascade,
+  sms_delivery_verified_at timestamptz,
+  sms_delivery_message_sid text,
+  non_sms_failure_verified_at timestamptz,
+  non_sms_failure_message_sid text,
+  non_sms_failure_code text,
+  owner_notification_sent_at timestamptz,
+  owner_notification_provider_id text,
+  owner_notification_confirmed_at timestamptz,
+  owner_notification_confirmed_by uuid,
+  owner_notification_confirmed_email text,
+  customer_go_live_approved_at timestamptz,
+  customer_go_live_approved_by uuid,
+  customer_go_live_approved_email text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create unique index if not exists account_onboarding_sms_delivery_sid_unique_idx
+  on public.account_onboarding_evidence (account_id, sms_delivery_message_sid)
+  where sms_delivery_message_sid is not null;
+create unique index if not exists account_onboarding_non_sms_failure_sid_unique_idx
+  on public.account_onboarding_evidence (account_id, non_sms_failure_message_sid)
+  where non_sms_failure_message_sid is not null;
+alter table public.account_onboarding_evidence enable row level security;
 
 -- Relay-owned billing exceptions are policy, not fake Stripe state. Change
 -- the policy and create its required audit event atomically.
@@ -1852,6 +1883,11 @@ create policy deny_client_access on public.account_users
 
 drop policy if exists deny_client_access on public.account_audit_events;
 create policy deny_client_access on public.account_audit_events
+  as restrictive for all to anon, authenticated
+  using (false) with check (false);
+
+drop policy if exists deny_client_access on public.account_onboarding_evidence;
+create policy deny_client_access on public.account_onboarding_evidence
   as restrictive for all to anon, authenticated
   using (false) with check (false);
 

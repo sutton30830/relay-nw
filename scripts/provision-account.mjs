@@ -5,9 +5,15 @@ const required = [
   "SUPABASE_SERVICE_ROLE_KEY",
   "ACCOUNT_SLUG",
   "BUSINESS_NAME",
+  "LEGAL_BUSINESS_NAME",
+  "OWNER_NAME",
+  "OWNER_EMAIL",
   "OWNER_PHONE_NUMBER",
   "TWILIO_PHONE_NUMBER",
   "INTAKE_URL",
+  "BUSINESS_HOURS_SUMMARY",
+  "COVERAGE_EXPECTATIONS",
+  "SMS_TEMPLATE",
 ];
 
 function env(name) {
@@ -32,6 +38,18 @@ function normalizePhoneNumber(value) {
 
 for (const name of required) {
   env(name);
+}
+
+const callMode = optionalEnv("CALL_MODE", "forwarding");
+if (callMode !== "forwarding" && callMode !== "direct") {
+  throw new Error("CALL_MODE must be forwarding or direct");
+}
+if (callMode === "forwarding") {
+  env("PUBLIC_BUSINESS_NUMBER");
+  env("FORWARDING_CARRIER");
+}
+if (!optionalEnv("MISSED_CALL_VOICE_MESSAGE") && !optionalEnv("MISSED_CALL_GREETING_AUDIO_URL")) {
+  throw new Error("Set MISSED_CALL_VOICE_MESSAGE or MISSED_CALL_GREETING_AUDIO_URL");
 }
 
 const supabase = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), {
@@ -81,12 +99,21 @@ if (smsEnabled && a2pRegistrationStatus !== "approved") {
 const settingsPayload = {
   account_id: accountId,
   business_name: businessName,
-  owner_email: optionalEnv("OWNER_EMAIL")?.toLowerCase() ?? null,
+  legal_business_name: env("LEGAL_BUSINESS_NAME"),
+  owner_name: env("OWNER_NAME"),
+  owner_email: env("OWNER_EMAIL").toLowerCase(),
   owner_phone_number: normalizePhoneNumber(env("OWNER_PHONE_NUMBER")),
+  public_business_number: callMode === "forwarding"
+    ? normalizePhoneNumber(env("PUBLIC_BUSINESS_NUMBER"))
+    : null,
+  forwarding_carrier: callMode === "forwarding" ? env("FORWARDING_CARRIER") : null,
+  business_hours: { summary: env("BUSINESS_HOURS_SUMMARY") },
+  coverage_expectations: env("COVERAGE_EXPECTATIONS"),
   intake_url: env("INTAKE_URL"),
   scheduling_url: optionalEnv("SCHEDULING_URL", env("INTAKE_URL")),
-  call_mode: optionalEnv("CALL_MODE", "forwarding"),
+  call_mode: callMode,
   sms_enabled: smsEnabled,
+  sms_template: env("SMS_TEMPLATE"),
   updated_at: now,
 };
 
@@ -122,24 +149,24 @@ const { error: phoneError } = await supabase
 
 if (phoneError) throw phoneError;
 
-const ownerEmail = optionalEnv("OWNER_EMAIL");
-if (ownerEmail) {
-  const { error: userError } = await supabase
-    .from("account_users")
-    .upsert({
-      account_id: accountId,
-      email: ownerEmail.toLowerCase(),
-      role: "owner",
-    }, { onConflict: "account_id,email" });
+const ownerEmail = env("OWNER_EMAIL");
+const { error: userError } = await supabase
+  .from("account_users")
+  .upsert({
+    account_id: accountId,
+    email: ownerEmail.toLowerCase(),
+    role: "owner",
+  }, { onConflict: "account_id,email" });
 
-  if (userError) throw userError;
-}
+if (userError) throw userError;
 
 console.log(JSON.stringify({
   ok: true,
   accountId,
   slug,
   businessName,
+  callMode,
   twilioPhoneNumber: normalizePhoneNumber(env("TWILIO_PHONE_NUMBER")),
   ownerEmail,
+  nextAction: "Invite this owner email in Supabase Auth, then complete evidence-backed checks in Operations.",
 }, null, 2));

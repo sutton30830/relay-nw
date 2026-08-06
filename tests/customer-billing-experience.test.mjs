@@ -43,9 +43,10 @@ test("A2P registration is not a customer questionnaire", () => {
 });
 
 test("billing remains separate from technical setup", () => {
-  assert.doesNotMatch(setup, /Stripe|setup fee|\$99|Manage billing/i);
-  assert.match(setup, /getAccountTechnicalSetupStatus/);
+  assert.doesNotMatch(setup, /setup fee|\$99|Manage billing/i);
+  assert.match(setup, /loadAccountOnboardingReadiness/);
   assert.match(setup, /first real missed call/i);
+  assert.match(setup, /Calls and your inbox continue to work normally/);
 });
 
 test("customer setup shows independent call and texting facts with one relevant action", () => {

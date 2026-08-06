@@ -6,7 +6,11 @@
 
 Pilot onboarding is white-glove, but the customer experience stays simple:
 Relay prepares the account, the customer enables forwarding when needed, and
-the first real missed call proves the system is live.
+the first real missed call proves the call path is connected.
+
+Use the [Repeatable Onboarding Runbook](onboarding-runbook.md) and its derived
+readiness panel for every pilot. A real call proves calls only; it does not make
+the account ready for production.
 
 ## 1. Create the account
 
@@ -16,10 +20,18 @@ provision the tenant:
 ```bash
 ACCOUNT_SLUG="abc-plumbing" \
 BUSINESS_NAME="ABC Plumbing" \
+LEGAL_BUSINESS_NAME="ABC Plumbing LLC" \
+OWNER_NAME="Alex Owner" \
+OWNER_EMAIL="owner@example.com" \
 OWNER_PHONE_NUMBER="+15557654321" \
+PUBLIC_BUSINESS_NUMBER="+15557650000" \
+FORWARDING_CARRIER="Verizon" \
+BUSINESS_HOURS_SUMMARY="Mon-Fri 8am-5pm" \
+COVERAGE_EXPECTATIONS="Cover every unanswered call" \
+SMS_TEMPLATE="Hi, this is ABC Plumbing—sorry we missed you. Reply with what you need. Reply STOP to opt out." \
+MISSED_CALL_VOICE_MESSAGE="Thanks for calling. Please leave a recorded message." \
 TWILIO_PHONE_NUMBER="+15551234567" \
 INTAKE_URL="https://relay-nw.com/intake" \
-OWNER_EMAIL="owner@example.com" \
 CALL_MODE="forwarding" \
 SMS_ENABLED="false" \
 npm run provision:account

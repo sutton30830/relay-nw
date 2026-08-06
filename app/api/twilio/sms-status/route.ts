@@ -11,6 +11,7 @@ import {
   updateLeadSmsStatusByMessageSid,
   updateMessageStatusBySid,
   resolveAccountSafely,
+  recordSmsOnboardingEvidence,
 } from "@/lib/supabase";
 import {
   formDataToRecord,
@@ -30,6 +31,10 @@ const TRACKED_SMS_STATUSES = new Set([
   "failed",
   "undelivered",
 ]);
+
+function providerErrorCode(error: string | null | undefined) {
+  return error?.match(/\b(?:21|30)\d{3}\b/)?.[0] ?? null;
+}
 
 function parseSmsStatusPayload(payload: Record<string, string>) {
   const messageSid = (payload.MessageSid ?? payload.SmsSid ?? "").trim();
@@ -211,6 +216,21 @@ export async function POST(request: Request) {
         status: status.smsStatus,
         error: status.error,
       });
+    }
+
+    if (
+      callback.messageType === "auto_text" &&
+      status.messageSid &&
+      status.smsStatus
+    ) {
+      if (typeof recordSmsOnboardingEvidence === "function") {
+        await recordSmsOnboardingEvidence({
+          accountId: account.accountId,
+          messageSid: status.messageSid,
+          status: status.smsStatus,
+          errorCode: providerErrorCode(status.error),
+        });
+      }
     }
 
     await logWebhookEvent({

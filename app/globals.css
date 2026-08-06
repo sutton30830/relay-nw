@@ -2112,6 +2112,141 @@ code {
   white-space: nowrap;
 }
 
+.onboarding-workflow {
+  display: grid;
+  gap: 18px;
+  margin-bottom: 16px;
+  padding: 18px;
+  box-shadow: var(--shadow-sm);
+}
+
+.onboarding-workflow__head,
+.onboarding-workflow__test {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.onboarding-workflow__head h2,
+.customer-onboarding__head h2 {
+  margin: 2px 0 4px;
+  font-family: var(--font-display);
+  font-size: 1.45rem;
+  line-height: 1.15;
+}
+
+.onboarding-workflow__head p,
+.onboarding-workflow__test p,
+.customer-onboarding__head p {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.onboarding-checklist,
+.customer-onboarding__checks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  padding: 0;
+  list-style: none;
+  overflow: hidden;
+}
+
+.onboarding-checklist__item,
+.customer-onboarding__check {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 9px;
+  min-width: 0;
+  border-bottom: 1px solid var(--line-soft);
+  padding: 12px;
+}
+
+.onboarding-checklist__item:nth-child(odd),
+.customer-onboarding__check:nth-child(odd) { border-right: 1px solid var(--line-soft); }
+
+.onboarding-checklist__item:nth-last-child(-n + 2),
+.customer-onboarding__check:nth-last-child(-n + 2) { border-bottom: 0; }
+
+.onboarding-checklist__mark,
+.customer-onboarding__check > svg {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--ink-4);
+}
+
+.onboarding-checklist__item--complete .onboarding-checklist__mark,
+.customer-onboarding__check--complete > svg {
+  background: var(--good-soft);
+  color: var(--good);
+}
+
+.onboarding-checklist__item--blocked .onboarding-checklist__mark,
+.customer-onboarding__check--blocked > svg {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.onboarding-checklist__item strong,
+.onboarding-checklist__item small,
+.customer-onboarding__check strong,
+.customer-onboarding__check small { display: block; }
+
+.onboarding-checklist__item strong,
+.customer-onboarding__check strong { font-size: 12.5px; }
+
+.onboarding-checklist__item small,
+.customer-onboarding__check small {
+  margin-top: 2px;
+  color: var(--ink-3);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.onboarding-checklist__item time {
+  color: var(--ink-4);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.onboarding-workflow__handoff {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.onboarding-workflow__handoff > div {
+  display: grid;
+  gap: 3px;
+  border-left: 3px solid var(--brand);
+  padding: 10px 12px;
+  background: var(--panel-2);
+}
+
+.onboarding-workflow__handoff span,
+.onboarding-workflow__handoff small {
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+
+.onboarding-workflow__handoff strong { font-size: 13.5px; }
+
+.onboarding-workflow__test {
+  align-items: center;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 16px;
+}
+
 .ops-workspace-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(290px, 0.72fr);
@@ -3645,6 +3780,42 @@ code {
   margin-top: 18px;
   border-top: 1px solid var(--line-soft);
   padding-top: 2px;
+}
+
+.customer-onboarding {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+}
+
+.customer-onboarding__head,
+.customer-onboarding__confirmation {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.customer-onboarding__confirmation {
+  align-items: center;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 16px;
+}
+
+.customer-onboarding__confirmation label {
+  display: block;
+  margin-top: 7px;
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.customer-onboarding__owner-note {
+  margin: 0;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 16px;
+  color: var(--ink-3);
+  font-size: 13px;
 }
 
 /* Decisive Setup readiness banner — one state, one next action. */
@@ -5872,10 +6043,22 @@ code {
 
   .customer-setup-overview__intro,
   .customer-setup-task__head,
-  .customer-setup-help {
+  .customer-setup-help,
+  .customer-onboarding__head,
+  .customer-onboarding__confirmation {
     align-items: stretch;
     flex-direction: column;
   }
+
+  .onboarding-checklist,
+  .customer-onboarding__checks,
+  .onboarding-workflow__handoff { grid-template-columns: 1fr; }
+
+  .onboarding-checklist__item:nth-child(odd),
+  .customer-onboarding__check:nth-child(odd) { border-right: 0; }
+
+  .onboarding-checklist__item:nth-last-child(2),
+  .customer-onboarding__check:nth-last-child(2) { border-bottom: 1px solid var(--line-soft); }
 
   .customer-setup-overview__states {
     grid-template-columns: 1fr;
@@ -5887,7 +6070,9 @@ code {
   }
 
   .customer-setup-task .btn,
-  .customer-setup-help .btn {
+  .customer-setup-help .btn,
+  .customer-onboarding__head .btn,
+  .customer-onboarding__confirmation .btn {
     width: 100%;
   }
 
@@ -6680,6 +6865,9 @@ code {
   .ops-workspace-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ops-customer-details > summary,
   .ops-customer-details__body { padding-right: 18px; padding-left: 18px; }
+  .onboarding-workflow__head,
+  .onboarding-workflow__test { align-items: stretch; flex-direction: column; }
+  .onboarding-workflow__test .btn { width: 100%; }
 }
 
 @media (max-width: 430px) {

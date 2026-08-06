@@ -34,6 +34,8 @@ export type AccountRuntimeConfig = {
   addressCountry: string;
   businessHours: Record<string, unknown> | null;
   implementationNotes: string | null;
+  forwardingCarrier: string | null;
+  coverageExpectations: string | null;
   greetingPreference: "generated" | "recorded";
   callMode: "direct" | "forwarding";
   smsEnabled: boolean;
@@ -161,6 +163,8 @@ type AccountSettingsRow = {
   address_country?: string | null;
   business_hours?: Record<string, unknown> | null;
   implementation_notes?: string | null;
+  forwarding_carrier?: string | null;
+  coverage_expectations?: string | null;
   greeting_preference?: string | null;
   owner_phone_number: string;
   intake_url: string;
@@ -550,6 +554,8 @@ function normalizeSetupFeeStatus(value: string | null | undefined): AccountBilli
 }
 
 const ACCOUNT_SETTINGS_SELECT =
+  "account_id, business_name, owner_email, owner_name, legal_business_name, public_business_number, business_type, business_industry, website_url, address_line_1, address_line_2, address_city, address_region, address_postal_code, address_country, business_hours, implementation_notes, forwarding_carrier, coverage_expectations, greeting_preference, owner_phone_number, intake_url, scheduling_url, call_mode, sms_enabled, sms_template, quick_reply_templates, missed_call_voice_message, missed_call_voice_name, missed_call_greeting_audio_url, voicemail_max_seconds, dial_timeout_seconds, missed_call_sms_cooldown_hours, typical_job_value_cents, voicemail_transcription_enabled, accounts(slug)";
+const ACCOUNT_SETTINGS_SELECT_PRE_ONBOARDING_EVIDENCE =
   "account_id, business_name, owner_email, owner_name, legal_business_name, public_business_number, business_type, business_industry, website_url, address_line_1, address_line_2, address_city, address_region, address_postal_code, address_country, business_hours, implementation_notes, greeting_preference, owner_phone_number, intake_url, scheduling_url, call_mode, sms_enabled, sms_template, quick_reply_templates, missed_call_voice_message, missed_call_voice_name, missed_call_greeting_audio_url, voicemail_max_seconds, dial_timeout_seconds, missed_call_sms_cooldown_hours, typical_job_value_cents, voicemail_transcription_enabled, accounts(slug)";
 const ACCOUNT_SETTINGS_SELECT_PRE_PROFILE =
   "account_id, business_name, owner_email, owner_phone_number, intake_url, scheduling_url, call_mode, sms_enabled, sms_template, quick_reply_templates, missed_call_voice_message, missed_call_voice_name, missed_call_greeting_audio_url, voicemail_max_seconds, dial_timeout_seconds, missed_call_sms_cooldown_hours, typical_job_value_cents, voicemail_transcription_enabled, accounts(slug)";
@@ -581,6 +587,8 @@ export function envAccountConfig(): AccountRuntimeConfig {
     addressCountry: "US",
     businessHours: null,
     implementationNotes: null,
+    forwardingCarrier: null,
+    coverageExpectations: null,
     greetingPreference: "generated",
     callMode: env.callMode as "direct" | "forwarding",
     smsEnabled: env.smsEnabled,
@@ -623,6 +631,8 @@ function configFromSettings(row: AccountSettingsRow, primaryNumber: string): Acc
     addressCountry: row.address_country ?? "US",
     businessHours: row.business_hours ?? null,
     implementationNotes: row.implementation_notes ?? null,
+    forwardingCarrier: row.forwarding_carrier ?? null,
+    coverageExpectations: row.coverage_expectations ?? null,
     greetingPreference: row.greeting_preference === "recorded" ? "recorded" : "generated",
     callMode: row.call_mode,
     smsEnabled: row.sms_enabled,
@@ -737,6 +747,15 @@ export async function getAccountConfigByAccountId(accountId: string | null | und
   ]);
 
   let { data, error } = settingsResult;
+
+  if (error && /forwarding_carrier|coverage_expectations/.test(error.message)) {
+    console.warn("Repeatable onboarding profile columns are missing. Apply the repeatable-onboarding migration.");
+    ({ data, error } = await supabaseAdmin
+      .from("account_settings")
+      .select(ACCOUNT_SETTINGS_SELECT_PRE_ONBOARDING_EVIDENCE)
+      .eq("account_id", accountId)
+      .maybeSingle());
+  }
 
   if (error && /owner_name|legal_business_name|public_business_number|business_type|business_industry|website_url|address_|business_hours|implementation_notes|greeting_preference/.test(error.message)) {
     console.warn("Extended customer profile columns are missing. Run supabase.sql to enable guided onboarding.");
@@ -1876,6 +1895,7 @@ export async function resolveAccountByMessageSid(messageSid: string | null | und
 export async function provisionAccount(input: {
   slug: string;
   businessName: string;
+  legalBusinessName?: string | null;
   ownerPhoneNumber: string;
   twilioPhoneNumber?: string | null;
   intakeUrl: string;
@@ -1886,6 +1906,11 @@ export async function provisionAccount(input: {
   ownerName?: string | null;
   businessType?: string | null;
   publicBusinessNumber?: string | null;
+  forwardingCarrier?: string | null;
+  businessHours?: Record<string, unknown> | null;
+  coverageExpectations?: string | null;
+  smsTemplate?: string | null;
+  missedCallVoiceMessage?: string | null;
 }) {
   if (shouldSkipDatabaseWrite("account provisioning", input)) {
     return null;
@@ -1911,6 +1936,7 @@ export async function provisionAccount(input: {
     .upsert({
       account_id: accountId,
       business_name: input.businessName,
+      legal_business_name: input.legalBusinessName ?? null,
       owner_email: input.ownerEmail?.toLowerCase() ?? null,
       owner_name: input.ownerName ?? null,
       owner_phone_number: normalizePhoneNumber(input.ownerPhoneNumber),
@@ -1918,10 +1944,16 @@ export async function provisionAccount(input: {
       public_business_number: input.publicBusinessNumber
         ? normalizePhoneNumber(input.publicBusinessNumber)
         : null,
+      forwarding_carrier: input.forwardingCarrier ?? null,
+      business_hours: input.businessHours ?? null,
+      coverage_expectations: input.coverageExpectations ?? null,
       intake_url: input.intakeUrl,
       scheduling_url: input.schedulingUrl ?? input.intakeUrl,
       call_mode: input.callMode ?? "forwarding",
       sms_enabled: input.smsEnabled ?? false,
+      sms_template: input.smsTemplate ?? env.smsTemplate ?? null,
+      missed_call_voice_message:
+        input.missedCallVoiceMessage ?? env.missedCallVoiceMessage ?? null,
       updated_at: new Date().toISOString(),
     }, { onConflict: "account_id" });
 
@@ -2014,6 +2046,8 @@ export type AccountSettingsUpdate = Partial<{
   address_country: string;
   business_hours: Record<string, unknown> | null;
   implementation_notes: string | null;
+  forwarding_carrier: string | null;
+  coverage_expectations: string | null;
   greeting_preference: "generated" | "recorded";
   a2p_registration_status: "not_started" | "in_progress" | "approved" | "needs_attention" | "rejected" | "paused";
   call_mode: "direct" | "forwarding";

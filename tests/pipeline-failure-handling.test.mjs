@@ -369,6 +369,9 @@ function makeSmsStatusRouteMocks(state) {
         state.messageStatusUpdates.push(input);
         return { updated: true };
       },
+      recordSmsOnboardingEvidence: async (input) => {
+        state.onboardingEvidence.push(input);
+      },
       logWebhookEvent: async (input) => {
         state.webhookEvents.push(input);
       },
@@ -413,6 +416,7 @@ function smsStatusState({ leadHasMessageSid, messageRowLeadId }) {
     leadUpdatesBySid: [],
     leadUpdatesById: [],
     messageStatusUpdates: [],
+    onboardingEvidence: [],
     webhookEvents: [],
   };
 }
@@ -429,6 +433,22 @@ test("status callback with matching lead: lead updated, webhook event logged", a
   assert.equal(state.leadUpdatesBySid[0].smsStatus, "delivered");
   assert.equal(state.leadUpdatesById.length, 0, "no reconciliation needed");
   assert.equal(state.webhookEvents.length, 1);
+  assert.equal(state.onboardingEvidence[0].accountId, ACCOUNT.accountId);
+  assert.equal(state.onboardingEvidence[0].status, "delivered");
+});
+
+test("signed Twilio landline callback reaches the tenant onboarding evidence recorder", async () => {
+  const state = smsStatusState({ leadHasMessageSid: true, messageRowLeadId: null });
+  const response = await postSmsStatus(makeSmsStatusRouteMocks(state), {
+    MessageSid: "SM_landline_test",
+    MessageStatus: "undelivered",
+    ErrorCode: "30006",
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(state.onboardingEvidence.length, 1);
+  assert.equal(state.onboardingEvidence[0].accountId, ACCOUNT.accountId);
+  assert.equal(state.onboardingEvidence[0].errorCode, "30006");
 });
 
 test("stale lead reconciliation: callback for a MessageSid no lead carries converges the lead via the messages table", async () => {
