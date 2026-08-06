@@ -116,3 +116,19 @@ test("any other profile edit still clears customer go-live approval", async () =
   assert.deepEqual(f.calls.approvalClears, ["acct-selected"]);
   assert.equal(f.calls.settings[0].accountId, "acct-selected");
 });
+
+test("first-time routing details do not undo an already verified forwarding test", async () => {
+  const f = fixture({ publicBusinessNumber: null, forwardingCarrier: null });
+  const route = await loadProfileRoute(f.mocks);
+  await run(route, request());
+
+  assert.deepEqual(f.calls.technical, []);
+});
+
+test("changing carrier notes does not undo an already verified forwarding test", async () => {
+  const f = fixture({ forwardingCarrier: "Unknown" });
+  const route = await loadProfileRoute(f.mocks);
+  await run(route, request({ forwarding_carrier: "Verizon" }));
+
+  assert.deepEqual(f.calls.technical, []);
+});

@@ -276,6 +276,36 @@ export async function getLastRecoveredCallAt(inputAccountId: string): Promise<st
   return (data?.created_at as string | undefined) ?? null;
 }
 
+// Durable proof that a valid Twilio-signed missed call moved this account live.
+// Unlike a generic missed-call lead, this audit action is written only by the
+// protected atomic activation RPC after signature validation succeeds.
+export async function getSignedCallVerificationAt(inputAccountId: string): Promise<string | null> {
+  const accountId = assertAccountId(inputAccountId, "getSignedCallVerificationAt");
+
+  if (isPlaceholderSupabaseConfig()) {
+    return null;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("account_audit_events")
+    .select("created_at")
+    .eq("account_id", accountId)
+    .eq("action", "onboarding.first_call_live")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("Could not load signed call verification evidence.", {
+      accountId,
+      error: error.message,
+    });
+    return null;
+  }
+
+  return (data?.created_at as string | undefined) ?? null;
+}
+
 export async function listActiveAccountIds() {
   if (isPlaceholderSupabaseConfig()) {
     return [] as string[];

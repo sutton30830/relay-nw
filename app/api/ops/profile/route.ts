@@ -98,10 +98,17 @@ export async function POST(request: Request) {
 
   try {
     await updateAccountSettings(account.accountId, update);
+    // Adding setup notes (including the carrier) or filling in a previously
+    // blank public number does not undo a signed forwarding test. Re-verify
+    // only when the actual routing contract changes: switching call modes or
+    // replacing a business number that was already in service.
+    const publicNumberReplaced = Boolean(
+      previous?.publicBusinessNumber &&
+      update.public_business_number &&
+      previous.publicBusinessNumber !== update.public_business_number
+    );
     const routingChanged = previous !== null && (
-      previous.callMode !== effectiveCallMode ||
-      (previous.publicBusinessNumber ?? "") !== (update.public_business_number ?? "") ||
-      (previous.forwardingCarrier ?? "") !== (update.forwarding_carrier ?? "")
+      previous.callMode !== effectiveCallMode || publicNumberReplaced
     );
     const messagingChanged = previous !== null &&
       (previous.smsTemplate ?? "") !== (update.sms_template ?? "");

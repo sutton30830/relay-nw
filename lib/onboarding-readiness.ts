@@ -13,6 +13,7 @@ import {
   getAccountTechnicalSetupStatus,
   getA2pRegistrationStatus,
   getLastRecoveredCallAt,
+  getSignedCallVerificationAt,
   hasLinkedOwnerAuth,
 } from "@/lib/supabase";
 
@@ -50,6 +51,7 @@ export async function loadAccountOnboardingReadiness(accountId: string) {
     a2pStatus,
     blocker,
     lastRecoveredCallAt,
+    signedCallVerificationAt,
     ownerAuthLinked,
   ] = await Promise.all([
     getAccountConfigByAccountId(accountId),
@@ -60,6 +62,7 @@ export async function loadAccountOnboardingReadiness(accountId: string) {
     getA2pRegistrationStatus(accountId),
     getAccountOpsBlocker(accountId),
     getLastRecoveredCallAt(accountId),
+    getSignedCallVerificationAt(accountId),
     hasLinkedOwnerAuth(accountId),
   ]);
 
@@ -97,9 +100,19 @@ export async function loadAccountOnboardingReadiness(accountId: string) {
     setupFeeSettled && Boolean(billing.stripeDefaultPaymentMethodId)
   );
 
+  // A harmless profile edit in an older build could regress the editable
+  // technical status after a verified call. The protected audit event remains
+  // authoritative and repairs the derived state without inventing evidence.
+  const signedCallVerifiedAt = signedCallVerificationAt ?? (
+    technicalStatus === "live" ? lastRecoveredCallAt : null
+  );
+  const effectiveTechnicalStatus = signedCallVerificationAt && (
+    technicalStatus === "setting_up" || technicalStatus === "waiting_for_forwarding"
+  ) ? "live" : technicalStatus;
+
   const facts: OnboardingFacts = {
     accountStatus,
-    technicalStatus,
+    technicalStatus: effectiveTechnicalStatus,
     callMode: runtime.callMode,
     missingProfileFields,
     relayNumber: runtime.twilioPhoneNumber || null,
@@ -115,7 +128,7 @@ export async function loadAccountOnboardingReadiness(accountId: string) {
     // closed until this fact is updated with the implementation.
     smsComplianceConfigured: true,
     ownerAuthLinked,
-    signedCallVerifiedAt: technicalStatus === "live" ? lastRecoveredCallAt : null,
+    signedCallVerifiedAt,
     a2pStatus,
     smsEnabled: runtime.smsEnabled,
     smsDeliveryVerifiedAt: evidence.smsDeliveryVerifiedAt,

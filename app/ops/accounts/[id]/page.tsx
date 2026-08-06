@@ -187,8 +187,16 @@ export default async function OpsAccountPage({
   const setupFeeWaived = billing.billingPolicy === "setup_fee_waived" || isFoundingPilot;
   const effectiveBillingStatus = isComped ? "comped" : billing.billingStatus;
 
+  const [stripeEvents, systemEvents, carrierProfile, onboarding, providerActions] = await Promise.all([
+    getRecentStripeEventsForAccount(billing.accountId, 25),
+    getRecentWebhookEventsForAccount(billing.accountId, 25),
+    getCarrierProfile(billing.accountId),
+    loadAccountOnboardingReadiness(billing.accountId),
+    listProviderActionsForAccount(billing.accountId, 50),
+  ]);
+  const runtime = onboarding.runtime;
   const opsState = deriveOpsState({
-    technicalStatus: summary.technicalStatus,
+    technicalStatus: onboarding.facts.technicalStatus,
     a2pStatus: summary.a2pStatus,
     smsEnabled: summary.smsEnabled,
     billingStatus: effectiveBillingStatus,
@@ -202,15 +210,6 @@ export default async function OpsAccountPage({
     blockerNote: summary.opsBlockerNote,
     blockedSince: summary.opsBlockedSince,
   });
-
-  const [stripeEvents, systemEvents, carrierProfile, onboarding, providerActions] = await Promise.all([
-    getRecentStripeEventsForAccount(billing.accountId, 25),
-    getRecentWebhookEventsForAccount(billing.accountId, 25),
-    getCarrierProfile(billing.accountId),
-    loadAccountOnboardingReadiness(billing.accountId),
-    listProviderActionsForAccount(billing.accountId, 50),
-  ]);
-  const runtime = onboarding.runtime;
   const failedCount = providerActions.filter((event) => event.internalStatus === "failed").length;
 
   const canApplyOverride = canApplyOperatorBillingOverride(billing);
