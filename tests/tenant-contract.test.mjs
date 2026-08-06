@@ -731,15 +731,16 @@ test("selected account cookie cannot strand later sign-ins", () => {
   assert.match(authLogoutRouteTs, /supabase\.auth\.signOut\(\)/);
 });
 
-test("authenticated setup page presents evidence-derived onboarding with customer-owned approvals", () => {
+test("authenticated setup page explains forwarding simply and keeps texting separate", () => {
   assert.match(setupPageTsx, /loadAccountOnboardingReadiness\(accountId\)/);
   assert.match(onboardingReadinessTs, /getAccountTechnicalSetupStatus\(accountId\)/);
   assert.match(onboardingReadinessTs, /getA2pRegistrationStatus\(accountId\)/);
-  assert.match(setupPageTsx, /Turn on missed-call forwarding/);
+  assert.match(setupPageTsx, /Turn on conditional forwarding/);
+  assert.match(setupPageTsx, /Your phone rings first\. Relay answers only the calls you miss/);
   assert.match(setupPageTsx, /getting your Relay line ready/);
-  assert.match(setupPageTsx, /Production ready/);
-  assert.match(setupPageTsx, /approve_go_live/);
-  assert.match(setupPageTsx, /confirm_owner_notification/);
+  assert.match(setupPageTsx, /Calls and automatic text-back are separate/);
+  assert.doesNotMatch(setupPageTsx, /readiness\.checks\.map/);
+  assert.doesNotMatch(setupPageTsx, /approve_go_live|confirm_owner_notification/);
   assert.match(setupPageTsx, /CarrierForwarding relayNumber=/);
   assert.doesNotMatch(setupPageTsx, /synthetic|questionnaire/i);
   assert.doesNotMatch(setupPageTsx, /Guide the owner|The owner should|customer&apos;s carrier instructions/);

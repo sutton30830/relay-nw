@@ -51,7 +51,12 @@ export async function POST(request: Request) {
     : previous?.callMode ?? "forwarding";
   const schedulingUrl = value(form, "scheduling_url", 500);
 
-  if (!businessName) {
+  if (
+    !businessName ||
+    !ownerName ||
+    !ownerEmail ||
+    (effectiveCallMode === "forwarding" && !publicNumber)
+  ) {
     redirect(`/ops/accounts/${encodeURIComponent(slug)}?profile=invalid`);
   }
   if (ownerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) {
@@ -70,7 +75,10 @@ export async function POST(request: Request) {
     business_type: businessType || null,
     forwarding_carrier: effectiveCallMode === "forwarding" ? forwardingCarrier || null : null,
     business_hours: businessHoursSummary ? { summary: businessHoursSummary } : null,
-    coverage_expectations: coverageExpectations || null,
+    // Coverage is defined by the selected call mode. In forwarding mode Relay
+    // answers the calls the carrier forwards after the customer misses them;
+    // there is no per-account "coverage expectation" to collect.
+    coverage_expectations: (previous?.coverageExpectations ?? coverageExpectations) || null,
     sms_template: smsTemplate || null,
     scheduling_url: schedulingUrl || null,
   };

@@ -21,15 +21,13 @@ export function hasConfiguredBusinessHours(value: CustomerProfileFacts["business
 }
 
 export function missingCustomerProfileFields(profile: CustomerProfileFacts) {
+  // Call setup should ask only for facts Relay actually needs to connect the
+  // customer's current number. Carrier, hours, messaging copy, legal/A2P
+  // details, and custom greetings are optional or belong to later workflows.
   const required: Array<[keyof CustomerProfileFacts, string]> = [
-    ["legalBusinessName", "Legal business name"],
     ["businessName", "Public business name"],
     ["ownerName", "Owner name"],
     ["ownerEmail", "Owner email"],
-    ["ownerPhoneNumber", "Owner mobile number"],
-    ["callMode", "Call mode"],
-    ["coverageExpectations", "Coverage expectations"],
-    ["smsTemplate", "Missed-call SMS wording"],
   ];
   const missing = required
     .filter(([key]) => !String(profile[key] ?? "").trim())
@@ -40,24 +38,6 @@ export function missingCustomerProfileFields(profile: CustomerProfileFacts) {
     !String(profile.publicBusinessNumber ?? "").trim()
   ) {
     missing.push("Existing public business number");
-  }
-
-  if (
-    profile.callMode === "forwarding" &&
-    !String(profile.forwardingCarrier ?? "").trim()
-  ) {
-    missing.push("Forwarding carrier");
-  }
-
-  if (!hasConfiguredBusinessHours(profile.businessHours)) {
-    missing.push("Business hours");
-  }
-
-  if (
-    !String(profile.missedCallVoiceMessage ?? "").trim() &&
-    !String(profile.missedCallGreetingAudioUrl ?? "").trim()
-  ) {
-    missing.push("Voicemail greeting");
   }
 
   return missing;

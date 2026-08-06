@@ -89,14 +89,26 @@ test("A2P remains separate from call readiness and cannot skip the forwarding te
   assert.equal(callsWithoutA2p.checks.find((check) => check.key === "call_verification").status, "complete");
 });
 
-test("impossible transitions fail closed and the customer is not asked to approve early", () => {
+test("incomplete internal evidence does not invent customer onboarding work", () => {
   const result = readiness({ nonSmsFailureVerifiedAt: null, customerGoLiveApprovedAt: at });
   assert.equal(result.ready, false);
   assert.equal(result.state, "sms_delivery_verified");
-  assert.equal(result.customerAction.label, "No action right now");
+  assert.equal(result.customerAction.label, "No action needed");
 
   const awaitingOwnerApproval = readiness({ customerGoLiveApprovedAt: null });
-  assert.equal(awaitingOwnerApproval.customerAction.label, "Approve go-live");
+  assert.equal(awaitingOwnerApproval.customerAction.label, "No action needed");
+});
+
+test("A2P or billing trouble does not globally block verified calls", () => {
+  const result = readiness({
+    a2pStatus: "rejected",
+    billingAttentionReason: "Payment failed.",
+    smsDeliveryVerifiedAt: null,
+  });
+
+  assert.equal(result.state, "calls_verified");
+  assert.equal(result.blockedBy, "none");
+  assert.equal(result.operatorAction.label, "Review A2P in Twilio");
 });
 
 test("blocked readiness identifies both the owner and reason", () => {

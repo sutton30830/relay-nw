@@ -309,9 +309,11 @@ export default async function OpsAccountPage({
         ? "Business-details save failed. Check logs before retrying."
         : null;
   const onboardingAction = onboarding.readiness.operatorAction;
-  const primaryDestination = onboarding.readiness.ready
-    ? nextActionDestination(opsState.nextAction.key)
-    : onboardingAction.href;
+  const setupActionActive = onboardingAction.owner !== "none";
+  const primaryAction = setupActionActive ? onboardingAction : opsState.nextAction;
+  const primaryDestination = setupActionActive
+    ? onboardingAction.href
+    : nextActionDestination(opsState.nextAction.key);
   const callsControlOpen =
     primaryDestination === "#calls" ||
     Boolean((notices.number && notices.number !== "assigned" && notices.number !== "released" && notices.number !== "none") || (notices.calls && notices.calls !== "saved"));
@@ -407,11 +409,11 @@ export default async function OpsAccountPage({
           <div className="ops-workspace-primary__copy">
             <span className="ops-workspace-primary__label">Next step</span>
             <div>
-              <h2>{onboarding.readiness.ready ? opsState.nextAction.label : onboardingAction.label}</h2>
-              <p>{onboarding.readiness.ready ? opsState.nextAction.detail : onboardingAction.detail}</p>
+              <h2>{primaryAction.label}</h2>
+              <p>{primaryAction.detail}</p>
             </div>
           </div>
-          {!onboarding.readiness.ready && onboardingAction.href ? (
+          {setupActionActive && onboardingAction.href ? (
             <Link className="btn btn-primary" href={onboardingAction.href}>
               Open onboarding step
             </Link>
@@ -431,60 +433,6 @@ export default async function OpsAccountPage({
             <Link className="btn btn-primary" href={primaryDestination}>
               {nextActionButtonLabel(opsState.nextAction.key)}
             </Link>
-          ) : null}
-        </section>
-
-        <section className="panel onboarding-workflow" id="onboarding" aria-label="Repeatable onboarding workflow">
-          <header className="onboarding-workflow__head">
-            <div>
-              <p className="t-eyebrow">Onboarding readiness</p>
-              <h2>{onboarding.readiness.stateLabel}</h2>
-              <p>
-                {onboarding.readiness.state === "blocked"
-                  ? `${onboarding.readiness.blockedBy} owns this blocker: ${onboarding.readiness.blockerReason}`
-                  : "Derived from customer, provider, authentication, and billing evidence — never an editable label."}
-              </p>
-            </div>
-            <span className={`chip ${onboarding.readiness.ready ? "readiness__badge" : onboarding.readiness.state === "blocked" ? "chip-danger" : ""}`}>
-              {onboarding.readiness.checks.filter((check) => check.status === "complete").length}/{onboarding.readiness.checks.length} complete
-            </span>
-          </header>
-
-          <ol className="onboarding-checklist">
-            {onboarding.readiness.checks.map((check) => (
-              <li className={`onboarding-checklist__item onboarding-checklist__item--${check.status}`} key={check.key}>
-                <span className="onboarding-checklist__mark" aria-hidden="true">
-                  <Icon name={check.status === "complete" ? "check" : check.status === "blocked" ? "alertTriangle" : "clock"} size={14} />
-                </span>
-                <span><strong>{check.label}</strong><small>{check.detail}</small></span>
-                {check.evidenceAt ? <time dateTime={check.evidenceAt}>{formatDateTime(check.evidenceAt)}</time> : null}
-              </li>
-            ))}
-          </ol>
-
-          <div className="onboarding-workflow__handoff">
-            <div>
-              <span>Operator next action</span>
-              <strong>{onboarding.readiness.operatorAction.label}</strong>
-              <small>{onboarding.readiness.operatorAction.detail}</small>
-            </div>
-            <div>
-              <span>Customer next action</span>
-              <strong>{onboarding.readiness.customerAction.label}</strong>
-              <small>{onboarding.readiness.customerAction.detail}</small>
-            </div>
-          </div>
-
-          {operator.role !== "support" && !onboarding.evidence.ownerNotificationConfirmedAt ? (
-            <form className="onboarding-workflow__test" action="/api/email-test/start" method="post">
-              <input type="hidden" name="account_slug" value={summary.accountSlug} />
-              <input type="hidden" name="return_to" value="ops_onboarding" />
-              <div>
-                <strong>Owner notification test</strong>
-                <p>Sends a real email to the configured owner. Provider acceptance is recorded; the owner confirms receipt from Setup.</p>
-              </div>
-              <button className="btn btn-secondary" type="submit">Send notification test</button>
-            </form>
           ) : null}
         </section>
 
@@ -726,47 +674,52 @@ export default async function OpsAccountPage({
           </aside>
         </div>
 
-        <details className="panel setup-panel ops-customer-details" id="customer-details" open={Boolean(notices.profile && notices.profile !== "saved")}>
+        <details className="panel setup-panel ops-customer-details" id="customer-details" open={primaryDestination === "#customer-details" || Boolean(notices.profile && notices.profile !== "saved")}>
           <summary>
-            <span><strong>Customer details</strong><small>Contact, routing, and account settings</small></span>
+            <span><strong>Call setup</strong><small>The few details Relay needs to cover missed calls</small></span>
           </summary>
           <div className="ops-customer-details__body">
             <dl className="ops-workspace-facts">
-              <div><dt>Legal name</dt><dd>{runtime?.legalBusinessName || "Not set"}</dd></div>
-              <div><dt>Public name</dt><dd>{runtime?.businessName || summary.businessName}</dd></div>
+              <div><dt>Business</dt><dd>{runtime?.businessName || summary.businessName}</dd></div>
               <div><dt>Owner</dt><dd>{runtime?.ownerName || "Not set"}</dd></div>
               <div><dt>Owner email</dt><dd>{runtime?.ownerEmail || summary.ownerEmail || "Not set"}</dd></div>
-              <div><dt>Owner phone</dt><dd>{runtime?.ownerPhoneNumber || "Not set"}</dd></div>
               <div><dt>Public number</dt><dd>{runtime?.publicBusinessNumber || "Not set"}</dd></div>
               <div><dt>Relay number</dt><dd>{runtime?.twilioPhoneNumber || "Not assigned"}</dd></div>
-              <div><dt>Call mode</dt><dd>{runtime?.callMode || "forwarding"}</dd></div>
-              <div><dt>Carrier</dt><dd>{runtime?.forwardingCarrier || (runtime?.callMode === "direct" ? "Direct" : "Not set")}</dd></div>
-              <div><dt>Business hours</dt><dd>{businessHoursSummary || "Not set"}</dd></div>
-              <div><dt>Coverage</dt><dd>{runtime?.coverageExpectations || "Not set"}</dd></div>
-              <div><dt>Account</dt><dd>{summary.accountSlug}</dd></div>
-              <div><dt>Activated</dt><dd>{formatDate(summary.activatedAt)}</dd></div>
+              <div><dt>How it works</dt><dd>{runtime?.callMode === "direct" ? "Calls ring the owner first" : "Relay answers missed calls"}</dd></div>
             </dl>
             {operator.role !== "support" ? (
               <form action="/api/ops/profile" method="post" className="setup-panel__action ops-form">
                 <input type="hidden" name="account_slug" value={summary.accountSlug} />
-                <p className="t-eyebrow">Edit customer details</p>
-                <label className="form-field"><span className="form-field__label">Legal business name</span><input className="field" name="legal_business_name" required defaultValue={runtime?.legalBusinessName ?? ""} /></label>
-                <label className="form-field"><span className="form-field__label">Business display name</span><input className="field" name="business_name" required defaultValue={runtime?.businessName ?? summary.businessName} /></label>
-                <label className="form-field"><span className="form-field__label">Owner / admin name</span><input className="field" name="owner_name" required defaultValue={runtime?.ownerName ?? ""} /></label>
-                <label className="form-field"><span className="form-field__label">Business type</span><input className="field" name="business_type" defaultValue={runtime?.businessType ?? ""} placeholder="e.g. Plumbing" /></label>
+                <div className="ops-form__intro">
+                  <p className="t-eyebrow">Essentials</p>
+                  <p>For forwarding, the customer&apos;s phone rings normally. Relay answers only after the call is missed.</p>
+                </div>
+                <label className="form-field"><span className="form-field__label">Business name</span><input className="field" name="business_name" required defaultValue={runtime?.businessName ?? summary.businessName} /></label>
+                <label className="form-field"><span className="form-field__label">Owner name</span><input className="field" name="owner_name" required defaultValue={runtime?.ownerName ?? ""} /></label>
                 <label className="form-field"><span className="form-field__label">Owner email</span><input className="field" type="email" name="owner_email" required defaultValue={runtime?.ownerEmail ?? summary.ownerEmail ?? ""} /></label>
-                <label className="form-field"><span className="form-field__label">Owner mobile number</span><input className="field" name="owner_phone_number" required defaultValue={runtime?.ownerPhoneNumber ?? ""} /></label>
-                <label className="form-field"><span className="form-field__label">Existing public business number</span><input className="field" name="public_business_number" defaultValue={runtime?.publicBusinessNumber ?? ""} /></label>
-                <label className="form-field"><span className="form-field__label">Call mode</span><select className="field" name="call_mode" defaultValue={runtime?.callMode ?? "forwarding"}><option value="forwarding">Forwarding (keep their number)</option><option value="direct">Direct (Relay number is public)</option></select></label>
-                <label className="form-field"><span className="form-field__label">Forwarding carrier</span><input className="field" name="forwarding_carrier" defaultValue={runtime?.forwardingCarrier ?? ""} placeholder="e.g. Verizon, AT&T, T-Mobile" /></label>
-                <label className="form-field"><span className="form-field__label">Business hours</span><textarea className="field" name="business_hours_summary" required defaultValue={businessHoursSummary} placeholder="Mon–Fri 8:00am–5:00pm; closed weekends" /></label>
-                <label className="form-field"><span className="form-field__label">Missed-call coverage expectations</span><textarea className="field" name="coverage_expectations" required defaultValue={runtime?.coverageExpectations ?? ""} placeholder="When Relay should capture missed calls and how quickly the owner follows up" /></label>
-                <label className="form-field"><span className="form-field__label">Customer-approved missed-call SMS</span><textarea className="field" name="sms_template" required defaultValue={runtime?.smsTemplate ?? ""} /></label>
-                <label className="form-field"><span className="form-field__label">Scheduling link (optional)</span><input className="field" name="scheduling_url" defaultValue={runtime?.schedulingUrl ?? ""} placeholder="https://…" /></label>
-                <label className="form-field"><span className="form-field__label">Voicemail greeting</span><textarea className="field" name="missed_call_voice_message" required={!runtime?.missedCallGreetingAudioUrl} defaultValue={runtime?.missedCallVoiceMessage ?? ""} /></label>
-                <label className="form-field"><span className="form-field__label">Ring seconds before voicemail (5–60)</span><input className="field" name="dial_timeout_seconds" type="number" min={5} max={60} defaultValue={runtime?.dialTimeoutSeconds ?? 18} /></label>
-                <label className="form-field"><span className="form-field__label">Max voicemail seconds (10–300)</span><input className="field" name="voicemail_max_seconds" type="number" min={10} max={300} defaultValue={runtime?.voicemailMaxSeconds ?? 60} /></label>
-                <button className="btn btn-primary" type="submit">Save customer details</button>
+                <label className="form-field"><span className="form-field__label">Current business number</span><input className="field" name="public_business_number" required={runtime?.callMode !== "direct"} defaultValue={runtime?.publicBusinessNumber ?? ""} /><small className="form-field__hint">The number customers already call.</small></label>
+                <label className="form-field"><span className="form-field__label">Voicemail greeting <small>Optional</small></span><textarea className="field" name="missed_call_voice_message" defaultValue={runtime?.missedCallVoiceMessage ?? ""} placeholder={`Thanks for calling ${runtime?.businessName || summary.businessName}. Sorry we missed you. Please leave a message after the tone.`} /><small className="form-field__hint">Leave blank to use Relay&apos;s standard greeting. The customer can record one later.</small></label>
+
+                <details className="ops-advanced-fields">
+                  <summary>Optional and advanced settings</summary>
+                  <div className="ops-advanced-fields__body">
+                    <label className="form-field"><span className="form-field__label">Owner mobile</span><input className="field" name="owner_phone_number" defaultValue={runtime?.ownerPhoneNumber ?? ""} /><small className="form-field__hint">Needed only for owner SMS alerts or direct-call mode.</small></label>
+                    <label className="form-field"><span className="form-field__label">Call mode</span><select className="field" name="call_mode" defaultValue={runtime?.callMode ?? "forwarding"}><option value="forwarding">Missed-call forwarding</option><option value="direct">Relay number is public</option></select></label>
+                    <label className="form-field"><span className="form-field__label">Forwarding carrier</span><input className="field" name="forwarding_carrier" defaultValue={runtime?.forwardingCarrier ?? ""} placeholder="Optional — used only for tailored instructions" /></label>
+                    <label className="form-field"><span className="form-field__label">Legal business name</span><input className="field" name="legal_business_name" defaultValue={runtime?.legalBusinessName ?? ""} /><small className="form-field__hint">Keep A2P registration details in Twilio; this is optional account reference.</small></label>
+                    <label className="form-field"><span className="form-field__label">Business type</span><input className="field" name="business_type" defaultValue={runtime?.businessType ?? ""} placeholder="Optional" /></label>
+                    <label className="form-field"><span className="form-field__label">Scheduling link</span><input className="field" name="scheduling_url" defaultValue={runtime?.schedulingUrl ?? ""} placeholder="Optional — https://…" /></label>
+                    <label className="form-field"><span className="form-field__label">Custom missed-call text</span><textarea className="field" name="sms_template" defaultValue={runtime?.smsTemplate ?? ""} placeholder="Optional — Relay uses the standard approved message by default." /><small className="form-field__hint">Used only after A2P approval and automatic text-back activation.</small></label>
+                    {runtime?.callMode === "direct" ? (
+                      <>
+                        <label className="form-field"><span className="form-field__label">Business hours</span><textarea className="field" name="business_hours_summary" defaultValue={businessHoursSummary} placeholder="Optional" /></label>
+                        <label className="form-field"><span className="form-field__label">Ring owner for</span><input className="field" name="dial_timeout_seconds" type="number" min={5} max={60} defaultValue={runtime?.dialTimeoutSeconds ?? 18} /><small className="form-field__hint">Direct mode only. Relay voicemail starts if the owner does not answer.</small></label>
+                      </>
+                    ) : null}
+                    <label className="form-field"><span className="form-field__label">Maximum voicemail length</span><input className="field" name="voicemail_max_seconds" type="number" min={10} max={300} defaultValue={runtime?.voicemailMaxSeconds ?? 60} /></label>
+                  </div>
+                </details>
+                <button className="btn btn-primary" type="submit">Save call setup</button>
               </form>
             ) : null}
             {operator.role === "super_admin" ? (

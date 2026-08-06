@@ -14,7 +14,7 @@ export function CarrierForwarding({ relayNumber }: { relayNumber: string }) {
   return (
     <div className="carrier-forwarding">
       <p className="setup-copy">
-        Forward the calls you miss on your existing business number to Relay. Pick your carrier for the exact steps.
+        Pick your carrier for the exact steps. This does not replace your number or send every call to Relay—your phone rings first, and only unanswered calls are forwarded.
       </p>
 
       <div className="carrier-select" role="group" aria-label="Your phone carrier">

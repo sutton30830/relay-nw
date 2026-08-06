@@ -6833,6 +6833,50 @@ code {
   max-width: 560px;
 }
 .ops-form .form-field { margin-bottom: 0; }
+.ops-form__intro {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 2px;
+}
+.ops-form__intro p { margin: 0; }
+.ops-form__intro p:last-child {
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.form-field__label > small {
+  color: var(--ink-4);
+  font-size: 11px;
+  font-weight: 600;
+}
+.ops-advanced-fields {
+  margin: 4px 0;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.ops-advanced-fields > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 12px 14px;
+  color: var(--ink-3);
+  font-size: 13px;
+  font-weight: 750;
+}
+.ops-advanced-fields > summary::-webkit-details-marker { display: none; }
+.ops-advanced-fields > summary::after {
+  content: "+";
+  float: right;
+  color: var(--brand);
+}
+.ops-advanced-fields[open] > summary::after { content: "−"; }
+.ops-advanced-fields[open] > summary { border-bottom: 1px solid var(--line-soft); }
+.ops-advanced-fields__body {
+  display: grid;
+  gap: 12px;
+  background: var(--panel-2);
+  padding: 14px;
+}
 
 /* Ops on mobile: stack every control group, full-width buttons. */
 @media (max-width: 720px) {

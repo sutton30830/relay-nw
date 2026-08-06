@@ -112,10 +112,10 @@ const CALLS_LABELS: Record<OpsCallsState, string> = {
 };
 
 const TEXTING_LABELS: Record<OpsTextingState, string> = {
-  preparing: "Preparing",
-  carrier_review: "Carrier review",
+  preparing: "Not submitted",
+  carrier_review: "Pending approval",
   approved: "Approved",
-  issue: "Issue",
+  issue: "Needs attention",
 };
 
 const BILLING_LABELS: Record<OpsBillingState, string> = {

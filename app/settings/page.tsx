@@ -538,7 +538,12 @@ export default async function SettingsPage({
             Relay number: <strong>{account.twilioPhoneNumber}</strong> · Mode: {account.callMode}
           </p>
           <p className="settings-section__meta">
-            {A2P_LABELS[a2pStatus ?? ""] ?? "Relay is checking texting availability"}
+            {account.callMode === "forwarding"
+              ? "Your phone rings first. Relay answers only calls you miss."
+              : "Calls ring your owner number first, then Relay voicemail answers."}
+          </p>
+          <p className="settings-section__meta">
+            Automatic text-back: {A2P_LABELS[a2pStatus ?? ""] ?? "Relay is checking availability"}
           </p>
         </section>
 
@@ -573,9 +578,13 @@ export default async function SettingsPage({
                 defaultValue={account.publicBusinessNumber ?? ""}
               />
             </Field>
-            <Field label="Business hours" hint="Plain language is fine, for example Mon-Fri 7am-5pm.">
-              <textarea className="field" name="business_hours" rows={3} maxLength={1000} defaultValue={typeof account.businessHours?.summary === "string" ? account.businessHours.summary : ""} />
-            </Field>
+            {account.callMode === "direct" ? (
+              <Field label="Business hours" hint="Optional for future direct-call routing. Plain language is fine.">
+                <textarea className="field" name="business_hours" rows={3} maxLength={1000} defaultValue={typeof account.businessHours?.summary === "string" ? account.businessHours.summary : ""} />
+              </Field>
+            ) : (
+              <input type="hidden" name="business_hours" value={typeof account.businessHours?.summary === "string" ? account.businessHours.summary : ""} />
+            )}
             <Field label="Scheduling link" hint="Optional. Included in texts when set (https://...).">
               <input className="field" name="scheduling_url" defaultValue={account.schedulingUrl ?? ""} />
             </Field>
@@ -645,9 +654,13 @@ export default async function SettingsPage({
             >
               <textarea className="field" name="missed_call_voice_message" rows={2} maxLength={600} defaultValue={account.missedCallVoiceMessage ?? ""} placeholder="Thanks for calling. Sorry we missed you..." />
             </Field>
-            <Field label="Ring time before voicemail (seconds)" hint="How long your phone rings before Relay answers. 5-60.">
-              <input className="field" type="number" name="dial_timeout_seconds" min={5} max={60} required defaultValue={account.dialTimeoutSeconds} />
-            </Field>
+            {account.callMode === "direct" ? (
+              <Field label="Ring owner before voicemail (seconds)" hint="Direct mode only. How long Relay rings the owner before starting voicemail.">
+                <input className="field" type="number" name="dial_timeout_seconds" min={5} max={60} required defaultValue={account.dialTimeoutSeconds} />
+              </Field>
+            ) : (
+              <input type="hidden" name="dial_timeout_seconds" value={account.dialTimeoutSeconds} />
+            )}
             <Field label="Max voicemail length (seconds)" hint="10-300.">
               <input className="field" type="number" name="voicemail_max_seconds" min={10} max={300} required defaultValue={account.voicemailMaxSeconds} />
             </Field>

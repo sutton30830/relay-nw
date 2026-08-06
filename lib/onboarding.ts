@@ -134,20 +134,8 @@ function normalizedBlocker(facts: OnboardingFacts): {
       reason: facts.blockerReason?.trim() || "An explicit onboarding blocker needs resolution.",
     };
   }
-  if (facts.a2pStatus === "needs_attention" || facts.a2pStatus === "rejected" || facts.a2pStatus === "paused") {
-    return {
-      owner: "carrier",
-      reason:
-        facts.a2pStatus === "rejected"
-          ? "Carrier registration was rejected."
-          : facts.a2pStatus === "paused"
-            ? "Carrier registration is paused."
-            : "Carrier registration needs attention.",
-    };
-  }
-  if (facts.billingAttentionReason) {
-    return { owner: "stripe", reason: facts.billingAttentionReason };
-  }
+  // Texting and billing have their own visible states. Neither should make a
+  // working missed-call service look globally blocked.
   return { owner: "none", reason: null };
 }
 
@@ -234,10 +222,7 @@ function buildChecks(facts: OnboardingFacts): OnboardingCheck[] {
     {
       key: "a2p",
       label: "A2P registration",
-      status:
-        facts.a2pStatus === "needs_attention" || facts.a2pStatus === "rejected" || facts.a2pStatus === "paused"
-          ? "blocked"
-          : complete(a2pApproved),
+      status: complete(a2pApproved),
       detail: a2pApproved
         ? "Twilio/carrier registration is approved for this account's Relay number."
         : `Current carrier status: ${facts.a2pStatus ?? "not_started"}.`,
@@ -282,7 +267,7 @@ function buildChecks(facts: OnboardingFacts): OnboardingCheck[] {
     {
       key: "billing",
       label: "Billing or pilot terms configured",
-      status: facts.billingAttentionReason ? "blocked" : complete(facts.billingConfigured),
+      status: complete(facts.billingConfigured && !facts.billingAttentionReason),
       detail: facts.billingAttentionReason ?? (facts.billingConfigured
         ? "Stripe-backed billing or audited free-access terms are configured."
         : "Resolve setup terms and the Stripe payment method, or record audited free access."),
@@ -304,26 +289,34 @@ function firstIncomplete(checks: OnboardingCheck[], keys: OnboardingCheck["key"]
 }
 
 function operatorNextAction(facts: OnboardingFacts, checks: OnboardingCheck[]): OnboardingAction {
-  const profile = firstIncomplete(checks, ["profile", "forwarding_plan", "service_expectations", "sms_copy", "voicemail_greeting"]);
+  const profile = firstIncomplete(checks, ["profile"]);
   if (profile) return action("Complete onboarding details", profile.detail, "relay", "#customer-details");
   if (checks.find((check) => check.key === "relay_number")?.status !== "complete") {
     return action("Assign the Relay number", "Attach and configure a number already owned in Twilio.", "relay", "#calls");
   }
-  if (!facts.ownerAuthLinked) {
-    return action("Finish owner login setup", "Resend the password invite if needed and confirm the owner signs in.", "customer", "#onboarding");
-  }
   if (!facts.signedCallVerifiedAt) {
     return action(
-      facts.callMode === "forwarding" ? "Run the real forwarding test" : "Run the real missed-call test",
-      "Coordinate one real unanswered call and verify the signed webhook creates exactly one lead.",
+      facts.callMode === "forwarding" ? "Connect call forwarding" : "Test the Relay number",
+      facts.callMode === "forwarding"
+        ? "Help the customer turn on conditional forwarding, then let one real call go unanswered. Relay verifies the connection automatically."
+        : "Let one real call go unanswered so Relay can verify the inbox.",
       "customer",
       "#calls",
     );
   }
   if (facts.a2pStatus !== "approved") {
+    const a2pNeedsAttention = facts.a2pStatus === "needs_attention" || facts.a2pStatus === "rejected" || facts.a2pStatus === "paused";
     return action(
-      facts.a2pStatus === "in_progress" ? "Monitor carrier registration" : "Submit A2P registration",
-      "Synchronize the authoritative Twilio campaign result; operators cannot approve it manually.",
+      a2pNeedsAttention
+        ? "Review A2P in Twilio"
+        : facts.a2pStatus === "in_progress"
+          ? "A2P is pending"
+          : "Start A2P in Twilio",
+      a2pNeedsAttention
+        ? "Calls remain covered. Review Twilio's response before enabling automatic text-back."
+        : facts.a2pStatus === "in_progress"
+        ? "Calls are already covered. Twilio is reviewing automatic text-back separately."
+        : "Calls are already covered. Complete registration in Twilio, then sync the status here.",
       facts.a2pStatus === "in_progress" ? "carrier" : "relay",
       "#texting",
     );
@@ -334,57 +327,17 @@ function operatorNextAction(facts: OnboardingFacts, checks: OnboardingCheck[]): 
   if (!facts.smsDeliveryVerifiedAt) {
     return action("Verify SMS delivery", "Run a real missed-call text and wait for Twilio's delivered callback.", "relay", "#onboarding");
   }
-  if (!facts.nonSmsFailureVerifiedAt) {
-    return action("Verify non-SMS handling", "Use an approved landline/non-SMS destination and retain Twilio's safe failure code.", "relay", "#onboarding");
-  }
-  if (!facts.ownerNotificationSentAt) {
-    return action("Send owner notification test", "Send the test from this workspace and ask the owner to confirm receipt.", "relay", "#onboarding");
-  }
-  if (!facts.ownerNotificationConfirmedAt) {
-    return action("Ask owner to confirm notification", "The provider accepted the test; the owner must confirm receipt from Setup.", "customer", "/setup#approval");
-  }
-  if (!facts.billingConfigured) {
-    return action("Finish billing setup", "Resolve setup terms and Stripe payment method or audited free access.", "relay", "#billing");
-  }
-  if (!facts.customerGoLiveApprovedAt) {
-    return action("Request customer go-live approval", "Ask the authenticated owner to review the evidence and approve go-live.", "customer", "/setup#approval");
-  }
-  return action("No onboarding action needed", "Every required launch fact has authoritative evidence.", "none", null);
+  return action("Setup complete", "Calls are covered and automatic text-back has been delivery verified.", "none", null);
 }
 
 function customerNextAction(facts: OnboardingFacts, checks: OnboardingCheck[]): OnboardingAction {
   if (facts.callMode === "forwarding" && !facts.signedCallVerifiedAt) {
-    return action("Enable forwarding and make a test call", "Follow the carrier instructions, then let one real call go unanswered.", "customer", "/setup#forwarding");
+    return action("Turn on missed-call forwarding", "Your phone still rings first. Relay answers only when you do not, then verifies the connection automatically.", "customer", "/setup#forwarding");
   }
   if (facts.a2pStatus === "approved" && !facts.smsEnabled) {
     return action("Enable automatic text-back", "Review the approved wording and turn texting on in Settings.", "customer", "/settings#texting");
   }
-  if (facts.ownerNotificationSentAt && !facts.ownerNotificationConfirmedAt) {
-    return action("Confirm your test notification", "Confirm that the Relay owner notification reached you.", "customer", "/setup#approval");
-  }
-  const approvalIsOnlyIncompleteCheck = checks.every(
-    (check) => check.key === "customer_approval" || check.status === "complete",
-  );
-  if (!facts.customerGoLiveApprovedAt && approvalIsOnlyIncompleteCheck) {
-    return action("Approve go-live", "Review the completed setup evidence and explicitly approve production use.", "customer", "/setup#approval");
-  }
-  if (!facts.customerGoLiveApprovedAt) {
-    return action(
-      "No action right now",
-      "Relay is completing provider, test, and billing checks before asking for your approval.",
-      "none",
-      null,
-    );
-  }
-  if (!approvalIsOnlyIncompleteCheck) {
-    return action(
-      "No action right now",
-      "Relay is re-verifying changed or incomplete setup evidence before production readiness can return.",
-      "none",
-      null,
-    );
-  }
-  return action("No action needed", "Relay has your approval and the required setup evidence.", "none", null);
+  return action("No action needed", "Your missed calls are covered. Relay handles texting setup separately.", "none", null);
 }
 
 export function deriveOnboardingReadiness(facts: OnboardingFacts): OnboardingReadiness {

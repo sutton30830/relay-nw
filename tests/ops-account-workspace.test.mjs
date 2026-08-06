@@ -15,10 +15,11 @@ test("account workspace has one compact status strip and one primary action", ()
   assert.match(page, /<dt>Texting<\/dt>/);
   assert.match(page, /<dt>Billing<\/dt>/);
   assert.match(page, /<dt>Blocked by<\/dt>/);
-  assert.match(page, /onboarding\.readiness\.ready \? opsState\.nextAction\.label : onboardingAction\.label/);
-  assert.match(page, /onboarding\.readiness\.ready \? opsState\.nextAction\.detail : onboardingAction\.detail/);
-  assert.equal((page.match(/aria-label="Repeatable onboarding workflow"/g) ?? []).length, 1);
-  assert.match(page, /Derived from customer, provider, authentication, and billing evidence/);
+  assert.match(page, /<h2>\{primaryAction\.label\}<\/h2>/);
+  assert.match(page, /<p>\{primaryAction\.detail\}<\/p>/);
+  assert.equal((page.match(/aria-label="Repeatable onboarding workflow"/g) ?? []).length, 0);
+  assert.doesNotMatch(page, /onboarding\.readiness\.checks\.map/);
+  assert.doesNotMatch(page, /complete\s*<\/span>/);
 });
 
 test("the working surface is one setup card and one billing card", () => {
@@ -33,7 +34,9 @@ test("the working surface is one setup card and one billing card", () => {
 
 test("infrequent details and diagnostics are collapsed without weakening controls", () => {
   assert.match(page, /<details className="panel setup-panel ops-customer-details"/);
-  assert.match(page, /<strong>Customer details<\/strong>/);
+  assert.match(page, /<strong>Call setup<\/strong>/);
+  assert.match(page, /Optional and advanced settings/);
+  assert.doesNotMatch(page, /Missed-call coverage expectations/);
   assert.match(page, /<details className="panel setup-panel ops-diagnostics"/);
   assert.match(page, /operator\.role !== "support"/);
   assert.match(page, /operator\.role === "super_admin"/);

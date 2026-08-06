@@ -30,13 +30,28 @@ test("customer profile completion never depends on a Relay-assigned number", () 
   assert.equal(isCustomerProfileComplete(complete), true);
 });
 
-test("forwarding requires owner identity, the public number, and carrier", () => {
+test("forwarding requires only owner identity and the existing public number", () => {
   const profile = { ...complete, ownerName: null, publicBusinessNumber: "", forwardingCarrier: "" };
   assert.deepEqual(missingCustomerProfileFields(profile), [
     "Owner name",
     "Existing public business number",
-    "Forwarding carrier",
   ]);
+});
+
+test("carrier, hours, custom copy, and a custom greeting never block basic call setup", () => {
+  const profile = {
+    ...complete,
+    legalBusinessName: null,
+    ownerPhoneNumber: null,
+    forwardingCarrier: null,
+    businessHours: null,
+    coverageExpectations: null,
+    smsTemplate: null,
+    missedCallVoiceMessage: null,
+    missedCallGreetingAudioUrl: null,
+  };
+
+  assert.equal(isCustomerProfileComplete(profile), true);
 });
 
 test("direct mode does not require an existing public number", () => {
