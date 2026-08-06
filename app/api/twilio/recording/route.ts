@@ -290,6 +290,9 @@ export async function POST(request: Request) {
             responseStatus: 200,
             responseBody: xml,
             error: `Automatic voicemail transcription failed for lead ${result.leadId}: ${message}`,
+            internalStatus: "failed",
+            providerStatus: "transcription_failed",
+            customerVisible: true,
           });
         }
       });
@@ -309,6 +312,9 @@ export async function POST(request: Request) {
         missingCallSid: result.missingCallSid,
         unmatchedCallSid: !result.updated && !result.missingCallSid,
       }),
+      internalStatus: result.updated ? "succeeded" : "failed",
+      providerStatus: result.updated ? "recording_attached" : "recording_unmatched",
+      customerVisible: !result.updated,
     });
 
     if (!result.updated && !result.missingCallSid) {
@@ -330,6 +336,9 @@ export async function POST(request: Request) {
       responseStatus: 200,
       responseBody: xml,
       error: message,
+      internalStatus: "failed",
+      providerStatus: "local_processing_failed",
+      customerVisible: true,
     });
 
     console.error("Failed to handle Twilio recording webhook", {

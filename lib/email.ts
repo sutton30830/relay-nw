@@ -1,7 +1,7 @@
 import * as Sentry from "@sentry/nextjs";
 import { Resend } from "resend";
 import { env } from "@/lib/env";
-import { getOwnerNotificationEmail, type AccountRuntimeConfig } from "@/lib/supabase";
+import { getOwnerNotificationEmail, recordProviderAction, type AccountRuntimeConfig } from "@/lib/supabase";
 
 let resendClient: Resend | null = null;
 
@@ -123,8 +123,24 @@ async function sendEmail(input: {
   html: string;
   text: string;
   tag: string;
+  accountId?: string | null;
+  actionKey?: string | null;
 }) {
   const client = getResendClient();
+  const idempotencyKey = input.actionKey ?? `${input.tag}:${input.subject}`;
+  const providerIdempotencyKey = `${input.accountId ?? "platform"}:${idempotencyKey}`.slice(0, 256);
+  const recordEmailAction = async (event: Parameters<typeof recordProviderAction>[0]) => {
+    if (!input.accountId || typeof recordProviderAction !== "function") return;
+    try {
+      await recordProviderAction(event);
+    } catch (error) {
+      console.error("Could not record email provider action", {
+        accountId: input.accountId,
+        tag: input.tag,
+        error: errorMessage(error),
+      });
+    }
+  };
 
   if (!client || !input.to) {
     console.info("Email notification skipped", {
@@ -137,25 +153,78 @@ async function sendEmail(input: {
       captureSkippedAdminBackstop(input);
     }
 
+    await recordEmailAction({
+      accountId: input.accountId!,
+      action: `email_${input.tag}`,
+      provider: "resend",
+      idempotencyKey,
+      internalStatus: "suppressed",
+      providerStatus: !client ? "provider_not_configured" : "recipient_missing",
+      customerExplanation: "Relay could not send this email because notification setup is incomplete.",
+      retryEligibility: "manual",
+      recommendedNextAction: "Configure the email provider and recipient, then send a new notification test.",
+      customerVisible: input.tag !== "admin_operational_issue",
+      expectedSuppression: true,
+    });
+
     return { sent: false, skipped: true };
   }
 
   try {
-    const { data, error } = await client.emails.send({
-      from: env.alertFromEmail,
-      to: input.to,
-      subject: input.subject,
-      html: input.html,
-      text: input.text,
+    await recordEmailAction({
+      accountId: input.accountId!,
+      action: `email_${input.tag}`,
+      provider: "resend",
+      idempotencyKey,
+      internalStatus: "processing",
+      providerStatus: "requesting",
+      customerExplanation: "Relay is sending the owner notification.",
+      retryEligibility: "manual",
+      recommendedNextAction: "Wait for provider acceptance before retrying.",
+      customerVisible: false,
+      countAttempt: true,
     });
+    const { data, error } = await client.emails.send(
+      {
+        from: env.alertFromEmail,
+        to: input.to,
+        subject: input.subject,
+        html: input.html,
+        text: input.text,
+      },
+      { idempotencyKey: providerIdempotencyKey },
+    );
 
     if (error) {
       console.error("Email notification failed", { tag: input.tag, error });
       captureEmailBackstopFailure(input, error);
+      await recordEmailAction({
+        accountId: input.accountId!,
+        action: `email_${input.tag}`,
+        provider: "resend",
+        idempotencyKey,
+        internalStatus: "failed",
+        providerStatus: "rejected",
+        diagnosticDetail: error,
+        customerVisible: input.tag !== "admin_operational_issue",
+      });
       return { sent: false, skipped: false, error };
     }
 
     console.info("Email notification sent", { tag: input.tag, id: data?.id });
+    await recordEmailAction({
+      accountId: input.accountId!,
+      action: `email_${input.tag}`,
+      provider: "resend",
+      idempotencyKey,
+      providerIdentifier: data?.id ?? null,
+      internalStatus: "accepted",
+      providerStatus: "accepted",
+      customerExplanation: "The email provider accepted this notification.",
+      retryEligibility: "never",
+      recommendedNextAction: "No retry is needed unless the recipient reports non-delivery.",
+      customerVisible: false,
+    });
     return { sent: true, skipped: false, id: data?.id };
   } catch (error) {
     const message = errorMessage(error);
@@ -164,6 +233,16 @@ async function sendEmail(input: {
       error: message,
     });
     captureEmailBackstopFailure(input, message);
+    await recordEmailAction({
+      accountId: input.accountId!,
+      action: `email_${input.tag}`,
+      provider: "resend",
+      idempotencyKey,
+      internalStatus: "failed",
+      providerStatus: "request_failed",
+      diagnosticDetail: message,
+      customerVisible: input.tag !== "admin_operational_issue",
+    });
     return { sent: false, skipped: false, error };
   }
 }
@@ -202,6 +281,8 @@ export async function notifyOwnerTestEmail(input: {
     }),
     text: `${lines.join("\n")}\n\nOpen ops: ${env.appBaseUrl}/ops`,
     tag: "owner_email_test",
+    accountId: input.account.accountId,
+    actionKey: `owner_email_test:${input.account.accountId}`,
   });
 }
 
@@ -312,6 +393,8 @@ export async function notifyOwnerNewMissedCallLead(input: {
     }),
     text: `${lines.join("\n")}\n\nOpen leads: ${env.appBaseUrl}/leads`,
     tag: "owner_new_missed_call",
+    accountId: input.account.accountId,
+    actionKey: `owner_new_missed_call:${input.leadId}`,
   });
 }
 
@@ -341,6 +424,8 @@ export async function notifyOwnerVoicemailReady(input: {
     }),
     text: `${lines.join("\n")}\n\nOpen leads: ${env.appBaseUrl}/leads`,
     tag: "owner_voicemail_ready",
+    accountId: input.account.accountId,
+    actionKey: `owner_voicemail_ready:${input.leadId}`,
   });
 }
 
@@ -348,6 +433,7 @@ export async function notifyOwnerInboundReply(input: {
   account: AccountRuntimeConfig;
   callerPhone: string;
   body: string;
+  notificationId: string;
 }) {
   const recipient = await ownerEmail(input.account);
   const last4 = phoneLast4(input.callerPhone) ?? "unknown";
@@ -370,12 +456,15 @@ export async function notifyOwnerInboundReply(input: {
     }),
     text: `${lines.join("\n")}\n\nOpen leads: ${env.appBaseUrl}/leads`,
     tag: "owner_inbound_reply",
+    accountId: input.account.accountId,
+    actionKey: `owner_inbound_reply:${input.notificationId}`,
   });
 }
 
 export async function notifyOwnerOptOut(input: {
   account: AccountRuntimeConfig;
   callerPhone: string;
+  notificationId: string;
 }) {
   const recipient = await ownerEmail(input.account);
   const last4 = phoneLast4(input.callerPhone) ?? "unknown";
@@ -397,6 +486,8 @@ export async function notifyOwnerOptOut(input: {
     }),
     text: `${lines.join("\n")}\n\nOpen leads: ${env.appBaseUrl}/leads`,
     tag: "owner_opt_out",
+    accountId: input.account.accountId,
+    actionKey: `owner_opt_out:${input.notificationId}`,
   });
 }
 
@@ -441,6 +532,8 @@ export async function notifyOwnerBillingPaymentFailed(input: {
       : finalizationFailed
         ? "owner_billing_invoice_finalization_failed"
         : "owner_billing_payment_failed",
+    accountId: input.account.accountId,
+    actionKey: `owner_billing_failure:${input.account.accountId}:${input.eventType}`,
   });
 }
 
@@ -475,6 +568,8 @@ export async function notifyOwnerTrialEnding(input: {
     }),
     text: `${lines.join("\n")}\n\nManage billing: ${env.appBaseUrl}/settings#billing`,
     tag: "owner_trial_ending",
+    accountId: input.account.accountId,
+    actionKey: `owner_trial_ending:${input.account.accountId}:${input.trialEndsAt ?? "unknown"}`,
   });
 }
 
@@ -510,6 +605,8 @@ export async function notifyOwnerSubscriptionScheduledToEnd(input: {
     }),
     text: `${lines.join("\n")}\n\nManage billing: ${env.appBaseUrl}/settings#billing`,
     tag: "owner_subscription_scheduled_to_end",
+    accountId: input.account.accountId,
+    actionKey: `owner_subscription_scheduled_to_end:${input.account.accountId}:${input.currentPeriodEnd ?? "unknown"}`,
   });
 }
 
@@ -534,6 +631,8 @@ export async function notifyOwnerBillingRecovered(input: {
     }),
     text: `${lines.join("\n")}\n\nOpen Settings: ${env.appBaseUrl}/settings#billing`,
     tag: "owner_billing_recovered",
+    accountId: input.account.accountId,
+    actionKey: `owner_billing_recovered:${input.account.accountId}`,
   });
 }
 
@@ -569,6 +668,8 @@ export async function notifyOwnerBillingTrialExpired(input: {
     }),
     text: `${lines.join("\n")}\n\nManage billing: ${env.appBaseUrl}/settings#billing`,
     tag: "owner_billing_trial_expired",
+    accountId: input.account.accountId,
+    actionKey: `owner_billing_trial_expired:${input.account.accountId}:${input.trialEndsAt ?? "unknown"}`,
   });
 }
 
@@ -597,6 +698,8 @@ export async function notifyAdminNewSetupRequest(input: {
     }),
     text: `${lines.join("\n\n")}\n\nOpen leads: ${env.appBaseUrl}/leads`,
     tag: "admin_new_setup_request",
+    accountId: input.account.accountId,
+    actionKey: `admin_new_setup_request:${input.account.accountId}:${last4}`,
   });
 }
 
@@ -625,6 +728,8 @@ export async function notifyAdminOperationalIssue(input: {
     }),
     text: `${lines.join("\n")}\n\nOpen ops: ${env.appBaseUrl}/ops`,
     tag: "admin_operational_issue",
+    accountId: input.account?.accountId,
+    actionKey: `admin_operational_issue:${input.account?.accountId ?? "unknown"}:${input.correlationId ?? input.issue}`,
   });
 }
 
@@ -680,5 +785,7 @@ export async function notifyOwnerWeeklyDigest(input: {
     }),
     text: `${lines.join("\n")}\n\nFull report: ${env.appBaseUrl}/reports`,
     tag: "owner_weekly_digest",
+    accountId: input.account.accountId,
+    actionKey: `owner_weekly_digest:${input.account.accountId}:${input.periodLabel}`,
   });
 }

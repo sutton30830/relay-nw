@@ -4,6 +4,10 @@ import { notifyAdminOperationalIssue } from "@/lib/email";
 import { logWebhookEvent, type WebhookEventSource } from "@/lib/supabase";
 import type { AccountRuntimeConfig } from "@/lib/supabase/accounts";
 
+async function providerActionTools() {
+  return import("@/lib/supabase/provider-actions");
+}
+
 const DEFAULT_MISSED_CALL_SMS_TEMPLATE =
   "Hi, this is {BUSINESS_NAME} - sorry we missed your call. Book or reply here: {INTAKE_URL}. Reply STOP to opt out.";
 
@@ -93,22 +97,118 @@ export async function configureExistingRelayNumber(phoneNumber: string) {
 // failures must not disturb the pipeline that called this. Gated on smsEnabled:
 // owner texts ride the same A2P-gated number as customer texting.
 export async function sendOwnerSms(input: {
-  account: Pick<AccountRuntimeConfig, "smsEnabled" | "ownerPhoneNumber" | "twilioPhoneNumber">;
+  account: Pick<AccountRuntimeConfig, "accountId" | "smsEnabled" | "ownerPhoneNumber" | "twilioPhoneNumber">;
   body: string;
   context: string;
+  actionKey?: string;
 }) {
   const { account } = input;
+  const tools = await providerActionTools().catch((error) => {
+    console.error("Owner SMS recovery tools could not be loaded", {
+      context: input.context,
+      error: error instanceof Error ? error.message : error,
+    });
+    return null;
+  });
+  const claimProviderActionRetry = tools?.claimProviderActionRetry;
+  const recordProviderAction = tools?.recordProviderAction;
 
   if (!account.smsEnabled || !account.ownerPhoneNumber || !account.twilioPhoneNumber) {
+    if (account.accountId && typeof recordProviderAction === "function") {
+      try {
+        await recordProviderAction({
+          accountId: account.accountId,
+          action: "owner_sms_notification",
+          provider: "twilio",
+          idempotencyKey: input.actionKey ?? `owner_sms:${input.context}`,
+          internalStatus: "suppressed",
+          providerStatus: "notification_not_configured",
+          customerExplanation: "Relay could not send the owner text because texting setup is incomplete.",
+          retryEligibility: "manual",
+          recommendedNextAction: "Verify A2P approval and the owner mobile number, then run a notification test.",
+          customerVisible: true,
+          expectedSuppression: true,
+        });
+      } catch (recordError) {
+        console.error("Could not record skipped owner SMS", {
+          accountId: account.accountId,
+          context: input.context,
+          error: recordError instanceof Error ? recordError.message : recordError,
+        });
+      }
+    }
     return false;
   }
 
   try {
-    await twilioClient.messages.create({
+    if (
+      account.accountId
+      && typeof recordProviderAction === "function"
+      && typeof claimProviderActionRetry === "function"
+    ) {
+      try {
+        await recordProviderAction({
+          accountId: account.accountId,
+          action: "owner_sms_notification",
+          provider: "twilio",
+          idempotencyKey: input.actionKey ?? `owner_sms:${input.context}`,
+          internalStatus: "pending",
+          providerStatus: "not_sent",
+          customerExplanation: "Relay is preparing the owner text notification.",
+          retryEligibility: "manual",
+          recommendedNextAction: "Wait for provider acceptance before retrying.",
+          customerVisible: false,
+        });
+        const claimed = await claimProviderActionRetry({
+          accountId: account.accountId,
+          idempotencyKey: input.actionKey ?? `owner_sms:${input.context}`,
+          staleBefore: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+        });
+        if (!claimed) {
+          console.info("Owner SMS duplicate suppressed by idempotency reservation", {
+            accountId: account.accountId,
+            context: input.context,
+          });
+          return true;
+        }
+      } catch (recordError) {
+        console.error("Owner SMS action reservation failed; notification was not sent", {
+          accountId: account.accountId,
+          context: input.context,
+          error: recordError instanceof Error ? recordError.message : recordError,
+        });
+        return false;
+      }
+    }
+    const message = await twilioClient.messages.create({
       to: account.ownerPhoneNumber,
       from: account.twilioPhoneNumber,
       body: input.body,
     });
+    if (account.accountId && typeof recordProviderAction === "function") {
+      try {
+        await recordProviderAction({
+          accountId: account.accountId,
+          action: "owner_sms_notification",
+          provider: "twilio",
+          idempotencyKey: input.actionKey ?? `owner_sms:${input.context}`,
+          providerIdentifier: message.sid,
+          internalStatus: "accepted",
+          providerStatus: message.status || "accepted",
+          customerExplanation: "Twilio accepted the owner text notification.",
+          retryEligibility: "never",
+          recommendedNextAction: "No retry is needed unless the owner reports non-delivery.",
+          customerVisible: false,
+        });
+      } catch (recordError) {
+        console.error("Twilio accepted owner SMS, but Relay could not update action evidence", {
+          accountId: account.accountId,
+          context: input.context,
+          twilioMessageSid: message.sid,
+          error: recordError instanceof Error ? recordError.message : recordError,
+        });
+      }
+    }
     return true;
   } catch (error) {
     console.error("Owner SMS failed", {
@@ -116,6 +216,26 @@ export async function sendOwnerSms(input: {
       ownerLast4: phoneLast4(account.ownerPhoneNumber),
       error: error instanceof Error ? error.message : error,
     });
+    if (account.accountId && typeof recordProviderAction === "function") {
+      try {
+        await recordProviderAction({
+          accountId: account.accountId,
+          action: "owner_sms_notification",
+          provider: "twilio",
+          idempotencyKey: input.actionKey ?? `owner_sms:${input.context}`,
+          internalStatus: "failed",
+          providerStatus: "send_failed",
+          diagnosticDetail: error,
+          customerVisible: true,
+        });
+      } catch (recordError) {
+        console.error("Could not record owner SMS failure", {
+          accountId: account.accountId,
+          context: input.context,
+          error: recordError instanceof Error ? recordError.message : recordError,
+        });
+      }
+    }
     return false;
   }
 }

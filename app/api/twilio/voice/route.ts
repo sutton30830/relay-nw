@@ -169,6 +169,9 @@ async function handleForwardingMode(input: {
       responseStatus: 200,
       responseBody: xml,
       error: message,
+      internalStatus: "failed",
+      providerStatus: "local_processing_failed",
+      customerVisible: true,
     });
 
     console.error("Failed to handle forwarded missed call", {
@@ -232,6 +235,9 @@ async function handleDirectMode(input: {
       responseStatus: 200,
       responseBody: xml,
       error: `Call row upsert failed: ${message}`,
+      internalStatus: "failed",
+      providerStatus: "local_write_failed",
+      customerVisible: true,
     });
   }
 

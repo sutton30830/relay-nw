@@ -254,6 +254,9 @@ export async function POST(request: Request) {
       responseStatus: 200,
       responseBody: xml,
       error: message,
+      internalStatus: "failed",
+      providerStatus: "local_processing_failed",
+      customerVisible: true,
     });
 
     console.error("Failed to handle Twilio dial status", {

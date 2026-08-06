@@ -5,13 +5,14 @@ import {
   createMissedCallLeadIfNew,
   hasRecentMissedCallSms,
   isOptedOut,
+  recordProviderAction,
   assertTenantAccount,
   type AccountRuntimeConfig,
   updateCallForMissedLead,
   updateLeadSmsStatus,
 } from "@/lib/supabase";
 import { envAccountConfig } from "@/lib/supabase/accounts";
-import { missedCallSmsBodyForAccount, phoneLast4, twilioClient } from "@/lib/twilio";
+import { missedCallSmsBodyForAccount, phoneLast4, sendOwnerSms, twilioClient } from "@/lib/twilio";
 import { notifyAdminOperationalIssue, notifyOwnerNewMissedCallLead } from "@/lib/email";
 
 type OwnerSmsStatus = "sent" | "failed" | "skipped_opt_out" | "repeat_call";
@@ -44,7 +45,7 @@ function ownerSmsBody(input: {
 async function notifyOwnerNewLeadBySms(input: {
   account: Pick<
     AccountRuntimeConfig,
-    "smsEnabled" | "ownerPhoneNumber" | "twilioPhoneNumber" | "businessName"
+    "accountId" | "smsEnabled" | "ownerPhoneNumber" | "twilioPhoneNumber" | "businessName"
   >;
   callerPhone: string;
   smsStatus: OwnerSmsStatus;
@@ -64,15 +65,27 @@ async function notifyOwnerNewLeadBySms(input: {
   }
 
   try {
-    await twilioClient.messages.create({
-      to: account.ownerPhoneNumber,
-      from: account.twilioPhoneNumber,
-      body: ownerSmsBody({
-        businessName: account.businessName,
-        callerPhone: input.callerPhone,
-        smsStatus: input.smsStatus,
-      }),
+    const body = ownerSmsBody({
+      businessName: account.businessName,
+      callerPhone: input.callerPhone,
+      smsStatus: input.smsStatus,
     });
+    if (typeof sendOwnerSms === "function") {
+      await sendOwnerSms({
+        account,
+        context: "missed-call owner notification",
+        actionKey: `owner_sms:missed_call:${input.correlationId}`,
+        body,
+      });
+    } else {
+      // Compatibility for isolated test harnesses; production always uses the
+      // idempotent, evidence-recording sendOwnerSms path above.
+      await twilioClient.messages.create({
+        to: account.ownerPhoneNumber,
+        from: account.twilioPhoneNumber,
+        body,
+      });
+    }
   } catch (error) {
     console.error("Owner SMS notification failed (email fallback still sent)", {
       correlationId: input.correlationId,
@@ -111,6 +124,12 @@ export async function handleMissedCall(input: {
   if (!leadResult.inserted || !leadResult.leadId) {
     return { inserted: false, becameLive: false, smsStatus: "duplicate" as const };
   }
+
+  const providerActionKey = `automatic_missed_call_sms:${leadResult.leadId}`;
+  const recordSmsAction = async (input: Parameters<typeof recordProviderAction>[0]) => {
+    if (typeof recordProviderAction !== "function") return null;
+    return recordProviderAction(input);
+  };
 
   try {
     await updateCallForMissedLead({
@@ -158,6 +177,22 @@ export async function handleMissedCall(input: {
       leadId: leadResult.leadId,
       callerPhone,
       smsStatus: "skipped_disabled",
+    });
+
+    await recordSmsAction({
+      accountId: account.accountId,
+      action: "automatic_missed_call_sms",
+      provider: "twilio",
+      idempotencyKey: providerActionKey,
+      resourceType: "lead",
+      resourceId: leadResult.leadId,
+      internalStatus: "suppressed",
+      providerStatus: "sms_disabled",
+      customerExplanation: "Automatic texting is not enabled for this account.",
+      retryEligibility: "never",
+      recommendedNextAction: "Enable texting only after A2P approval, then contact this caller manually.",
+      customerVisible: false,
+      expectedSuppression: true,
     });
 
     return { inserted: true, becameLive: leadResult.becameLive, smsStatus: "skipped_disabled" as const };
@@ -213,6 +248,23 @@ export async function handleMissedCall(input: {
       correlationId,
     });
 
+    await recordSmsAction({
+      accountId: account.accountId,
+      action: "automatic_missed_call_sms",
+      provider: "supabase",
+      idempotencyKey: providerActionKey,
+      resourceType: "lead",
+      resourceId: leadResult.leadId,
+      internalStatus: "failed",
+      providerStatus: "pre_send_check_failed",
+      diagnosticDetail: message,
+      customerExplanation: "Relay could not safely verify texting consent, so no message was sent.",
+      retryEligibility: "manual",
+      recommendedNextAction: "Verify opt-out and cooldown records, then call the customer or retry once from Operations.",
+      customerVisible: true,
+      countAttempt: true,
+    });
+
     return { inserted: true, becameLive: leadResult.becameLive, smsStatus: "failed" as const, smsError: detail };
   }
 
@@ -229,6 +281,21 @@ export async function handleMissedCall(input: {
       callerPhone,
       smsStatus: "repeat_call",
       correlationId,
+    });
+    await recordSmsAction({
+      accountId: account.accountId,
+      action: "automatic_missed_call_sms",
+      provider: "relay",
+      idempotencyKey: providerActionKey,
+      resourceType: "lead",
+      resourceId: leadResult.leadId,
+      internalStatus: "suppressed",
+      providerStatus: "cooldown",
+      customerExplanation: "Relay did not send a duplicate automatic text during the cooldown window.",
+      retryEligibility: "never",
+      recommendedNextAction: "Call the repeat caller from the inbox.",
+      customerVisible: false,
+      expectedSuppression: true,
     });
     return { inserted: true, becameLive: leadResult.becameLive, smsStatus: "skipped_recent" as const };
   }
@@ -251,16 +318,76 @@ export async function handleMissedCall(input: {
       smsStatus: "skipped_opt_out",
       correlationId,
     });
+    await recordSmsAction({
+      accountId: account.accountId,
+      action: "automatic_missed_call_sms",
+      provider: "relay",
+      idempotencyKey: providerActionKey,
+      resourceType: "lead",
+      resourceId: leadResult.leadId,
+      internalStatus: "suppressed",
+      providerStatus: "opted_out",
+      customerExplanation: "The caller opted out of text messages, so Relay did not send one.",
+      retryEligibility: "never",
+      recommendedNextAction: "Call the customer instead.",
+      customerVisible: false,
+      expectedSuppression: true,
+    });
     return { inserted: true, becameLive: leadResult.becameLive, smsStatus: "skipped_opt_out" as const };
   }
 
   try {
+    await recordSmsAction({
+      accountId: account.accountId,
+      action: "automatic_missed_call_sms",
+      provider: "twilio",
+      idempotencyKey: providerActionKey,
+      resourceType: "lead",
+      resourceId: leadResult.leadId,
+      internalStatus: "processing",
+      providerStatus: "requesting",
+      customerExplanation: "Relay is sending the automatic missed-call text.",
+      retryEligibility: "manual",
+      recommendedNextAction: "Wait for Twilio's signed delivery callback.",
+      customerVisible: false,
+      countAttempt: true,
+    });
+    const statusCallback = new URL("/api/twilio/sms-status", env.appBaseUrl);
+    statusCallback.searchParams.set("messageType", "auto_text");
+    statusCallback.searchParams.set("accountId", account.accountId);
+    statusCallback.searchParams.set("leadId", leadResult.leadId);
+    statusCallback.searchParams.set("actionKey", providerActionKey);
     const message = await twilioClient.messages.create({
       to: callerPhone,
       from: account.twilioPhoneNumber,
       body: missedCallSmsBodyForAccount(account),
-      statusCallback: `${env.appBaseUrl}/api/twilio/sms-status`,
+      statusCallback: statusCallback.toString(),
     });
+
+    try {
+      await recordSmsAction({
+        accountId: account.accountId,
+        action: "automatic_missed_call_sms",
+        provider: "twilio",
+        idempotencyKey: providerActionKey,
+        providerIdentifier: message.sid,
+        resourceType: "lead",
+        resourceId: leadResult.leadId,
+        internalStatus: "accepted",
+        providerStatus: message.status || "accepted",
+        customerExplanation: "Twilio accepted the automatic text. Delivery confirmation is pending.",
+        retryEligibility: "never",
+        recommendedNextAction: "Wait for the signed delivery callback; do not resend automatically.",
+        customerVisible: false,
+      });
+    } catch (actionError) {
+      console.error("Twilio accepted SMS, but Relay could not update provider action evidence", {
+        correlationId,
+        leadId: leadResult.leadId,
+        twilioMessageSid: message.sid,
+        error: actionError instanceof Error ? actionError.message : actionError,
+      });
+    }
 
     // Twilio has already accepted the SMS past this point. A failure recording it in the
     // messages table must NOT bubble into the outer catch, which would wrongly mark the
@@ -352,6 +479,27 @@ export async function handleMissedCall(input: {
     return { inserted: true, becameLive: leadResult.becameLive, smsStatus: "sent" as const, twilioMessageSid: message.sid };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown SMS send error";
+
+    try {
+      await recordSmsAction({
+        accountId: account.accountId,
+        action: "automatic_missed_call_sms",
+        provider: "twilio",
+        idempotencyKey: providerActionKey,
+        resourceType: "lead",
+        resourceId: leadResult.leadId,
+        internalStatus: "failed",
+        providerStatus: "send_failed",
+        diagnosticDetail: message,
+        customerVisible: true,
+      });
+    } catch (actionError) {
+      console.error("Could not record automatic SMS provider failure", {
+        correlationId,
+        leadId: leadResult.leadId,
+        error: actionError instanceof Error ? actionError.message : actionError,
+      });
+    }
 
     await updateLeadSmsStatus({
       accountId: account.accountId,

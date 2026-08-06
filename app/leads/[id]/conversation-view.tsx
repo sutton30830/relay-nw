@@ -49,6 +49,7 @@ export function ConversationView({
   readOnly,
   quickReplies,
   schedulingUrl,
+  providerIssues,
 }: {
   lead: Lead;
   previousLeads: Lead[];
@@ -57,6 +58,7 @@ export function ConversationView({
   readOnly: boolean;
   quickReplies: string[];
   schedulingUrl: string | null;
+  providerIssues: Array<{ id: string; explanation: string; nextAction: string }>;
 }) {
   const router = useRouter();
   const [name, setName] = useState(lead.name ?? "");
@@ -274,13 +276,18 @@ export function ConversationView({
           <div>
             <strong>{autoTextIssue.title}</strong>
             <span>{autoTextIssue.guidance}</span>
-            <details>
-              <summary>Delivery details</summary>
-              <span>{autoTextIssue.diagnostic}</span>
-            </details>
           </div>
         </div>
       ) : null}
+      {providerIssues.map((issue) => (
+        <div className="convo__banner convo__banner--fast sms-delivery-banner" key={issue.id} role="status">
+          <Icon name="alertTriangle" size={13} />
+          <div>
+            <strong>{issue.explanation}</strong>
+            <span>{issue.nextAction}</span>
+          </div>
+        </div>
+      ))}
 
       {detailsOpen && !readOnly ? (
         <section className="convo__details">
@@ -463,10 +470,6 @@ export function ConversationView({
                 {issue ? (
                   <div className="convo__msg-issue">
                     <span>{issue.guidance}</span>
-                    <details>
-                      <summary>Delivery details</summary>
-                      <span>{issue.diagnostic}</span>
-                    </details>
                   </div>
                 ) : null}
               </div>

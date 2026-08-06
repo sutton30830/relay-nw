@@ -19,6 +19,7 @@ import {
   logUnsignedTwilioWebhook,
   phoneLast4,
   rejectInvalidTwilioSignature,
+  sendOwnerSms,
   summarizeTwilioRequest,
   twilioClient,
   validateTwilioWebhook,
@@ -163,6 +164,7 @@ async function handleInboundSms(
     await notifyOwnerOptOut({
       account,
       callerPhone: input.from,
+      notificationId: correlationId,
     });
     return "recorded_opt_out" as const;
   }
@@ -172,6 +174,7 @@ async function handleInboundSms(
       account,
       callerPhone: input.from,
       body: input.body,
+      notificationId: correlationId,
     });
   }
 
@@ -186,11 +189,21 @@ async function handleInboundSms(
   }
 
   if (input.shouldNotifyOwner) {
-    await twilioClient.messages.create({
-      to: account.ownerPhoneNumber,
-      from: account.twilioPhoneNumber,
-      body: `New Relay reply from ${input.from}:\n${input.body}\n\nOpen leads: ${env.appBaseUrl}/leads`,
-    });
+    const body = `New Relay reply from ${input.from}:\n${input.body}\n\nOpen leads: ${env.appBaseUrl}/leads`;
+    if (typeof sendOwnerSms === "function") {
+      await sendOwnerSms({
+        account,
+        context: "inbound caller reply",
+        actionKey: `owner_sms:inbound_reply:${correlationId}`,
+        body,
+      });
+    } else {
+      await twilioClient.messages.create({
+        to: account.ownerPhoneNumber,
+        from: account.twilioPhoneNumber,
+        body,
+      });
+    }
 
     return "forwarded_to_owner" as const;
   }
@@ -298,6 +311,9 @@ export async function POST(request: Request) {
       responseStatus: 200,
       responseBody: responseXml,
       error: errorMessage,
+      internalStatus: "failed",
+      providerStatus: "local_processing_failed",
+      customerVisible: true,
     });
 
     console.error("Failed to handle inbound Twilio SMS", {

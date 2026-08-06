@@ -6,6 +6,7 @@ import {
   getOpsAccountBySlug,
   recordAccountAuditEvents,
   recordPlatformAuditEvent,
+  recordProviderAction,
   updateAccountSettings,
   upsertCarrierProfile,
 } from "@/lib/supabase";
@@ -51,6 +52,36 @@ export async function POST(request: Request) {
   const account = await getOpsAccountBySlug(slug);
   if (!account) go(slug, "account_not_found");
   if (!account.relayNumber) go(slug, "number_required");
+  const actionKey = `a2p_sync:${campaignSid}`;
+  const recordCarrierAction = async (event: Parameters<typeof recordProviderAction>[0]) => {
+    if (typeof recordProviderAction !== "function") return;
+    try {
+      await recordProviderAction(event);
+    } catch (recordError) {
+      console.error("Could not record A2P provider action evidence", {
+        accountId: account.accountId,
+        campaignSid,
+        error: recordError instanceof Error ? recordError.message : recordError,
+      });
+    }
+  };
+
+  await recordCarrierAction({
+      accountId: account.accountId,
+      action: "a2p_status_sync",
+      provider: "twilio",
+      idempotencyKey: actionKey,
+      providerIdentifier: campaignSid,
+      resourceType: "carrier_profile",
+      resourceId: campaignSid,
+      internalStatus: "processing",
+      providerStatus: "requesting",
+      customerExplanation: "Relay is checking carrier registration status.",
+      retryEligibility: "manual",
+      recommendedNextAction: "Wait for the current Twilio lookup to finish.",
+      customerVisible: false,
+      countAttempt: true,
+  });
 
   let external;
   try {
@@ -63,6 +94,22 @@ export async function POST(request: Request) {
     console.error("Twilio A2P status synchronization failed", {
       accountId: account.accountId,
       error: error instanceof Error ? error.message : error,
+    });
+    await recordCarrierAction({
+        accountId: account.accountId,
+        action: "a2p_status_sync",
+        provider: "twilio",
+        idempotencyKey: actionKey,
+        providerIdentifier: campaignSid,
+        resourceType: "carrier_profile",
+        resourceId: campaignSid,
+        internalStatus: "failed",
+        providerStatus: "lookup_failed",
+        diagnosticDetail: error,
+        customerExplanation: "Relay could not check the latest carrier registration status.",
+        retryEligibility: "manual",
+        recommendedNextAction: "Confirm the Twilio campaign identifiers and retry the status check.",
+        customerVisible: true,
     });
     go(slug, "sync_failed");
   }
@@ -108,8 +155,47 @@ export async function POST(request: Request) {
       accountId: account.accountId,
       error: error instanceof Error ? error.message : error,
     });
+    await recordCarrierAction({
+        accountId: account.accountId,
+        action: "a2p_status_sync",
+        provider: "supabase",
+        idempotencyKey: actionKey,
+        providerIdentifier: campaignSid,
+        resourceType: "carrier_profile",
+        resourceId: campaignSid,
+        internalStatus: "failed",
+        providerStatus: externalStatus,
+        diagnosticDetail: error,
+        customerExplanation: "Twilio returned a status, but Relay could not save it yet.",
+        retryEligibility: "manual",
+        recommendedNextAction: "Retry the same status synchronization; do not create another campaign.",
+        customerVisible: true,
+    });
     go(slug, "save_failed");
   }
+
+  const blocked = next.a2p === "rejected" || next.a2p === "needs_attention";
+  await recordCarrierAction({
+      accountId: account.accountId,
+      action: "a2p_status_sync",
+      provider: "twilio",
+      idempotencyKey: actionKey,
+      providerIdentifier: campaignSid,
+      resourceType: "carrier_profile",
+      resourceId: campaignSid,
+      internalStatus: blocked ? "failed" : "succeeded",
+      providerStatus: externalStatus,
+      failureCode: blocked ? externalStatus : null,
+      diagnosticDetail: blocked ? detail : null,
+      customerExplanation: blocked
+        ? "Carrier registration needs attention before Relay can send customer texts."
+        : next.detail,
+      retryEligibility: blocked ? "manual" : "never",
+      recommendedNextAction: blocked
+        ? "Review Twilio's campaign details, correct the registration, then synchronize again."
+        : "No action is needed unless Twilio changes the campaign status.",
+      customerVisible: blocked,
+  });
 
   go(slug, externalStatus.toLowerCase());
 }

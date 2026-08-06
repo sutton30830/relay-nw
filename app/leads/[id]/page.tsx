@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { AppHeader } from "@/app/leads/_components/app-header";
 import { isRelayOperator, requireAccountUser } from "@/lib/auth";
-import { getLeadConversation } from "@/lib/supabase";
+import { getLeadConversation, listCustomerVisibleProviderActions } from "@/lib/supabase";
 import { QUICK_REPLIES } from "../_constants";
 import { ConversationView } from "./conversation-view";
 
@@ -18,7 +18,10 @@ export default async function LeadConversationPage({
 
   const quickReplies = account.quickReplyTemplates?.length ? account.quickReplyTemplates : QUICK_REPLIES;
 
-  const conversation = await getLeadConversation(accountId, id);
+  const [conversation, providerIssues] = await Promise.all([
+    getLeadConversation(accountId, id),
+    listCustomerVisibleProviderActions(accountId, id),
+  ]);
 
   if (!conversation) {
     notFound();
@@ -54,6 +57,11 @@ export default async function LeadConversationPage({
         readOnly={role === "viewer"}
         quickReplies={quickReplies}
         schedulingUrl={account.schedulingUrl}
+        providerIssues={providerIssues.map((issue) => ({
+          id: issue.id,
+          explanation: issue.customerExplanation,
+          nextAction: issue.recommendedNextAction,
+        }))}
       />
     </main>
   );

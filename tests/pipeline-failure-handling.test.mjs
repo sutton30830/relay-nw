@@ -330,7 +330,7 @@ test("manual replies request delivery callbacks and record Twilio's initial stat
   const response = await POST(
     new Request("https://relay.example/api/leads/lead-1/reply", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "idempotency-key": "reply-test-0001" },
       body: JSON.stringify({ body: "We can help this afternoon." }),
     }),
     { params: Promise.resolve({ id: "lead-1" }) },
@@ -339,7 +339,7 @@ test("manual replies request delivery callbacks and record Twilio's initial stat
   assert.equal(response.status, 200);
   assert.equal(
     twilioSends[0].statusCallback,
-    "https://relay.example/api/twilio/sms-status?messageType=manual_reply&accountId=acct-1",
+    "https://relay.example/api/twilio/sms-status?messageType=manual_reply&accountId=acct-1&leadId=lead-1&actionKey=manual_reply%3Alead-1%3Areply-test-0001",
   );
   assert.equal(recordedMessages[0].status, "queued");
   const payload = await response.json();

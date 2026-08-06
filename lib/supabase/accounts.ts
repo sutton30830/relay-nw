@@ -1164,6 +1164,13 @@ function sanitizeStripeEventText(value: string | null | undefined) {
     .slice(0, 120);
 }
 
+async function recordStripeProviderAction(
+  input: Parameters<typeof import("./provider-actions").recordProviderAction>[0],
+) {
+  const { recordProviderAction } = await import("./provider-actions");
+  return recordProviderAction(input);
+}
+
 function stripeEventPayload(input: StripeEventClaimInput | StripeEventMarkInput) {
   const payload: Record<string, string | boolean | number | null> = {};
 
@@ -1362,6 +1369,27 @@ export async function markStripeEventProcessed(input: StripeEventMarkInput) {
   if (error) {
     throwIfSupabaseError(error);
   }
+
+  if (input.accountId) {
+    await recordStripeProviderAction({
+      accountId: input.accountId,
+      action: "stripe_webhook_processing",
+      provider: "stripe",
+      idempotencyKey: `stripe_webhook:${input.eventId}`,
+      providerIdentifier: input.eventId,
+      resourceType: "stripe_event",
+      resourceId: input.eventId,
+      internalStatus: "succeeded",
+      providerStatus: "processed",
+      customerExplanation: "The billing update is current.",
+      retryEligibility: "never",
+      recommendedNextAction: "No action is needed.",
+      customerVisible: false,
+      countAttempt: true,
+    }).catch((actionError) => {
+      console.error("Stripe event processed but provider action evidence failed", { eventId: input.eventId, actionError });
+    });
+  }
 }
 
 export async function markStripeEventIgnored(input: StripeEventMarkInput & { reason: string }) {
@@ -1383,6 +1411,29 @@ export async function markStripeEventIgnored(input: StripeEventMarkInput & { rea
   if (error) {
     throwIfSupabaseError(error);
   }
+
+  if (input.accountId) {
+    await recordStripeProviderAction({
+      accountId: input.accountId,
+      action: "stripe_webhook_processing",
+      provider: "stripe",
+      idempotencyKey: `stripe_webhook:${input.eventId}`,
+      providerIdentifier: input.eventId,
+      resourceType: "stripe_event",
+      resourceId: input.eventId,
+      internalStatus: "suppressed",
+      providerStatus: "ignored",
+      diagnosticDetail: input.reason,
+      customerExplanation: "This billing event did not require an account change.",
+      retryEligibility: "never",
+      recommendedNextAction: "No action is needed unless a newer billing event remains unresolved.",
+      customerVisible: false,
+      expectedSuppression: true,
+      countAttempt: true,
+    }).catch((actionError) => {
+      console.error("Ignored Stripe event provider action evidence failed", { eventId: input.eventId, actionError });
+    });
+  }
 }
 
 export async function markStripeEventFailed(input: StripeEventMarkInput & { errorCode: string }) {
@@ -1402,6 +1453,26 @@ export async function markStripeEventFailed(input: StripeEventMarkInput & { erro
 
   if (error) {
     throwIfSupabaseError(error);
+  }
+
+  if (input.accountId) {
+    await recordStripeProviderAction({
+      accountId: input.accountId,
+      action: "stripe_webhook_processing",
+      provider: "stripe",
+      idempotencyKey: `stripe_webhook:${input.eventId}`,
+      providerIdentifier: input.eventId,
+      resourceType: "stripe_event",
+      resourceId: input.eventId,
+      internalStatus: "failed",
+      providerStatus: "processing_failed",
+      failureCode: input.errorCode,
+      diagnosticDetail: input.errorCode,
+      customerVisible: true,
+      countAttempt: true,
+    }).catch((actionError) => {
+      console.error("Failed Stripe event provider action evidence failed", { eventId: input.eventId, actionError });
+    });
   }
 }
 

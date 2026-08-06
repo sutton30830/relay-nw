@@ -9,6 +9,7 @@ export * from "./carrier-profiles";
 export * from "./leads";
 export * from "./messages";
 export * from "./onboarding-evidence";
+export * from "./provider-actions";
 export * from "./operators";
 export * from "./reports";
 export * from "./setup-requests";

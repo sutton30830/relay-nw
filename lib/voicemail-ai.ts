@@ -16,6 +16,7 @@ import {
   claimVoicemailTranscription,
   getAccountConfigByAccountId,
   getLeadForVoicemailTranscription,
+  recordProviderAction,
   updateLeadPriority,
   updateLeadVoicemailTranscription,
 } from "@/lib/supabase";
@@ -215,8 +216,25 @@ function extractResponseText(data: OpenAIResponsesResponse) {
     ?.trim();
 }
 
+async function safelyRecordVoicemailAction(
+  input: Parameters<typeof recordProviderAction>[0],
+) {
+  if (typeof recordProviderAction !== "function") return;
+  try {
+    await recordProviderAction(input);
+  } catch (error) {
+    console.error("Could not record voicemail provider action evidence", {
+      accountId: input.accountId,
+      resourceId: input.resourceId,
+      action: input.action,
+      error: error instanceof Error ? error.message : error,
+    });
+  }
+}
+
 export async function transcribeLeadVoicemail(leadId: string, accountId: string) {
   const lead = await getLeadForVoicemailTranscription(leadId, accountId);
+  const transcriptionActionKey = `voicemail_transcription:${leadId}`;
 
   if (!lead?.recording_sid) {
     throw new Error("Lead does not have a voicemail recording.");
@@ -240,6 +258,20 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
       status: "failed",
       error: NO_USABLE_VOICEMAIL_MESSAGE,
     });
+    await safelyRecordVoicemailAction({
+        accountId,
+        action: "voicemail_transcription",
+        provider: "openai",
+        idempotencyKey: transcriptionActionKey,
+        providerIdentifier: lead.recording_sid,
+        resourceType: "lead",
+        resourceId: leadId,
+        internalStatus: "suppressed",
+        providerStatus: "recording_too_short",
+        diagnosticDetail: "recording_too_short",
+        customerVisible: false,
+        expectedSuppression: true,
+    });
     throw new Error(NO_USABLE_VOICEMAIL_MESSAGE);
   }
 
@@ -257,6 +289,23 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
   if (!claimed) {
     throw new Error("Voicemail summary is already generating.");
   }
+
+  await safelyRecordVoicemailAction({
+      accountId,
+      action: "voicemail_transcription",
+      provider: "openai",
+      idempotencyKey: transcriptionActionKey,
+      providerIdentifier: lead.recording_sid,
+      resourceType: "lead",
+      resourceId: leadId,
+      internalStatus: "processing",
+      providerStatus: "processing",
+      customerExplanation: "Relay is transcribing this voicemail.",
+      retryEligibility: "automatic",
+      recommendedNextAction: "Wait for transcription or the stale-lock recovery job.",
+      customerVisible: false,
+      countAttempt: true,
+  });
 
   try {
     const audio = await fetchRecordingAudio(lead.recording_sid);
@@ -360,6 +409,22 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
         accountId,
         error: error instanceof Error ? error.message : error,
       });
+      await safelyRecordVoicemailAction({
+          accountId,
+          action: "voicemail_summary",
+          provider: "openai",
+          idempotencyKey: `voicemail_summary:${leadId}`,
+          resourceType: "lead",
+          resourceId: leadId,
+          internalStatus: "failed",
+          providerStatus: "summary_request_failed",
+          diagnosticDetail: error,
+          customerExplanation: "The voicemail transcript is ready, but the short summary is temporarily unavailable.",
+          retryEligibility: "automatic",
+          recommendedNextAction: "Use the transcript now; Relay may safely regenerate only the summary.",
+          customerVisible: true,
+          countAttempt: true,
+      });
     }
 
     const summary = structuredSummary?.summary ?? null;
@@ -381,6 +446,41 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
       status: "completed",
       error: null,
     });
+
+    await safelyRecordVoicemailAction({
+        accountId,
+        action: "voicemail_transcription",
+        provider: "openai",
+        idempotencyKey: transcriptionActionKey,
+        providerIdentifier: lead.recording_sid,
+        resourceType: "lead",
+        resourceId: leadId,
+        internalStatus: "succeeded",
+        providerStatus: "completed",
+        customerExplanation: "The voicemail transcript is ready.",
+        retryEligibility: "never",
+        recommendedNextAction: "Review the transcript and contact the caller.",
+        customerVisible: false,
+    });
+      if (summaryValidationReasons[0] !== "summary_request_failed") {
+        await safelyRecordVoicemailAction({
+          accountId,
+          action: "voicemail_summary",
+          provider: "openai",
+          idempotencyKey: `voicemail_summary:${leadId}`,
+          resourceType: "lead",
+          resourceId: leadId,
+          internalStatus: "succeeded",
+          providerStatus: structuredSummary ? "validated" : "quality_suppressed",
+          customerExplanation: structuredSummary
+            ? "The voicemail summary passed evidence validation."
+            : "Relay kept the reliable transcript but suppressed an unsupported summary.",
+          retryEligibility: "never",
+          recommendedNextAction: "Use the transcript as the source of truth.",
+          customerVisible: false,
+          expectedSuppression: !structuredSummary,
+        });
+      }
 
     // Classify urgency from what the caller actually said, persist it, and escalate
     // fast-priority voicemails to the owner by SMS immediately. Never fatal: the
@@ -410,6 +510,7 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
         await sendOwnerSms({
           account,
           context: "urgent voicemail alert",
+          actionKey: `owner_sms:urgent_voicemail:${leadId}`,
           body: `Relay NW URGENT: voicemail from ${lead.phone} — ${classification.reason}. "${ownerSummary.slice(0, 160)}" Call back now or reply from your inbox: ${env.appBaseUrl}/leads`,
         });
       }
@@ -458,6 +559,33 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
         issue: "Voicemail transcription failed",
         detail: message,
       });
+    }
+
+    if (typeof recordProviderAction === "function") {
+      try {
+        const expectedSuppression = error instanceof ExpectedVoicemailQualityError
+          || isExpectedVoicemailQualityErrorMessage(message);
+        await recordProviderAction({
+          accountId,
+          action: "voicemail_transcription",
+          provider: "openai",
+          idempotencyKey: transcriptionActionKey,
+          providerIdentifier: lead.recording_sid,
+          resourceType: "lead",
+          resourceId: leadId,
+          internalStatus: expectedSuppression ? "suppressed" : "failed",
+          providerStatus: expectedSuppression ? "quality_suppressed" : "provider_failed",
+          diagnosticDetail: message,
+          customerVisible: !expectedSuppression,
+          expectedSuppression,
+        });
+      } catch (recordError) {
+        console.error("Could not record voicemail provider action failure", {
+          accountId,
+          leadId,
+          error: recordError instanceof Error ? recordError.message : recordError,
+        });
+      }
     }
 
     throw error;

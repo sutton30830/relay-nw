@@ -15,6 +15,7 @@ import {
   getRecentStripeEventsForAccount,
   getRecentWebhookEventsForAccount,
   getCarrierProfile,
+  listProviderActionsForAccount,
 } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -202,14 +203,15 @@ export default async function OpsAccountPage({
     blockedSince: summary.opsBlockedSince,
   });
 
-  const [stripeEvents, systemEvents, carrierProfile, onboarding] = await Promise.all([
+  const [stripeEvents, systemEvents, carrierProfile, onboarding, providerActions] = await Promise.all([
     getRecentStripeEventsForAccount(billing.accountId, 25),
     getRecentWebhookEventsForAccount(billing.accountId, 25),
     getCarrierProfile(billing.accountId),
     loadAccountOnboardingReadiness(billing.accountId),
+    listProviderActionsForAccount(billing.accountId, 50),
   ]);
   const runtime = onboarding.runtime;
-  const failedCount = stripeEvents.filter((event) => event.processing_status === "failed").length;
+  const failedCount = providerActions.filter((event) => event.internalStatus === "failed").length;
 
   const canApplyOverride = canApplyOperatorBillingOverride(billing);
   // Kickoff state, spelled out before any buttons.
@@ -796,6 +798,29 @@ export default async function OpsAccountPage({
             {failedCount > 0 ? <span className="chip chip-danger">{failedCount} failed</span> : null}
           </summary>
           <div className="ops-diagnostics__body">
+            <div className="setup-panel__head">
+              <p className="t-eyebrow">Provider actions</p>
+              <p className="setup-copy">Standardized recovery evidence. Customer wording is separated from operator diagnostics.</p>
+            </div>
+            <div className="webhook-events">
+              {providerActions.length === 0 ? <p className="empty-copy">No provider actions yet.</p> : providerActions.map((event) => (
+                <article className="webhook-event" key={event.id}>
+                  <div className="webhook-event__head">
+                    <strong>{event.action.replaceAll("_", " ")}</strong>
+                    <span>{event.internalStatus} · {formatDateTime(event.lastAttemptAt)}</span>
+                  </div>
+                  <dl className="webhook-event__meta">
+                    <div><dt>Provider</dt><dd>{event.provider} · {event.providerStatus ?? "unknown"}</dd></div>
+                    <div><dt>Provider ID</dt><dd>{event.providerIdentifier ?? "none"}</dd></div>
+                    <div><dt>Failure code</dt><dd>{event.failureCode ?? "none"}</dd></div>
+                    <div><dt>Attempts / retry</dt><dd>{event.attemptCount} · {event.retryEligibility}</dd></div>
+                    <div><dt>Customer explanation</dt><dd>{event.customerExplanation}</dd></div>
+                    <div><dt>Next action</dt><dd>{event.recommendedNextAction}</dd></div>
+                    <div><dt>Diagnostic</dt><dd>{event.diagnosticDetail ?? "none"}</dd></div>
+                  </dl>
+                </article>
+              ))}
+            </div>
             <div className="setup-panel__head">
               <p className="t-eyebrow">Billing events</p>
               <p className="setup-copy">Stripe webhook processing for this account, newest first.</p>

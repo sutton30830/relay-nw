@@ -6,6 +6,7 @@ import {
   getOpsBillingAccountBySlug,
   listOpsAccounts,
   recordAccountAuditEvents,
+  recordProviderAction,
 } from "@/lib/supabase";
 
 export const runtime = "nodejs";
@@ -42,7 +43,34 @@ export async function GET(request: Request) {
       !account.stripeCustomerId &&
       !account.stripeSubscriptionId
     )) continue;
+    const runDate = new Date().toISOString().slice(0, 10);
+    const actionKey = `stripe_reconciliation:${account.accountId}:${runDate}`;
+    const recordReconciliationAction = async (event: Parameters<typeof recordProviderAction>[0]) => {
+      try {
+        await recordProviderAction(event);
+      } catch (actionError) {
+        console.error("Billing reconciliation action evidence could not be recorded", {
+          accountId: account.accountId,
+          actionError,
+        });
+      }
+    };
     try {
+      await recordReconciliationAction({
+        accountId: account.accountId,
+        action: "scheduled_billing_reconciliation",
+        provider: "stripe",
+        idempotencyKey: actionKey,
+        resourceType: "account",
+        resourceId: account.accountId,
+        internalStatus: "processing",
+        providerStatus: "reconciling",
+        customerExplanation: "Relay is checking the latest billing status.",
+        retryEligibility: "automatic",
+        recommendedNextAction: "Wait for reconciliation to finish.",
+        customerVisible: false,
+        countAttempt: true,
+      });
       const checked = await reconcileStripeBillingAccount(account);
       const activation = await activateStripeTrialForAccount(account.accountId);
       await recordAccountAuditEvents({
@@ -51,10 +79,36 @@ export async function GET(request: Request) {
         actorEmail: "system:billing-reconciliation",
         events: [{ action: "billing.reconciled", summary: "Daily Stripe billing reconciliation completed" }],
       });
+      await recordReconciliationAction({
+        accountId: account.accountId,
+        action: "scheduled_billing_reconciliation",
+        provider: "stripe",
+        idempotencyKey: actionKey,
+        resourceType: "account",
+        resourceId: account.accountId,
+        internalStatus: "reconciled",
+        providerStatus: "current",
+        customerExplanation: "The billing status is current.",
+        retryEligibility: "never",
+        recommendedNextAction: "No action is needed.",
+        customerVisible: false,
+      });
       results.push({ accountId: account.accountId, accountSlug: account.accountSlug, ok: true, checked: { ...checked, activation } });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown reconciliation error";
       console.error("Daily Stripe reconciliation failed", { accountId: account.accountId, error: message });
+      await recordReconciliationAction({
+        accountId: account.accountId,
+        action: "scheduled_billing_reconciliation",
+        provider: "stripe",
+        idempotencyKey: actionKey,
+        resourceType: "account",
+        resourceId: account.accountId,
+        internalStatus: "failed",
+        providerStatus: "reconciliation_failed",
+        diagnosticDetail: error,
+        customerVisible: true,
+      });
       results.push({ accountId: account.accountId, accountSlug: account.accountSlug, ok: false, error: message });
       try {
         await notifyAdminOperationalIssue({ issue: "Stripe reconciliation failed", detail: `${account.accountSlug}: ${message}`, correlationId: account.accountId });

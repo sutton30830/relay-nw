@@ -8,9 +8,13 @@ export type SendReplyResult =
 
 export async function sendLeadReply(id: string, body: string): Promise<SendReplyResult> {
   try {
+    const idempotencyKey = crypto.randomUUID();
     const response = await fetch(`/api/leads/${id}/reply`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      },
       body: JSON.stringify({ body }),
     });
 

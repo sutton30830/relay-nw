@@ -319,7 +319,7 @@ test("settings, billing, Operations, and team endpoints derive their tenant from
       "https://relay.test/api/billing/portal?account_id=" + BUSINESS_B.accountId,
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "idempotency-key": "reply-alpha-0001" },
         body: JSON.stringify({ accountId: BUSINESS_B.accountId }),
       },
     ))),
@@ -519,7 +519,7 @@ test("concurrent replies and recording playback remain in the authenticated acco
     routeA.POST(
       new Request("https://relay.test/api/leads/a/reply", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "idempotency-key": "reply-alpha-0001" },
         body: JSON.stringify({ body: "Alpha reply" }),
       }),
       { params: Promise.resolve({ id: BUSINESS_A.leadId }) },
@@ -527,7 +527,7 @@ test("concurrent replies and recording playback remain in the authenticated acco
     routeB.POST(
       new Request("https://relay.test/api/leads/b/reply", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "idempotency-key": "reply-bravo-0001" },
         body: JSON.stringify({ body: "Bravo reply" }),
       }),
       { params: Promise.resolve({ id: BUSINESS_B.leadId }) },
@@ -535,7 +535,7 @@ test("concurrent replies and recording playback remain in the authenticated acco
     routeA.POST(
       new Request("https://relay.test/api/leads/forged/reply", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "idempotency-key": "reply-forged-001" },
         body: JSON.stringify({ body: "Cross-account reply" }),
       }),
       { params: Promise.resolve({ id: BUSINESS_B.leadId }) },

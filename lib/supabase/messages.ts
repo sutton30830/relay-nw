@@ -74,7 +74,7 @@ export async function updateLeadSmsStatusByMessageSid(input: {
     return { updated: false };
   }
 
-  const { data, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from("leads")
     .update({
       sms_status: input.smsStatus,
@@ -82,7 +82,15 @@ export async function updateLeadSmsStatusByMessageSid(input: {
       sms_updated_at: new Date().toISOString(),
     })
     .eq("twilio_message_sid", input.twilioMessageSid)
-    .eq("account_id", accountId)
+    .eq("account_id", accountId);
+
+  // Twilio may deliver duplicate callbacks out of order. Once delivery is
+  // confirmed, a late "sent" or "failed" callback must not downgrade truth.
+  if (input.smsStatus !== "delivered") {
+    query = query.neq("sms_status", "delivered");
+  }
+
+  const { data, error } = await query
     .select("id")
     .maybeSingle();
 
@@ -282,7 +290,7 @@ export async function updateMessageStatusBySid(input: {
     return { updated: false };
   }
 
-  const { data, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from("messages")
     .update({
       status: input.status,
@@ -290,7 +298,13 @@ export async function updateMessageStatusBySid(input: {
       updated_at: new Date().toISOString(),
     })
     .eq("account_id", accountId)
-    .eq("twilio_message_sid", input.twilioMessageSid)
+    .eq("twilio_message_sid", input.twilioMessageSid);
+
+  if (input.status !== "delivered") {
+    query = query.neq("status", "delivered");
+  }
+
+  const { data, error } = await query
     .select("id")
     .maybeSingle();
 

@@ -1,6 +1,7 @@
 import { env } from "@/lib/env";
 import {
   assertTenantAccount,
+  createMessageIfNew,
   getAccountConfigByAccountId,
   getOutboundMessageLeadIdBySid,
   logWebhookEvent,
@@ -12,6 +13,7 @@ import {
   updateMessageStatusBySid,
   resolveAccountSafely,
   recordSmsOnboardingEvidence,
+  recordProviderAction,
 } from "@/lib/supabase";
 import {
   formDataToRecord,
@@ -61,7 +63,20 @@ function parseCallbackContext(request: Request) {
   return {
     messageType,
     accountId: url.searchParams.get("accountId")?.trim() || null,
+    leadId: url.searchParams.get("leadId")?.trim() || null,
+    actionKey: url.searchParams.get("actionKey")?.trim() || null,
   };
+}
+
+function callbackContextIsConsistent(input: {
+  messageType: "auto_text" | "manual_reply";
+  leadId: string | null;
+  actionKey: string | null;
+}) {
+  if (!input.leadId || !input.actionKey) return false;
+  return input.messageType === "auto_text"
+    ? input.actionKey === `automatic_missed_call_sms:${input.leadId}`
+    : input.actionKey.startsWith(`manual_reply:${input.leadId}:`);
 }
 
 function webhookEventNote(input: {
@@ -112,13 +127,13 @@ export async function POST(request: Request) {
   const accountResolution = await resolveAccountSafely(async () => {
     const byMessageSid = await resolveAccountByMessageSid(status.messageSid);
 
-    if (callback.messageType === "manual_reply" && callback.accountId) {
+    if (callback.accountId) {
       const account = await getAccountConfigByAccountId(callback.accountId);
       const byCallbackAccount = account
         ? { status: "resolved" as const, account }
         : {
             status: "unresolved" as const,
-            reason: "manual_reply_account_not_registered",
+            reason: "sms_callback_account_not_registered",
             lookupValue: callback.accountId,
           };
 
@@ -209,12 +224,73 @@ export async function POST(request: Request) {
       }
     }
 
+    // Provider acceptance can be followed by failures writing both the lead and
+    // message rows. The signed callback URL carries tenant-scoped identifiers so
+    // Relay can converge without guessing from another tenant's data.
+    if (
+      callback.messageType === "auto_text"
+      && !result.updated
+      && !reconciledLeadId
+      && status.messageSid
+      && status.smsStatus
+      && callbackContextIsConsistent(callback)
+    ) {
+      await updateLeadSmsStatus({
+        accountId: account.accountId,
+        id: callback.leadId!,
+        smsStatus: status.smsStatus,
+        smsError: status.error,
+        twilioMessageSid: status.messageSid,
+      });
+      reconciledLeadId = callback.leadId;
+    }
+
     if (status.messageSid && status.smsStatus) {
-      await updateMessageStatusBySid({
+      const messageUpdate = await updateMessageStatusBySid({
         accountId: account.accountId,
         twilioMessageSid: status.messageSid,
         status: status.smsStatus,
         error: status.error,
+      });
+      if (!messageUpdate.updated && callbackContextIsConsistent(callback)) {
+        await createMessageIfNew({
+          accountId: account.accountId,
+          leadId: callback.leadId,
+          twilioMessageSid: status.messageSid,
+          direction: "outbound",
+          fromPhone: payload.From || null,
+          toPhone: payload.To || null,
+          body: null,
+          status: status.smsStatus,
+          error: status.error,
+        });
+      }
+    }
+
+    if (status.messageSid && status.smsStatus && typeof recordProviderAction === "function") {
+      const terminalSuccess = status.smsStatus === "delivered";
+      const terminalFailure = status.smsStatus === "failed" || status.smsStatus === "undelivered";
+      const action = callback.messageType === "manual_reply"
+        ? "manual_reply_sms"
+        : "automatic_missed_call_sms";
+      await recordProviderAction({
+        accountId: account.accountId,
+        action,
+        provider: "twilio",
+        idempotencyKey: callback.actionKey ?? `sms_delivery_callback:${status.messageSid}`,
+        providerIdentifier: status.messageSid,
+        resourceType: callback.leadId ? "lead" : "message",
+        resourceId: callback.leadId ?? status.messageSid,
+        internalStatus: terminalSuccess ? "succeeded" : terminalFailure ? "failed" : "accepted",
+        providerStatus: status.smsStatus,
+        failureCode: providerErrorCode(status.error),
+        diagnosticDetail: terminalFailure ? status.error : null,
+        customerExplanation: terminalSuccess
+          ? "The carrier confirmed this text was delivered."
+          : undefined,
+        retryEligibility: terminalSuccess ? "never" : undefined,
+        recommendedNextAction: terminalSuccess ? "No action is needed." : undefined,
+        customerVisible: terminalFailure,
       });
     }
 
@@ -260,6 +336,10 @@ export async function POST(request: Request) {
       responseStatus: 200,
       responseBody: xml,
       error: message,
+      internalStatus: "failed",
+      providerStatus: "local_processing_failed",
+      failureCode: providerErrorCode(status.error),
+      customerVisible: true,
     });
 
     console.error("Failed to handle Twilio SMS status", {

@@ -2,6 +2,7 @@ import { env } from "@/lib/env";
 import { isPlaceholderSupabaseConfig, supabaseAdmin } from "./client";
 import { assertAccountId } from "./tenant";
 import type { WebhookEvent, WebhookEventSource } from "./types";
+import { recordProviderAction } from "./provider-actions";
 
 const RETENTION_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 let lastRetentionSweepAt = 0;
@@ -141,6 +142,13 @@ export async function logWebhookEvent(input: {
   responseStatus: number;
   responseBody?: string | null;
   error?: string | null;
+  internalStatus?: "succeeded" | "failed" | "suppressed" | "reconciled";
+  providerStatus?: string | null;
+  failureCode?: string | null;
+  customerExplanation?: string;
+  retryEligibility?: "automatic" | "manual" | "never";
+  recommendedNextAction?: string;
+  customerVisible?: boolean;
 }) {
   if (isPlaceholderSupabaseConfig()) {
     return;
@@ -164,6 +172,44 @@ export async function logWebhookEvent(input: {
     ...event,
     correlation_id: input.correlationId ?? null,
   });
+
+  if (input.accountId && input.correlationId) {
+    try {
+      const internalStatus = input.internalStatus
+        ?? (input.responseStatus >= 400 ? "failed" : "succeeded");
+      await recordProviderAction({
+        accountId: input.accountId,
+        action: `webhook_${input.source}`,
+        provider: "twilio",
+        idempotencyKey: `webhook:${input.source}:${input.correlationId}`,
+        providerIdentifier: input.correlationId,
+        resourceType: "webhook_event",
+        resourceId: input.correlationId,
+        internalStatus,
+        providerStatus: input.providerStatus ?? String(input.responseStatus),
+        failureCode: input.failureCode,
+        diagnosticDetail: internalStatus === "failed" ? input.error : null,
+        customerExplanation: input.customerExplanation
+          ?? (internalStatus === "failed"
+            ? "Relay received the provider update but could not finish processing it."
+            : "Relay processed the provider update."),
+        retryEligibility: input.retryEligibility ?? (internalStatus === "failed" ? "automatic" : "never"),
+        recommendedNextAction: input.recommendedNextAction
+          ?? (internalStatus === "failed"
+            ? "Review the sanitized webhook event and replay only the same provider identifier."
+            : "No action is needed."),
+        customerVisible: input.customerVisible ?? false,
+        countAttempt: true,
+      });
+    } catch (providerActionError) {
+      console.error("Failed to record provider action for webhook", {
+        accountId: input.accountId,
+        source: input.source,
+        correlationId: input.correlationId,
+        error: providerActionError instanceof Error ? providerActionError.message : providerActionError,
+      });
+    }
+  }
 
   if (error) {
     if (isMissingCorrelationIdColumnError(error) || isMissingAccountIdColumnError(error)) {

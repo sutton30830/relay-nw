@@ -2,8 +2,11 @@ import { requireWriteAccessJson } from "@/lib/auth";
 import { env } from "@/lib/env";
 import {
   createMessageIfNew,
+  claimProviderActionRetry,
+  getProviderActionByKey,
   getLeadByIdForAccount,
   isOptedOut,
+  recordProviderAction,
   updateLead,
 } from "@/lib/supabase";
 import { phoneLast4, twilioClient } from "@/lib/twilio";
@@ -52,13 +55,19 @@ export async function POST(
 
   const { id } = await params;
   const body = await readReplyBody(request);
+  const requestIdempotencyKey = request.headers.get("idempotency-key")?.trim() ?? "";
 
   if (typeof body !== "string") {
     return Response.json({ error: body.error }, { status: 400 });
   }
 
+  if (!/^[A-Za-z0-9:_-]{8,160}$/.test(requestIdempotencyKey)) {
+    return Response.json({ error: "A valid Idempotency-Key is required" }, { status: 400 });
+  }
+
   const account = session.account;
   const accountId = session.accountId;
+  const actionKey = `manual_reply:${id}:${requestIdempotencyKey}`;
 
   if (!account.smsEnabled) {
     return Response.json(
@@ -98,6 +107,23 @@ export async function POST(
   }
 
   if (optedOut) {
+    if (typeof recordProviderAction === "function") {
+      await recordProviderAction({
+        accountId,
+        action: "manual_reply_sms",
+        provider: "relay",
+        idempotencyKey: actionKey,
+        resourceType: "lead",
+        resourceId: id,
+        internalStatus: "suppressed",
+        providerStatus: "opted_out",
+        customerExplanation: "This customer opted out of texting, so Relay did not send the reply.",
+        retryEligibility: "never",
+        recommendedNextAction: "Call the customer instead.",
+        customerVisible: true,
+        expectedSuppression: true,
+      });
+    }
     return Response.json(
       { error: "This customer has opted out of texting. Call them instead." },
       { status: 403 },
@@ -107,10 +133,77 @@ export async function POST(
   let messageSid: string;
   let initialStatus = "queued";
 
+  if (
+    typeof recordProviderAction === "function"
+    && typeof claimProviderActionRetry === "function"
+  ) {
+    try {
+      await recordProviderAction({
+        accountId,
+        action: "manual_reply_sms",
+        provider: "twilio",
+        idempotencyKey: actionKey,
+        resourceType: "lead",
+        resourceId: lead.id,
+        internalStatus: "pending",
+        providerStatus: "not_sent",
+        customerExplanation: "Relay is preparing this reply.",
+        retryEligibility: "manual",
+        recommendedNextAction: "Wait for the current attempt to finish.",
+        customerVisible: false,
+      });
+      const claimed = await claimProviderActionRetry({
+        accountId,
+        idempotencyKey: actionKey,
+        staleBefore: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+      });
+      if (!claimed) {
+        const existing = typeof getProviderActionByKey === "function"
+          ? await getProviderActionByKey(accountId, actionKey)
+          : null;
+        if (existing?.providerIdentifier && ["accepted", "succeeded", "reconciled"].includes(existing.internalStatus)) {
+          const now = existing.lastAttemptAt;
+          return Response.json({
+            ok: true,
+            duplicate: true,
+            message: {
+              id: existing.providerIdentifier,
+              lead_id: lead.id,
+              twilio_message_sid: existing.providerIdentifier,
+              from_phone: account.twilioPhoneNumber,
+              to_phone: lead.phone,
+              body,
+              status: existing.providerStatus ?? "accepted",
+              error: null,
+              created_at: now,
+              updated_at: now,
+            },
+          });
+        }
+        return Response.json(
+          { error: "This reply is already being processed. Relay did not send a duplicate." },
+          { status: 409 },
+        );
+      }
+    } catch (error) {
+      console.error("Reply failed: could not reserve idempotent provider action", {
+        accountId,
+        leadId: id,
+        error: error instanceof Error ? error.message : error,
+      });
+      return Response.json(
+        { error: "Relay could not safely reserve this reply, so it was not sent. Try again." },
+        { status: 503 },
+      );
+    }
+  }
+
   try {
     const statusCallback = new URL("/api/twilio/sms-status", env.appBaseUrl);
     statusCallback.searchParams.set("messageType", "manual_reply");
     statusCallback.searchParams.set("accountId", accountId);
+    statusCallback.searchParams.set("leadId", lead.id);
+    statusCallback.searchParams.set("actionKey", actionKey);
 
     const message = await twilioClient.messages.create({
       to: lead.phone,
@@ -120,8 +213,58 @@ export async function POST(
     });
     messageSid = message.sid;
     initialStatus = message.status || initialStatus;
+    if (typeof recordProviderAction === "function") {
+      try {
+        await recordProviderAction({
+          accountId,
+          action: "manual_reply_sms",
+          provider: "twilio",
+          idempotencyKey: actionKey,
+          providerIdentifier: messageSid,
+          resourceType: "lead",
+          resourceId: lead.id,
+          internalStatus: "accepted",
+          providerStatus: initialStatus,
+          customerExplanation: "Twilio accepted the reply. Delivery confirmation is pending.",
+          retryEligibility: "never",
+          recommendedNextAction: "Wait for the signed delivery callback; do not resend automatically.",
+          customerVisible: false,
+        });
+      } catch (recordError) {
+        // Twilio accepted the send. Never report it as failed or invite a duplicate.
+        // The signed callback carries account/lead/action evidence and reconciles it.
+        console.error("Twilio accepted reply, but provider action evidence update failed", {
+          accountId,
+          leadId: id,
+          twilioMessageSid: messageSid,
+          error: recordError instanceof Error ? recordError.message : recordError,
+        });
+      }
+    }
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Unknown SMS send error";
+    if (typeof recordProviderAction === "function") {
+      try {
+        await recordProviderAction({
+          accountId,
+          action: "manual_reply_sms",
+          provider: "twilio",
+          idempotencyKey: actionKey,
+          resourceType: "lead",
+          resourceId: lead.id,
+          internalStatus: "failed",
+          providerStatus: "send_failed",
+          diagnosticDetail: detail,
+          customerVisible: true,
+        });
+      } catch (recordError) {
+        console.error("Reply provider failure could not be recorded", {
+          accountId,
+          leadId: id,
+          error: recordError instanceof Error ? recordError.message : recordError,
+        });
+      }
+    }
     console.error("Reply SMS send failed", {
       leadId: id,
       callerLast4: phoneLast4(lead.phone),
