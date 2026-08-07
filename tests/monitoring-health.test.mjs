@@ -18,6 +18,7 @@ const {
 
 const now = new Date("2026-08-06T18:00:00.000Z");
 const recent = "2026-08-06T12:00:00.000Z";
+const frequentRecent = "2026-08-06T17:55:00.000Z";
 
 function input(overrides = {}) {
   return {
@@ -34,9 +35,16 @@ function input(overrides = {}) {
     phoneNumberCount: 1,
     primaryPhoneNumberCount: 1,
     duplicatePhoneNumberCount: 0,
+    operationsMonitoringCronAt: frequentRecent,
+    operationsMonitoringCronOk: true,
     transcriptionCronAt: recent,
+    transcriptionCronOk: true,
     billingReconciliationAt: recent,
+    billingReconciliationCronOk: true,
+    retentionCronAt: recent,
+    retentionCronOk: true,
     weeklyDigestCronAt: recent,
+    weeklyDigestCronOk: true,
     billingReconciliationExpected: true,
     ...overrides,
   };
@@ -84,16 +92,51 @@ test("SMS rate waits for the minimum sample and uses the configured threshold", 
   assert.equal(elevated.alerts.some((alert) => alert.code === "elevated_sms_failure_rate"), true);
 });
 
+test("one terminal SMS failure is actionable before the aggregate-rate minimum", () => {
+  const result = calculateAccountHealth(input({ smsAttempts: 1, smsFailures: 1 }), undefined, now);
+  const terminal = result.alerts.find((alert) => alert.code === "terminal_sms_failure");
+  assert.equal(terminal?.severity, "critical");
+  assert.equal(result.alerts.some((alert) => alert.code === "elevated_sms_failure_rate"), false);
+});
+
 test("cron staleness is job-specific and billing is checked only when expected", () => {
   const result = calculateAccountHealth(input({
     transcriptionCronAt: "2026-08-04T00:00:00.000Z",
+    transcriptionCronOk: true,
     weeklyDigestCronAt: "2026-07-20T00:00:00.000Z",
+    weeklyDigestCronOk: true,
     billingReconciliationAt: null,
+    billingReconciliationCronOk: null,
     billingReconciliationExpected: false,
   }), undefined, now);
 
   assert.equal(result.alerts.some((alert) => alert.code === "transcription_cron_stale"), true);
   assert.equal(result.alerts.some((alert) => alert.code === "weekly_digest_cron_stale"), true);
+  assert.equal(result.alerts.some((alert) => alert.code === "billing_reconciliation_stale"), false);
+});
+
+test("failed and stale scheduled jobs remain explicit health alerts", () => {
+  const result = calculateAccountHealth(input({
+    operationsMonitoringCronAt: "2026-08-06T17:00:00.000Z",
+    operationsMonitoringCronOk: true,
+    transcriptionCronOk: false,
+    retentionCronOk: false,
+    weeklyDigestCronOk: false,
+  }), undefined, now);
+
+  assert.equal(result.alerts.some((alert) => alert.code === "operations_monitoring_cron_stale"), true);
+  assert.equal(result.alerts.some((alert) => alert.code === "transcription_cron_stale"), true);
+  assert.equal(result.alerts.some((alert) => alert.code === "retention_cron_stale"), true);
+  assert.equal(result.alerts.some((alert) => alert.code === "weekly_digest_cron_stale"), true);
+});
+
+test("a current failed billing reconciliation is not duplicated as stale", () => {
+  const result = calculateAccountHealth(input({
+    billingReconciliationFailures: 1,
+    billingReconciliationCronOk: false,
+  }), undefined, now);
+
+  assert.equal(result.alerts.filter((alert) => alert.code === "billing_reconciliation_failure").length, 1);
   assert.equal(result.alerts.some((alert) => alert.code === "billing_reconciliation_stale"), false);
 });
 
@@ -135,6 +178,9 @@ test("monitoring query excludes suppressed provider actions from operational fai
   assert.match(monitoringSource, /account\.accountStatus === "active"/);
   assert.match(monitoringSource, /attemptedLeadIds/);
   assert.match(monitoringSource, /automatic_missed_call_sms/);
+  assert.match(monitoringSource, /row\.provider === "twilio"/);
+  assert.match(monitoringSource, /recentSmsActions\.filter\(\(row\) => row\.internal_status === "failed"\)/);
+  assert.match(monitoringSource, /row\.action !== "scheduled_transcription_retry"/);
 });
 
 test("monitoring remains operator-only and does not leak diagnostics into owner pages", async () => {

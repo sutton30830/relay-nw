@@ -116,6 +116,7 @@ export const env = {
   monitoringMissingSmsGraceMinutes: getOptionalNumberEnv("MONITORING_MISSING_SMS_GRACE_MINUTES", 5),
   monitoringSmsFailureRatePercent: getOptionalNumberEnv("MONITORING_SMS_FAILURE_RATE_PERCENT", 20),
   monitoringSmsFailureMinimumAttempts: getOptionalNumberEnv("MONITORING_SMS_FAILURE_MINIMUM_ATTEMPTS", 3),
+  monitoringEvaluatorStaleMinutes: getOptionalNumberEnv("MONITORING_EVALUATOR_STALE_MINUTES", 15),
   monitoringDailyCronStaleHours: getOptionalNumberEnv("MONITORING_DAILY_CRON_STALE_HOURS", 36),
   monitoringWeeklyCronStaleHours: getOptionalNumberEnv("MONITORING_WEEKLY_CRON_STALE_HOURS", 192),
   openaiApiKey: getOptionalEnvAliases("OPENAI_API_KEY", "OPEN_AI_KEY"),

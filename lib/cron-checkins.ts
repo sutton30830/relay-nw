@@ -1,7 +1,9 @@
 import { recordProviderAction } from "@/lib/supabase/provider-actions";
 
 export type MonitoredCronJob =
+  | "scheduled_operations_monitoring"
   | "scheduled_transcription_retry"
+  | "scheduled_retention"
   | "scheduled_weekly_digest";
 
 export async function recordCronCheckIn(input: {
@@ -30,11 +32,13 @@ export async function recordCronCheckIn(input: {
       customerVisible: false,
       countAttempt: true,
     });
+    return true;
   } catch (error) {
     console.error("Scheduled job check-in could not be recorded", {
       accountId: input.accountId,
       job: input.job,
       error: error instanceof Error ? error.message : error,
     });
+    return false;
   }
 }

@@ -1,7 +1,10 @@
 import { reconcileStripeBillingAccount } from "@/lib/billing-reconciliation";
 import { activateStripeTrialForAccount } from "@/lib/billing-activation";
+import { withCronMonitor } from "@/lib/cron-monitor";
 import { env } from "@/lib/env";
 import { notifyAdminOperationalIssue } from "@/lib/email";
+import { monitoringAlertBucketKey } from "@/lib/monitoring-health";
+import { sanitizeProviderDiagnostic } from "@/lib/provider-actions";
 import {
   getOpsBillingAccountBySlug,
   listOpsAccounts,
@@ -30,6 +33,18 @@ export async function GET(request: Request) {
   const auth = authError(request);
   if (auth) return auth;
 
+  return withCronMonitor({
+    slug: "relay-billing-reconciliation",
+    schedule: { type: "crontab", value: "15 16 * * *" },
+    checkInMarginMinutes: 10,
+    maxRuntimeMinutes: 5,
+    run: runAuthorizedBillingReconciliation,
+  });
+}
+
+async function runAuthorizedBillingReconciliation() {
+  const now = new Date();
+  const runDate = now.toISOString().slice(0, 10);
   const summaries = await listOpsAccounts();
   const results: Array<{ accountId: string; accountSlug: string; ok: boolean; checked?: object; error?: string }> = [];
 
@@ -43,7 +58,6 @@ export async function GET(request: Request) {
       !account.stripeCustomerId &&
       !account.stripeSubscriptionId
     )) continue;
-    const runDate = new Date().toISOString().slice(0, 10);
     const actionKey = `stripe_reconciliation:${account.accountId}:${runDate}`;
     const recordReconciliationAction = async (event: Parameters<typeof recordProviderAction>[0]) => {
       try {
@@ -96,6 +110,7 @@ export async function GET(request: Request) {
       results.push({ accountId: account.accountId, accountSlug: account.accountSlug, ok: true, checked: { ...checked, activation } });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown reconciliation error";
+      const safeMessage = sanitizeProviderDiagnostic(message);
       console.error("Daily Stripe reconciliation failed", { accountId: account.accountId, error: message });
       await recordReconciliationAction({
         accountId: account.accountId,
@@ -111,7 +126,16 @@ export async function GET(request: Request) {
       });
       results.push({ accountId: account.accountId, accountSlug: account.accountSlug, ok: false, error: message });
       try {
-        await notifyAdminOperationalIssue({ issue: "Stripe reconciliation failed", detail: `${account.accountSlug}: ${message}`, correlationId: account.accountId });
+        await notifyAdminOperationalIssue({
+          account,
+          issue: "Stripe reconciliation failed",
+          detail: safeMessage,
+          correlationId: account.accountId,
+          actionKey: monitoringAlertBucketKey({
+            accountId: account.accountId,
+            code: "billing_reconciliation_failure",
+          }, now),
+        });
       } catch (alertError) {
         console.error("Stripe reconciliation alert failed", { accountId: account.accountId, alertError });
       }
@@ -119,5 +143,7 @@ export async function GET(request: Request) {
   }
 
   const failed = results.filter((result) => !result.ok).length;
-  return Response.json({ ok: failed === 0, checked: results.length, failed, results });
+  return Response.json({ ok: failed === 0, checked: results.length, failed, results }, {
+    status: failed === 0 ? 200 : 502,
+  });
 }

@@ -1,5 +1,6 @@
 import { env } from "@/lib/env";
 import { recordCronCheckIn } from "@/lib/cron-checkins";
+import { withCronMonitor } from "@/lib/cron-monitor";
 import { notifyOwnerWeeklyDigest } from "@/lib/email";
 import {
   getAccountConfigByAccountId,
@@ -21,10 +22,24 @@ export async function GET(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  return withCronMonitor({
+    slug: "relay-weekly-digest",
+    schedule: { type: "crontab", value: "0 15 * * 1" },
+    checkInMarginMinutes: 15,
+    maxRuntimeMinutes: 5,
+    run: runAuthorizedWeeklyDigest,
+  });
+}
+
+async function runAuthorizedWeeklyDigest() {
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const accountIds = await listActiveAccountIds();
   const results: Array<{ accountId: string; sent: boolean; error?: string }> = [];
   const runKey = new Date().toISOString().slice(0, 10);
+  let checkInFailures = 0;
+  const checkIn = async (input: Parameters<typeof recordCronCheckIn>[0]) => {
+    if (!await recordCronCheckIn(input)) checkInFailures += 1;
+  };
 
   for (const accountId of accountIds) {
     try {
@@ -32,7 +47,7 @@ export async function GET(request: Request) {
 
       if (!account) {
         results.push({ accountId, sent: false, error: "no account config" });
-        await recordCronCheckIn({ accountId, job: "scheduled_weekly_digest", runKey, ok: false, detail: "Account configuration was unavailable." });
+        await checkIn({ accountId, job: "scheduled_weekly_digest", runKey, ok: false, detail: "Account configuration was unavailable." });
         continue;
       }
 
@@ -41,7 +56,7 @@ export async function GET(request: Request) {
       // Nothing happened, nothing to brag about — skip rather than send an empty email.
       if (stats.missedCalls === 0 && stats.replies === 0 && stats.booked === 0) {
         results.push({ accountId, sent: false, error: "no activity" });
-        await recordCronCheckIn({ accountId, job: "scheduled_weekly_digest", runKey, ok: true, detail: "Checked in; no activity required a digest." });
+        await checkIn({ accountId, job: "scheduled_weekly_digest", runKey, ok: true, detail: "Checked in; no activity required a digest." });
         continue;
       }
 
@@ -52,7 +67,7 @@ export async function GET(request: Request) {
       });
 
       results.push({ accountId, sent: Boolean(outcome.sent) });
-      await recordCronCheckIn({
+      await checkIn({
         accountId,
         job: "scheduled_weekly_digest",
         runKey,
@@ -63,7 +78,7 @@ export async function GET(request: Request) {
       const message = error instanceof Error ? error.message : "Unknown digest error";
       console.error("Weekly digest failed for account", { accountId, error: message });
       results.push({ accountId, sent: false, error: message });
-      await recordCronCheckIn({ accountId, job: "scheduled_weekly_digest", runKey, ok: false, detail: message });
+      await checkIn({ accountId, job: "scheduled_weekly_digest", runKey, ok: false, detail: message });
     }
   }
 
@@ -72,5 +87,7 @@ export async function GET(request: Request) {
     sent: results.filter((result) => result.sent).length,
   });
 
-  return Response.json({ ok: true, results });
+  const failed = results.filter((result) => result.error && result.error !== "no activity").length;
+  const ok = failed === 0 && checkInFailures === 0;
+  return Response.json({ ok, failed, checkInFailures, results }, { status: ok ? 200 : 502 });
 }

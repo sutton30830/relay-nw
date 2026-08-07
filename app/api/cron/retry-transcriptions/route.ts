@@ -1,5 +1,6 @@
 import { env } from "@/lib/env";
 import { recordCronCheckIn } from "@/lib/cron-checkins";
+import { withCronMonitor } from "@/lib/cron-monitor";
 import { listActiveAccountIds, listLeadsNeedingTranscriptionRetry } from "@/lib/supabase";
 import { transcribeLeadVoicemail } from "@/lib/voicemail-ai";
 
@@ -16,6 +17,16 @@ export async function GET(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  return withCronMonitor({
+    slug: "relay-transcription-retry",
+    schedule: { type: "crontab", value: "30 15 * * *" },
+    checkInMarginMinutes: 10,
+    maxRuntimeMinutes: 5,
+    run: runAuthorizedTranscriptionRetry,
+  });
+}
+
+async function runAuthorizedTranscriptionRetry() {
   const [leads, activeAccountIds] = await Promise.all([
     listLeadsNeedingTranscriptionRetry(),
     listActiveAccountIds(),
@@ -53,7 +64,7 @@ export async function GET(request: Request) {
   });
 
   const runKey = new Date().toISOString().slice(0, 10);
-  await Promise.all(activeAccountIds.map((accountId) => {
+  const checkIns = await Promise.all(activeAccountIds.map((accountId) => {
     const accountFailures = failures.filter((failure) => failure.accountId === accountId);
     return recordCronCheckIn({
       accountId,
@@ -66,12 +77,16 @@ export async function GET(request: Request) {
     });
   }));
 
+  const checkInFailures = checkIns.filter((ok) => !ok).length;
+  const ok = failures.length === 0 && checkInFailures === 0;
+
   return Response.json({
-    ok: true,
+    ok,
     attempted: leads.length,
     succeeded,
     skipped,
     failed: failures.length,
+    checkInFailures,
     failures,
-  });
+  }, { status: ok ? 200 : 502 });
 }

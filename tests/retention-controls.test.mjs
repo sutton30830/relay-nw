@@ -136,8 +136,132 @@ test("scheduled retention keeps dry run as default and scrubs both inbound body 
   assert.match(retention, /from\("inbound_messages"\)\.update\(\{ body: null \}\)/);
   assert.match(retention, /from\("messages"\)\.update\(\{ body: null \}\)\.eq\("direction", "inbound"\)/);
   assert.match(retention, /from\("webhook_events"\)\.delete\(\)/);
+  assert.match(retention, /retention_delete_twilio_message/);
+  assert.match(retention, /retryEligibility: "automatic"/);
   assert.match(schema, /data_retention_events/);
   assert.match(schema, /delete_account_data/);
   assert.match(inventory, /Questions requiring counsel/);
   assert.match(inventory, /call-recording notice or consent/i);
+});
+
+async function loadRoute(path, mocks) {
+  const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: {
+      esModuleInterop: true,
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  const module = { exports: {} };
+  const require = (specifier) => {
+    if (specifier in mocks) return mocks[specifier];
+    throw new Error(`Missing test mock for ${specifier} while loading ${path}`);
+  };
+  new vm.Script(`(function(require,module,exports){${compiled}\n})`, { filename: path })
+    .runInThisContext()(require, module, module.exports);
+  return module.exports;
+}
+
+function retentionRouteMocks(report) {
+  const calls = { alerts: [], checkIns: [] };
+  return {
+    calls,
+    mocks: {
+      "@/lib/cron-checkins": {
+        recordCronCheckIn: async (input) => {
+          calls.checkIns.push(input);
+          return true;
+        },
+      },
+      "@/lib/cron-monitor": {
+        withCronMonitor: async (input) => input.run(),
+      },
+      "@/lib/email": {
+        notifyAdminOperationalIssue: async (input) => {
+          calls.alerts.push(input);
+          return { sent: true, skipped: false };
+        },
+      },
+      "@/lib/env": { env: { cronSecret: "secret" } },
+      "@/lib/monitoring-health": {
+        monitoringAlertBucketKey: ({ accountId, code }) => `monitoring_alert:${accountId}:${code}:bucket`,
+      },
+      "@/lib/provider-actions": {
+        sanitizeProviderDiagnostic: (error) => error instanceof Error ? error.message : String(error),
+      },
+      "@/lib/retention": {
+        runOperationalRetention: async () => report,
+      },
+      "@/lib/supabase": {
+        listActiveAccountIds: async () => [ACCOUNT_ID],
+        getAccountConfigByAccountId: async () => ({
+          accountId: ACCOUNT_ID,
+          accountSlug: "demo",
+          businessName: "Demo Plumbing",
+        }),
+      },
+    },
+  };
+}
+
+function operationalReport(overrides = {}) {
+  return {
+    dryRun: false,
+    cutoffs: { webhookEvents: "2026-07-01", inboundMessageBodies: "2026-05-01" },
+    candidates: { webhookEvents: 1, inboundMessageBodies: 1, twilioMessages: 1 },
+    deleted: { webhookEvents: 1, inboundMessageBodies: 1, twilioMessages: 1 },
+    providerFailures: 0,
+    providerFailureEvidence: [],
+    ...overrides,
+  };
+}
+
+test("retention provider failure returns non-2xx, alerts once, and records a failed check-in", async () => {
+  const { mocks, calls } = retentionRouteMocks(operationalReport({
+    deleted: { webhookEvents: 1, inboundMessageBodies: 1, twilioMessages: 0 },
+    providerFailures: 1,
+    providerFailureEvidence: [{
+      accountId: ACCOUNT_ID,
+      provider: "twilio",
+      resourceType: "message",
+      providerIdentifier: "SM00000000000000000000000000000000",
+    }],
+  }));
+  const { GET } = await loadRoute("app/api/cron/retention/route.ts", mocks);
+  const response = await GET(new Request("https://relay.test/api/cron/retention?execute=true", {
+    headers: { authorization: "Bearer secret" },
+  }));
+  const body = await response.json();
+
+  assert.equal(response.status, 502);
+  assert.equal(body.ok, false);
+  assert.equal(calls.alerts.length, 1);
+  assert.match(calls.alerts[0].actionKey, /retention_cron_stale/);
+  assert.equal(calls.checkIns.length, 1);
+  assert.equal(calls.checkIns[0].ok, false);
+});
+
+test("a later clean retention retry recovers to 200 and a successful check-in", async () => {
+  const { mocks, calls } = retentionRouteMocks(operationalReport());
+  const { GET } = await loadRoute("app/api/cron/retention/route.ts", mocks);
+  const response = await GET(new Request("https://relay.test/api/cron/retention?execute=true", {
+    headers: { authorization: "Bearer secret" },
+  }));
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(calls.alerts.length, 0);
+  assert.equal(calls.checkIns[0].ok, true);
+});
+
+test("retention cron rejects missing or invalid authentication before work", async () => {
+  const { mocks, calls } = retentionRouteMocks(operationalReport());
+  const { GET } = await loadRoute("app/api/cron/retention/route.ts", mocks);
+  const response = await GET(new Request("https://relay.test/api/cron/retention?execute=true"));
+
+  assert.equal(response.status, 401);
+  assert.deepEqual(calls.checkIns, []);
+  assert.deepEqual(calls.alerts, []);
 });

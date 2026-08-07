@@ -8,6 +8,7 @@ import {
   listAccountProviderResources,
   loadAccountDeletionTarget,
   previewAccountDeletion,
+  recordProviderAction,
   recordDataRetentionAction,
   supabaseAdmin,
   wasAccountDeletionCompleted,
@@ -71,6 +72,12 @@ export type OperationalRetentionReport = {
   candidates: { webhookEvents: number; inboundMessageBodies: number; twilioMessages: number };
   deleted: { webhookEvents: number; inboundMessageBodies: number; twilioMessages: number };
   providerFailures: number;
+  providerFailureEvidence: Array<{
+    accountId: string;
+    provider: "twilio";
+    resourceType: "message";
+    providerIdentifier: string;
+  }>;
 };
 
 async function countBefore(table: string, timestamp: string, filters?: (query: any) => any) {
@@ -113,16 +120,62 @@ export async function runOperationalRetention(input: {
     },
     deleted: { webhookEvents: 0, inboundMessageBodies: 0, twilioMessages: 0 },
     providerFailures: 0,
+    providerFailureEvidence: [],
   };
   if (input.dryRun) return report;
 
   for (const candidate of candidates) {
+    const idempotencyKey = `retention_delete_twilio_message:${candidate.message_sid}`;
+    let providerStatus: "deleted" | "not_found";
     try {
-      await deleteTwilioResource({ kind: "message", sid: candidate.message_sid });
-      report.deleted.twilioMessages += 1;
-    } catch {
+      providerStatus = await deleteTwilioResource({ kind: "message", sid: candidate.message_sid });
+    } catch (error) {
+      await recordProviderAction({
+        accountId: candidate.account_id,
+        action: "retention_delete_twilio_message",
+        provider: "twilio",
+        idempotencyKey,
+        providerIdentifier: candidate.message_sid,
+        resourceType: "message",
+        resourceId: candidate.message_sid,
+        internalStatus: "failed",
+        providerStatus: "deletion_failed",
+        diagnosticDetail: error,
+        customerExplanation: "Relay could not yet delete the retained provider copy.",
+        retryEligibility: "automatic",
+        recommendedNextAction: "Retry the scheduled retention deletion with the same provider identifier.",
+        customerVisible: false,
+        countAttempt: true,
+      });
       report.providerFailures += 1;
+      report.providerFailureEvidence.push({
+        accountId: candidate.account_id,
+        provider: "twilio",
+        resourceType: "message",
+        providerIdentifier: candidate.message_sid,
+      });
+      continue;
     }
+
+    // If provider deletion succeeds but the evidence write fails, abort the job.
+    // Replaying DELETE with the same SID is safe and a provider 404 is success.
+    await recordProviderAction({
+      accountId: candidate.account_id,
+      action: "retention_delete_twilio_message",
+      provider: "twilio",
+      idempotencyKey,
+      providerIdentifier: candidate.message_sid,
+      resourceType: "message",
+      resourceId: candidate.message_sid,
+      internalStatus: "succeeded",
+      providerStatus,
+      customerExplanation: "The retained provider copy was deleted or was already absent.",
+      retryEligibility: "never",
+      recommendedNextAction: "No action is needed.",
+      customerVisible: false,
+      countAttempt: true,
+    });
+    report.deleted.twilioMessages += 1;
   }
 
   let webhookDelete = supabaseAdmin.from("webhook_events").delete().lt("created_at", webhookCutoff);

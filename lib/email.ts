@@ -704,10 +704,11 @@ export async function notifyAdminNewSetupRequest(input: {
 }
 
 export async function notifyAdminOperationalIssue(input: {
-  account?: AccountRuntimeConfig | null;
+  account?: Pick<AccountRuntimeConfig, "accountId" | "accountSlug" | "businessName"> | null;
   issue: string;
   detail?: string | null;
   correlationId?: string | null;
+  actionKey?: string | null;
 }) {
   const lines = [
     `Issue: ${input.issue}`,
@@ -729,7 +730,7 @@ export async function notifyAdminOperationalIssue(input: {
     text: `${lines.join("\n")}\n\nOpen ops: ${env.appBaseUrl}/ops`,
     tag: "admin_operational_issue",
     accountId: input.account?.accountId,
-    actionKey: `admin_operational_issue:${input.account?.accountId ?? "unknown"}:${input.correlationId ?? input.issue}`,
+    actionKey: input.actionKey ?? `admin_operational_issue:${input.account?.accountId ?? "unknown"}:${input.correlationId ?? input.issue}`,
   });
 }
 

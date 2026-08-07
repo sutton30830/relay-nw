@@ -534,7 +534,13 @@ function makeCronMocks({ cronSecret = "secret", leads = [], failLeadIds = new Se
       },
     },
     "@/lib/cron-checkins": {
-      recordCronCheckIn: async (input) => calls.checkIns.push(input),
+      recordCronCheckIn: async (input) => {
+        calls.checkIns.push(input);
+        return true;
+      },
+    },
+    "@/lib/cron-monitor": {
+      withCronMonitor: async (input) => input.run(),
     },
     "@/lib/voicemail-ai": {
       transcribeLeadVoicemail: async (leadId, accountId) => {
@@ -581,7 +587,7 @@ test("retry cron attempts each listed lead and survives one failing", async () =
   const response = await runCron(mocks, "secret");
   const body = await response.json();
 
-  assert.equal(response.status, 200);
+  assert.equal(response.status, 502);
   assert.deepEqual(calls.transcriptions, [
     { leadId: "lead-1", accountId: "acct-1" },
     { leadId: "lead-2", accountId: "acct-2" },

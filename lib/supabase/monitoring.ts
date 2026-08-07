@@ -23,9 +23,16 @@ export type OperationsMonitoringRow = {
   blockerNote: string | null;
   billingState: string;
   lastWebhookAt: string | null;
+  operationsMonitoringCronAt: string | null;
+  operationsMonitoringCronOk: boolean | null;
   transcriptionCronAt: string | null;
+  transcriptionCronOk: boolean | null;
   billingReconciliationAt: string | null;
+  billingReconciliationCronOk: boolean | null;
+  retentionCronAt: string | null;
+  retentionCronOk: boolean | null;
   weeklyDigestCronAt: string | null;
+  weeklyDigestCronOk: boolean | null;
   smsAttempts: number;
   smsFailures: number;
 };
@@ -88,6 +95,7 @@ export function monitoringThresholdsFromEnv(): MonitoringThresholds {
     missingAutomaticTextGraceMinutes: env.monitoringMissingSmsGraceMinutes,
     smsFailureRateWarning: env.monitoringSmsFailureRatePercent / 100,
     smsFailureMinimumAttempts: env.monitoringSmsFailureMinimumAttempts,
+    operationsMonitoringCronStaleMinutes: env.monitoringEvaluatorStaleMinutes,
     dailyCronStaleHours: env.monitoringDailyCronStaleHours,
     weeklyCronStaleHours: env.monitoringWeeklyCronStaleHours,
   };
@@ -119,7 +127,7 @@ export async function loadOperationsMonitoring(): Promise<OperationsMonitoringDa
     supabaseAdmin.from("leads").select("account_id, id, source, sms_status, created_at").in("account_id", accountIds).eq("source", "missed_call").is("deleted_at", null).order("created_at", { ascending: false }).limit(5000),
     supabaseAdmin.from("messages").select("account_id, lead_id, direction, status, twilio_message_sid, created_at").in("account_id", accountIds).eq("direction", "outbound").order("created_at", { ascending: false }).limit(5000),
     supabaseAdmin.from("webhook_events").select("account_id, created_at, source, response_status, error").in("account_id", accountIds).gte("created_at", webhookSince).order("created_at", { ascending: false }).limit(5000),
-    supabaseAdmin.from("provider_action_events").select("account_id, action, resource_id, internal_status, provider_status, failure_code, diagnostic_detail, suppressed, last_attempt_at").in("account_id", accountIds).gte("last_attempt_at", providerSince).order("last_attempt_at", { ascending: false }).limit(5000),
+    supabaseAdmin.from("provider_action_events").select("account_id, action, provider, resource_id, internal_status, provider_status, failure_code, diagnostic_detail, suppressed, last_attempt_at").in("account_id", accountIds).gte("last_attempt_at", providerSince).order("last_attempt_at", { ascending: false }).limit(5000),
     supabaseAdmin.from("account_phone_numbers").select("account_id, phone_number, is_primary").in("account_id", accountIds).limit(1000),
     supabaseAdmin.from("account_audit_events").select("account_id, action, created_at").in("account_id", accountIds).eq("action", "onboarding.first_call_live").order("created_at", { ascending: false }).limit(1000),
     supabaseAdmin.from("stripe_events").select("account_id, received_at").in("account_id", accountIds).order("received_at", { ascending: false }).limit(5000),
@@ -163,8 +171,20 @@ export async function loadOperationsMonitoring(): Promise<OperationsMonitoringDa
     const successfulMessages = accountMessages.filter((row) =>
       SMS_SUCCESS_STATUSES.has(String(row.status ?? "")) && typeof row.twilio_message_sid === "string"
     );
-    const smsAttempts = recentMessages.filter((row) => SMS_ATTEMPT_STATUSES.has(String(row.status ?? ""))).length;
-    const smsFailures = recentMessages.filter((row) => SMS_FAILURE_STATUSES.has(String(row.status ?? ""))).length;
+    const messageSmsAttempts = recentMessages.filter((row) => SMS_ATTEMPT_STATUSES.has(String(row.status ?? ""))).length;
+    const messageSmsFailures = recentMessages.filter((row) => SMS_FAILURE_STATUSES.has(String(row.status ?? ""))).length;
+    const recentSmsActions = recentActions.filter((row) =>
+      row.provider === "twilio" &&
+      row.suppressed !== true &&
+      String(row.action ?? "").includes("sms")
+    );
+    // The provider-action ledger remains visible when Twilio accepted a request
+    // but the local messages write failed, so it closes the missing-row path.
+    const smsAttempts = Math.max(messageSmsAttempts, recentSmsActions.length);
+    const smsFailures = Math.max(
+      messageSmsFailures,
+      recentSmsActions.filter((row) => row.internal_status === "failed").length,
+    );
     const callsWithoutLeads = accountCalls.filter((row) => {
       const status = String(row.dial_call_status ?? row.status ?? "");
       return MISSED_CALL_STATUSES.has(status) && !row.lead_id && timestamp(row, "created_at")! < leadGraceCutoff;
@@ -187,13 +207,23 @@ export async function loadOperationsMonitoring(): Promise<OperationsMonitoringDa
     const webhookResponseErrors = recentWebhooks.filter((row) => Number(row.response_status) >= 500).length;
     const duplicateEventConflicts = recentActions.filter(containsOperationalConflict).length;
     const recordingOrTranscriptionFailures = recentActions.filter((row) =>
-      row.internal_status === "failed" && row.suppressed !== true && /recording|transcription/.test(String(row.action))
+      row.internal_status === "failed" &&
+      row.suppressed !== true &&
+      row.action !== "scheduled_transcription_retry" &&
+      /recording|transcription/.test(String(row.action))
     ).length;
-    const billingReconciliationActions = accountActions.filter((row) => row.action === "scheduled_billing_reconciliation");
-    const latestBillingReconciliation = billingReconciliationActions
+    const latestAction = (action: string) => accountActions
+      .filter((row) => row.action === action)
       .sort((a, b) => String(b.last_attempt_at).localeCompare(String(a.last_attempt_at)))[0];
+    const latestBillingReconciliation = latestAction("scheduled_billing_reconciliation");
     const billingReconciliationFailures = latestBillingReconciliation?.internal_status === "failed" ? 1 : 0;
-    const actionAt = (action: string) => latest(accountActions.filter((row) => row.action === action), "last_attempt_at");
+    const actionAt = (action: string) => timestamp(latestAction(action) ?? {}, "last_attempt_at");
+    const actionOk = (action: string) => {
+      const status = latestAction(action)?.internal_status;
+      if (status === "failed") return false;
+      if (status === "accepted" || status === "succeeded" || status === "reconciled") return true;
+      return null;
+    };
     const duplicatePhoneNumberCount = accountPhones.filter((row) =>
       typeof row.phone_number === "string" && (phoneUseCounts.get(row.phone_number) ?? 0) > 1
     ).length;
@@ -212,9 +242,16 @@ export async function loadOperationsMonitoring(): Promise<OperationsMonitoringDa
       phoneNumberCount: accountPhones.length,
       primaryPhoneNumberCount: accountPhones.filter((row) => row.is_primary === true).length,
       duplicatePhoneNumberCount,
+      operationsMonitoringCronAt: actionAt("scheduled_operations_monitoring"),
+      operationsMonitoringCronOk: actionOk("scheduled_operations_monitoring"),
       transcriptionCronAt: actionAt("scheduled_transcription_retry"),
+      transcriptionCronOk: actionOk("scheduled_transcription_retry"),
       billingReconciliationAt: actionAt("scheduled_billing_reconciliation"),
+      billingReconciliationCronOk: actionOk("scheduled_billing_reconciliation"),
+      retentionCronAt: actionAt("scheduled_retention"),
+      retentionCronOk: actionOk("scheduled_retention"),
       weeklyDigestCronAt: actionAt("scheduled_weekly_digest"),
+      weeklyDigestCronOk: actionOk("scheduled_weekly_digest"),
       billingReconciliationExpected: billingReconciliationExpected(account),
     }, thresholds, now);
 
@@ -250,9 +287,16 @@ export async function loadOperationsMonitoring(): Promise<OperationsMonitoringDa
       blockerNote: account.opsBlockerNote,
       billingState: opsState.labels.billing,
       lastWebhookAt: [twilioWebhookAt, stripeWebhookAt].filter((value): value is string => Boolean(value)).sort().at(-1) ?? null,
+      operationsMonitoringCronAt: actionAt("scheduled_operations_monitoring"),
+      operationsMonitoringCronOk: actionOk("scheduled_operations_monitoring"),
       transcriptionCronAt: actionAt("scheduled_transcription_retry"),
+      transcriptionCronOk: actionOk("scheduled_transcription_retry"),
       billingReconciliationAt: actionAt("scheduled_billing_reconciliation"),
+      billingReconciliationCronOk: actionOk("scheduled_billing_reconciliation"),
+      retentionCronAt: actionAt("scheduled_retention"),
+      retentionCronOk: actionOk("scheduled_retention"),
       weeklyDigestCronAt: actionAt("scheduled_weekly_digest"),
+      weeklyDigestCronOk: actionOk("scheduled_weekly_digest"),
       smsAttempts,
       smsFailures,
     };

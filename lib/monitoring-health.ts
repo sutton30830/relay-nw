@@ -4,6 +4,7 @@ export const DEFAULT_MONITORING_THRESHOLDS = {
   missingAutomaticTextGraceMinutes: 5,
   smsFailureRateWarning: 0.2,
   smsFailureMinimumAttempts: 3,
+  operationsMonitoringCronStaleMinutes: 15,
   dailyCronStaleHours: 36,
   weeklyCronStaleHours: 192,
 } as const;
@@ -14,6 +15,7 @@ export type MonitoringThresholds = {
   missingAutomaticTextGraceMinutes: number;
   smsFailureRateWarning: number;
   smsFailureMinimumAttempts: number;
+  operationsMonitoringCronStaleMinutes: number;
   dailyCronStaleHours: number;
   weeklyCronStaleHours: number;
 };
@@ -21,14 +23,17 @@ export type MonitoringThresholds = {
 export type MonitoringAlertCode =
   | "call_without_lead"
   | "missed_call_without_text_attempt"
+  | "terminal_sms_failure"
   | "elevated_sms_failure_rate"
   | "invalid_webhook_signature"
   | "webhook_processing_error"
   | "duplicate_event_conflict"
   | "recording_or_transcription_failure"
   | "billing_reconciliation_failure"
+  | "operations_monitoring_cron_stale"
   | "transcription_cron_stale"
   | "billing_reconciliation_stale"
+  | "retention_cron_stale"
   | "weekly_digest_cron_stale"
   | "phone_number_configuration";
 
@@ -57,9 +62,16 @@ export type AccountMonitoringInput = {
   phoneNumberCount: number;
   primaryPhoneNumberCount: number;
   duplicatePhoneNumberCount: number;
+  operationsMonitoringCronAt: string | null;
+  operationsMonitoringCronOk: boolean | null;
   transcriptionCronAt: string | null;
+  transcriptionCronOk: boolean | null;
   billingReconciliationAt: string | null;
+  billingReconciliationCronOk: boolean | null;
+  retentionCronAt: string | null;
+  retentionCronOk: boolean | null;
   weeklyDigestCronAt: string | null;
+  weeklyDigestCronOk: boolean | null;
   billingReconciliationExpected: boolean;
 };
 
@@ -74,6 +86,11 @@ function ageHours(value: string | null, now: Date) {
   const timestamp = new Date(value).getTime();
   if (!Number.isFinite(timestamp)) return null;
   return Math.max(0, (now.getTime() - timestamp) / 3_600_000);
+}
+
+function ageMinutes(value: string | null, now: Date) {
+  const hours = ageHours(value, now);
+  return hours === null ? null : hours * 60;
 }
 
 function alert(
@@ -137,6 +154,18 @@ export function calculateAccountHealth(
       detail: `${input.missedCallsWithoutTextAttempt} eligible missed call${input.missedCallsWithoutTextAttempt === 1 ? "" : "s"} remained pending beyond ${thresholds.missingAutomaticTextGraceMinutes} minutes.`,
       owner: "relay",
       recommendedAction: "Check the lead, opt-out, A2P, and provider-action evidence before any manual send.",
+    }));
+  }
+
+  if (input.smsFailures > 0) {
+    alerts.push(alert({
+      accountId: input.accountId,
+      code: "terminal_sms_failure",
+      severity: "critical",
+      title: "Customer text reached a terminal failure",
+      detail: `${input.smsFailures} recent outbound text${input.smsFailures === 1 ? " has" : "s have"} a failed or undelivered provider status.`,
+      owner: "carrier",
+      recommendedAction: "Review the signed delivery status and carrier code; do not automatically resend or retry a permanent failure.",
     }));
   }
 
@@ -216,29 +245,95 @@ export function calculateAccountHealth(
     }));
   }
 
+  const operationsMonitoringAge = ageMinutes(input.operationsMonitoringCronAt, now);
+  if (
+    input.operationsMonitoringCronOk === false ||
+    operationsMonitoringAge === null ||
+    operationsMonitoringAge > thresholds.operationsMonitoringCronStaleMinutes
+  ) {
+    alerts.push(alert({
+      accountId: input.accountId,
+      code: "operations_monitoring_cron_stale",
+      severity: "critical",
+      title: input.operationsMonitoringCronOk === false
+        ? "Operations monitoring cron failed"
+        : "Operations monitoring cron is stale",
+      detail: input.operationsMonitoringCronOk === false
+        ? "The latest scheduled monitoring evaluation failed."
+        : operationsMonitoringAge === null
+          ? "No scheduled monitoring check-in has been recorded."
+          : `Last check-in was ${Math.floor(operationsMonitoringAge)} minutes ago.`,
+      owner: "relay",
+      recommendedAction: "Check the Vercel invocation and Sentry Cron Monitor before relying on the Operations dashboard.",
+    }));
+  }
+
   const transcriptionAge = ageHours(input.transcriptionCronAt, now);
-  if (transcriptionAge === null || transcriptionAge > thresholds.dailyCronStaleHours) {
+  if (
+    input.transcriptionCronOk === false ||
+    transcriptionAge === null ||
+    transcriptionAge > thresholds.dailyCronStaleHours
+  ) {
     alerts.push(alert({
       accountId: input.accountId,
       code: "transcription_cron_stale",
-      severity: "warning",
-      title: "Transcription retry cron is stale",
-      detail: transcriptionAge === null ? "No transcription-retry check-in has been recorded." : `Last check-in was ${Math.floor(transcriptionAge)} hours ago.`,
+      severity: input.transcriptionCronOk === false ? "critical" : "warning",
+      title: input.transcriptionCronOk === false
+        ? "Transcription retry cron failed"
+        : "Transcription retry cron is stale",
+      detail: input.transcriptionCronOk === false
+        ? "The latest transcription-retry check-in recorded a job failure."
+        : transcriptionAge === null
+          ? "No transcription-retry check-in has been recorded."
+          : `Last check-in was ${Math.floor(transcriptionAge)} hours ago.`,
       owner: "relay",
       recommendedAction: "Check the Vercel cron invocation and CRON_SECRET, then run one authenticated recovery check.",
     }));
   }
 
   const digestAge = ageHours(input.weeklyDigestCronAt, now);
-  if (digestAge === null || digestAge > thresholds.weeklyCronStaleHours) {
+  if (
+    input.weeklyDigestCronOk === false ||
+    digestAge === null ||
+    digestAge > thresholds.weeklyCronStaleHours
+  ) {
     alerts.push(alert({
       accountId: input.accountId,
       code: "weekly_digest_cron_stale",
-      severity: "warning",
-      title: "Weekly digest cron is stale",
-      detail: digestAge === null ? "No weekly-digest check-in has been recorded." : `Last check-in was ${Math.floor(digestAge)} hours ago.`,
+      severity: input.weeklyDigestCronOk === false ? "critical" : "warning",
+      title: input.weeklyDigestCronOk === false
+        ? "Weekly digest cron failed"
+        : "Weekly digest cron is stale",
+      detail: input.weeklyDigestCronOk === false
+        ? "The latest weekly-digest check-in recorded a job failure."
+        : digestAge === null
+          ? "No weekly-digest check-in has been recorded."
+          : `Last check-in was ${Math.floor(digestAge)} hours ago.`,
       owner: "relay",
       recommendedAction: "Check the Vercel cron invocation and email-provider result; no empty digest needs to be sent.",
+    }));
+  }
+
+  const retentionAge = ageHours(input.retentionCronAt, now);
+  if (
+    input.retentionCronOk === false ||
+    retentionAge === null ||
+    retentionAge > thresholds.dailyCronStaleHours
+  ) {
+    alerts.push(alert({
+      accountId: input.accountId,
+      code: "retention_cron_stale",
+      severity: "critical",
+      title: input.retentionCronOk === false
+        ? "Retention cron failed"
+        : "Retention cron is stale",
+      detail: input.retentionCronOk === false
+        ? "The latest retention check-in recorded a deletion or persistence failure."
+        : retentionAge === null
+          ? "No retention check-in has been recorded."
+          : `Last check-in was ${Math.floor(retentionAge)} hours ago.`,
+      owner: "relay",
+      recommendedAction: "Inspect the retention report and provider evidence, then retry only the idempotent deletion work.",
     }));
   }
 
@@ -250,7 +345,9 @@ export function calculateAccountHealth(
         code: "billing_reconciliation_stale",
         severity: "critical",
         title: "Billing reconciliation is stale",
-        detail: billingAge === null ? "No scheduled billing-reconciliation check-in has been recorded." : `Last check-in was ${Math.floor(billingAge)} hours ago.`,
+        detail: billingAge === null
+          ? "No scheduled billing-reconciliation check-in has been recorded."
+          : `Last check-in was ${Math.floor(billingAge)} hours ago.`,
         owner: "stripe",
         recommendedAction: "Check the scheduled job, then reconcile the existing Stripe customer and subscription.",
       }));

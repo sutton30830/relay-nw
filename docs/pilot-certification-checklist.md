@@ -16,6 +16,19 @@ test without explicit approval.
   note, and age.
 - [ ] The account is active, not paused or closed, and has no unresolved
   customer, Relay, or carrier blocker.
+- [ ] **Scheduled monitoring reaches a human:** invoke the authenticated
+  operations-monitoring cron with an approved synthetic alert, confirm the
+  alert reaches `ADMIN_ALERT_EMAIL` without opening Operations, and confirm a
+  repeated run is deduplicated. Confirm the matching Sentry Cron Monitor has a
+  current successful check-in.
+- [ ] **Cron health is current:** Operations shows a successful or accurately
+  failed last check-in for monitoring, transcription retry, billing
+  reconciliation, retention, and the weekly digest. No required daily check-in
+  is older than 36 hours, and monitoring is not older than 15 minutes.
+- [ ] **Retention failure is unmistakable:** using a mock or approved sandbox
+  provider failure, confirm retention returns non-2xx, records tenant-scoped
+  retry evidence, marks the account check-in failed, and alerts the operator.
+  A clean retry must return 200 without sending any customer message.
 
 ## Commercial and Stripe evidence
 
@@ -35,6 +48,9 @@ test without explicit approval.
 
 - [ ] **Call captured:** one signed real missed call created exactly one lead
   for this account and Calls reads `ready`.
+- [ ] **Webhook replay is idempotent:** replay the same approved signed call,
+  SMS-status, and Stripe fixture using their original provider identifiers.
+  Relay creates no duplicate lead, text, charge, customer, or subscription.
 - [ ] **A2P approved:** Twilio reports the campaign `VERIFIED`; Relay shows
   Texting `approved`. Approval was synchronized from Twilio, not selected
   manually.
@@ -44,6 +60,10 @@ test without explicit approval.
 - [ ] **Caller reply received:** a reply from that caller appears in the
   correct account conversation and reaches the configured owner notification
   path.
+- [ ] **STOP/START lifecycle works:** STOP (and STOPALL) suppresses further
+  texting for that caller without affecting call capture; START clears the
+  opt-out without notifying the owner or forwarding it as a conversation; HELP
+  returns the business identity and opt-out language.
 - [ ] **Trial created:** Stripe shows `trialing`, `$99/month`, and exactly 14
   days for a standard customer or 30 days for a founding pilot. Trial start is
   no earlier than automatic text-back activation.
@@ -71,6 +91,26 @@ secret is missing, if webhook signatures are bypassed, if test/live modes are
 mixed, or if Stripe/Twilio identifiers resolve to conflicting accounts. Leave
 automatic text-back off, set the accurate blocker owner and reason, and record
 the follow-up action in Operations.
+
+Immediately freeze onboarding and use the last-known-good deployment if any of
+the following occurs:
+
+- any cross-account lead, call, message, recording, billing object, export, or
+  deletion candidate;
+- a signed missed call without exactly one lead after five minutes;
+- a duplicate customer SMS or an automatic retry after provider acceptance;
+- an invalid or unsigned provider webhook is accepted;
+- a phone number or provider identifier maps ambiguously across accounts;
+- Stripe mode, customer, price, subscription, or account metadata disagrees;
+- two consecutive scheduled-job failures, a daily check-in older than 36 hours,
+  or monitoring older than 15 minutes;
+- retention partially fails without tenant-scoped evidence and immediate
+  operator ownership; or
+- the operator cannot receive the configured email/Sentry alert path.
+
+Rollback preserves the original provider and correlation identifiers. Do not
+construct replacement Twilio/Stripe events, automatically resend SMS, create a
+second billing object, or destructively reverse database migrations.
 
 Certification is complete only when every required item is checked and the
 operator records:

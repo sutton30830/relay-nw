@@ -20,6 +20,12 @@ function formatPercent(value: number | null) {
   return value === null ? "No attempts" : `${Math.round(value * 100)}%`;
 }
 
+function formatCronSignal(value: string | null, ok: boolean | null) {
+  if (!value) return "No check-in yet";
+  const state = ok === true ? "Succeeded" : ok === false ? "Failed" : "Status unknown";
+  return `${state} · ${formatDateTime(value)}`;
+}
+
 export default async function OperationsMonitoringPage() {
   const operator = await requirePlatformOperator();
   const dashboard = await loadOperationsMonitoring();
@@ -111,9 +117,11 @@ export default async function OperationsMonitoringPage() {
                 <section>
                   <h3>Scheduled checks</h3>
                   <dl>
-                    <div><dt>Transcription retry</dt><dd>{formatDateTime(row.transcriptionCronAt)}</dd></div>
-                    <div><dt>Billing reconciliation</dt><dd>{formatDateTime(row.billingReconciliationAt)}</dd></div>
-                    <div><dt>Weekly digest</dt><dd>{formatDateTime(row.weeklyDigestCronAt)}</dd></div>
+                    <div><dt>Operations monitoring</dt><dd>{formatCronSignal(row.operationsMonitoringCronAt, row.operationsMonitoringCronOk)}</dd></div>
+                    <div><dt>Transcription retry</dt><dd>{formatCronSignal(row.transcriptionCronAt, row.transcriptionCronOk)}</dd></div>
+                    <div><dt>Billing reconciliation</dt><dd>{formatCronSignal(row.billingReconciliationAt, row.billingReconciliationCronOk)}</dd></div>
+                    <div><dt>Retention</dt><dd>{formatCronSignal(row.retentionCronAt, row.retentionCronOk)}</dd></div>
+                    <div><dt>Weekly digest</dt><dd>{formatCronSignal(row.weeklyDigestCronAt, row.weeklyDigestCronOk)}</dd></div>
                   </dl>
                 </section>
               </div>

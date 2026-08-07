@@ -15,6 +15,21 @@ tenant-scoped view that explains failures and recovery consistently.
 5. Replay webhooks only with the original provider identifier. Stripe and scheduled
    billing failures should be recovered through reconciliation, never a second charge.
 
+## Scheduled detection
+
+`/api/cron/operations-monitoring` evaluates the same health rules rendered in
+Operations every five minutes. Each tenant-and-alert fingerprint is sent at
+most once per 24-hour bucket through Resend's idempotency key and the
+tenant-scoped provider-action ledger. Failed or skipped alert delivery makes the
+cron return non-2xx and records a failed account check-in; Sentry remains the
+independent delivery backstop.
+
+Every scheduled route also makes a manual Sentry Cron Monitor check-in. This is
+required because a database check-in can show a failed or stale job after Relay
+runs, but cannot detect that the monitoring route itself was never invoked.
+Before launch, confirm the Sentry monitors and notification rules exist and a
+real test issue reaches the operator.
+
 ## Visibility and recovery matrix
 
 | Path | Customer-visible | Operator-visible | Retry | Suppressed / unsupported |
@@ -31,6 +46,8 @@ tenant-scoped view that explains failures and recovery consistently.
 | Stripe webhooks | Billing attention when unresolved | Stripe event ledger plus standardized action | Stripe replay and reconciliation are idempotent | Unresolved tenant identity is operator-only and never guessed |
 | Scheduled billing reconciliation | Billing issue when unresolved | Daily per-account attempt and result | Automatic next reconciliation is safe | Accounts with no Stripe identifiers are skipped |
 | Scheduled transcription recovery | Transcript failure when actionable | Per-lead transcription action and stale-lock evidence | Automatic only before provider acceptance and through atomic lead claim | Active non-stale work is skipped |
+| Scheduled operations monitoring | Operator email plus Sentry Cron Monitor | Five-minute per-account check-in and deduplicated alert evidence | Next evaluation is safe; customer actions are never replayed | The monitor's own missed invocation is detected externally by Sentry |
+| Scheduled retention | Operator email, non-2xx cron result, and Sentry | Tenant-scoped Twilio SID deletion evidence plus daily check-in | Deletion retries reuse the same SID; provider 404 is success | Retention never sends a customer message |
 
 ## Known boundary
 
