@@ -7,7 +7,7 @@ export function OpsHeader({
 }: {
   businessName?: string;
   operatorEmail: string | null;
-  currentPage?: "operations" | "accounts" | "team";
+  currentPage?: "operations" | "accounts" | "monitoring" | "team";
 }) {
   return <AppHeader businessName={businessName ?? "Operations"} currentPage={currentPage} variant="operations" />;
 }

@@ -8,6 +8,7 @@ export * from "./calls";
 export * from "./carrier-profiles";
 export * from "./leads";
 export * from "./messages";
+export * from "./monitoring";
 export * from "./onboarding-evidence";
 export * from "./provider-actions";
 export * from "./operators";

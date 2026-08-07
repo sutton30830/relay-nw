@@ -519,6 +519,7 @@ function makeCronMocks({ cronSecret = "secret", leads = [], failLeadIds = new Se
   const calls = {
     listed: 0,
     transcriptions: [],
+    checkIns: [],
   };
 
   const mocks = {
@@ -526,10 +527,14 @@ function makeCronMocks({ cronSecret = "secret", leads = [], failLeadIds = new Se
       env: { cronSecret },
     },
     "@/lib/supabase": {
+      listActiveAccountIds: async () => [...new Set(leads.map((lead) => lead.account_id))],
       listLeadsNeedingTranscriptionRetry: async () => {
         calls.listed += 1;
         return leads;
       },
+    },
+    "@/lib/cron-checkins": {
+      recordCronCheckIn: async (input) => calls.checkIns.push(input),
     },
     "@/lib/voicemail-ai": {
       transcribeLeadVoicemail: async (leadId, accountId) => {
@@ -585,4 +590,7 @@ test("retry cron attempts each listed lead and survives one failing", async () =
   assert.equal(body.succeeded, 1);
   assert.equal(body.skipped, 0);
   assert.equal(body.failed, 1);
+  assert.equal(calls.checkIns.length, 2);
+  assert.equal(calls.checkIns.find((item) => item.accountId === "acct-1").ok, false);
+  assert.equal(calls.checkIns.find((item) => item.accountId === "acct-2").ok, true);
 });

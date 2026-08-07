@@ -1,5 +1,6 @@
 import { env } from "@/lib/env";
-import { listLeadsNeedingTranscriptionRetry } from "@/lib/supabase";
+import { recordCronCheckIn } from "@/lib/cron-checkins";
+import { listActiveAccountIds, listLeadsNeedingTranscriptionRetry } from "@/lib/supabase";
 import { transcribeLeadVoicemail } from "@/lib/voicemail-ai";
 
 export const runtime = "nodejs";
@@ -15,7 +16,10 @@ export async function GET(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const leads = await listLeadsNeedingTranscriptionRetry();
+  const [leads, activeAccountIds] = await Promise.all([
+    listLeadsNeedingTranscriptionRetry(),
+    listActiveAccountIds(),
+  ]);
   let succeeded = 0;
   let skipped = 0;
   const failures: Array<{ leadId: string; accountId: string; error: string }> = [];
@@ -47,6 +51,20 @@ export async function GET(request: Request) {
     skipped,
     failed: failures.length,
   });
+
+  const runKey = new Date().toISOString().slice(0, 10);
+  await Promise.all(activeAccountIds.map((accountId) => {
+    const accountFailures = failures.filter((failure) => failure.accountId === accountId);
+    return recordCronCheckIn({
+      accountId,
+      job: "scheduled_transcription_retry",
+      runKey,
+      ok: accountFailures.length === 0,
+      detail: accountFailures.length === 0
+        ? `Checked ${leads.filter((lead) => lead.account_id === accountId).length} eligible voicemail retries.`
+        : `${accountFailures.length} voicemail retry attempt${accountFailures.length === 1 ? "" : "s"} failed.`,
+    });
+  }));
 
   return Response.json({
     ok: true,

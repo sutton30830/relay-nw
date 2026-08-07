@@ -11,7 +11,7 @@ type HeaderSearch = {
   value: string;
 };
 
-type HeaderPage = "inbox" | "reports" | "setup" | "settings" | "conversation" | "operations" | "accounts" | "team";
+type HeaderPage = "inbox" | "reports" | "setup" | "settings" | "conversation" | "operations" | "accounts" | "monitoring" | "team";
 
 const OWNER_NAV_ITEMS = [
   { key: "inbox", href: "/leads", icon: "inbox" as const, label: "Inbox" },
@@ -44,6 +44,7 @@ export function AppHeader({
   const operationsNavItems = [
     { key: "operations", href: "/ops", icon: "inbox" as const, label: "Work queue" },
     { key: "accounts", href: "/ops/accounts", icon: "user" as const, label: "Accounts" },
+    { key: "monitoring", href: "/ops/monitoring", icon: "chart" as const, label: "Monitoring" },
     { key: "team", href: "/ops/team", icon: "settings" as const, label: "Team" },
   ];
   const navItems = isOperations ? operationsNavItems : OWNER_NAV_ITEMS;

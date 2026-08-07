@@ -124,6 +124,13 @@ Optional:
 - `MISSED_CALL_SMS_COOLDOWN_HOURS`: defaults to `24`; prevents repeated missed-call texts to the same caller inside this window
 - `WEBHOOK_EVENT_RETENTION_DAYS`: defaults to `30`; old webhook debug logs are pruned during normal webhook activity
 - `INBOUND_MESSAGE_RETENTION_DAYS`: defaults to `90`; old inbound SMS reply bodies are pruned during normal webhook activity
+- `MONITORING_ACTIVITY_WINDOW_HOURS`: defaults to `24`; recent call, SMS, and webhook health window
+- `MONITORING_MISSING_LEAD_GRACE_MINUTES`: defaults to `5`; delay before a missed call without a lead is actionable
+- `MONITORING_MISSING_SMS_GRACE_MINUTES`: defaults to `5`; delay before an eligible pending auto-text is actionable
+- `MONITORING_SMS_FAILURE_RATE_PERCENT`: defaults to `20`; warning threshold after the minimum sample
+- `MONITORING_SMS_FAILURE_MINIMUM_ATTEMPTS`: defaults to `3`; prevents noisy rates from one-off failures
+- `MONITORING_DAILY_CRON_STALE_HOURS`: defaults to `36`; daily job check-in threshold
+- `MONITORING_WEEKLY_CRON_STALE_HOURS`: defaults to `192`; weekly digest check-in threshold
 - `OPENAI_API_KEY`: optional; enables voicemail transcription and quick summaries from the lead drawer
 - `OPENAI_TRANSCRIPTION_MODEL`: optional; defaults to `gpt-4o-transcribe`; only confidence-capable GPT-4o transcription models are accepted
 - `AUTH_RATE_LIMIT_SALT`: optional dedicated HMAC secret for durable authentication rate-limit identifiers; defaults to the server-only Supabase service-role key
