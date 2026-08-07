@@ -368,7 +368,7 @@ test("ops runbook is documented outside the primary navigation", () => {
   assert.match(opsRunbookMd, /Stripe prices are the `\$99\/month` recurring plan and the `\$150` one-time setup fee/);
   assert.match(opsRunbookMd, /Relay Operations surface/);
   assert.match(opsRunbookMd, /platform_operators/);
-  assert.match(opsRunbookMd, /srlowry21@gmail\.com/);
+  assert.match(opsRunbookMd, /schema intentionally contains no identity-specific grant/);
 });
 
 test("app-managed trial controls and cron are removed", () => {

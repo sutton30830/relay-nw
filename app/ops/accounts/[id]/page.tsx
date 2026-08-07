@@ -3,6 +3,7 @@ import { OpsHeader } from "@/app/ops/_components/ops-header";
 import { Icon } from "@/components/icon";
 import { requirePlatformOperator } from "@/lib/auth";
 import { canApplyOperatorBillingOverride, isSetupFeeSettled } from "@/lib/billing";
+import { OPS_ACTIONS } from "@/lib/ops-actions";
 import {
   deriveOpsState,
   type OpsNextActionKey,
@@ -16,6 +17,7 @@ import {
   getRecentWebhookEventsForAccount,
   getCarrierProfile,
   listProviderActionsForAccount,
+  recordPlatformAuditEvent,
 } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -181,6 +183,16 @@ export default async function OpsAccountPage({
       </main>
     );
   }
+
+  // Account workspaces expose customer contact, billing, and provider evidence.
+  // Fail closed if the sensitive support read cannot be durably audited.
+  await recordPlatformAuditEvent({
+    actorUserId: operator.userId,
+    actorEmail: operator.email,
+    targetAccountId: billing.accountId,
+    action: OPS_ACTIONS.accountRead,
+    summary: "Viewed Operations account workspace",
+  }, { required: true });
 
   const isComped = billing.billingPolicy === "comped";
   const isFoundingPilot = billing.commercialOffer === "founding_pilot";

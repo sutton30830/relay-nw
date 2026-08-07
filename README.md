@@ -39,6 +39,10 @@ The product is multi-account at the data and auth layer, while early customers a
 For the customer-by-customer workflow, see `docs/onboarding-runbook.md` and
 `docs/customer-setup.md`.
 
+For production access, credential rotation, backup/restore drills, operator
+offboarding, incident ownership, and the value-free secrets inventory, see
+`docs/operations/README.md`.
+
 ## Core Flow
 
 ### Direct Mode

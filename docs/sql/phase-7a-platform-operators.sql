@@ -44,15 +44,10 @@ create index if not exists platform_audit_events_target_account_idx
   where target_account_id is not null;
 alter table public.platform_audit_events enable row level security;
 
-insert into public.platform_operators (user_id, email, role, status)
-select id, lower(email), 'super_admin', 'active'
-from auth.users
-where lower(email) = 'srlowry21@gmail.com'
-on conflict (user_id) do update
-set email = excluded.email,
-    role = 'super_admin',
-    status = 'active',
-    updated_at = now();
+-- Deliberately do not bootstrap an identity-specific platform operator here.
+-- The first super admin must be granted explicitly by an authorized owner using
+-- the evidence-producing procedure in docs/operations/production-access-checklist.md.
+-- Reapplying this SQL must never silently grant or restore Operations access.
 
 drop policy if exists deny_client_access on public.platform_operators;
 create policy deny_client_access on public.platform_operators

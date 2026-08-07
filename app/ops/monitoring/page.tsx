@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { OpsHeader } from "@/app/ops/_components/ops-header";
 import { requirePlatformOperator } from "@/lib/auth";
-import { loadOperationsMonitoring } from "@/lib/supabase";
+import { OPS_ACTIONS } from "@/lib/ops-actions";
+import { loadOperationsMonitoring, recordPlatformAuditEvent } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,14 @@ function formatPercent(value: number | null) {
 export default async function OperationsMonitoringPage() {
   const operator = await requirePlatformOperator();
   const dashboard = await loadOperationsMonitoring();
+  // Monitoring aggregates sensitive support diagnostics across every account.
+  // Do not render it when the access event cannot be durably recorded.
+  await recordPlatformAuditEvent({
+    actorUserId: operator.userId,
+    actorEmail: operator.email,
+    action: OPS_ACTIONS.diagnosticsRead,
+    summary: "Viewed cross-account Operations monitoring",
+  }, { required: true });
   const criticalCount = dashboard.rows.filter((row) => row.health.status === "critical").length;
   const warningCount = dashboard.rows.filter((row) => row.health.status === "warning").length;
 

@@ -48,7 +48,7 @@ These are the things that prevent you from charging a stranger today.
 ## Security & compliance — what to fix before going live
 
 - **Verified:** `.env.local` is correctly gitignored and was never committed. No secret leak via the repo. (The original draft of this audit overstated this — flagging it because secrets handling is the kind of thing that gets misremembered.)
-- **Real risk:** if you reuse local dev values in production. Make sure production `SUPABASE_SERVICE_ROLE_KEY`, `LEADS_PASSWORD`, and `LEADS_COOKIE_SECRET` are unique, strong, and rotated per environment. Your local `LEADS_PASSWORD="password"` is fine in dev; do not let that pattern reach prod.
+- **Historical note:** `LEADS_PASSWORD` and `LEADS_COOKIE_SECRET` belonged to the retired shared-password gate and are not runtime inputs now. Remove them from local/Vercel environments after confirming no rollback deployment uses them. Current production credentials, including `SUPABASE_SERVICE_ROLE_KEY`, must be unique per environment.
 - **RLS posture:** every Supabase table has RLS enabled with no policies. Correct given service-role-only writes — but it means leaking the service key is total compromise, so guard it accordingly.
 - **Authorization model:** any user with the shared password sees every lead. With one customer this is fine. The instant you put two customers on one instance, customer A reads customer B's leads. Hard wall against multi-tenancy on the current schema.
 - **Toll fraud:** legacy automated call and SMS diagnostics were removed from the customer surface. Keep any future diagnostic tooling tightly scoped to the authenticated account.
@@ -80,7 +80,7 @@ You're still a service business, but a defensible one with predictable economics
 | # | Item | Why | Effort |
 |---|------|-----|--------|
 | 1 | Complete Twilio A2P 10DLC registration | Without it, US SMS gets throttled/blocked — the entire product breaks | Days of waiting + a form |
-| 2 | Set production-grade values for `LEADS_PASSWORD`, `LEADS_COOKIE_SECRET`, `SUPABASE_SERVICE_ROLE_KEY` (rotated, unique per env) | Local dev defaults must not reach prod | 1 hour |
+| 2 | Remove retired `LEADS_PASSWORD` / `LEADS_COOKIE_SECRET` values and confirm current credentials such as `SUPABASE_SERVICE_ROLE_KEY` are unique per environment | Retired or reused credentials increase exposure | 1 hour |
 | 3 | Wire a way to collect money — Stripe Payment Link is fine for v1 | You advertise $99/mo on the landing page; you currently have no way to charge it | 2 hours |
 | 4 | Fix or delete `/sms-consent` (dead form) | Shipping a non-functional consent form is a credibility + compliance risk | 30 min |
 | 5 | Run the `docs/customer-setup.md` checklist end-to-end against a live carrier-forwarded line | Forwarding-mode caller-ID and hang-up timing are the highest-risk real-world quirks | 2 hours |

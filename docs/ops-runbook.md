@@ -15,7 +15,7 @@ Use this when Relay NW is live for a business and something important may have f
 `/ops/*` is an internal Relay Operations surface. A Relay operator is an active row in `platform_operators`, not merely an `owner` or `admin` on any customer account.
 
 - Customer owners should use `/leads`, `/setup`, `/settings`, and `/reports`.
-- The initial platform operator is bootstrapped by `supabase.sql` from the Supabase Auth email `srlowry21@gmail.com`.
+- Bootstrap the first platform super admin explicitly using the production-access checklist. The schema intentionally contains no identity-specific grant.
 - Add future operators deliberately to `platform_operators` with role `super_admin`, `operator`, or `support`; revoke access by setting `status='revoked'`.
 - Do not grant Operations access by adding someone to a house-account `account_users` row. Account membership and platform access are separate concerns.
 - `/ops` is the one derived Work queue: Needs attention, Onboarding, Running,

@@ -118,5 +118,5 @@ test("SQL creates explicit platform operator and platform audit tables", async (
   assert.match(sql, /platform_operators_role_check/);
   assert.match(sql, /platform_operators_status_check/);
   assert.match(sql, /create table if not exists public\.platform_audit_events/);
-  assert.match(sql, /srlowry21@gmail\.com/);
+  assert.doesNotMatch(sql, /where\s+lower\(email\)\s*=/i);
 });
