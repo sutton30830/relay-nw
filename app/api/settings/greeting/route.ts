@@ -1,5 +1,6 @@
 import { requireAccountUserJson } from "@/lib/auth";
-import { recordAccountAuditEvents, supabaseAdmin, updateAccountSettings } from "@/lib/supabase";
+import { GREETING_BUCKET, removeGreetingFiles } from "@/lib/greeting-storage";
+import { recordAccountAuditEvents, recordDataRetentionAction, supabaseAdmin, updateAccountSettings } from "@/lib/supabase";
 
 export async function POST(request: Request) {
   const auth = await requireAccountUserJson();
@@ -10,7 +11,7 @@ export async function POST(request: Request) {
   if (!(file instanceof File) || file.type !== "audio/wav" || file.size < 100 || file.size > 8_000_000) {
     return Response.json({ error: "Record a greeting shorter than about two minutes" }, { status: 400 });
   }
-  const bucket = "account-greetings";
+  const bucket = GREETING_BUCKET;
   const existing = await supabaseAdmin.storage.getBucket(bucket);
   if (existing.error) {
     const created = await supabaseAdmin.storage.createBucket(bucket, {
@@ -26,15 +27,43 @@ export async function POST(request: Request) {
   const upload = await supabaseAdmin.storage.from(bucket).upload(path, file, { contentType: "audio/wav", upsert: false });
   if (upload.error) return Response.json({ error: "Could not upload greeting" }, { status: 500 });
   const { data } = supabaseAdmin.storage.from(bucket).getPublicUrl(path);
-  await updateAccountSettings(auth.session.accountId, {
-    missed_call_greeting_audio_url: data.publicUrl,
-    greeting_preference: "recorded",
+  try {
+    await updateAccountSettings(auth.session.accountId, {
+      missed_call_greeting_audio_url: data.publicUrl,
+      greeting_preference: "recorded",
+    });
+  } catch (error) {
+    const rollback = await supabaseAdmin.storage.from(bucket).remove([path]);
+    console.error("Greeting settings update failed after upload", {
+      accountId: auth.session.accountId,
+      uploadRollbackFailed: Boolean(rollback.error),
+      error: error instanceof Error ? error.message : error,
+    });
+    return Response.json({ error: "Could not save greeting settings" }, { status: 500 });
+  }
+  const cleanup = await removeGreetingFiles(auth.session.accountId, path);
+  await recordDataRetentionAction({
+    accountId: auth.session.accountId,
+    actorUserId: auth.session.userId,
+    actorEmail: auth.session.email,
+    action: "greeting.replaced_files_cleanup",
+    status: cleanup.failed.length > 0 ? "failed" : "completed",
+    counts: { deletedGreetingFiles: cleanup.deleted },
+    failureKinds: cleanup.failed.length > 0 ? ["supabase_storage"] : [],
   });
   await recordAccountAuditEvents({
     accountId: auth.session.accountId,
     actorUserId: auth.session.userId,
     actorEmail: auth.session.email,
-    events: [{ action: "settings.greeting_recorded", summary: "Recorded a new voicemail greeting" }],
+    events: [{
+      action: "settings.greeting_recorded",
+      summary: cleanup.failed.length > 0
+        ? "Recorded a new voicemail greeting; old-file cleanup needs retry"
+        : "Recorded a new voicemail greeting and removed replaced greeting files",
+    }],
   });
-  return Response.json({ url: data.publicUrl }, { headers: { "Cache-Control": "no-store" } });
+  return Response.json({ url: data.publicUrl, cleanupPending: cleanup.failed.length > 0 }, {
+    status: cleanup.failed.length > 0 ? 207 : 200,
+    headers: { "Cache-Control": "no-store" },
+  });
 }

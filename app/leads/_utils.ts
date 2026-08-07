@@ -309,7 +309,7 @@ export function getLeadNextAction(lead: Lead, now: number): NextAction | null {
     shouldShowVoicemailSummaryProgress(lead, now) && lead.voicemail_transcription_status !== "processing";
   const latestReply = lead.inbound_messages?.[0];
 
-  if (latestReply && lead.status === "new") {
+  if (latestReply?.body && lead.status === "new") {
     return {
       label: "Customer replied",
       detail: latestReply.body,

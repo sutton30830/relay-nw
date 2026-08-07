@@ -20,6 +20,8 @@ export const OPS_ACTIONS = {
   serviceUncomp: "commercial.service.uncomp",
   accountClose: "account.close",
   accountReopen: "account.reopen",
+  accountExport: "account.data.export",
+  accountDelete: "account.data.delete",
   paidServicePause: "account.paid_service.pause",
   teamManage: "team.manage",
   stripePaymentMethods: "stripe.payment_methods",
@@ -60,6 +62,8 @@ const SUPER_ADMIN_ACTIONS = new Set<OpsAction>([
   OPS_ACTIONS.accountClose,
   OPS_ACTIONS.releaseExistingNumber,
   OPS_ACTIONS.accountReopen,
+  OPS_ACTIONS.accountExport,
+  OPS_ACTIONS.accountDelete,
   OPS_ACTIONS.paidServicePause,
   OPS_ACTIONS.teamManage,
 ]);

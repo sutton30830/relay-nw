@@ -42,7 +42,7 @@ export type InboundMessage = {
   message_sid: string;
   from_phone: string;
   to_phone: string | null;
-  body: string;
+  body: string | null;
   created_at: string;
 };
 

@@ -13,6 +13,7 @@ export * from "./onboarding-evidence";
 export * from "./provider-actions";
 export * from "./operators";
 export * from "./reports";
+export * from "./retention";
 export * from "./setup-requests";
 export * from "./tenant";
 export * from "./types";

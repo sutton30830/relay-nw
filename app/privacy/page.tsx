@@ -63,11 +63,21 @@ export default function PrivacyPage() {
         <section>
           <h2>Retention</h2>
           <p>
-            Relay NW keeps missed-call leads, messages, voicemail records, and operational logs
-            only as long as needed to provide the service, troubleshoot delivery, meet legal
-            obligations, and support the business's follow-up. Operational webhook logs and
-            inbound SMS bodies are pruned on a limited schedule. A business may ask Relay NW to
-            delete or export account records by contacting us.
+            Operational webhook logs and inbound SMS bodies are pruned on the configured daily
+            schedule. Relay NW removes sanitized webhook diagnostics after 30 days by default and
+            removes inbound SMS bodies from Relay's message stores after 90 days by default. The retention periods for leads, call
+            metadata, voicemail recordings, transcripts, summaries, and audit events have not yet
+            been set. Those records remain until an authorized account deletion or another
+            documented policy applies.
+          </p>
+          <p>
+            A business may ask Relay NW to delete or export account records. An authorized Relay
+            operator can export an account and can delete a closed account.
+            Account deletion removes the account's Relay database records, stored greeting files,
+            and linked Twilio recordings and message resources. If a provider deletion fails,
+            Relay keeps the account records so the deletion can be retried. Relay keeps a limited
+            deletion record containing the account identifier, actor, time, result, failure
+            category, and record counts; it does not include deleted message or transcript content.
           </p>
         </section>
 

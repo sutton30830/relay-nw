@@ -122,8 +122,8 @@ Optional:
 - `VOICEMAIL_MAX_SECONDS`: defaults to `60`; maximum caller voicemail length in seconds
 - `DIAL_TIMEOUT_SECONDS`: defaults to `18`
 - `MISSED_CALL_SMS_COOLDOWN_HOURS`: defaults to `24`; prevents repeated missed-call texts to the same caller inside this window
-- `WEBHOOK_EVENT_RETENTION_DAYS`: defaults to `30`; old webhook debug logs are pruned during normal webhook activity
-- `INBOUND_MESSAGE_RETENTION_DAYS`: defaults to `90`; old inbound SMS reply bodies are pruned during normal webhook activity
+- `WEBHOOK_EVENT_RETENTION_DAYS`: defaults to `30`; the daily retention job deletes older sanitized webhook diagnostics
+- `INBOUND_MESSAGE_RETENTION_DAYS`: defaults to `90`; the daily retention job removes older inbound SMS bodies from both Relay message tables and requests deletion of the Twilio Message resource
 - `MONITORING_ACTIVITY_WINDOW_HOURS`: defaults to `24`; recent call, SMS, and webhook health window
 - `MONITORING_MISSING_LEAD_GRACE_MINUTES`: defaults to `5`; delay before a missed call without a lead is actionable
 - `MONITORING_MISSING_SMS_GRACE_MINUTES`: defaults to `5`; delay before an eligible pending auto-text is actionable

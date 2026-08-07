@@ -62,7 +62,9 @@ export function GreetingRecorder({ initialUrl }: { initialUrl: string | null }) 
         const body = await response.json();
         if (!response.ok) throw new Error(body.error || "Could not save recording");
         setUrl(body.url);
-        setMessage("Greeting saved. Play it once before leaving this page.");
+        setMessage(body.cleanupPending
+          ? "Greeting saved. Old greeting-file cleanup needs an operator retry."
+          : "Greeting saved. Play it once before leaving this page.");
       } catch (error) {
         setMessage(error instanceof Error ? error.message : "Could not save recording");
       } finally {

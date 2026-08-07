@@ -739,6 +739,24 @@ export default async function OpsAccountPage({
                   <label><input type="checkbox" name="confirmation" value="confirmed" required /> I confirm this account action. Stripe billing will not be changed.</label>
                   <button className="btn btn-secondary" type="submit">Apply account action</button>
                 </form>
+                <div className="setup-panel__action ops-form">
+                  <strong>Account data</strong>
+                  <p>Export first, then run a deletion dry run. Deletion is available only after the account is closed and archived.</p>
+                  <a className="btn btn-secondary" href={`/api/ops/accounts/export?account_id=${encodeURIComponent(summary.accountId)}`}>Export account JSON</a>
+                  <form action="/api/ops/accounts/delete" method="post">
+                    <input type="hidden" name="account_id" value={summary.accountId} />
+                    <input type="hidden" name="mode" value="dry_run" />
+                    <button className="btn btn-secondary" type="submit">Preview account deletion</button>
+                  </form>
+                  {summary.accountStatus === "archived" && summary.technicalStatus === "closed" ? (
+                    <form action="/api/ops/accounts/delete" method="post" className="ops-compact-form">
+                      <input type="hidden" name="account_id" value={summary.accountId} />
+                      <input type="hidden" name="mode" value="execute" />
+                      <label><input type="checkbox" name="confirmation" value="confirmed" required /> I confirm permanent deletion of this closed tenant and its linked provider content.</label>
+                      <button className="btn btn-secondary" type="submit">Delete closed account</button>
+                    </form>
+                  ) : null}
+                </div>
               </details>
             ) : null}
           </div>

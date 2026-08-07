@@ -1,11 +1,7 @@
-import { env } from "@/lib/env";
 import { isPlaceholderSupabaseConfig, supabaseAdmin } from "./client";
 import { assertAccountId } from "./tenant";
 import type { WebhookEvent, WebhookEventSource } from "./types";
 import { recordProviderAction } from "./provider-actions";
-
-const RETENTION_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
-let lastRetentionSweepAt = 0;
 
 function lastFour(value: string | undefined) {
   if (!value) {
@@ -54,41 +50,6 @@ function isMissingCorrelationIdColumnError(error: { message: string } | null) {
 
 function isMissingAccountIdColumnError(error: { message: string } | null) {
   return Boolean(error?.message.includes("account_id"));
-}
-
-function retentionCutoff(days: number) {
-  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-}
-
-async function pruneOldOperationalData() {
-  const now = Date.now();
-
-  if (now - lastRetentionSweepAt < RETENTION_SWEEP_INTERVAL_MS) {
-    return;
-  }
-
-  lastRetentionSweepAt = now;
-
-  const webhookCutoff = retentionCutoff(env.webhookEventRetentionDays);
-  const inboundMessageCutoff = retentionCutoff(env.inboundMessageRetentionDays);
-
-  const { error: webhookError } = await supabaseAdmin
-    .from("webhook_events")
-    .delete()
-    .lt("created_at", webhookCutoff);
-
-  if (webhookError) {
-    console.error("Failed to prune old webhook events", webhookError);
-  }
-
-  const { error: inboundMessageError } = await supabaseAdmin
-    .from("inbound_messages")
-    .delete()
-    .lt("created_at", inboundMessageCutoff);
-
-  if (inboundMessageError) {
-    console.error("Failed to prune old inbound messages", inboundMessageError);
-  }
 }
 
 export async function getRecentWebhookEventsForAccount(inputAccountId: string, limit = 20) {
@@ -153,12 +114,6 @@ export async function logWebhookEvent(input: {
   if (isPlaceholderSupabaseConfig()) {
     return;
   }
-
-  // Fire-and-forget: retention pruning must never add latency or failure risk to the
-  // webhook hot path. Individual delete errors are already caught inside.
-  void pruneOldOperationalData().catch((error) => {
-    console.error("Retention pruning failed", error);
-  });
 
   const event = {
     account_id: input.accountId ?? null,
