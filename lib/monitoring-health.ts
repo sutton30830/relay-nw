@@ -245,11 +245,15 @@ export function calculateAccountHealth(
     }));
   }
 
+  // A missing per-account check-in is a bootstrap state, not proof that the
+  // scheduler is stale. Sentry's external cron monitors own "never invoked"
+  // detection; after the first check-in, these account-scoped ages detect
+  // stalled or failed work without manufacturing alerts for new accounts.
   const operationsMonitoringAge = ageMinutes(input.operationsMonitoringCronAt, now);
   if (
     input.operationsMonitoringCronOk === false ||
-    operationsMonitoringAge === null ||
-    operationsMonitoringAge > thresholds.operationsMonitoringCronStaleMinutes
+    (operationsMonitoringAge !== null &&
+      operationsMonitoringAge > thresholds.operationsMonitoringCronStaleMinutes)
   ) {
     alerts.push(alert({
       accountId: input.accountId,
@@ -260,9 +264,7 @@ export function calculateAccountHealth(
         : "Operations monitoring cron is stale",
       detail: input.operationsMonitoringCronOk === false
         ? "The latest scheduled monitoring evaluation failed."
-        : operationsMonitoringAge === null
-          ? "No scheduled monitoring check-in has been recorded."
-          : `Last check-in was ${Math.floor(operationsMonitoringAge)} minutes ago.`,
+        : `Last check-in was ${Math.floor(operationsMonitoringAge!)} minutes ago.`,
       owner: "relay",
       recommendedAction: "Check the Vercel invocation and Sentry Cron Monitor before relying on the Operations dashboard.",
     }));
@@ -271,8 +273,7 @@ export function calculateAccountHealth(
   const transcriptionAge = ageHours(input.transcriptionCronAt, now);
   if (
     input.transcriptionCronOk === false ||
-    transcriptionAge === null ||
-    transcriptionAge > thresholds.dailyCronStaleHours
+    (transcriptionAge !== null && transcriptionAge > thresholds.dailyCronStaleHours)
   ) {
     alerts.push(alert({
       accountId: input.accountId,
@@ -283,9 +284,7 @@ export function calculateAccountHealth(
         : "Transcription retry cron is stale",
       detail: input.transcriptionCronOk === false
         ? "The latest transcription-retry check-in recorded a job failure."
-        : transcriptionAge === null
-          ? "No transcription-retry check-in has been recorded."
-          : `Last check-in was ${Math.floor(transcriptionAge)} hours ago.`,
+        : `Last check-in was ${Math.floor(transcriptionAge!)} hours ago.`,
       owner: "relay",
       recommendedAction: "Check the Vercel cron invocation and CRON_SECRET, then run one authenticated recovery check.",
     }));
@@ -294,8 +293,7 @@ export function calculateAccountHealth(
   const digestAge = ageHours(input.weeklyDigestCronAt, now);
   if (
     input.weeklyDigestCronOk === false ||
-    digestAge === null ||
-    digestAge > thresholds.weeklyCronStaleHours
+    (digestAge !== null && digestAge > thresholds.weeklyCronStaleHours)
   ) {
     alerts.push(alert({
       accountId: input.accountId,
@@ -306,9 +304,7 @@ export function calculateAccountHealth(
         : "Weekly digest cron is stale",
       detail: input.weeklyDigestCronOk === false
         ? "The latest weekly-digest check-in recorded a job failure."
-        : digestAge === null
-          ? "No weekly-digest check-in has been recorded."
-          : `Last check-in was ${Math.floor(digestAge)} hours ago.`,
+        : `Last check-in was ${Math.floor(digestAge!)} hours ago.`,
       owner: "relay",
       recommendedAction: "Check the Vercel cron invocation and email-provider result; no empty digest needs to be sent.",
     }));
@@ -317,8 +313,7 @@ export function calculateAccountHealth(
   const retentionAge = ageHours(input.retentionCronAt, now);
   if (
     input.retentionCronOk === false ||
-    retentionAge === null ||
-    retentionAge > thresholds.dailyCronStaleHours
+    (retentionAge !== null && retentionAge > thresholds.dailyCronStaleHours)
   ) {
     alerts.push(alert({
       accountId: input.accountId,
@@ -329,9 +324,7 @@ export function calculateAccountHealth(
         : "Retention cron is stale",
       detail: input.retentionCronOk === false
         ? "The latest retention check-in recorded a deletion or persistence failure."
-        : retentionAge === null
-          ? "No retention check-in has been recorded."
-          : `Last check-in was ${Math.floor(retentionAge)} hours ago.`,
+        : `Last check-in was ${Math.floor(retentionAge!)} hours ago.`,
       owner: "relay",
       recommendedAction: "Inspect the retention report and provider evidence, then retry only the idempotent deletion work.",
     }));
@@ -339,15 +332,13 @@ export function calculateAccountHealth(
 
   if (input.billingReconciliationExpected) {
     const billingAge = ageHours(input.billingReconciliationAt, now);
-    if (billingAge === null || billingAge > thresholds.dailyCronStaleHours) {
+    if (billingAge !== null && billingAge > thresholds.dailyCronStaleHours) {
       alerts.push(alert({
         accountId: input.accountId,
         code: "billing_reconciliation_stale",
         severity: "critical",
         title: "Billing reconciliation is stale",
-        detail: billingAge === null
-          ? "No scheduled billing-reconciliation check-in has been recorded."
-          : `Last check-in was ${Math.floor(billingAge)} hours ago.`,
+        detail: `Last check-in was ${Math.floor(billingAge)} hours ago.`,
         owner: "stripe",
         recommendedAction: "Check the scheduled job, then reconcile the existing Stripe customer and subscription.",
       }));

@@ -460,6 +460,46 @@ alter table public.account_settings
 
 alter table public.account_settings enable row level security;
 
+-- Keep the canonical account-directory name aligned with the customer-facing
+-- business name. Slugs intentionally remain stable because they appear in
+-- operator URLs and provider metadata.
+create or replace function public.sync_account_display_name()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if btrim(new.business_name) = '' then
+    raise exception 'Business name cannot be blank';
+  end if;
+
+  update public.accounts
+  set name = btrim(new.business_name),
+      updated_at = now()
+  where id = new.account_id
+    and name is distinct from btrim(new.business_name);
+
+  return new;
+end;
+$$;
+
+drop trigger if exists account_settings_sync_account_display_name on public.account_settings;
+create trigger account_settings_sync_account_display_name
+after insert or update of business_name on public.account_settings
+for each row execute function public.sync_account_display_name();
+
+revoke all on function public.sync_account_display_name() from public, anon, authenticated;
+
+-- Repair historical split identities created before the trigger existed.
+update public.accounts as account
+set name = btrim(settings.business_name),
+    updated_at = now()
+from public.account_settings as settings
+where settings.account_id = account.id
+  and btrim(settings.business_name) <> ''
+  and account.name is distinct from btrim(settings.business_name);
+
 create table if not exists public.account_carrier_profiles (
   account_id uuid primary key references public.accounts(id) on delete cascade,
   status text not null default 'draft' check (status in ('draft', 'ready', 'submitted', 'in_progress', 'approved', 'needs_changes', 'rejected')),

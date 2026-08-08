@@ -160,6 +160,7 @@ controls, and every mutation endpoint rechecks its action permission.
 - Check `RESEND_API_KEY`, `ALERT_FROM_EMAIL`, `ADMIN_ALERT_EMAIL`, and Sentry.
 - Admin operational alerts are the backstop for SMS, persistence, and transcription failures.
 - If alerting is down, monitor `/ops` manually for active pilot accounts until fixed.
+- A blank per-account cron check-in means that account is awaiting its first run; it is not stale by itself. Use the matching Sentry Cron Monitor to detect a job that never invoked. After a first check-in, a failed result or an age beyond the job-specific threshold is actionable.
 
 ## Privacy and Retention
 

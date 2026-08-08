@@ -5,6 +5,10 @@ import test from "node:test";
 // This suite protects the deployed delayed-trial and independent Operations contract.
 
 const sql = await readFile(new URL("../supabase.sql", import.meta.url), "utf8");
+const accountDisplayNameMigration = await readFile(
+  new URL("../docs/migrations/2026-08-08-account-display-name-sync.sql", import.meta.url),
+  "utf8",
+);
 const envTs = await readFile(new URL("../lib/env.ts", import.meta.url), "utf8");
 const billingTs = await readFile(new URL("../lib/billing.ts", import.meta.url), "utf8");
 const stripeBillingTs = await readFile(new URL("../lib/stripe-billing.ts", import.meta.url), "utf8");
@@ -78,6 +82,17 @@ const verifyLaunchScript = await readFile(new URL("../scripts/verify-launch.mjs"
 const backfillAccountIdsScript = await readFile(new URL("../scripts/backfill-account-ids.mjs", import.meta.url), "utf8");
 const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
 const vercelJson = await readFile(new URL("../vercel.json", import.meta.url), "utf8");
+
+test("editable business names stay synchronized with the canonical account directory", () => {
+  for (const source of [sql, accountDisplayNameMigration]) {
+    assert.match(source, /create or replace function public\.sync_account_display_name\(\)/);
+    assert.match(source, /account_settings_sync_account_display_name/);
+    assert.match(source, /after insert or update of business_name/);
+    assert.match(source, /update public\.accounts/);
+    assert.match(source, /name is distinct from btrim\(new\.business_name\)/);
+    assert.match(source, /revoke all on function public\.sync_account_display_name\(\)/);
+  }
+});
 
 test("tenant core tables are present", () => {
   for (const table of [

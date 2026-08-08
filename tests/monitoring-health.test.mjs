@@ -115,6 +115,25 @@ test("cron staleness is job-specific and billing is checked only when expected",
   assert.equal(result.alerts.some((alert) => alert.code === "billing_reconciliation_stale"), false);
 });
 
+test("accounts awaiting their first cron check-ins do not manufacture stale alerts", () => {
+  const result = calculateAccountHealth(input({
+    operationsMonitoringCronAt: null,
+    operationsMonitoringCronOk: null,
+    transcriptionCronAt: null,
+    transcriptionCronOk: null,
+    weeklyDigestCronAt: null,
+    weeklyDigestCronOk: null,
+    retentionCronAt: null,
+    retentionCronOk: null,
+    billingReconciliationAt: null,
+    billingReconciliationCronOk: null,
+    billingReconciliationExpected: true,
+  }), undefined, now);
+
+  assert.equal(result.alerts.some((alert) => alert.code.endsWith("_cron_stale")), false);
+  assert.equal(result.alerts.some((alert) => alert.code === "billing_reconciliation_stale"), false);
+});
+
 test("failed and stale scheduled jobs remain explicit health alerts", () => {
   const result = calculateAccountHealth(input({
     operationsMonitoringCronAt: "2026-08-06T17:00:00.000Z",
