@@ -37,6 +37,7 @@ export default function SmsConsentPage() {
           <h2 className="t-display intake-side__title">Receive a follow-up text from Relay NW.</h2>
           <p className="intake-side__lede">
             Submit your phone number to consent to a one-time text message about your inquiry.
+            Relay NW is a service operated by Lowry Works LLC.
           </p>
         </div>
 

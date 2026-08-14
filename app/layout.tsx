@@ -18,7 +18,7 @@ const instrumentSerif = Instrument_Serif({
 
 export const metadata: Metadata = {
   title: "Relay NW",
-  description: "A simple missed-call text follow-up system from Relay NW.",
+  description: "Relay NW is a missed-call recovery service operated by Lowry Works LLC.",
 };
 
 export const viewport: Viewport = {

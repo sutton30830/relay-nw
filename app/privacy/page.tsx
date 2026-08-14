@@ -4,6 +4,11 @@ export default function PrivacyPage() {
       <article className="legal-card">
         <p className="t-eyebrow">Relay NW</p>
         <h1>Privacy Policy</h1>
+        <p>
+          Effective August 14, 2026. Relay NW is a service operated by Lowry Works LLC.
+          In this policy, “Relay NW,” “we,” “us,” and “our” refer to Lowry Works LLC
+          and the Relay NW service.
+        </p>
 
         <section>
           <h2>Overview</h2>
@@ -98,6 +103,7 @@ export default function PrivacyPage() {
         <section>
           <h2>Contact</h2>
           <p>
+            Lowry Works LLC<br />
             <a href="mailto:relaynw@gmail.com">relaynw@gmail.com</a>
           </p>
         </section>

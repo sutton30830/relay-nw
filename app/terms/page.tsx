@@ -4,6 +4,12 @@ export default function TermsPage() {
       <article className="legal-card">
         <p className="t-eyebrow">Relay NW</p>
         <h1>Terms and Conditions</h1>
+        <p>
+          Effective August 14, 2026. Relay NW is a service operated by Lowry Works LLC.
+          These terms are an agreement between you and Lowry Works LLC. In these terms,
+          “Relay NW” refers to the Relay NW service, and “we,” “us,” and “our” refer to
+          Lowry Works LLC.
+        </p>
 
         <section>
           <h2>Service Description</h2>
@@ -54,6 +60,7 @@ export default function TermsPage() {
         <section>
           <h2>Contact</h2>
           <p>
+            Lowry Works LLC<br />
             <a href="mailto:relaynw@gmail.com">relaynw@gmail.com</a>
           </p>
         </section>
