@@ -259,6 +259,67 @@ test("too-short recording is rejected before claim or AI and clears any generate
   }
 });
 
+test("empty transcription is treated as no speech and is not reported as a provider failure", async () => {
+  const originalFetch = globalThis.fetch;
+  const fetches = [];
+  globalThis.fetch = async (url) => {
+    fetches.push(String(url));
+
+    if (String(url).includes("Recordings/RE_empty.mp3")) {
+      return new Response("fake-audio", { status: 200 });
+    }
+
+    if (String(url).endsWith("/audio/transcriptions")) {
+      return Response.json({ text: "", logprobs: [] });
+    }
+
+    throw new Error(`Unexpected fetch: ${url}`);
+  };
+
+  try {
+    const { mocks, calls } = makeVoicemailMocks({
+      lead: {
+        id: "lead-empty",
+        phone: "+12065550123",
+        recording_sid: "RE_empty",
+        recording_duration: 5,
+        voicemail_transcript: null,
+        voicemail_summary: null,
+        voicemail_transcription_status: "pending",
+        voicemail_transcribed_at: null,
+      },
+    });
+    const { transcribeLeadVoicemail } = await loadTsModule("lib/voicemail-ai.ts", mocks);
+
+    await assert.rejects(
+      () => transcribeLeadVoicemail("lead-empty", "acct-1"),
+      /No clear spoken message was detected/,
+    );
+
+    assert.equal(fetches.length, 2, "do not run verification or summary after an empty primary transcript");
+    assert.equal(calls.adminIssues.length, 0, "no-speech recordings should not page an operator");
+    assert.deepEqual(calls.transcriptionUpdates.at(-1), {
+      accountId: "acct-1",
+      id: "lead-empty",
+      rawTranscript: null,
+      transcriptionModel: "gpt-4o-transcribe",
+      transcriptionConfidence: null,
+      transcriptionQuality: "unavailable",
+      transcriptionQualityReasons: ["no_speech_detected"],
+      transcriptionMetrics: null,
+      transcript: null,
+      summary: null,
+      summaryClassification: null,
+      summaryEvidence: null,
+      summaryValidationReasons: null,
+      status: "failed",
+      error: "No clear spoken message was detected. Relay did not generate a transcript.",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("known silence hallucinations and short-domain transcripts fail quality checks", async () => {
   const {
     hasUsableVoicemail,

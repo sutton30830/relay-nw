@@ -23,6 +23,7 @@ import {
 import { sendOwnerSms } from "@/lib/twilio";
 import { notifyAdminOperationalIssue, notifyOwnerVoicemailReady } from "@/lib/email";
 import {
+  NO_SPEECH_VOICEMAIL_MESSAGE,
   NO_USABLE_VOICEMAIL_MESSAGE,
   recordingIsTooShort,
   transcriptLooksLikeSilenceHallucination,
@@ -47,11 +48,20 @@ const VERIFICATION_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
 const UNCERTAIN_TRANSCRIPTION_MESSAGE =
   "Relay could not confidently transcribe this voicemail. Listen to the recording instead.";
 
-class ExpectedVoicemailQualityError extends Error {}
+class ExpectedVoicemailQualityError extends Error {
+  constructor(
+    message: string,
+    readonly qualityReason?: string,
+  ) {
+    super(message);
+    this.name = "ExpectedVoicemailQualityError";
+  }
+}
 
 export function isExpectedVoicemailQualityErrorMessage(message: string) {
   return (
     message === NO_USABLE_VOICEMAIL_MESSAGE ||
+    message === NO_SPEECH_VOICEMAIL_MESSAGE ||
     message === UNCERTAIN_TRANSCRIPTION_MESSAGE
   );
 }
@@ -105,13 +115,9 @@ async function transcribeAudio(audio: Blob, model: string) {
   const rawTranscript = data.text;
   const transcript = rawTranscript?.trim();
 
-  if (!transcript) {
-    throw new Error("OpenAI transcription returned no text.");
-  }
-
   return {
     rawTranscript,
-    transcript,
+    transcript: transcript ?? "",
     logprobs: data.logprobs ?? [],
   };
 }
@@ -310,6 +316,18 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
   try {
     const audio = await fetchRecordingAudio(lead.recording_sid);
     const transcription = await transcribeAudio(audio, env.openaiTranscriptionModel);
+
+    // A successful transcription response with no text means the model did not
+    // detect usable speech. Repeating the same request does not recover silence,
+    // so classify this as an expected quality suppression instead of a provider
+    // failure that invites retries and pages an operator.
+    if (!transcription.transcript) {
+      throw new ExpectedVoicemailQualityError(
+        NO_SPEECH_VOICEMAIL_MESSAGE,
+        "no_speech_detected",
+      );
+    }
+
     const verificationModel =
       env.openaiTranscriptionModel === VERIFICATION_TRANSCRIPTION_MODEL
         ? "gpt-4o-transcribe"
@@ -530,6 +548,9 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Voicemail transcription failed.";
+    const qualityReason = error instanceof ExpectedVoicemailQualityError
+      ? error.qualityReason
+      : undefined;
 
     // Marking the lead "failed" is what makes the UI show "Summary unavailable. Listen
     // to the voicemail." If this update itself fails, don't mask the original error;
@@ -538,6 +559,19 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
       await updateLeadVoicemailTranscription({
         accountId,
         id: leadId,
+        ...(qualityReason ? {
+          rawTranscript: null,
+          transcriptionModel: env.openaiTranscriptionModel,
+          transcriptionConfidence: null,
+          transcriptionQuality: "unavailable" as const,
+          transcriptionQualityReasons: [qualityReason],
+          transcriptionMetrics: null,
+          transcript: null,
+          summary: null,
+          summaryClassification: null,
+          summaryEvidence: null,
+          summaryValidationReasons: null,
+        } : {}),
         status: "failed",
         error: message,
       });

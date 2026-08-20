@@ -221,6 +221,8 @@ export async function listLeadsNeedingTranscriptionRetry(limit = 10) {
     .not("recording_sid", "is", null)
     .or("recording_duration.is.null,recording_duration.gte.3")
     .not("voicemail_transcription_error", "ilike", "Twilio recording download failed with 404%")
+    .not("voicemail_transcription_error", "ilike", "No clear spoken message was detected%")
+    .not("voicemail_transcription_error", "ilike", "No usable voicemail was recorded%")
     .not("voicemail_transcription_error", "ilike", "Relay could not confidently transcribe%")
     .is("deleted_at", null)
     .or(

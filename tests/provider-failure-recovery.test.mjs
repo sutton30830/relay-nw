@@ -31,6 +31,10 @@ test("customer explanations classify landlines and quality suppression without c
   assert.match(landline.recommendedNextAction, /Call/);
 
   assert.equal(isExpectedQualitySuppression("known_hallucination_pattern"), true);
+  assert.equal(
+    isExpectedQualitySuppression("No clear spoken message was detected. Relay did not generate a transcript."),
+    true,
+  );
   const quality = failurePresentation({
     provider: "openai",
     action: "voicemail_transcription",

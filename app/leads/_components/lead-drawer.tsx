@@ -77,8 +77,13 @@ export function LeadDrawer({
   const hasVoicemail = hasUsableVoicemail(lead.recording_sid, lead.recording_duration);
   const summaryGenerating =
     hasVoicemail && !lead.voicemail_summary && lead.voicemail_transcription_status === "processing";
-  const transcriptionWasUncertain =
-    lead.voicemail_transcription_error?.includes("could not confidently transcribe") ?? false;
+  const transcriptionWasSuppressed = Boolean(
+    lead.voicemail_transcription_error?.includes("could not confidently transcribe") ||
+    lead.voicemail_transcription_error?.includes("No clear spoken message was detected") ||
+    lead.voicemail_transcription_error?.includes("No usable voicemail was recorded"),
+  );
+  const noSpeechDetected =
+    lead.voicemail_transcription_error?.includes("No clear spoken message was detected") ?? false;
   const autoTextIssue = smsDeliveryIssue(lead.sms_status, lead.sms_error);
   const requestLabel = hasVoicemail && lead.voicemail_summary
     ? "What they need"
@@ -95,7 +100,9 @@ export function LeadDrawer({
       ? lead.message
       : hasVoicemail
         ? lead.voicemail_transcription_status === "failed"
-          ? "Voicemail saved. Summary unavailable. Listen to the recording below."
+          ? noSpeechDetected
+            ? "Voicemail saved, but no clear spoken message was detected. Listen below to double-check it."
+            : "Voicemail saved. Summary unavailable. Listen to the recording below."
           : lead.voicemail_transcript
             ? "No summary — the voicemail didn't say what they need. Listen below."
             : "Voicemail saved. Listen below or generate a quick summary."
@@ -318,7 +325,7 @@ export function LeadDrawer({
               {!lead.voicemail_summary &&
               !lead.voicemail_transcript &&
               lead.voicemail_transcription_status !== "processing" &&
-              !transcriptionWasUncertain ? (
+              !transcriptionWasSuppressed ? (
                 <button
                   className="btn btn-secondary btn-sm"
                   type="button"

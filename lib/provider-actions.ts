@@ -55,6 +55,7 @@ export function sanitizeProviderDiagnostic(value: unknown) {
 export function isExpectedQualitySuppression(message: string | null | undefined) {
   return Boolean(message && (
     /No usable voicemail was recorded/i.test(message)
+    || /No clear spoken message was detected/i.test(message)
     || /could not confidently transcribe/i.test(message)
     || /recording_too_short/i.test(message)
     || /known_hallucination_pattern/i.test(message)

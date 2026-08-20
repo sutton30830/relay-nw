@@ -1,6 +1,8 @@
 export const MIN_VOICEMAIL_DURATION_SECONDS = 3;
 export const NO_USABLE_VOICEMAIL_MESSAGE =
   "No usable voicemail was recorded. Relay did not generate a transcript.";
+export const NO_SPEECH_VOICEMAIL_MESSAGE =
+  "No clear spoken message was detected. Relay did not generate a transcript.";
 
 export function recordingIsTooShort(duration: number | null | undefined) {
   return typeof duration === "number" &&

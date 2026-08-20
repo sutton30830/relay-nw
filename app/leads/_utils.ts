@@ -569,6 +569,10 @@ export function humanVoicemailError(error: string | null | undefined) {
     return "No voicemail was left, so Relay did not generate a transcript.";
   }
 
+  if (error.includes("No clear spoken message was detected")) {
+    return "No clear spoken message was detected. Listen to the recording if you want to double-check it.";
+  }
+
   if (error.includes("could not confidently transcribe")) {
     return "Relay could not confidently transcribe this voicemail. Listen to the recording instead.";
   }

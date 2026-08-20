@@ -81,6 +81,8 @@ export function LeadCard({
     hasVoicemail && !lead.voicemail_summary && lead.voicemail_transcription_status === "processing";
   const summaryPreparing =
     shouldShowVoicemailSummaryProgress(lead, now) && lead.voicemail_transcription_status !== "processing";
+  const noSpeechDetected =
+    lead.voicemail_transcription_error?.includes("No clear spoken message was detected") ?? false;
   const requestLabel = hasVoicemail && lead.voicemail_summary
     ? "What they need"
     : hasUsefulMessage
@@ -98,7 +100,9 @@ export function LeadCard({
       ? lead.message
       : hasVoicemail
         ? lead.voicemail_transcription_status === "failed"
-          ? "Voicemail saved. Summary unavailable. Open the lead to listen."
+          ? noSpeechDetected
+            ? "Voicemail saved, but no clear spoken message was detected. Open the lead to listen."
+            : "Voicemail saved. Summary unavailable. Open the lead to listen."
           : lead.voicemail_transcript
             ? "No summary — the voicemail didn't say what they need. Open the lead to listen."
             : "Voicemail saved. Open the lead to listen or summarize."
