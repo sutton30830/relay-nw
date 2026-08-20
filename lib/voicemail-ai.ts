@@ -13,6 +13,7 @@ import {
   type ValidatedVoicemailSummary,
 } from "@/lib/voicemail-summary";
 import {
+  claimVoicemailSummary,
   claimVoicemailTranscription,
   getAccountConfigByAccountId,
   getLeadForVoicemailTranscription,
@@ -151,7 +152,7 @@ async function summarizeTranscript(transcript: string): Promise<{
         {
           role: "system",
           content:
-            "Extract a short, factual voicemail summary. Copy 1-3 exact transcript excerpts into evidence. Every specific person, company, problem, appliance, place, date, timing, and urgency claim in the summary must be supported by those exact excerpts. Never infer a service request from context. Use classification unknown, an empty summary, and empty evidence when the transcript does not support a useful summary. urgency must be normal with empty urgency_evidence unless the transcript explicitly supports fast or today; urgency_evidence must be an exact transcript excerpt.",
+            "Extract a short, factual voicemail summary. Make the summary extractive: reuse the transcript's exact wording for names, companies, problems, objects, places, dates, timing, urgency, and other content words; add only minimal grammar. Copy 1-3 exact transcript excerpts into evidence. Every specific claim in the summary must be supported by those exact excerpts. Never infer a service request from context. Use classification unknown, an empty summary, and empty evidence when the transcript does not support a useful summary. urgency must be normal with empty urgency_evidence unless the transcript explicitly supports fast or today; urgency_evidence must be an exact transcript excerpt.",
         },
         {
           role: "user",
@@ -238,6 +239,105 @@ async function safelyRecordVoicemailAction(
   }
 }
 
+async function regenerateVoicemailSummary(input: {
+  leadId: string;
+  accountId: string;
+  transcript: string;
+}) {
+  const claimed = await claimVoicemailSummary({
+    accountId: input.accountId,
+    id: input.leadId,
+  });
+
+  if (!claimed) {
+    throw new Error("Voicemail summary is already generating.");
+  }
+
+  const actionKey = `voicemail_summary_recovery:${input.leadId}`;
+  await safelyRecordVoicemailAction({
+    accountId: input.accountId,
+    action: "voicemail_summary",
+    provider: "openai",
+    idempotencyKey: actionKey,
+    resourceType: "lead",
+    resourceId: input.leadId,
+    internalStatus: "processing",
+    providerStatus: "summary_only_retry",
+    customerExplanation: "Relay is regenerating the summary from the verified transcript.",
+    retryEligibility: "automatic",
+    recommendedNextAction: "Wait for the summary-only retry to finish.",
+    customerVisible: false,
+    countAttempt: true,
+  });
+
+  try {
+    const summaryResult = await summarizeTranscript(input.transcript);
+    const structuredSummary = summaryResult.summary;
+    const summary = structuredSummary?.summary ?? null;
+
+    await updateLeadVoicemailTranscription({
+      accountId: input.accountId,
+      id: input.leadId,
+      transcript: input.transcript,
+      summary,
+      summaryClassification: structuredSummary?.classification ?? null,
+      summaryEvidence: structuredSummary?.evidence ?? null,
+      summaryValidationReasons: summaryResult.validationReasons,
+      status: "completed",
+      error: null,
+    });
+
+    await safelyRecordVoicemailAction({
+      accountId: input.accountId,
+      action: "voicemail_summary",
+      provider: "openai",
+      idempotencyKey: actionKey,
+      resourceType: "lead",
+      resourceId: input.leadId,
+      internalStatus: "succeeded",
+      providerStatus: structuredSummary ? "validated" : "quality_suppressed",
+      customerExplanation: structuredSummary
+        ? "Relay regenerated a grounded voicemail summary from the verified transcript."
+        : "Relay kept the verified transcript but suppressed an unsupported summary.",
+      retryEligibility: "never",
+      recommendedNextAction: "Use the verified transcript as the source of truth.",
+      customerVisible: false,
+      expectedSuppression: !structuredSummary,
+    });
+
+    return {
+      transcript: input.transcript,
+      summary,
+      status: "completed" as const,
+    };
+  } catch (error) {
+    await updateLeadVoicemailTranscription({
+      accountId: input.accountId,
+      id: input.leadId,
+      transcript: input.transcript,
+      summaryValidationReasons: ["summary_request_failed"],
+      status: "completed",
+      error: null,
+    });
+    await safelyRecordVoicemailAction({
+      accountId: input.accountId,
+      action: "voicemail_summary",
+      provider: "openai",
+      idempotencyKey: actionKey,
+      resourceType: "lead",
+      resourceId: input.leadId,
+      internalStatus: "failed",
+      providerStatus: "summary_request_failed",
+      diagnosticDetail: error,
+      customerExplanation: "The verified transcript is available, but summary regeneration failed.",
+      retryEligibility: "automatic",
+      recommendedNextAction: "Retry summary generation from the existing transcript.",
+      customerVisible: true,
+    });
+    throw error;
+  }
+}
+
 export async function transcribeLeadVoicemail(leadId: string, accountId: string) {
   const lead = await getLeadForVoicemailTranscription(leadId, accountId);
   const transcriptionActionKey = `voicemail_transcription:${leadId}`;
@@ -287,6 +387,14 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
       summary: lead.voicemail_summary,
       status: "completed" as const,
     };
+  }
+
+  if (lead.voicemail_transcript) {
+    return regenerateVoicemailSummary({
+      leadId,
+      accountId,
+      transcript: lead.voicemail_transcript,
+    });
   }
 
   const staleBefore = new Date(Date.now() - STALE_PROCESSING_MS).toISOString();

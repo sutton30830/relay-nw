@@ -50,6 +50,8 @@ function makeClaimBuilder({ data = { id: "lead-1" }, error = null } = {}) {
     table: null,
     update: null,
     eq: [],
+    not: [],
+    is: [],
     or: [],
     select: [],
   };
@@ -61,6 +63,14 @@ function makeClaimBuilder({ data = { id: "lead-1" }, error = null } = {}) {
     },
     eq(column, value) {
       calls.eq.push([column, value]);
+      return this;
+    },
+    not(column, operator, value) {
+      calls.not.push([column, operator, value]);
+      return this;
+    },
+    is(column, value) {
+      calls.is.push([column, value]);
       return this;
     },
     or(predicate) {
@@ -123,9 +133,38 @@ test("claim returns true and processing is written in one statement", async () =
   assert.match(state.calls.or[0], /voicemail_transcribed_at\.lt\.2026-07-04T00:00:00\.000Z/);
 });
 
+test("summary-only claim requires a completed transcript and missing summary", async () => {
+  const state = makeClaimBuilder();
+  const { claimVoicemailSummary } = await loadTsModule("lib/supabase/voicemails.ts", {
+    "./client": {
+      isPlaceholderSupabaseConfig: () => false,
+      shouldSkipDatabaseWrite: () => false,
+      supabaseAdmin: state.supabaseAdmin,
+      throwIfSupabaseError: (error) => {
+        if (error) throw error;
+      },
+    },
+    "./tenant": {
+      assertAccountId: (accountId) => accountId,
+    },
+  });
+
+  const claimed = await claimVoicemailSummary({ accountId: "acct-1", id: "lead-1" });
+
+  assert.equal(claimed, true);
+  assert.deepEqual(state.calls.eq, [
+    ["id", "lead-1"],
+    ["account_id", "acct-1"],
+    ["voicemail_transcription_status", "completed"],
+  ]);
+  assert.deepEqual(state.calls.not, [["voicemail_transcript", "is", null]]);
+  assert.deepEqual(state.calls.is, [["voicemail_summary", null]]);
+});
+
 function makeVoicemailMocks({ lead, claimResult = true }) {
   const calls = {
     claims: [],
+    summaryClaims: [],
     priorityUpdates: [],
     transcriptionUpdates: [],
     ownerSms: [],
@@ -150,6 +189,10 @@ function makeVoicemailMocks({ lead, claimResult = true }) {
     "@/lib/voicemail-summary": voicemailSummaryModule,
     "@/lib/voicemail-quality": voicemailQualityModule,
     "@/lib/supabase": {
+      claimVoicemailSummary: async (input) => {
+        calls.summaryClaims.push(input);
+        return claimResult;
+      },
       claimVoicemailTranscription: async (input) => {
         calls.claims.push(input);
         return claimResult;
@@ -365,6 +408,63 @@ test("completed lead returns cached summary without claiming", async () => {
     status: "completed",
   });
   assert.deepEqual(calls.claims, []);
+  assert.deepEqual(calls.summaryClaims, []);
+});
+
+test("completed transcript regenerates only the summary without downloading audio", async () => {
+  const originalFetch = globalThis.fetch;
+  const transcript = "Water is pouring out under the kitchen sink. Please come by today.";
+  const responseInputs = [];
+  globalThis.fetch = async (url, init = {}) => {
+    if (String(url).endsWith("/responses")) {
+      const body = JSON.parse(init.body);
+      responseInputs.push(body.input?.[1]?.content);
+      return Response.json({
+        output_text: JSON.stringify({
+          classification: "service_request",
+          summary: "Urgent plumbing leak requires immediate service today.",
+          evidence: ["Water is pouring out under the kitchen sink", "Please come by today"],
+          urgency: "today",
+          urgency_evidence: "today",
+        }),
+      });
+    }
+
+    throw new Error(`Summary-only recovery must not fetch audio: ${url}`);
+  };
+
+  try {
+    const { mocks, calls } = makeVoicemailMocks({
+      lead: {
+        id: "lead-summary-only",
+        phone: "+12065550123",
+        recording_sid: "RE_summary_only",
+        recording_duration: 43,
+        voicemail_transcript: transcript,
+        voicemail_summary: null,
+        voicemail_transcription_status: "completed",
+        voicemail_transcribed_at: "2026-08-17T15:12:00.000Z",
+      },
+    });
+    const { transcribeLeadVoicemail } = await loadTsModule("lib/voicemail-ai.ts", mocks);
+
+    const result = await transcribeLeadVoicemail("lead-summary-only", "acct-1");
+
+    assert.deepEqual(calls.claims, []);
+    assert.deepEqual(calls.summaryClaims, [{ accountId: "acct-1", id: "lead-summary-only" }]);
+    assert.deepEqual(responseInputs, [transcript]);
+    assert.equal(
+      result.summary,
+      "Water is pouring out under the kitchen sink — Please come by today",
+    );
+    assert.equal(calls.transcriptionUpdates.at(-1).status, "completed");
+    assert.deepEqual(
+      calls.transcriptionUpdates.at(-1).summaryValidationReasons,
+      ["summary_replaced_with_grounded_evidence"],
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("non-service voicemails preserve raw evidence and persist a useful summary", async () => {
@@ -576,7 +676,7 @@ test("conflicting GPT-4o transcriptions are stored as evidence but never shown a
   }
 });
 
-function makeCronMocks({ cronSecret = "secret", leads = [], failLeadIds = new Set() } = {}) {
+function makeCronMocks({ cronSecret = "secret", leads = [], summaryLeads = [], failLeadIds = new Set() } = {}) {
   const calls = {
     listed: 0,
     transcriptions: [],
@@ -588,7 +688,13 @@ function makeCronMocks({ cronSecret = "secret", leads = [], failLeadIds = new Se
       env: { cronSecret },
     },
     "@/lib/supabase": {
-      listActiveAccountIds: async () => [...new Set(leads.map((lead) => lead.account_id))],
+      listActiveAccountIds: async () => [...new Set(
+        [...leads, ...summaryLeads].map((lead) => lead.account_id),
+      )],
+      listLeadsNeedingSummaryRetry: async () => {
+        calls.listed += 1;
+        return summaryLeads;
+      },
       listLeadsNeedingTranscriptionRetry: async () => {
         calls.listed += 1;
         return leads;
@@ -660,4 +766,20 @@ test("retry cron attempts each listed lead and survives one failing", async () =
   assert.equal(calls.checkIns.length, 2);
   assert.equal(calls.checkIns.find((item) => item.accountId === "acct-1").ok, false);
   assert.equal(calls.checkIns.find((item) => item.accountId === "acct-2").ok, true);
+});
+
+test("retry cron includes completed transcripts that need summary-only recovery", async () => {
+  const { mocks, calls } = makeCronMocks({
+    summaryLeads: [{ id: "lead-summary", account_id: "acct-1" }],
+  });
+
+  const response = await runCron(mocks, "secret");
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls.transcriptions, [
+    { leadId: "lead-summary", accountId: "acct-1" },
+  ]);
+  assert.equal(body.attempted, 1);
+  assert.equal(body.succeeded, 1);
 });

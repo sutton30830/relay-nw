@@ -105,6 +105,23 @@ test("fabricated details or non-verbatim evidence suppress the entire summary", 
   assert.ok(fabricated.reasons.includes("urgency_missing_transcript_evidence"));
 });
 
+test("harmless paraphrasing falls back to exact transcript evidence", () => {
+  const transcript = "Hi, water is pouring out under the kitchen sink. Please come by today.";
+  const result = summaries.validateStructuredVoicemailSummary(transcript, {
+    classification: "service_request",
+    summary: "Urgent kitchen plumbing leak requires service today.",
+    evidence: ["water is pouring out under the kitchen sink", "Please come by today"],
+    urgency: "today",
+    urgency_evidence: "today",
+  });
+
+  assert.equal(
+    result.result?.summary,
+    "water is pouring out under the kitchen sink — Please come by today",
+  );
+  assert.deepEqual(result.reasons, ["summary_replaced_with_grounded_evidence"]);
+});
+
 test("normal urgency cannot smuggle in unsupported urgency evidence", () => {
   const transcript = "Please give me a call.";
   const result = summaries.validateStructuredVoicemailSummary(transcript, {

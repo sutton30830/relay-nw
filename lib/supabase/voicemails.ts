@@ -210,6 +210,38 @@ export async function claimVoicemailTranscription(input: {
   return Boolean(data?.id);
 }
 
+// Claims a summary-only recovery without downloading or retranscribing audio.
+// Only a completed, reliable customer-facing transcript with no summary can be
+// claimed, so this cannot publish text from a rejected transcription.
+export async function claimVoicemailSummary(input: {
+  accountId: string;
+  id: string;
+}) {
+  const accountId = assertAccountId(input.accountId, "claimVoicemailSummary");
+
+  if (shouldSkipDatabaseWrite("voicemail summary claim", input)) {
+    return true;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("leads")
+    .update({
+      voicemail_transcription_status: "processing",
+      voicemail_transcription_error: null,
+      voicemail_transcribed_at: new Date().toISOString(),
+    })
+    .eq("id", input.id)
+    .eq("account_id", accountId)
+    .eq("voicemail_transcription_status", "completed")
+    .not("voicemail_transcript", "is", null)
+    .is("voicemail_summary", null)
+    .select("id")
+    .maybeSingle();
+
+  throwIfSupabaseError(error);
+  return Boolean(data?.id);
+}
+
 export async function listLeadsNeedingTranscriptionRetry(limit = 10) {
   // Cross-tenant by design: this is an operator cron, and transcribeLeadVoicemail
   // re-scopes every write by the account_id returned here.
@@ -236,6 +268,38 @@ export async function listLeadsNeedingTranscriptionRetry(limit = 10) {
   throwIfSupabaseError(error);
 
   return (data ?? []) as Array<{ id: string; account_id: string }>;
+}
+
+export async function listLeadsNeedingSummaryRetry(limit = 10) {
+  // Summary-only retries are intentionally limited to known recoverable
+  // outcomes. An empty/unknown summary remains suppressed and is not retried.
+  const { data, error } = await supabaseAdmin
+    .from("leads")
+    .select("id, account_id, voicemail_summary_validation_reasons, created_at")
+    .eq("voicemail_transcription_status", "completed")
+    .not("voicemail_transcript", "is", null)
+    .is("voicemail_summary", null)
+    .is("deleted_at", null)
+    .not("voicemail_summary_validation_reasons", "is", null)
+    .order("created_at", { ascending: true })
+    .limit(Math.max(limit * 5, limit));
+
+  throwIfSupabaseError(error);
+
+  const retryableReasons = new Set([
+    "summary_contains_unsupported_words",
+    "summary_request_failed",
+  ]);
+
+  return (data ?? [])
+    .filter((lead) => lead.voicemail_summary_validation_reasons?.some(
+      (reason: string) => retryableReasons.has(reason),
+    ))
+    .slice(0, limit)
+    .map((lead) => ({ id: lead.id, account_id: lead.account_id })) as Array<{
+      id: string;
+      account_id: string;
+    }>;
 }
 
 export async function updateLeadRecordingByCallSid(input: {

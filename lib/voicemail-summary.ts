@@ -68,6 +68,22 @@ function summaryIsLexicallyGrounded(transcript: string, summary: string) {
   );
 }
 
+function groundedEvidenceSummary(evidence: string[]) {
+  const uniqueEvidence = evidence.filter((item, index) => {
+    const normalized = normalizeEvidenceText(item);
+    return evidence.findIndex((candidate) => normalizeEvidenceText(candidate) === normalized) === index;
+  });
+  const combined = normalizeWhitespace(uniqueEvidence.join(" — "));
+
+  if (combined.length <= 500) {
+    return combined;
+  }
+
+  const shortened = combined.slice(0, 500);
+  const lastSpace = shortened.lastIndexOf(" ");
+  return `${shortened.slice(0, Math.max(lastSpace, 1)).replace(/[\s—,;:.!?-]+$/u, "")}…`;
+}
+
 export function parseStructuredVoicemailSummary(value: string): StructuredVoicemailSummary | null {
   try {
     const parsed = JSON.parse(value) as Partial<StructuredVoicemailSummary>;
@@ -111,9 +127,7 @@ export function validateStructuredVoicemailSummary(
     reasons.push("summary_evidence_not_in_transcript");
   }
 
-  if (hasSummary && !summaryIsLexicallyGrounded(transcript, candidate.summary)) {
-    reasons.push("summary_contains_unsupported_words");
-  }
+  const summaryIsGrounded = !hasSummary || summaryIsLexicallyGrounded(transcript, candidate.summary);
 
   if (
     candidate.urgency !== "normal" &&
@@ -124,6 +138,27 @@ export function validateStructuredVoicemailSummary(
 
   if (candidate.urgency === "normal" && candidate.urgency_evidence) {
     reasons.push("normal_urgency_must_not_include_evidence");
+  }
+
+  // Exact evidence and urgency checks are the hard safety boundary. If those
+  // pass but the model used a harmless paraphrase, publish a deterministic
+  // extractive summary instead of suppressing the entire useful result.
+  if (reasons.length === 0 && hasSummary && !summaryIsGrounded) {
+    const extractiveSummary = groundedEvidenceSummary(candidate.evidence);
+
+    if (extractiveSummary) {
+      return {
+        result: {
+          ...candidate,
+          summary: extractiveSummary,
+        },
+        reasons: ["summary_replaced_with_grounded_evidence"],
+      };
+    }
+  }
+
+  if (hasSummary && !summaryIsGrounded) {
+    reasons.push("summary_contains_unsupported_words");
   }
 
   if (reasons.length > 0) {

@@ -1,7 +1,11 @@
 import { env } from "@/lib/env";
 import { recordCronCheckIn } from "@/lib/cron-checkins";
 import { withCronMonitor } from "@/lib/cron-monitor";
-import { listActiveAccountIds, listLeadsNeedingTranscriptionRetry } from "@/lib/supabase";
+import {
+  listActiveAccountIds,
+  listLeadsNeedingSummaryRetry,
+  listLeadsNeedingTranscriptionRetry,
+} from "@/lib/supabase";
 import { transcribeLeadVoicemail } from "@/lib/voicemail-ai";
 
 export const runtime = "nodejs";
@@ -27,10 +31,14 @@ export async function GET(request: Request) {
 }
 
 async function runAuthorizedTranscriptionRetry() {
-  const [leads, activeAccountIds] = await Promise.all([
+  const [transcriptionLeads, summaryLeads, activeAccountIds] = await Promise.all([
     listLeadsNeedingTranscriptionRetry(),
+    listLeadsNeedingSummaryRetry(),
     listActiveAccountIds(),
   ]);
+  const leads = [...new Map(
+    [...transcriptionLeads, ...summaryLeads].map((lead) => [`${lead.account_id}:${lead.id}`, lead]),
+  ).values()];
   let succeeded = 0;
   let skipped = 0;
   const failures: Array<{ leadId: string; accountId: string; error: string }> = [];
