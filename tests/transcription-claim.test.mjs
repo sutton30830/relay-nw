@@ -111,6 +111,9 @@ test("claim returns true and processing is written in one statement", async () =
     "./tenant": {
       assertAccountId: (accountId) => accountId,
     },
+    "@/lib/voicemail-summary": {
+      transcriptHasExplicitRequest: () => false,
+    },
   });
 
   const claimed = await claimVoicemailTranscription({
@@ -146,6 +149,9 @@ test("summary-only claim requires a completed transcript and missing summary", a
     },
     "./tenant": {
       assertAccountId: (accountId) => accountId,
+    },
+    "@/lib/voicemail-summary": {
+      transcriptHasExplicitRequest: () => false,
     },
   });
 

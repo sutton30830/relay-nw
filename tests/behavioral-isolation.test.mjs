@@ -514,6 +514,9 @@ async function loadStores(fake) {
     "./client": clientMock,
     "./tenant": tenantMock,
     "./types": {},
+    "@/lib/voicemail-summary": {
+      transcriptHasExplicitRequest: () => false,
+    },
   });
   const messages = await loadTsModule("lib/supabase/messages.ts", {
     "./client": clientMock,

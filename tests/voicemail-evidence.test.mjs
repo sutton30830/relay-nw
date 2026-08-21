@@ -135,3 +135,52 @@ test("normal urgency cannot smuggle in unsupported urgency evidence", () => {
   assert.equal(result.result, null);
   assert.ok(result.reasons.includes("normal_urgency_must_not_include_evidence"));
 });
+
+test("an explicit service need survives test-call language when the model returns no summary", () => {
+  const transcript =
+    "I'm just testing this voicemail out just to see if the transcript summary works. I also have a leak, so it'd be great to get that checked out. Thank you.";
+  const result = summaries.validateStructuredVoicemailSummary(transcript, {
+    classification: "unknown",
+    summary: "",
+    evidence: [],
+    urgency: "normal",
+    urgency_evidence: "",
+  });
+
+  assert.equal(result.result?.classification, "service_request");
+  assert.equal(
+    result.result?.summary,
+    "I also have a leak, so it'd be great to get that checked out.",
+  );
+  assert.deepEqual(result.result?.evidence, [
+    "I also have a leak, so it'd be great to get that checked out.",
+  ]);
+  assert.deepEqual(result.reasons, ["summary_recovered_from_explicit_request"]);
+});
+
+test("a voicemail containing only test language can still be suppressed", () => {
+  const transcript = "I'm only testing the voicemail summary. Thank you.";
+  const result = summaries.validateStructuredVoicemailSummary(transcript, {
+    classification: "unknown",
+    summary: "",
+    evidence: [],
+    urgency: "normal",
+    urgency_evidence: "",
+  });
+
+  assert.equal(result.result?.summary, null);
+  assert.deepEqual(result.reasons, []);
+});
+
+test("only transcripts with an explicit request qualify for empty-summary recovery", () => {
+  assert.equal(
+    summaries.transcriptHasExplicitRequest(
+      "I'm testing the voicemail. I also have a leak that needs to be checked out.",
+    ),
+    true,
+  );
+  assert.equal(
+    summaries.transcriptHasExplicitRequest("I'm only testing the voicemail summary. Thank you."),
+    false,
+  );
+});

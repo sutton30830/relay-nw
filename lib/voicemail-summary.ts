@@ -40,6 +40,12 @@ const ALLOWED_SUMMARY_WORDS = new Set([
   "up", "vendor", "voicemail", "want", "wants", "wrong",
 ]);
 
+const EXPLICIT_REQUEST_PATTERN =
+  /\b(?:need(?:s|ed)?|want(?:s|ed)?|would like|looking for|help(?:ed|ing)?|call me back|give me a call|check(?:ed|ing)? out|repair(?:ed|ing)?|fix(?:ed|ing)?|replace(?:d|ment|ing)?|install(?:ed|ation|ing)?|service|quote|estimate|leak(?:ing|s|ed)?|broken|damage(?:d)?|not working)\b/i;
+
+const EXPLICIT_SERVICE_PATTERN =
+  /\b(?:need(?:s|ed)?|want(?:s|ed)?|would like|looking for|help(?:ed|ing)?|check(?:ed|ing)? out|repair(?:ed|ing)?|fix(?:ed|ing)?|replace(?:d|ment|ing)?|install(?:ed|ation|ing)?|service|quote|estimate|leak(?:ing|s|ed)?|broken|damage(?:d)?|not working)\b/i;
+
 function normalizeWhitespace(value: string) {
   return value.trim().replace(/\s+/g, " ");
 }
@@ -84,6 +90,21 @@ function groundedEvidenceSummary(evidence: string[]) {
   return `${shortened.slice(0, Math.max(lastSpace, 1)).replace(/[\s—,;:.!?-]+$/u, "")}…`;
 }
 
+function explicitRequestExcerpt(transcript: string) {
+  const sentences = normalizeWhitespace(transcript)
+    .split(/(?<=[.!?])\s+/u)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+  const request = sentences.find((sentence) => EXPLICIT_REQUEST_PATTERN.test(sentence));
+
+  if (!request) return null;
+  return groundedEvidenceSummary([request]);
+}
+
+export function transcriptHasExplicitRequest(transcript: string | null | undefined) {
+  return Boolean(transcript && explicitRequestExcerpt(transcript));
+}
+
 export function parseStructuredVoicemailSummary(value: string): StructuredVoicemailSummary | null {
   try {
     const parsed = JSON.parse(value) as Partial<StructuredVoicemailSummary>;
@@ -118,6 +139,28 @@ export function validateStructuredVoicemailSummary(
 ): { result: ValidatedVoicemailSummary | null; reasons: string[] } {
   const reasons: string[] = [];
   const hasSummary = Boolean(candidate.summary);
+
+  // Models occasionally treat test-call language as proof that the entire
+  // voicemail is non-actionable, even when the caller also states a concrete
+  // need. Preserve the model's safety posture while recovering an exact,
+  // transcript-grounded request sentence deterministically.
+  if (!hasSummary && candidate.evidence.length === 0) {
+    const requestExcerpt = explicitRequestExcerpt(transcript);
+
+    if (requestExcerpt) {
+      return {
+        result: {
+          ...candidate,
+          classification: EXPLICIT_SERVICE_PATTERN.test(requestExcerpt)
+            ? "service_request"
+            : candidate.classification,
+          summary: requestExcerpt,
+          evidence: [requestExcerpt],
+        },
+        reasons: ["summary_recovered_from_explicit_request"],
+      };
+    }
+  }
 
   if (hasSummary && candidate.evidence.length === 0) {
     reasons.push("summary_missing_evidence");

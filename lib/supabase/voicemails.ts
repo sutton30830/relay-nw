@@ -2,6 +2,7 @@ import { isPlaceholderSupabaseConfig, shouldSkipDatabaseWrite, supabaseAdmin, th
 import { assertAccountId } from "./tenant";
 import type { VoicemailTranscriptionStatus } from "./types";
 import type { TranscriptionQuality } from "@/lib/voicemail-confidence";
+import { transcriptHasExplicitRequest } from "@/lib/voicemail-summary";
 
 export async function recordingBelongsToLead(recordingSid: string, inputAccountId: string) {
   const accountId = assertAccountId(inputAccountId, "recordingBelongsToLead");
@@ -271,11 +272,12 @@ export async function listLeadsNeedingTranscriptionRetry(limit = 10) {
 }
 
 export async function listLeadsNeedingSummaryRetry(limit = 10) {
-  // Summary-only retries are intentionally limited to known recoverable
-  // outcomes. An empty/unknown summary remains suppressed and is not retried.
+  // Summary-only retries include provider failures, grounded-summary validation
+  // failures, and empty model results when the transcript itself contains an
+  // explicit request. Non-actionable empty/unknown summaries remain suppressed.
   const { data, error } = await supabaseAdmin
     .from("leads")
-    .select("id, account_id, voicemail_summary_validation_reasons, created_at")
+    .select("id, account_id, voicemail_transcript, voicemail_summary_validation_reasons, created_at")
     .eq("voicemail_transcription_status", "completed")
     .not("voicemail_transcript", "is", null)
     .is("voicemail_summary", null)
@@ -292,9 +294,11 @@ export async function listLeadsNeedingSummaryRetry(limit = 10) {
   ]);
 
   return (data ?? [])
-    .filter((lead) => lead.voicemail_summary_validation_reasons?.some(
-      (reason: string) => retryableReasons.has(reason),
-    ))
+    .filter((lead) =>
+      lead.voicemail_summary_validation_reasons?.some(
+        (reason: string) => retryableReasons.has(reason),
+      ) || transcriptHasExplicitRequest(lead.voicemail_transcript)
+    )
     .slice(0, limit)
     .map((lead) => ({ id: lead.id, account_id: lead.account_id })) as Array<{
       id: string;
