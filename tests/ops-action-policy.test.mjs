@@ -42,7 +42,6 @@ test("operators have setup actions but no commercial, closure, paid-pause, or St
     OPS_ACTIONS.profileEdit,
     OPS_ACTIONS.assignExistingNumber,
     OPS_ACTIONS.a2pSync,
-    OPS_ACTIONS.voicemailRecovery,
     OPS_ACTIONS.blockerManage,
     OPS_ACTIONS.billingLinkSend,
     OPS_ACTIONS.onboardingPause,

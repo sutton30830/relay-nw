@@ -54,10 +54,8 @@ test("focused operational rows retain secure server-side paths and authority", (
   assert.match(page, /action="\/api\/ops\/carrier"/);
   assert.match(page, /action="\/api\/ops\/twilio\/assign"/);
   assert.match(page, /action="\/api\/ops\/blocker"/);
-  assert.match(page, /action="\/api\/ops\/voicemail-recovery"/);
   assert.match(page, /action="\/api\/email-test\/start"/);
   assert.match(page, /Send owner email test/);
-  assert.match(page, /Recover summaries/);
   assert.match(page, /verified by a real missed call/);
   assert.match(page, /an operator cannot mark A2P approved/);
   assert.match(page, /Relay status:/);

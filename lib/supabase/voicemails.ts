@@ -270,10 +270,10 @@ export async function listLeadsNeedingTranscriptionRetry(limit = 10) {
   return (data ?? []) as Array<{ id: string; account_id: string }>;
 }
 
-export async function listLeadsNeedingSummaryRetry(limit = 10, inputAccountId?: string) {
+export async function listLeadsNeedingSummaryRetry(limit = 10) {
   // Summary-only retries are intentionally limited to known recoverable
   // outcomes. An empty/unknown summary remains suppressed and is not retried.
-  let query = supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from("leads")
     .select("id, account_id, voicemail_summary_validation_reasons, created_at")
     .eq("voicemail_transcription_status", "completed")
@@ -281,14 +281,8 @@ export async function listLeadsNeedingSummaryRetry(limit = 10, inputAccountId?: 
     .is("voicemail_summary", null)
     .is("deleted_at", null)
     .not("voicemail_summary_validation_reasons", "is", null)
-    .order("created_at", { ascending: true });
-  if (inputAccountId) {
-    query = query.eq(
-      "account_id",
-      assertAccountId(inputAccountId, "listLeadsNeedingSummaryRetry"),
-    );
-  }
-  const { data, error } = await query.limit(Math.max(limit * 5, limit));
+    .order("created_at", { ascending: true })
+    .limit(Math.max(limit * 5, limit));
 
   throwIfSupabaseError(error);
 
