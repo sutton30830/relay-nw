@@ -46,6 +46,8 @@ const EXPLICIT_REQUEST_PATTERN =
 const EXPLICIT_SERVICE_PATTERN =
   /\b(?:need(?:s|ed)?|want(?:s|ed)?|would like|looking for|help(?:ed|ing)?|check(?:ed|ing)? out|repair(?:ed|ing)?|fix(?:ed|ing)?|replace(?:d|ment|ing)?|install(?:ed|ation|ing)?|service|quote|estimate|leak(?:ing|s|ed)?|broken|damage(?:d)?|not working)\b/i;
 
+const CALLBACK_REQUEST_PATTERN = /\b(?:call me back|give me a call)\b/i;
+
 function normalizeWhitespace(value: string) {
   return value.trim().replace(/\s+/g, " ");
 }
@@ -90,19 +92,32 @@ function groundedEvidenceSummary(evidence: string[]) {
   return `${shortened.slice(0, Math.max(lastSpace, 1)).replace(/[\s—,;:.!?-]+$/u, "")}…`;
 }
 
-function explicitRequestExcerpt(transcript: string) {
+function explicitRequestExcerpts(transcript: string) {
   const sentences = normalizeWhitespace(transcript)
     .split(/(?<=[.!?])\s+/u)
     .map((sentence) => sentence.trim())
     .filter(Boolean);
-  const request = sentences.find((sentence) => EXPLICIT_REQUEST_PATTERN.test(sentence));
+  const requestIndex = sentences.findIndex((sentence) => EXPLICIT_REQUEST_PATTERN.test(sentence));
 
-  if (!request) return null;
-  return groundedEvidenceSummary([request]);
+  if (requestIndex < 0) return [];
+
+  const request = sentences[requestIndex];
+  const callbackNeedsContext =
+    CALLBACK_REQUEST_PATTERN.test(request) &&
+    !EXPLICIT_SERVICE_PATTERN.test(request) &&
+    requestIndex > 0;
+
+  const context = callbackNeedsContext
+    ? sentences[requestIndex - 1].replace(/^(?:hi|hello|hey)[,!.]?\s+/i, "")
+    : null;
+
+  return callbackNeedsContext
+    ? [context || sentences[requestIndex - 1], request]
+    : [request];
 }
 
 export function transcriptHasExplicitRequest(transcript: string | null | undefined) {
-  return Boolean(transcript && explicitRequestExcerpt(transcript));
+  return Boolean(transcript && explicitRequestExcerpts(transcript).length > 0);
 }
 
 export function parseStructuredVoicemailSummary(value: string): StructuredVoicemailSummary | null {
@@ -143,19 +158,20 @@ export function validateStructuredVoicemailSummary(
   // Models occasionally treat test-call language as proof that the entire
   // voicemail is non-actionable, even when the caller also states a concrete
   // need. Preserve the model's safety posture while recovering an exact,
-  // transcript-grounded request sentence deterministically.
+  // transcript-grounded request and its nearby context deterministically.
   if (!hasSummary && candidate.evidence.length === 0) {
-    const requestExcerpt = explicitRequestExcerpt(transcript);
+    const requestExcerpts = explicitRequestExcerpts(transcript);
+    const requestSummary = groundedEvidenceSummary(requestExcerpts);
 
-    if (requestExcerpt) {
+    if (requestSummary) {
       return {
         result: {
           ...candidate,
-          classification: EXPLICIT_SERVICE_PATTERN.test(requestExcerpt)
+          classification: EXPLICIT_SERVICE_PATTERN.test(requestSummary)
             ? "service_request"
             : candidate.classification,
-          summary: requestExcerpt,
-          evidence: [requestExcerpt],
+          summary: requestSummary,
+          evidence: requestExcerpts,
         },
         reasons: ["summary_recovered_from_explicit_request"],
       };

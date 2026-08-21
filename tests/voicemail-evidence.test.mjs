@@ -184,3 +184,25 @@ test("only transcripts with an explicit request qualify for empty-summary recove
     false,
   );
 });
+
+test("a callback-only request preserves the preceding reason for the call", () => {
+  const transcript =
+    "Hi, I'm just testing out the voicemail, seeing if it works after all those changes. If you could call me back when you have a chance.";
+  const result = summaries.validateStructuredVoicemailSummary(transcript, {
+    classification: "unknown",
+    summary: "",
+    evidence: [],
+    urgency: "normal",
+    urgency_evidence: "",
+  });
+
+  assert.equal(
+    result.result?.summary,
+    "I'm just testing out the voicemail, seeing if it works after all those changes. — If you could call me back when you have a chance.",
+  );
+  assert.deepEqual(result.result?.evidence, [
+    "I'm just testing out the voicemail, seeing if it works after all those changes.",
+    "If you could call me back when you have a chance.",
+  ]);
+  assert.deepEqual(result.reasons, ["summary_recovered_from_explicit_request"]);
+});
