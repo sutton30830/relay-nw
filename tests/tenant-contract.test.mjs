@@ -593,6 +593,9 @@ test("human-facing pages require authenticated account context", () => {
 test("authenticated app pages share the Relay brand header and owner menu", () => {
   assert.match(appHeaderTsx, /export function AppHeader/);
   assert.match(appHeaderTsx, /app-head__brand/);
+  assert.match(appHeaderTsx, /const brandHref = isOperations \? "\/ops" : "\/leads"/);
+  assert.match(appHeaderTsx, /href=\{brandHref\}/);
+  assert.doesNotMatch(appHeaderTsx, /app-head__brand app-head__brand--link" href="\/"/);
   assert.match(appHeaderTsx, /app-head__nav/);
   assert.match(appHeaderTsx, /Owner navigation/);
   assert.match(appHeaderTsx, /mobile-owner-menu/);
@@ -659,6 +662,8 @@ test("Supabase Auth fails closed and refreshes sessions in middleware", () => {
   assert.match(middlewareTs, /supabase\.auth\.getUser\(\)/);
   assert.match(middlewareTs, /setAll\(cookiesToSet\)/);
   assert.match(middlewareTs, /"\/leads\/:path\*"/);
+  assert.match(middlewareTs, /"\/reports\/:path\*"/);
+  assert.match(middlewareTs, /"\/settings\/:path\*"/);
   assert.match(middlewareTs, /"\/setup\/:path\*"/);
   assert.match(middlewareTs, /"\/api\/leads\/:path\*"/);
   assert.doesNotMatch(middlewareTs, /\/api\/twilio/);

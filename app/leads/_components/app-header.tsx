@@ -36,6 +36,7 @@ export function AppHeader({
   variant?: "owner" | "operations";
 }) {
   const isOperations = variant === "operations";
+  const brandHref = isOperations ? "/ops" : "/leads";
   const businessInitial = businessName.trim().charAt(0).toUpperCase() || "R";
   // Sub-pages get a plain, always-visible way back to the inbox. The
   // conversation view has its own back control, and the inbox is the
@@ -62,7 +63,7 @@ export function AppHeader({
 
   return (
     <header className="app-head">
-      <Link className="app-head__brand app-head__brand--link" href="/">
+      <Link className="app-head__brand app-head__brand--link" href={brandHref}>
         <div className="brand-mark"><Icon name={isOperations ? "shield" : "relay"} size={18} /></div>
         <div>
           <p className="t-eyebrow" style={{ fontSize: 10 }}>{isOperations ? "Relay NW · Operations" : "Relay NW"}</p>
