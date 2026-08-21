@@ -11,6 +11,8 @@
     "verify:account": "node scripts/verify-account.mjs",
     "verify:billing": "node scripts/verify-billing.mjs",
     "verify:launch": "node scripts/verify-launch.mjs",
+    "baseline:pilot": "node scripts/capture-pilot-baseline.mjs",
+    "inspect:a2p": "node scripts/inspect-account-a2p.mjs",
     "eval:voicemail": "node scripts/evaluate-voicemails.mjs",
     "backfill:account-ids": "node scripts/backfill-account-ids.mjs",
     "test:activation": "node --test tests/activation-flow.test.mjs",

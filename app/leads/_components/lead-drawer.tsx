@@ -323,7 +323,6 @@ export function LeadDrawer({
                 </p>
               ) : null}
               {!lead.voicemail_summary &&
-              !lead.voicemail_transcript &&
               lead.voicemail_transcription_status !== "processing" &&
               !transcriptionWasSuppressed ? (
                 <button
@@ -335,6 +334,8 @@ export function LeadDrawer({
                   <Icon name="sparkle" size={13} />
                   {isTranscribing
                     ? "Summarizing..."
+                    : lead.voicemail_transcript
+                      ? "Generate summary"
                     : lead.voicemail_transcription_status === "failed"
                       ? "Retry summary"
                       : "Summarize voicemail"}

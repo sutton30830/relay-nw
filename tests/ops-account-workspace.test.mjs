@@ -36,7 +36,9 @@ test("infrequent details and diagnostics are collapsed without weakening control
   assert.match(page, /<details className="panel setup-panel ops-customer-details"/);
   assert.match(page, /<strong>Call setup<\/strong>/);
   assert.match(page, /Optional and advanced settings/);
-  assert.doesNotMatch(page, /Missed-call coverage expectations/);
+  assert.match(page, /name="business_hours_summary"/);
+  assert.match(page, /name="coverage_expectations"/);
+  assert.match(page, /Missed-call coverage expectations/);
   assert.match(page, /<details className="panel setup-panel ops-diagnostics"/);
   assert.match(page, /operator\.role !== "support"/);
   assert.match(page, /operator\.role === "super_admin"/);
@@ -54,6 +56,9 @@ test("focused operational rows retain secure server-side paths and authority", (
   assert.match(page, /action="\/api\/ops\/blocker"/);
   assert.match(page, /verified by a real missed call/);
   assert.match(page, /an operator cannot mark A2P approved/);
+  assert.match(page, /Relay status:/);
+  assert.match(page, /Twilio profile:/);
+  assert.match(page, /Last Twilio sync:/);
   assert.match(page, /managed in Stripe/);
   assert.match(page, /id="calls" open=\{callsControlOpen\}/);
   assert.match(page, /id="texting" open=\{textingControlOpen\}/);

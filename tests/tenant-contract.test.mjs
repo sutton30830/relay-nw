@@ -802,6 +802,11 @@ test("voicemail greeting discloses recording", () => {
   assert.match(readme, /recorded message/);
 });
 
+test("an existing transcript can be retried for a missing summary", () => {
+  assert.match(leadDrawerTsx, /lead\.voicemail_transcript[\s\S]{0,100}\? "Generate summary"/);
+  assert.doesNotMatch(leadDrawerTsx, /!lead\.voicemail_transcript/);
+});
+
 test("STOP opt-outs notify the owner", () => {
   assert.match(emailTs, /export async function notifyOwnerOptOut/);
   assert.match(inboundSmsRouteTs, /notifyOwnerOptOut\(\{/);

@@ -348,6 +348,10 @@ export default async function OpsAccountPage({
   const businessHoursSummary = typeof runtime.businessHours?.summary === "string"
     ? runtime.businessHours.summary
     : "";
+  const relayA2pStatus = summary.a2pStatus || "not_started";
+  const carrierLastSynced = carrierProfile?.updatedAt
+    ? formatDateTime(carrierProfile.updatedAt)
+    : "Never";
   const callsDetail = opsState.calls === "ready"
     ? `${runtime?.twilioPhoneNumber || "Relay number assigned"} · verified by a real missed call`
     : opsState.calls === "waiting_for_forwarding"
@@ -527,6 +531,9 @@ export default async function OpsAccountPage({
                   <div>
                     <strong>Twilio campaign</strong>
                     <p>Registration happens in Twilio. Relay reads the result; an operator cannot mark A2P approved.</p>
+                    <p><strong>Relay status:</strong> {relayA2pStatus.replaceAll("_", " ")}</p>
+                    <p><strong>Twilio profile:</strong> {(carrierProfile?.status ?? "not synced").replaceAll("_", " ")}</p>
+                    <p><strong>Last Twilio sync:</strong> {carrierLastSynced}</p>
                   </div>
                   <label className="form-field">
                     <span className="field-label">Messaging Service SID</span>
@@ -721,11 +728,10 @@ export default async function OpsAccountPage({
                     <label className="form-field"><span className="form-field__label">Business type</span><input className="field" name="business_type" defaultValue={runtime?.businessType ?? ""} placeholder="Optional" /></label>
                     <label className="form-field"><span className="form-field__label">Scheduling link</span><input className="field" name="scheduling_url" defaultValue={runtime?.schedulingUrl ?? ""} placeholder="Optional — https://…" /></label>
                     <label className="form-field"><span className="form-field__label">Custom missed-call text</span><textarea className="field" name="sms_template" defaultValue={runtime?.smsTemplate ?? ""} placeholder="Optional — Relay uses the standard approved message by default." /><small className="form-field__hint">Used only after A2P approval and automatic text-back activation.</small></label>
+                    <label className="form-field"><span className="form-field__label">Business hours</span><textarea className="field" name="business_hours_summary" defaultValue={businessHoursSummary} placeholder="e.g. Mon–Fri 8am–5pm" /><small className="form-field__hint">Used for lead handling and approved customer messaging in either call mode.</small></label>
+                    <label className="form-field"><span className="form-field__label">Missed-call coverage expectations</span><textarea className="field" name="coverage_expectations" defaultValue={runtime?.coverageExpectations ?? ""} placeholder="e.g. Capture every unanswered call, including after hours" /><small className="form-field__hint">Record what Relay should cover; forwarding behavior remains controlled by the customer&apos;s carrier.</small></label>
                     {runtime?.callMode === "direct" ? (
-                      <>
-                        <label className="form-field"><span className="form-field__label">Business hours</span><textarea className="field" name="business_hours_summary" defaultValue={businessHoursSummary} placeholder="Optional" /></label>
-                        <label className="form-field"><span className="form-field__label">Ring owner for</span><input className="field" name="dial_timeout_seconds" type="number" min={5} max={60} defaultValue={runtime?.dialTimeoutSeconds ?? 18} /><small className="form-field__hint">Direct mode only. Relay voicemail starts if the owner does not answer.</small></label>
-                      </>
+                      <label className="form-field"><span className="form-field__label">Ring owner for</span><input className="field" name="dial_timeout_seconds" type="number" min={5} max={60} defaultValue={runtime?.dialTimeoutSeconds ?? 18} /><small className="form-field__hint">Direct mode only. Relay voicemail starts if the owner does not answer.</small></label>
                     ) : null}
                     <label className="form-field"><span className="form-field__label">Maximum voicemail length</span><input className="field" name="voicemail_max_seconds" type="number" min={10} max={300} defaultValue={runtime?.voicemailMaxSeconds ?? 60} /></label>
                   </div>

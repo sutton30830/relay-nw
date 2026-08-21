@@ -115,6 +115,8 @@ test("any other profile edit still clears customer go-live approval", async () =
   assert.deepEqual(f.calls.notificationClears, []);
   assert.deepEqual(f.calls.approvalClears, ["acct-selected"]);
   assert.equal(f.calls.settings[0].accountId, "acct-selected");
+  assert.deepEqual(f.calls.settings[0].update.business_hours, { summary: "Mon-Fri 8-5" });
+  assert.equal(f.calls.settings[0].update.coverage_expectations, "Every missed call");
 });
 
 test("first-time routing details do not undo an already verified forwarding test", async () => {
