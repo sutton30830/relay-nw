@@ -5,7 +5,7 @@ Twilio reviews the messaging campaign.
 
 ## Baseline
 
-Captured from production on **August 20, 2026 at 7:14 PM PT** with
+Captured from production on **August 20, 2026 at 7:35 PM PT** with
 `npm run baseline:pilot -- ryco-property-maintenance`.
 
 | Measure | Baseline |
@@ -22,9 +22,11 @@ Captured from production on **August 20, 2026 at 7:14 PM PT** with
 | Known recovered value | $0 |
 
 Calls are live and voicemail transcription is enabled. Automatic texting is
-off. Relay currently records A2P as `not_started`; there is no synchronized
-Twilio carrier profile or last-sync timestamp. No owner notification has been
-sent or confirmed, and the owner has not approved go-live.
+off. Relay currently records A2P as `not_started`; this is correct while Relay
+completes its Twilio ISV application with Twilio Customer Support. There is no
+RYCO campaign to synchronize yet, so there is no carrier profile or last-sync
+timestamp. No owner notification has been sent or confirmed, and the owner has
+not approved go-live.
 
 This baseline does **not** treat missing job values as zero-dollar jobs. There
 are no booked jobs today, and RYCO's typical job value is not configured.
@@ -49,21 +51,25 @@ Record these once, then enter them in **Operations → RYCO → Call setup**:
   > Thanks for calling RYCO Property Maintenance. Sorry we missed you. We will
   > text you shortly. Please leave a quick recorded message after the tone.
 
-- Commercial choice: keep the account intentionally comped, or convert it to
-  the founding-pilot billing path with an audited setup-fee waiver, saved card,
-  and delayed 30-day trial.
+- Billing is decided: RYCO remains intentionally comped for the foreseeable
+  future. Do not collect a card, charge a setup fee, create a subscription, or
+  start a trial unless Sutton explicitly changes that policy later.
 
-Until that decision is recorded, keep the current `comped` policy. It prevents
-a charge even though the legacy offer and setup-fee fields still read
-`standard` and `due`.
+The current `comped` policy is authoritative and prevents a charge. The
+underlying `standard` offer and `due` setup-fee fields describe what would apply
+only if free access were explicitly ended; they are not current payment duties.
+The January 26, 2027 free-access review date is an internal reminder, not an
+expiration date, payment date, or authorization to change RYCO's policy.
 
-## Work before Twilio approval
+## Work while Relay completes Twilio ISV approval
 
-- Enter the campaign and Messaging Service SIDs in Operations and select
-  **Sync status**. Relay should then show `in progress`, the Twilio profile
-  state, and the last Twilio sync time.
-- Confirm the Relay number belongs to the correct Messaging Service sender
-  pool. Do not enable automatic texting before authoritative approval.
+- Keep RYCO A2P at `not_started`. Do not create or invent account campaign
+  evidence while Relay's ISV application is still with Twilio Customer Support.
+- Track the ISV application as a Relay-owned platform prerequisite. Ryen does
+  not need to resolve it and automatic texting must remain off.
+- After ISV approval, create or attach RYCO's Messaging Service and campaign,
+  enter both SIDs in Operations, and select **Sync status**. Only then should
+  Relay show `in progress` with a last-sync time.
 - Recover both transcript-only voicemail summaries. Each lead now offers
   **Generate summary** without retranscribing the recording; the scheduled
   recovery job can also process them.
@@ -98,4 +104,3 @@ a charge even though the legacy offer and setup-fee fields still read
 - [ ] Run `npm run verify:account -- ryco-property-maintenance`.
 - [ ] Run `npm run verify:launch -- ryco-property-maintenance`.
 - [ ] Ask Ryen to approve go-live only after every prior item passes.
-

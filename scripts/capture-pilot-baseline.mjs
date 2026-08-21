@@ -59,7 +59,7 @@ async function main() {
 
   const { data: account, error: accountError } = await supabase
     .from("accounts")
-    .select("id, slug, name, status, onboarding_status, billing_status, billing_policy, commercial_offer, setup_fee_status")
+    .select("id, slug, name, status, onboarding_status, billing_status, billing_policy, commercial_offer, setup_fee_status, free_access_review_at")
     .eq("slug", slug)
     .maybeSingle();
   if (accountError) throw accountError;
@@ -167,6 +167,7 @@ async function main() {
       billingPolicy: account.billing_policy,
       commercialOffer: account.commercial_offer,
       setupFeeStatus: account.setup_fee_status,
+      freeAccessReviewAt: account.free_access_review_at,
     },
     readiness: {
       relayA2pStatus: settings?.a2p_registration_status ?? "not_started",
