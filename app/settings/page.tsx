@@ -13,6 +13,7 @@ import {
 import { QUICK_REPLIES } from "@/app/leads/_constants";
 import { SmsToggle } from "./sms-toggle";
 import { GreetingRecorder } from "./greeting-recorder";
+import { NotificationPreferences } from "./notification-preferences";
 
 export const dynamic = "force-dynamic";
 
@@ -565,6 +566,7 @@ export default async function SettingsPage({
               <input className="field" type="email" name="owner_email" required defaultValue={account.ownerEmail ?? ""} />
             </Field>
             <p className="form-field__hint">Sign-in email: <strong>{session.email}</strong>. Login access is managed separately so a contact edit cannot lock anyone out.</p>
+
             <Field
               label="Existing public business number"
               hint={account.callMode === "forwarding"
@@ -606,6 +608,16 @@ export default async function SettingsPage({
                 />
               </div>
             </Field>
+
+            {account.notificationPreferencesAvailable ? (
+              <>
+                <p className="t-eyebrow settings-group-title">Notifications</p>
+                <NotificationPreferences
+                  initialPreferences={account.notificationPreferences}
+                  textAlertsActive={account.smsEnabled && a2pStatus === "approved"}
+                />
+              </>
+            ) : null}
 
             <p id="texting" className="t-eyebrow settings-group-title">Automatic text-back</p>
             {role === "owner" ? (

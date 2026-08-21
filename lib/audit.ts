@@ -21,6 +21,7 @@ export type AuditableSettings = {
   voicemailMaxSeconds?: number;
   missedCallSmsCooldownHours?: number;
   typicalJobValueCents?: number | null;
+  notificationPreferences?: Record<string, unknown>;
 };
 
 // Order here is the order changes are listed in the summary.
@@ -37,10 +38,16 @@ const FIELD_LABELS: Array<[keyof AuditableSettings, string]> = [
   ["voicemailMaxSeconds", "max voicemail length"],
   ["missedCallSmsCooldownHours", "text cooldown"],
   ["typicalJobValueCents", "typical job value"],
+  ["notificationPreferences", "notification preferences"],
 ];
 
 function valuesEqual(a: unknown, b: unknown): boolean {
-  if (Array.isArray(a) || Array.isArray(b)) {
+  if (
+    Array.isArray(a) ||
+    Array.isArray(b) ||
+    (a !== null && typeof a === "object") ||
+    (b !== null && typeof b === "object")
+  ) {
     return JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
   }
   // Treat null/undefined as the same "empty" so clearing a field once reads as

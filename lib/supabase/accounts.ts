@@ -12,6 +12,11 @@ import type {
   TechnicalSetupStatus,
 } from "@/lib/customer-experience-contract";
 import { normalizePhoneNumber } from "@/lib/phone";
+import {
+  DEFAULT_OWNER_NOTIFICATION_PREFERENCES,
+  normalizeOwnerNotificationPreferences,
+  type OwnerNotificationPreferences,
+} from "@/lib/notification-preferences";
 import { isPlaceholderSupabaseConfig, shouldSkipDatabaseWrite, supabaseAdmin, throwIfSupabaseError } from "./client";
 import { assertAccountId } from "./tenant";
 
@@ -53,6 +58,8 @@ export type AccountRuntimeConfig = {
   missedCallSmsCooldownHours: number;
   typicalJobValueCents: number | null;
   voicemailTranscriptionEnabled: boolean;
+  notificationPreferences: OwnerNotificationPreferences;
+  notificationPreferencesAvailable: boolean;
   twilioPhoneNumber: string;
   ownerPhoneNumber: string;
 };
@@ -181,6 +188,7 @@ type AccountSettingsRow = {
   missed_call_sms_cooldown_hours: number | null;
   typical_job_value_cents?: number | null;
   voicemail_transcription_enabled: boolean | null;
+  notification_preferences?: unknown;
   accounts?: { slug: string } | Array<{ slug: string }> | null;
 };
 
@@ -554,6 +562,8 @@ function normalizeSetupFeeStatus(value: string | null | undefined): AccountBilli
 }
 
 const ACCOUNT_SETTINGS_SELECT =
+  "account_id, business_name, owner_email, owner_name, legal_business_name, public_business_number, business_type, business_industry, website_url, address_line_1, address_line_2, address_city, address_region, address_postal_code, address_country, business_hours, implementation_notes, forwarding_carrier, coverage_expectations, greeting_preference, owner_phone_number, intake_url, scheduling_url, call_mode, sms_enabled, sms_template, quick_reply_templates, missed_call_voice_message, missed_call_voice_name, missed_call_greeting_audio_url, voicemail_max_seconds, dial_timeout_seconds, missed_call_sms_cooldown_hours, typical_job_value_cents, voicemail_transcription_enabled, notification_preferences, accounts(slug)";
+const ACCOUNT_SETTINGS_SELECT_PRE_NOTIFICATION_PREFERENCES =
   "account_id, business_name, owner_email, owner_name, legal_business_name, public_business_number, business_type, business_industry, website_url, address_line_1, address_line_2, address_city, address_region, address_postal_code, address_country, business_hours, implementation_notes, forwarding_carrier, coverage_expectations, greeting_preference, owner_phone_number, intake_url, scheduling_url, call_mode, sms_enabled, sms_template, quick_reply_templates, missed_call_voice_message, missed_call_voice_name, missed_call_greeting_audio_url, voicemail_max_seconds, dial_timeout_seconds, missed_call_sms_cooldown_hours, typical_job_value_cents, voicemail_transcription_enabled, accounts(slug)";
 const ACCOUNT_SETTINGS_SELECT_PRE_ONBOARDING_EVIDENCE =
   "account_id, business_name, owner_email, owner_name, legal_business_name, public_business_number, business_type, business_industry, website_url, address_line_1, address_line_2, address_city, address_region, address_postal_code, address_country, business_hours, implementation_notes, greeting_preference, owner_phone_number, intake_url, scheduling_url, call_mode, sms_enabled, sms_template, quick_reply_templates, missed_call_voice_message, missed_call_voice_name, missed_call_greeting_audio_url, voicemail_max_seconds, dial_timeout_seconds, missed_call_sms_cooldown_hours, typical_job_value_cents, voicemail_transcription_enabled, accounts(slug)";
@@ -604,6 +614,8 @@ export function envAccountConfig(): AccountRuntimeConfig {
     missedCallSmsCooldownHours: env.missedCallSmsCooldownHours,
     typicalJobValueCents: null,
     voicemailTranscriptionEnabled: true,
+    notificationPreferences: DEFAULT_OWNER_NOTIFICATION_PREFERENCES,
+    notificationPreferencesAvailable: false,
     twilioPhoneNumber: normalizePhoneNumber(env.twilioPhoneNumber),
     ownerPhoneNumber: normalizePhoneNumber(env.ownerPhoneNumber),
   };
@@ -648,6 +660,11 @@ function configFromSettings(row: AccountSettingsRow, primaryNumber: string): Acc
     missedCallSmsCooldownHours: row.missed_call_sms_cooldown_hours ?? 24,
     typicalJobValueCents: row.typical_job_value_cents ?? null,
     voicemailTranscriptionEnabled: row.voicemail_transcription_enabled ?? true,
+    notificationPreferences: normalizeOwnerNotificationPreferences(row.notification_preferences),
+    notificationPreferencesAvailable: Object.prototype.hasOwnProperty.call(
+      row,
+      "notification_preferences",
+    ),
     twilioPhoneNumber: normalizePhoneNumber(primaryNumber),
     ownerPhoneNumber: normalizePhoneNumber(row.owner_phone_number),
   };
@@ -747,6 +764,15 @@ export async function getAccountConfigByAccountId(accountId: string | null | und
   ]);
 
   let { data, error } = settingsResult;
+
+  if (error?.message.includes("notification_preferences")) {
+    console.warn("Owner notification preferences are missing. Apply the owner-notification-preferences migration.");
+    ({ data, error } = await supabaseAdmin
+      .from("account_settings")
+      .select(ACCOUNT_SETTINGS_SELECT_PRE_NOTIFICATION_PREFERENCES)
+      .eq("account_id", accountId)
+      .maybeSingle());
+  }
 
   if (error && /forwarding_carrier|coverage_expectations/.test(error.message)) {
     console.warn("Repeatable onboarding profile columns are missing. Apply the repeatable-onboarding migration.");
@@ -2133,6 +2159,7 @@ export type AccountSettingsUpdate = Partial<{
   voicemail_max_seconds: number;
   missed_call_sms_cooldown_hours: number;
   typical_job_value_cents: number | null;
+  notification_preferences: Record<string, unknown>;
 }>;
 
 export async function updateAccountSettings(accountId: string, update: AccountSettingsUpdate) {

@@ -360,6 +360,14 @@ export async function notifyOwnerNewMissedCallLead(input: {
   callerPhone: string;
   smsStatus: string;
 }) {
+  if (input.account.notificationPreferences?.missedCall.email === false) {
+    console.info("Owner missed-call email suppressed by account preference", {
+      accountId: input.account.accountId,
+      leadId: input.leadId,
+    });
+    return { sent: false, skipped: true };
+  }
+
   const recipient = await ownerEmail(input.account);
   const last4 = phoneLast4(input.callerPhone) ?? "unknown";
   const smsLine = input.account.smsEnabled
@@ -404,6 +412,14 @@ export async function notifyOwnerVoicemailReady(input: {
   callerPhone?: string | null;
   summary: string;
 }) {
+  if (input.account.notificationPreferences?.voicemailReady.email === false) {
+    console.info("Owner voicemail-ready email suppressed by account preference", {
+      accountId: input.account.accountId,
+      leadId: input.leadId,
+    });
+    return { sent: false, skipped: true };
+  }
+
   const recipient = await ownerEmail(input.account);
   const last4 = phoneLast4(input.callerPhone) ?? "unknown";
   const lines = [
@@ -435,6 +451,14 @@ export async function notifyOwnerInboundReply(input: {
   body: string;
   notificationId: string;
 }) {
+  if (input.account.notificationPreferences?.inboundReply.email === false) {
+    console.info("Owner inbound-reply email suppressed by account preference", {
+      accountId: input.account.accountId,
+      notificationId: input.notificationId,
+    });
+    return { sent: false, skipped: true };
+  }
+
   const recipient = await ownerEmail(input.account);
   const last4 = phoneLast4(input.callerPhone) ?? "unknown";
   const preview = input.body.slice(0, 220);

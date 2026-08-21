@@ -30,6 +30,21 @@ async function loadTsModule(path, mocks) {
   return module.exports;
 }
 
+const notificationPreferencesMock = {
+  DEFAULT_OWNER_NOTIFICATION_PREFERENCES: {
+    missedCall: { email: true, sms: true },
+    voicemailReady: { email: true, sms: false },
+    inboundReply: { email: true, sms: true },
+    urgentVoicemailSms: true,
+  },
+  normalizeOwnerNotificationPreferences: (value) => value ?? {
+    missedCall: { email: true, sms: true },
+    voicemailReady: { email: true, sms: false },
+    inboundReply: { email: true, sms: true },
+    urgentVoicemailSms: true,
+  },
+};
+
 // --- 1. Deterministic cooldown winner (lib/supabase/messages.ts) ---
 
 function leadsQueryFake(rows) {
@@ -143,6 +158,7 @@ test("legacy call without ownLeadCreatedAt: any active competitor blocks (conser
 
 async function loadAccountsModule() {
   return loadTsModule("lib/supabase/accounts.ts", {
+    "@/lib/notification-preferences": notificationPreferencesMock,
     "@/lib/billing": {
       normalizeCommercialOffer: (value) =>
         value === "founding_pilot" ? "founding_pilot" : "standard",

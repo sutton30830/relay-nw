@@ -167,6 +167,30 @@ test("a skipped owner notification captures nothing", async () => {
   assert.deepEqual(calls.sentryMessages, []);
 });
 
+test("owner missed-call email preference skips delivery before provider lookup", async () => {
+  const { mocks, calls } = makeMocks();
+  const { notifyOwnerNewMissedCallLead } = await loadTsModule("lib/email.ts", mocks);
+
+  const result = await notifyOwnerNewMissedCallLead({
+    account: {
+      ...ACCOUNT,
+      notificationPreferences: {
+        missedCall: { email: false, sms: true },
+        voicemailReady: { email: true, sms: false },
+        inboundReply: { email: true, sms: true },
+        urgentVoicemailSms: true,
+      },
+    },
+    leadId: "lead-pref-off",
+    callerPhone: "+12065550123",
+    smsStatus: "sent",
+  });
+
+  assert.deepEqual(result, { sent: false, skipped: true });
+  assert.deepEqual(calls.resendSends, []);
+  assert.deepEqual(calls.sentryMessages, []);
+});
+
 test("a Sentry failure never throws out of sendEmail", async () => {
   const { mocks, calls } = makeMocks({
     sendBehavior: async () => ({ data: null, error: { message: "bad domain" } }),

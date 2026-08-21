@@ -5,6 +5,10 @@ import { isSetupFeeSettled } from "@/lib/billing";
 import { normalizePhoneNumber } from "@/lib/phone";
 import { diffSettingsForAudit, type AuditableSettings } from "@/lib/audit";
 import {
+  serializeOwnerNotificationPreferences,
+  type OwnerNotificationPreferences,
+} from "@/lib/notification-preferences";
+import {
   getA2pRegistrationStatus,
   getAccountBillingRecord,
   recordAccountAuditEvents,
@@ -95,6 +99,21 @@ export async function POST(request: Request) {
     "typical_job_value_dollars",
     LIMITS.typicalJobValueDollars,
   );
+  const notificationPreferences: OwnerNotificationPreferences = {
+    missedCall: {
+      email: formData.get("notification_missed_call_email") === "on",
+      sms: formData.get("notification_missed_call_sms") === "on",
+    },
+    voicemailReady: {
+      email: formData.get("notification_voicemail_ready_email") === "on",
+      sms: formData.get("notification_voicemail_ready_sms") === "on",
+    },
+    inboundReply: {
+      email: formData.get("notification_inbound_reply_email") === "on",
+      sms: formData.get("notification_inbound_reply_sms") === "on",
+    },
+    urgentVoicemailSms: formData.get("notification_urgent_voicemail_sms") === "on",
+  };
 
   if (
     !businessName ||
@@ -141,6 +160,9 @@ export async function POST(request: Request) {
     voicemail_max_seconds: voicemailMax,
     missed_call_sms_cooldown_hours: cooldownHours,
     typical_job_value_cents: typicalJobValueCents,
+    ...(formData.get("notification_preferences_present") === "1"
+      ? { notification_preferences: serializeOwnerNotificationPreferences(notificationPreferences) }
+      : {}),
     // These fields are operator-owned carrier-registration facts. Preserve
     // customer edit compatibility for older clients without showing an A2P
     // questionnaire in Settings.
@@ -227,6 +249,7 @@ export async function POST(request: Request) {
     voicemailMaxSeconds: session.account.voicemailMaxSeconds,
     missedCallSmsCooldownHours: session.account.missedCallSmsCooldownHours,
     typicalJobValueCents: session.account.typicalJobValueCents,
+    notificationPreferences: session.account.notificationPreferences,
   };
   const after: AuditableSettings = {
     businessName,
@@ -241,6 +264,9 @@ export async function POST(request: Request) {
     voicemailMaxSeconds: voicemailMax,
     missedCallSmsCooldownHours: cooldownHours,
     typicalJobValueCents,
+    ...(formData.get("notification_preferences_present") === "1"
+      ? { notificationPreferences }
+      : {}),
     // Only owners submit the switch; leaving it undefined keeps it out of the diff.
     ...(session.role === "owner" ? { smsEnabled: update.sms_enabled } : {}),
   };

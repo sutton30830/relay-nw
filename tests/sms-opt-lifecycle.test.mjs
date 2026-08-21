@@ -55,7 +55,7 @@ function resolveConsistentAccountEvidence(evidence) {
   return resolved[0]?.resolution ?? evidence[0].resolution;
 }
 
-function makeMocks() {
+function makeMocks(account = ACCOUNT) {
   const calls = {
     clearOptOuts: [],
     recordOptOuts: [],
@@ -99,7 +99,7 @@ function makeMocks() {
         reason: "message_sid_not_registered",
         lookupValue: null,
       }),
-      resolveAccountByTwilioNumber: async () => ({ status: "resolved", account: ACCOUNT }),
+      resolveAccountByTwilioNumber: async () => ({ status: "resolved", account }),
       resolveConsistentAccountEvidence,
       resolveAccountSafely: async (resolver) => resolver(),
     },
@@ -144,7 +144,7 @@ function makeMocks() {
 }
 
 async function postInboundSms(body, overrides = {}) {
-  const { mocks, calls } = makeMocks();
+  const { mocks, calls } = makeMocks(overrides.account ?? ACCOUNT);
   const { POST } = await loadTsModule("app/api/twilio/sms/route.ts", mocks);
   const payload = new URLSearchParams({
     MessageSid: overrides.messageSid ?? "SM_inbound_1",
@@ -207,4 +207,22 @@ test("a plain conversational reply still forwards and does not touch opt-outs", 
   assert.equal(calls.ownerInboundReplies.length, 1);
   assert.equal(calls.ownerForwards.length, 1);
   assert.match(calls.webhookEvents[0].error, /Forwarded inbound reply to owner/);
+});
+
+test("customer-reply text preference suppresses only the owner text forward", async () => {
+  const account = {
+    ...ACCOUNT,
+    notificationPreferences: {
+      missedCall: { email: true, sms: true },
+      voicemailReady: { email: true, sms: false },
+      inboundReply: { email: true, sms: false },
+      urgentVoicemailSms: true,
+    },
+  };
+
+  const { calls } = await postInboundSms("Can you call me back?", { account });
+
+  assert.equal(calls.ownerInboundReplies.length, 1, "email channel stays enabled");
+  assert.deepEqual(calls.ownerForwards, []);
+  assert.match(calls.webhookEvents[0].error, /Notified owner by email/);
 });

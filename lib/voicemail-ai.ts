@@ -631,13 +631,25 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
     const account = await getAccountConfigByAccountId(accountId);
     if (account) {
       const ownerSummary = summary ?? transcript.slice(0, 160);
+      const voicemailSmsEnabled =
+        account.notificationPreferences?.voicemailReady.sms ?? false;
+      const urgentVoicemailSmsEnabled =
+        account.notificationPreferences?.urgentVoicemailSms ?? true;
+      const shouldTextOwner =
+        voicemailSmsEnabled ||
+        (classification.level === "fast" && urgentVoicemailSmsEnabled);
 
-      if (classification.level === "fast") {
+      if (shouldTextOwner) {
+        const isUrgent = classification.level === "fast";
         await sendOwnerSms({
           account,
-          context: "urgent voicemail alert",
-          actionKey: `owner_sms:urgent_voicemail:${leadId}`,
-          body: `Relay NW URGENT: voicemail from ${lead.phone} — ${classification.reason}. "${ownerSummary.slice(0, 160)}" Call back now or reply from your inbox: ${env.appBaseUrl}/leads`,
+          context: isUrgent ? "urgent voicemail alert" : "voicemail ready alert",
+          actionKey: isUrgent
+            ? `owner_sms:urgent_voicemail:${leadId}`
+            : `owner_sms:voicemail_ready:${leadId}`,
+          body: isUrgent
+            ? `Relay NW URGENT: voicemail from ${lead.phone} — ${classification.reason}. "${ownerSummary.slice(0, 160)}" Call back now or reply from your inbox: ${env.appBaseUrl}/leads`
+            : `Relay NW: voicemail from ${lead.phone} — "${ownerSummary.slice(0, 180)}" Open your inbox: ${env.appBaseUrl}/leads`,
         });
       }
 

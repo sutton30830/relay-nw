@@ -413,6 +413,12 @@ create table if not exists public.account_settings (
   missed_call_sms_cooldown_hours integer not null default 24 check (missed_call_sms_cooldown_hours > 0),
   typical_job_value_cents integer check (typical_job_value_cents is null or typical_job_value_cents >= 0),
   voicemail_transcription_enabled boolean not null default true,
+  notification_preferences jsonb not null default '{
+    "missed_call": {"email": true, "sms": true},
+    "voicemail_ready": {"email": true, "sms": false},
+    "inbound_reply": {"email": true, "sms": true},
+    "urgent_voicemail_sms": true
+  }'::jsonb check (jsonb_typeof(notification_preferences) = 'object'),
   a2p_registration_status text not null default 'not_started' check (
     a2p_registration_status in ('not_started', 'in_progress', 'approved', 'needs_attention', 'rejected', 'paused')
   ),
@@ -453,6 +459,19 @@ alter table public.account_settings
 alter table public.account_settings add column if not exists greeting_preference text not null default 'generated';
 alter table public.account_settings add column if not exists quick_reply_templates text[];
 alter table public.account_settings add column if not exists typical_job_value_cents integer;
+alter table public.account_settings
+  add column if not exists notification_preferences jsonb not null default '{
+    "missed_call": {"email": true, "sms": true},
+    "voicemail_ready": {"email": true, "sms": false},
+    "inbound_reply": {"email": true, "sms": true},
+    "urgent_voicemail_sms": true
+  }'::jsonb;
+alter table public.account_settings drop constraint if exists account_settings_notification_preferences_object;
+alter table public.account_settings
+  add constraint account_settings_notification_preferences_object
+  check (jsonb_typeof(notification_preferences) = 'object');
+comment on column public.account_settings.notification_preferences is
+  'Owner-selected delivery channels for missed calls, voicemail summaries, caller replies, and urgent voicemail text overrides.';
 alter table public.account_settings drop constraint if exists account_settings_typical_job_value_cents_nonnegative;
 alter table public.account_settings
   add constraint account_settings_typical_job_value_cents_nonnegative

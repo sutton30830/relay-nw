@@ -4274,6 +4274,137 @@ code {
   margin-top: 8px;
 }
 
+.notification-preferences {
+  overflow: hidden;
+  margin-bottom: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--panel-2);
+}
+.notification-preferences__intro {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 15px 16px;
+}
+.notification-preferences__title {
+  margin: 0 0 3px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 800;
+}
+.notification-preferences__note,
+.notification-preferences__mandatory {
+  margin: 0;
+  color: var(--ink-4);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.notification-preferences__text-status {
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  padding: 5px 8px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.notification-preferences__text-status.is-active {
+  background: var(--good-soft);
+  color: var(--good);
+}
+.notification-preferences__events {
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.notification-event {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.notification-event:last-child {
+  border-bottom: 0;
+}
+.notification-event__copy {
+  display: grid;
+  gap: 2px;
+}
+.notification-event__copy strong,
+.notification-urgent strong {
+  color: var(--ink);
+  font-size: 13.5px;
+}
+.notification-event__copy span,
+.notification-urgent small {
+  color: var(--ink-4);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.notification-event__channels {
+  display: flex;
+  gap: 14px;
+}
+.notification-channel {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.notification-channel .switch__track,
+.notification-urgent .switch__track {
+  width: 38px;
+  height: 22px;
+}
+.notification-channel .switch__thumb,
+.notification-urgent .switch__thumb {
+  width: 16px;
+  height: 16px;
+}
+.notification-channel .switch__input:checked + .switch__track .switch__thumb,
+.notification-urgent .switch__input:checked + .switch__track .switch__thumb {
+  transform: translateX(16px);
+}
+.notification-urgent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  cursor: pointer;
+}
+.notification-urgent > span:first-child {
+  display: grid;
+  gap: 2px;
+}
+.notification-preferences__mandatory {
+  border-top: 1px solid var(--line);
+  padding: 11px 16px 13px;
+}
+
+@media (max-width: 560px) {
+  .notification-preferences__intro,
+  .notification-event {
+    grid-template-columns: 1fr;
+  }
+  .notification-preferences__intro {
+    display: grid;
+  }
+  .notification-preferences__text-status {
+    justify-self: start;
+  }
+  .notification-event__channels {
+    justify-content: space-between;
+  }
+}
+
 /* SMS master switch: the highest-stakes control, set apart in its own callout
    with a real toggle and the state spelled out. */
 .sms-switch {

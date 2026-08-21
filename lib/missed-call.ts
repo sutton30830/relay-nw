@@ -45,13 +45,21 @@ function ownerSmsBody(input: {
 async function notifyOwnerNewLeadBySms(input: {
   account: Pick<
     AccountRuntimeConfig,
-    "accountId" | "smsEnabled" | "ownerPhoneNumber" | "twilioPhoneNumber" | "businessName"
+    "accountId" | "smsEnabled" | "ownerPhoneNumber" | "twilioPhoneNumber" | "businessName" | "notificationPreferences"
   >;
   callerPhone: string;
   smsStatus: OwnerSmsStatus;
   correlationId: string;
 }) {
   const { account } = input;
+
+  if (account.notificationPreferences?.missedCall.sms === false) {
+    console.info("Owner missed-call SMS suppressed by account preference", {
+      accountId: account.accountId,
+      correlationId: input.correlationId,
+    });
+    return;
+  }
 
   // Owner SMS rides the same A2P-gated number as customer texting. If customer texting
   // is disabled (campaign not approved yet), do not send owner texts from it either.

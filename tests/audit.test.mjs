@@ -77,3 +77,22 @@ test("typical job value changes are included in the settings summary", () => {
   assert.equal(events.length, 1);
   assert.match(events[0].summary, /typical job value/);
 });
+
+test("notification preference changes are audited by content", () => {
+  const before = {
+    notificationPreferences: {
+      missed_call: { email: true, sms: true },
+      voicemail_ready: { email: true, sms: false },
+    },
+  };
+  assert.deepEqual(diffSettingsForAudit(before, structuredClone(before)), []);
+
+  const events = diffSettingsForAudit(before, {
+    notificationPreferences: {
+      missed_call: { email: true, sms: false },
+      voicemail_ready: { email: true, sms: false },
+    },
+  });
+  assert.equal(events.length, 1);
+  assert.match(events[0].summary, /notification preferences/);
+});

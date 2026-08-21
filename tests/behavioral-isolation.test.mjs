@@ -528,6 +528,20 @@ async function loadStores(fake) {
     "./tenant": tenantMock,
   });
   const accounts = await loadTsModule("lib/supabase/accounts.ts", {
+    "@/lib/notification-preferences": {
+      DEFAULT_OWNER_NOTIFICATION_PREFERENCES: {
+        missedCall: { email: true, sms: true },
+        voicemailReady: { email: true, sms: false },
+        inboundReply: { email: true, sms: true },
+        urgentVoicemailSms: true,
+      },
+      normalizeOwnerNotificationPreferences: (value) => value ?? {
+        missedCall: { email: true, sms: true },
+        voicemailReady: { email: true, sms: false },
+        inboundReply: { email: true, sms: true },
+        urgentVoicemailSms: true,
+      },
+    },
     "@/lib/billing": {
       normalizeCommercialOffer: (value) =>
         value === "founding_pilot" ? "founding_pilot" : "standard",

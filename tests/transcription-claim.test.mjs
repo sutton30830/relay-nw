@@ -167,13 +167,19 @@ test("summary-only claim requires a completed transcript and missing summary", a
   assert.deepEqual(state.calls.is, [["voicemail_summary", null]]);
 });
 
-function makeVoicemailMocks({ lead, claimResult = true }) {
+function makeVoicemailMocks({
+  lead,
+  claimResult = true,
+  account = null,
+  priority = { level: "normal", reason: null },
+}) {
   const calls = {
     claims: [],
     summaryClaims: [],
     priorityUpdates: [],
     transcriptionUpdates: [],
     ownerSms: [],
+    ownerEmails: [],
     adminIssues: [],
   };
 
@@ -189,7 +195,7 @@ function makeVoicemailMocks({ lead, claimResult = true }) {
       },
     },
     "@/lib/priority": {
-      classifyPriority: () => ({ level: "normal", reason: null }),
+      classifyPriority: () => priority,
     },
     "@/lib/voicemail-confidence": voicemailConfidenceModule,
     "@/lib/voicemail-summary": voicemailSummaryModule,
@@ -203,7 +209,7 @@ function makeVoicemailMocks({ lead, claimResult = true }) {
         calls.claims.push(input);
         return claimResult;
       },
-      getAccountConfigByAccountId: async () => null,
+      getAccountConfigByAccountId: async () => account,
       getLeadForVoicemailTranscription: async () => lead,
       updateLeadPriority: async (input) => calls.priorityUpdates.push(input),
       updateLeadVoicemailTranscription: async (input) => calls.transcriptionUpdates.push(input),
@@ -213,7 +219,7 @@ function makeVoicemailMocks({ lead, claimResult = true }) {
     },
     "@/lib/email": {
       notifyAdminOperationalIssue: async (input) => calls.adminIssues.push(input),
-      notifyOwnerVoicemailReady: async () => {},
+      notifyOwnerVoicemailReady: async (input) => calls.ownerEmails.push(input),
     },
   };
 
@@ -468,6 +474,111 @@ test("completed transcript regenerates only the summary without downloading audi
       calls.transcriptionUpdates.at(-1).summaryValidationReasons,
       ["summary_replaced_with_grounded_evidence"],
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("voicemail-ready text preference sends one non-urgent owner alert", async () => {
+  const originalFetch = globalThis.fetch;
+  const transcript = "The kitchen faucet is dripping. Please call me tomorrow.";
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("Recordings/RE_text_ready.mp3")) {
+      return new Response("fake-audio", { status: 200 });
+    }
+    if (String(url).endsWith("/audio/transcriptions")) {
+      return Response.json({ text: transcript, logprobs: reliableLogprobs });
+    }
+    if (String(url).endsWith("/responses")) {
+      return Response.json({ output_text: "{}" });
+    }
+    throw new Error(`Unexpected fetch: ${url}`);
+  };
+
+  try {
+    const account = {
+      accountId: "acct-1",
+      businessName: "Demo Plumbing",
+      notificationPreferences: {
+        missedCall: { email: true, sms: true },
+        voicemailReady: { email: true, sms: true },
+        inboundReply: { email: true, sms: true },
+        urgentVoicemailSms: true,
+      },
+    };
+    const { mocks, calls } = makeVoicemailMocks({
+      account,
+      lead: {
+        id: "lead-text-ready",
+        phone: "+12065550123",
+        recording_sid: "RE_text_ready",
+        recording_duration: 12,
+        voicemail_transcript: null,
+        voicemail_summary: null,
+        voicemail_transcription_status: "pending",
+        voicemail_transcribed_at: null,
+      },
+    });
+    const { transcribeLeadVoicemail } = await loadTsModule("lib/voicemail-ai.ts", mocks);
+
+    await transcribeLeadVoicemail("lead-text-ready", "acct-1");
+
+    assert.equal(calls.ownerSms.length, 1);
+    assert.equal(calls.ownerSms[0].context, "voicemail ready alert");
+    assert.match(calls.ownerSms[0].actionKey, /owner_sms:voicemail_ready/);
+    assert.equal(calls.ownerEmails.length, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("urgent voicemail override can be disabled independently", async () => {
+  const originalFetch = globalThis.fetch;
+  const transcript = "There is water pouring through the ceiling. Please call immediately.";
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("Recordings/RE_urgent_off.mp3")) {
+      return new Response("fake-audio", { status: 200 });
+    }
+    if (String(url).endsWith("/audio/transcriptions")) {
+      return Response.json({ text: transcript, logprobs: reliableLogprobs });
+    }
+    if (String(url).endsWith("/responses")) {
+      return Response.json({ output_text: "{}" });
+    }
+    throw new Error(`Unexpected fetch: ${url}`);
+  };
+
+  try {
+    const account = {
+      accountId: "acct-1",
+      businessName: "Demo Plumbing",
+      notificationPreferences: {
+        missedCall: { email: true, sms: true },
+        voicemailReady: { email: true, sms: false },
+        inboundReply: { email: true, sms: true },
+        urgentVoicemailSms: false,
+      },
+    };
+    const { mocks, calls } = makeVoicemailMocks({
+      account,
+      priority: { level: "fast", reason: "Active leak" },
+      lead: {
+        id: "lead-urgent-off",
+        phone: "+12065550123",
+        recording_sid: "RE_urgent_off",
+        recording_duration: 12,
+        voicemail_transcript: null,
+        voicemail_summary: null,
+        voicemail_transcription_status: "pending",
+        voicemail_transcribed_at: null,
+      },
+    });
+    const { transcribeLeadVoicemail } = await loadTsModule("lib/voicemail-ai.ts", mocks);
+
+    await transcribeLeadVoicemail("lead-urgent-off", "acct-1");
+
+    assert.deepEqual(calls.ownerSms, []);
+    assert.equal(calls.ownerEmails.length, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }

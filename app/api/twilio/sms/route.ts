@@ -178,7 +178,19 @@ async function handleInboundSms(
     });
   }
 
-  if (input.shouldNotifyOwner && !account.smsEnabled) {
+  const shouldTextOwner =
+    input.shouldNotifyOwner &&
+    (account.notificationPreferences?.inboundReply.sms ?? true);
+
+  if (input.shouldNotifyOwner && !shouldTextOwner) {
+    console.info("Inbound SMS owner text suppressed by account preference", {
+      correlationId,
+      accountId: account.accountId,
+    });
+    return "notified_owner" as const;
+  }
+
+  if (shouldTextOwner && !account.smsEnabled) {
     console.info("Inbound SMS owner notification suppressed because SMS_ENABLED is false", {
       correlationId,
       fromLast4: phoneLast4(input.from),
@@ -188,7 +200,7 @@ async function handleInboundSms(
     return "notified_owner" as const;
   }
 
-  if (input.shouldNotifyOwner) {
+  if (shouldTextOwner) {
     const body = `New Relay reply from ${input.from}:\n${input.body}\n\nOpen leads: ${env.appBaseUrl}/leads`;
     if (typeof sendOwnerSms === "function") {
       await sendOwnerSms({

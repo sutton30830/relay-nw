@@ -130,10 +130,10 @@ function makeMissedCallMocks(overrides = {}) {
   return { mocks, calls, supabase };
 }
 
-async function runMissedCall(mocks) {
+async function runMissedCall(mocks, account = ACCOUNT) {
   const { handleMissedCall } = await loadTsModule("lib/missed-call.ts", mocks);
   return handleMissedCall({
-    account: ACCOUNT,
+    account,
     callerPhone: "+12065550123",
     callSid: "CA_test_1",
     message: null,
@@ -272,6 +272,26 @@ test("missed call handled: owner gets an SMS heads-up from the Relay number", as
   assert.equal(ownerSends.length, 1);
   assert.equal(ownerSends[0].from, ACCOUNT.twilioPhoneNumber);
   assert.match(ownerSends[0].body, /missed call/i);
+});
+
+test("missed-call owner text can be disabled without suppressing the caller text", async () => {
+  const { mocks, calls } = makeMissedCallMocks();
+  const account = {
+    ...ACCOUNT,
+    notificationPreferences: {
+      missedCall: { email: true, sms: false },
+      voicemailReady: { email: true, sms: false },
+      inboundReply: { email: true, sms: true },
+      urgentVoicemailSms: true,
+    },
+  };
+
+  const result = await runMissedCall(mocks, account);
+
+  assert.equal(result.smsStatus, "sent");
+  assert.equal(calls.twilioSends.filter((send) => send.to === ACCOUNT.ownerPhoneNumber).length, 0);
+  assert.equal(calls.twilioSends.filter((send) => send.to === "+12065550123").length, 1);
+  assert.equal(calls.ownerNotifications.length, 1, "email delivery remains independent");
 });
 
 test("owner SMS failure never breaks the customer-facing flow", async () => {

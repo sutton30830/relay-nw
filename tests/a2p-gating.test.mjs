@@ -90,6 +90,14 @@ async function runSettingsPost({
     "@/lib/audit": {
       diffSettingsForAudit: () => [],
     },
+    "@/lib/notification-preferences": {
+      serializeOwnerNotificationPreferences: (preferences) => ({
+        missed_call: preferences.missedCall,
+        voicemail_ready: preferences.voicemailReady,
+        inbound_reply: preferences.inboundReply,
+        urgent_voicemail_sms: preferences.urgentVoicemailSms,
+      }),
+    },
     "@/lib/onboarding-profile": {
       isCustomerProfileComplete: (profile) => Boolean(
         profile.businessName && profile.ownerName && profile.ownerEmail && profile.ownerPhoneNumber &&
@@ -236,4 +244,25 @@ test("admin cannot mutate sms_enabled through settings", async () => {
   assert.equal(calls.updates.length, 1);
   assert.equal(Object.hasOwn(calls.updates[0].update, "sms_enabled"), false);
   assert.deepEqual(calls.redirects, ["/settings?saved=1"]);
+});
+
+test("owner notification choices are stored without changing texting activation", async () => {
+  const calls = await runSettingsPost({
+    form: settingsForm({
+      notification_preferences_present: "1",
+      notification_missed_call_email: "on",
+      notification_voicemail_ready_email: "on",
+      notification_voicemail_ready_sms: "on",
+      notification_urgent_voicemail_sms: "on",
+    }),
+  });
+
+  assert.deepEqual(calls.a2pLookups, []);
+  assert.deepEqual(calls.updates[0].update.notification_preferences, {
+    missed_call: { email: true, sms: false },
+    voicemail_ready: { email: true, sms: true },
+    inbound_reply: { email: false, sms: false },
+    urgent_voicemail_sms: true,
+  });
+  assert.equal(calls.updates[0].update.sms_enabled, false);
 });

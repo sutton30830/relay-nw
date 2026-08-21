@@ -235,6 +235,14 @@ test("settings, billing, Operations, and team endpoints derive their tenant from
     "@/lib/billing": { isSetupFeeSettled: () => true },
     "@/lib/phone": { normalizePhoneNumber: (value) => value },
     "@/lib/audit": { diffSettingsForAudit: () => [] },
+    "@/lib/notification-preferences": {
+      serializeOwnerNotificationPreferences: (preferences) => ({
+        missed_call: preferences.missedCall,
+        voicemail_ready: preferences.voicemailReady,
+        inbound_reply: preferences.inboundReply,
+        urgent_voicemail_sms: preferences.urgentVoicemailSms,
+      }),
+    },
     "@/lib/supabase": {
       getA2pRegistrationStatus: async () => "approved",
       getAccountBillingRecord: async () => {
