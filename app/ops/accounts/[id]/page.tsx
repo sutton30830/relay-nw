@@ -157,6 +157,7 @@ export default async function OpsAccountPage({
     calls?: string;
     blocker?: string;
     onboarding_test?: string;
+    voicemail_recovery?: string;
   }>;
 }) {
   const operator = await requirePlatformOperator();
@@ -292,6 +293,17 @@ export default async function OpsAccountPage({
       : notices.onboarding_test === "failed"
         ? "Owner notification provider rejected the test. Check Diagnostics before retrying."
         : null;
+  const voicemailRecoveryMessage = notices.voicemail_recovery === "completed"
+    ? "Eligible voicemail summaries were recovered. Review the affected leads."
+    : notices.voicemail_recovery === "none"
+      ? "No voicemail summaries currently need recovery for this account."
+      : notices.voicemail_recovery === "partial"
+        ? "Some voicemail summaries recovered, but at least one still needs attention."
+        : notices.voicemail_recovery === "failed"
+          ? "Voicemail summary recovery failed. Check Diagnostics before retrying."
+          : notices.voicemail_recovery === "account_not_found"
+            ? "The account could not be resolved for voicemail recovery."
+            : null;
   const carrierMessage = carrierNotice(notices.carrier);
   const numberMessage = notices.number === "assigned"
     ? "Relay number assigned and configured."
@@ -344,6 +356,7 @@ export default async function OpsAccountPage({
     profileMessage ||
     accountControlMessage ||
     onboardingTestMessage
+    || voicemailRecoveryMessage
   );
   const businessHoursSummary = typeof runtime.businessHours?.summary === "string"
     ? runtime.businessHours.summary
@@ -401,6 +414,7 @@ export default async function OpsAccountPage({
             {profileMessage ? <div className={notices.profile === "saved" ? "settings-notice" : "intake-error settings-notice"}>{profileMessage}</div> : null}
             {accountControlMessage ? <div className={notices.calls === "saved" ? "settings-notice" : "intake-error settings-notice"}>{accountControlMessage}</div> : null}
             {onboardingTestMessage ? <div className={notices.onboarding_test === "sent" ? "settings-notice" : "intake-error settings-notice"}>{onboardingTestMessage}</div> : null}
+            {voicemailRecoveryMessage ? <div className={notices.voicemail_recovery === "completed" || notices.voicemail_recovery === "none" ? "settings-notice" : "intake-error settings-notice"}>{voicemailRecoveryMessage}</div> : null}
           </div>
         ) : null}
 
@@ -576,6 +590,39 @@ export default async function OpsAccountPage({
                   </label>
                   <button className="btn btn-secondary" type="submit">Save blocker</button>
                 </form>
+              ) : <p className="ops-task-row__readonly">Support access is read-only.</p>}
+            </details>
+
+            <details className="ops-task-row ops-task-row--quiet" id="onboarding" open={primaryDestination === "#onboarding" || Boolean(notices.onboarding_test || notices.voicemail_recovery)}>
+              <summary>
+                <span className={`ops-task-row__icon ${onboarding.facts.ownerNotificationConfirmedAt ? "ops-task-row__icon--good" : ""}`}><Icon name="sparkle" size={17} /></span>
+                <span className="ops-task-row__content">
+                  <span className="ops-task-row__label">Handoff checks</span>
+                  <strong>{onboarding.facts.ownerNotificationConfirmedAt ? "Owner email confirmed" : onboarding.facts.ownerNotificationSentAt ? "Awaiting owner confirmation" : "Owner email not tested"}</strong>
+                  <small>Recover eligible voicemail summaries and verify the owner notification.</small>
+                </span>
+                <span className="ops-task-row__action">Run checks <Icon name="chevronRight" size={15} /></span>
+              </summary>
+              {operator.role !== "support" ? (
+                <div className="ops-task-row__body ops-compact-form">
+                  <form action="/api/ops/voicemail-recovery" method="post" className="ops-compact-form">
+                    <input type="hidden" name="account_slug" value={summary.accountSlug} />
+                    <div>
+                      <strong>Voicemail summary recovery</strong>
+                      <p>Retry only this account&apos;s completed transcripts with a known recoverable summary failure.</p>
+                    </div>
+                    <button className="btn btn-secondary" type="submit">Recover summaries</button>
+                  </form>
+                  <form action="/api/email-test/start" method="post" className="ops-compact-form">
+                    <input type="hidden" name="account_slug" value={summary.accountSlug} />
+                    <input type="hidden" name="return_to" value="ops_onboarding" />
+                    <div>
+                      <strong>Owner notification test</strong>
+                      <p>{onboarding.facts.ownerNotificationSentAt ? `Last sent ${formatDateTime(onboarding.facts.ownerNotificationSentAt)}. The owner must confirm receipt from Setup.` : "Send the existing audited test to the configured owner email, then ask the owner to confirm receipt from Setup."}</p>
+                    </div>
+                    <button className="btn btn-secondary" type="submit">Send owner email test</button>
+                  </form>
+                </div>
               ) : <p className="ops-task-row__readonly">Support access is read-only.</p>}
             </details>
           </section>
