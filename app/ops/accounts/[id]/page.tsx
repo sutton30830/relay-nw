@@ -157,6 +157,7 @@ export default async function OpsAccountPage({
     calls?: string;
     blocker?: string;
     onboarding_test?: string;
+    evidence?: string;
   }>;
 }) {
   const operator = await requirePlatformOperator();
@@ -805,7 +806,7 @@ export default async function OpsAccountPage({
           </div>
         </details>
 
-        <details className="panel setup-panel ops-diagnostics" id="diagnostics">
+        <details className="panel setup-panel ops-diagnostics" id="diagnostics" open={Boolean(notices.evidence)}>
           <summary>
             Diagnostics
             {failedCount > 0 ? <span className="chip chip-danger">{failedCount} failed</span> : null}
@@ -817,7 +818,7 @@ export default async function OpsAccountPage({
             </div>
             <div className="webhook-events">
               {providerActions.length === 0 ? <p className="empty-copy">No provider actions yet.</p> : providerActions.map((event) => (
-                <article className="webhook-event" key={event.id}>
+                <article className="webhook-event" id={`provider-action-${event.id}`} key={event.id}>
                   <div className="webhook-event__head">
                     <strong>{event.action.replaceAll("_", " ")}</strong>
                     <span>{event.internalStatus} · {formatDateTime(event.lastAttemptAt)}</span>

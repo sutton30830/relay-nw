@@ -126,6 +126,53 @@ export default async function OperationsMonitoringPage() {
                 </section>
               </div>
 
+              <section className="ops-voicemail-pipeline" aria-label={`${row.businessName} voicemail pipeline`}>
+                <div className="ops-voicemail-pipeline__head">
+                  <div>
+                    <h3>Voicemail pipeline</h3>
+                    <p>Recording → transcript → grounded summary</p>
+                  </div>
+                  <span className={row.voicemailPipeline.stalled || row.voicemailPipeline.failed ? "chip chip-danger" : row.voicemailPipeline.waiting ? "chip chip-warn" : "chip"}>
+                    {row.voicemailPipeline.stalled + row.voicemailPipeline.failed + row.voicemailPipeline.waiting} need attention
+                  </span>
+                </div>
+                <dl className="ops-voicemail-pipeline__counts">
+                  <div><dt>Recordings</dt><dd>{row.voicemailPipeline.recordings}</dd></div>
+                  <div><dt>Transcripts ready</dt><dd>{row.voicemailPipeline.transcriptsReady}</dd></div>
+                  <div><dt>Summaries ready</dt><dd>{row.voicemailPipeline.summariesReady}</dd></div>
+                  <div><dt>Processing</dt><dd>{row.voicemailPipeline.processing}</dd></div>
+                  <div><dt>Waiting</dt><dd>{row.voicemailPipeline.waiting}</dd></div>
+                  <div><dt>Stalled / failed</dt><dd>{row.voicemailPipeline.stalled} / {row.voicemailPipeline.failed}</dd></div>
+                  <div><dt>Quality-suppressed</dt><dd>{row.voicemailPipeline.suppressed}</dd></div>
+                </dl>
+                <p className="ops-voicemail-pipeline__retry">
+                  <strong>Last retry run:</strong> {formatCronSignal(row.transcriptionCronAt, row.transcriptionCronOk)}
+                  {row.transcriptionCronDetail ? ` · ${row.transcriptionCronDetail}` : ""}
+                </p>
+                {row.voicemailPipeline.issues.length > 0 ? (
+                  <div className="ops-voicemail-pipeline__issues">
+                    {row.voicemailPipeline.issues.map((issue) => {
+                      const evidenceHref = issue.providerActionId
+                        ? `/ops/accounts/${encodeURIComponent(row.accountSlug)}?evidence=${encodeURIComponent(issue.providerActionId)}#provider-action-${encodeURIComponent(issue.providerActionId)}`
+                        : `/ops/accounts/${encodeURIComponent(row.accountSlug)}?evidence=${encodeURIComponent(issue.leadId)}#diagnostics`;
+                      return (
+                        <article className={`ops-voicemail-issue ops-voicemail-issue--${issue.severity}`} key={`${issue.leadId}:${issue.stage}`}>
+                          <div>
+                            <strong>{issue.stage} {issue.state}</strong>
+                            <span>{formatDateTime(issue.lastChangedAt)} · caller ••••{issue.callerLast4 ?? "unknown"}</span>
+                          </div>
+                          <p>{issue.detail}</p>
+                          <small>Retry: {issue.retryEligibility} · {issue.recommendedNextAction}</small>
+                          <Link className="text-link" href={evidenceHref}>Open affected-call evidence</Link>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="ops-voicemail-pipeline__clear">No queued, stuck, or actionable voicemail failures.</p>
+                )}
+              </section>
+
               {row.health.alerts.length > 0 ? (
                 <div className="ops-monitor-card__alerts">
                   {row.health.alerts.map((alert) => (

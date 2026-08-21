@@ -200,11 +200,18 @@ test("monitoring query excludes suppressed provider actions from operational fai
   assert.match(monitoringSource, /row\.provider === "twilio"/);
   assert.match(monitoringSource, /recentSmsActions\.filter\(\(row\) => row\.internal_status === "failed"\)/);
   assert.match(monitoringSource, /row\.action !== "scheduled_transcription_retry"/);
+  assert.match(monitoringSource, /calculateVoicemailPipelineHealth/);
+  assert.match(monitoringSource, /voicemail_summary_validation_reasons/);
+  assert.match(monitoringSource, /retry_eligibility, recommended_next_action/);
+  assert.doesNotMatch(monitoringSource, /voicemail_raw_transcript/);
 });
 
 test("monitoring remains operator-only and does not leak diagnostics into owner pages", async () => {
   const page = await readFile(new URL("../app/ops/monitoring/page.tsx", import.meta.url), "utf8");
   assert.match(page, /requirePlatformOperator\(\)/);
   assert.match(page, /loadOperationsMonitoring\(\)/);
+  assert.match(page, /Voicemail pipeline/);
+  assert.match(page, /Open affected-call evidence/);
+  assert.match(page, /transcriptionCronDetail/);
   assert.doesNotMatch(page, /requireAccountUser/);
 });

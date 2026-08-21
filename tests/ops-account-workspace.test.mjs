@@ -40,6 +40,8 @@ test("infrequent details and diagnostics are collapsed without weakening control
   assert.match(page, /name="coverage_expectations"/);
   assert.match(page, /Missed-call coverage expectations/);
   assert.match(page, /<details className="panel setup-panel ops-diagnostics"/);
+  assert.match(page, /open=\{Boolean\(notices\.evidence\)\}/);
+  assert.match(page, /id=\{`provider-action-\$\{event\.id\}`\}/);
   assert.match(page, /operator\.role !== "support"/);
   assert.match(page, /operator\.role === "super_admin"/);
   assert.match(page, /Super-admin commercial exceptions/);

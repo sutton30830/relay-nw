@@ -226,10 +226,10 @@ export function calculateAccountHealth(
       accountId: input.accountId,
       code: "recording_or_transcription_failure",
       severity: "warning",
-      title: "Recording or transcription needs recovery",
-      detail: `${input.recordingOrTranscriptionFailures} operational failure${input.recordingOrTranscriptionFailures === 1 ? "" : "s"} remain; expected quality suppressions are excluded.`,
+      title: "Voicemail pipeline needs recovery",
+      detail: `${input.recordingOrTranscriptionFailures} queued, stalled, or failed voicemail item${input.recordingOrTranscriptionFailures === 1 ? "" : "s"} need attention; expected quality suppressions are excluded.`,
       owner: "relay",
-      recommendedAction: "Confirm recording retrieval, then use the idempotent transcription retry path when eligible.",
+      recommendedAction: "Open the affected-call evidence, confirm its exact stage, then use only the listed retry path.",
     }));
   }
 

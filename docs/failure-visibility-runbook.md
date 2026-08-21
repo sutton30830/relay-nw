@@ -6,14 +6,29 @@ tenant-scoped view that explains failures and recovery consistently.
 
 ## Operator response
 
-1. Open **Operations → Account → Diagnostics → Provider actions**.
-2. Confirm the account, action, provider identifier, provider status/code, attempts,
-   retry eligibility, and recommended next action.
-3. If the provider identifier exists, reconcile from the provider before retrying.
-4. Never retry an SMS under the same action after an ambiguous timeout or provider
+1. Open **Operations → Monitoring → Voicemail pipeline**. Review the recording,
+   transcript, summary, processing, waiting, stalled/failed, and
+   quality-suppressed counts. The latest transcription-retry outcome shows how
+   many eligible items were recovered, skipped, or failed without exposing
+   voicemail content.
+2. Select **Open affected-call evidence** for a queued, stalled, or failed item.
+   Relay links directly to the exact tenant-scoped provider action when one
+   exists; otherwise it opens that account's Diagnostics section.
+3. In **Operations → Account → Diagnostics → Provider actions**, confirm the
+   account, action, provider identifier, provider status/code, attempts, retry
+   eligibility, and recommended next action.
+4. If the provider identifier exists, reconcile from the provider before retrying.
+5. Never retry an SMS under the same action after an ambiguous timeout or provider
    acceptance. Wait for its signed callback or contact the person another way.
-5. Replay webhooks only with the original provider identifier. Stripe and scheduled
+6. Replay webhooks only with the original provider identifier. Stripe and scheduled
    billing failures should be recovered through reconciliation, never a second charge.
+
+For voicemail, use the displayed stage and retry policy. A verified transcript
+with a summary failure is summary-only recovery; do not download or transcribe
+the audio again. A processing item older than ten minutes is stale and may be
+reclaimed by the atomic scheduled retry. Short, silent, hallucinated, or
+materially disagreeing audio remains **quality-suppressed** and must not be
+retried as an outage.
 
 ## Scheduled detection
 

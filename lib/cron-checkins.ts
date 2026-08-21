@@ -23,7 +23,10 @@ export async function recordCronCheckIn(input: {
       resourceId: input.accountId,
       internalStatus: input.ok ? "succeeded" : "failed",
       providerStatus: input.ok ? "checked_in" : "job_failed",
-      diagnosticDetail: input.ok ? null : input.detail,
+      // This is content-free operational evidence (counts/outcome only). Keep
+      // it on successful runs too so Monitoring can explain what the job did,
+      // rather than showing only a timestamp and a green status.
+      diagnosticDetail: input.detail,
       customerExplanation: "Relay completed a scheduled service check.",
       retryEligibility: input.ok ? "never" : "automatic",
       recommendedNextAction: input.ok

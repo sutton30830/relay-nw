@@ -41,17 +41,21 @@ async function runAuthorizedTranscriptionRetry() {
   ).values()];
   let succeeded = 0;
   let skipped = 0;
+  const successes: Array<{ leadId: string; accountId: string }> = [];
+  const skips: Array<{ leadId: string; accountId: string }> = [];
   const failures: Array<{ leadId: string; accountId: string; error: string }> = [];
 
   for (const lead of leads) {
     try {
       await transcribeLeadVoicemail(lead.id, lead.account_id);
       succeeded += 1;
+      successes.push({ leadId: lead.id, accountId: lead.account_id });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown transcription retry error";
 
       if (message === "Voicemail summary is already generating.") {
         skipped += 1;
+        skips.push({ leadId: lead.id, accountId: lead.account_id });
         continue;
       }
 
@@ -74,14 +78,15 @@ async function runAuthorizedTranscriptionRetry() {
   const runKey = new Date().toISOString().slice(0, 10);
   const checkIns = await Promise.all(activeAccountIds.map((accountId) => {
     const accountFailures = failures.filter((failure) => failure.accountId === accountId);
+    const accountEligible = leads.filter((lead) => lead.account_id === accountId).length;
+    const accountSucceeded = successes.filter((success) => success.accountId === accountId).length;
+    const accountSkipped = skips.filter((skip) => skip.accountId === accountId).length;
     return recordCronCheckIn({
       accountId,
       job: "scheduled_transcription_retry",
       runKey,
       ok: accountFailures.length === 0,
-      detail: accountFailures.length === 0
-        ? `Checked ${leads.filter((lead) => lead.account_id === accountId).length} eligible voicemail retries.`
-        : `${accountFailures.length} voicemail retry attempt${accountFailures.length === 1 ? "" : "s"} failed.`,
+      detail: `Eligible ${accountEligible}; recovered ${accountSucceeded}; skipped ${accountSkipped}; failed ${accountFailures.length}.`,
     });
   }));
 

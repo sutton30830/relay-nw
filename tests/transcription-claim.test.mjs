@@ -883,6 +883,14 @@ test("retry cron attempts each listed lead and survives one failing", async () =
   assert.equal(calls.checkIns.length, 2);
   assert.equal(calls.checkIns.find((item) => item.accountId === "acct-1").ok, false);
   assert.equal(calls.checkIns.find((item) => item.accountId === "acct-2").ok, true);
+  assert.equal(
+    calls.checkIns.find((item) => item.accountId === "acct-1").detail,
+    "Eligible 1; recovered 0; skipped 0; failed 1.",
+  );
+  assert.equal(
+    calls.checkIns.find((item) => item.accountId === "acct-2").detail,
+    "Eligible 1; recovered 1; skipped 0; failed 0.",
+  );
 });
 
 test("retry cron includes completed transcripts that need summary-only recovery", async () => {

@@ -4,6 +4,12 @@ import {
   type MonitoringThresholds,
 } from "@/lib/monitoring-health";
 import { deriveOpsState } from "@/lib/ops-state";
+import {
+  calculateVoicemailPipelineHealth,
+  type VoicemailActionSignal,
+  type VoicemailLeadSignal,
+  type VoicemailPipelineHealth,
+} from "@/lib/voicemail-monitoring";
 import { isPlaceholderSupabaseConfig, supabaseAdmin, throwIfSupabaseError } from "./client";
 import { listOpsAccounts } from "./accounts";
 
@@ -27,6 +33,8 @@ export type OperationsMonitoringRow = {
   operationsMonitoringCronOk: boolean | null;
   transcriptionCronAt: string | null;
   transcriptionCronOk: boolean | null;
+  transcriptionCronDetail: string | null;
+  voicemailPipeline: VoicemailPipelineHealth;
   billingReconciliationAt: string | null;
   billingReconciliationCronOk: boolean | null;
   retentionCronAt: string | null;
@@ -124,10 +132,10 @@ export async function loadOperationsMonitoring(): Promise<OperationsMonitoringDa
 
   const [callsResult, leadsResult, messagesResult, webhookResult, providerResult, phoneResult, auditResult, stripeResult, unresolvedWebhookResult] = await Promise.all([
     supabaseAdmin.from("calls").select("account_id, lead_id, status, dial_call_status, created_at").in("account_id", accountIds).gte("created_at", activitySince).limit(5000),
-    supabaseAdmin.from("leads").select("account_id, id, source, sms_status, created_at").in("account_id", accountIds).eq("source", "missed_call").is("deleted_at", null).order("created_at", { ascending: false }).limit(5000),
+    supabaseAdmin.from("leads").select("account_id, id, phone, source, sms_status, created_at, recording_sid, recording_duration, recording_status, voicemail_transcription_status, voicemail_transcription_error, voicemail_transcribed_at, voicemail_summary, voicemail_summary_validation_reasons").in("account_id", accountIds).eq("source", "missed_call").is("deleted_at", null).order("created_at", { ascending: false }).limit(5000),
     supabaseAdmin.from("messages").select("account_id, lead_id, direction, status, twilio_message_sid, created_at").in("account_id", accountIds).eq("direction", "outbound").order("created_at", { ascending: false }).limit(5000),
     supabaseAdmin.from("webhook_events").select("account_id, created_at, source, response_status, error").in("account_id", accountIds).gte("created_at", webhookSince).order("created_at", { ascending: false }).limit(5000),
-    supabaseAdmin.from("provider_action_events").select("account_id, action, provider, resource_id, internal_status, provider_status, failure_code, diagnostic_detail, suppressed, last_attempt_at").in("account_id", accountIds).gte("last_attempt_at", providerSince).order("last_attempt_at", { ascending: false }).limit(5000),
+    supabaseAdmin.from("provider_action_events").select("id, account_id, action, provider, resource_id, internal_status, provider_status, failure_code, diagnostic_detail, retry_eligibility, recommended_next_action, suppressed, last_attempt_at").in("account_id", accountIds).gte("last_attempt_at", providerSince).order("last_attempt_at", { ascending: false }).limit(5000),
     supabaseAdmin.from("account_phone_numbers").select("account_id, phone_number, is_primary").in("account_id", accountIds).limit(1000),
     supabaseAdmin.from("account_audit_events").select("account_id, action, created_at").in("account_id", accountIds).eq("action", "onboarding.first_call_live").order("created_at", { ascending: false }).limit(1000),
     supabaseAdmin.from("stripe_events").select("account_id, received_at").in("account_id", accountIds).order("received_at", { ascending: false }).limit(5000),
@@ -165,6 +173,39 @@ export async function loadOperationsMonitoring(): Promise<OperationsMonitoringDa
     const recentWebhooks = accountWebhooks.filter((row) => timestamp(row, "created_at")! >= activitySince);
     const accountActions = rowsForAccount(providerActions, account.accountId);
     const recentActions = accountActions.filter((row) => timestamp(row, "last_attempt_at")! >= activitySince);
+    const voicemailLeads = accountLeads
+      .filter((row) => typeof row.recording_sid === "string")
+      .map((row): VoicemailLeadSignal => ({
+        id: String(row.id),
+        phone: typeof row.phone === "string" ? row.phone : null,
+        createdAt: String(row.created_at),
+        recordingSid: typeof row.recording_sid === "string" ? row.recording_sid : null,
+        recordingDuration: typeof row.recording_duration === "number" ? row.recording_duration : null,
+        recordingStatus: typeof row.recording_status === "string" ? row.recording_status : null,
+        transcriptionStatus: typeof row.voicemail_transcription_status === "string" ? row.voicemail_transcription_status : null,
+        transcriptionError: typeof row.voicemail_transcription_error === "string" ? row.voicemail_transcription_error : null,
+        transcriptionChangedAt: typeof row.voicemail_transcribed_at === "string" ? row.voicemail_transcribed_at : null,
+        hasSummary: typeof row.voicemail_summary === "string" && row.voicemail_summary.trim().length > 0,
+        summaryValidationReasons: Array.isArray(row.voicemail_summary_validation_reasons)
+          ? row.voicemail_summary_validation_reasons.filter((reason): reason is string => typeof reason === "string")
+          : [],
+      }));
+    const voicemailActions = accountActions
+      .filter((row) => ["recording_retrieval", "voicemail_transcription", "voicemail_summary"].includes(String(row.action)))
+      .map((row): VoicemailActionSignal => ({
+        id: String(row.id),
+        action: String(row.action),
+        resourceId: typeof row.resource_id === "string" ? row.resource_id : null,
+        internalStatus: String(row.internal_status),
+        providerStatus: typeof row.provider_status === "string" ? row.provider_status : null,
+        retryEligibility: row.retry_eligibility === "automatic" || row.retry_eligibility === "never"
+          ? row.retry_eligibility
+          : "manual",
+        recommendedNextAction: typeof row.recommended_next_action === "string" ? row.recommended_next_action : null,
+        suppressed: row.suppressed === true,
+        lastAttemptAt: String(row.last_attempt_at),
+      }));
+    const voicemailPipeline = calculateVoicemailPipelineHealth(voicemailLeads, voicemailActions, now);
     const accountPhones = rowsForAccount(phoneNumbers, account.accountId);
     const accountAudits = rowsForAccount(audits, account.accountId);
     const accountStripeEvents = rowsForAccount(stripeEvents, account.accountId);
@@ -206,12 +247,16 @@ export async function loadOperationsMonitoring(): Promise<OperationsMonitoringDa
     const failedWebhookActions = recentActions.filter((row) => String(row.action).startsWith("webhook_") && row.internal_status === "failed").length;
     const webhookResponseErrors = recentWebhooks.filter((row) => Number(row.response_status) >= 500).length;
     const duplicateEventConflicts = recentActions.filter(containsOperationalConflict).length;
-    const recordingOrTranscriptionFailures = recentActions.filter((row) =>
+    const providerRecordingOrTranscriptionFailures = recentActions.filter((row) =>
       row.internal_status === "failed" &&
       row.suppressed !== true &&
       row.action !== "scheduled_transcription_retry" &&
       /recording|transcription/.test(String(row.action))
     ).length;
+    const recordingOrTranscriptionFailures = Math.max(
+      providerRecordingOrTranscriptionFailures,
+      voicemailPipeline.waiting + voicemailPipeline.stalled + voicemailPipeline.failed,
+    );
     const latestAction = (action: string) => accountActions
       .filter((row) => row.action === action)
       .sort((a, b) => String(b.last_attempt_at).localeCompare(String(a.last_attempt_at)))[0];
@@ -291,6 +336,10 @@ export async function loadOperationsMonitoring(): Promise<OperationsMonitoringDa
       operationsMonitoringCronOk: actionOk("scheduled_operations_monitoring"),
       transcriptionCronAt: actionAt("scheduled_transcription_retry"),
       transcriptionCronOk: actionOk("scheduled_transcription_retry"),
+      transcriptionCronDetail: typeof latestAction("scheduled_transcription_retry")?.diagnostic_detail === "string"
+        ? String(latestAction("scheduled_transcription_retry")?.diagnostic_detail)
+        : null,
+      voicemailPipeline,
       billingReconciliationAt: actionAt("scheduled_billing_reconciliation"),
       billingReconciliationCronOk: actionOk("scheduled_billing_reconciliation"),
       retentionCronAt: actionAt("scheduled_retention"),
