@@ -479,6 +479,8 @@ export default async function SettingsPage({
               ? "Your role does not allow editing settings."
               : params.error === "save_failed"
                 ? "Could not save settings. Try again."
+                : params.error === "sms_consent_required"
+                  ? "Confirm the automatic-texting authorization before turning texting on."
                 : params.error === "a2p_not_approved"
                   ? "Relay is still enabling automatic texting. Missed-call capture continues normally."
                   : "Please check the highlighted values and try again."}

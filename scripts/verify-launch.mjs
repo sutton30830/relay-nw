@@ -154,6 +154,7 @@ export function analyzeLaunchCertification(input) {
     adminUsers = [],
     latestLead,
     onboardingEvidence,
+    textingActivationApproval,
     billingConfigResult,
   } = input;
   const checks = [];
@@ -235,6 +236,15 @@ export function analyzeLaunchCertification(input) {
 
   const callCapture = deriveCallCaptureReady({ settings, latestLead });
   const smsRegistrationReady = READY_A2P_STATUSES.has(settings?.a2p_registration_status ?? "not_started");
+  const linkedOwnerIds = new Set(
+    adminUsers
+      .filter((user) => user.role === "owner" && user.user_id)
+      .map((user) => user.user_id),
+  );
+  const ownerTextingApprovalReady = Boolean(
+    textingActivationApproval?.actor_user_id &&
+    linkedOwnerIds.has(textingActivationApproval.actor_user_id),
+  );
   const technicalReady = callCapture.ready;
   const setupFeeStatus = account.setup_fee_status ?? "due";
   const setupFeeSettled =
@@ -251,6 +261,7 @@ export function analyzeLaunchCertification(input) {
     technicalReady &&
     smsRegistrationReady &&
     settings?.sms_enabled === true &&
+    ownerTextingApprovalReady &&
     setupFeeSettled &&
     paymentMethodReady &&
     blocker === "none";
@@ -318,6 +329,16 @@ export function analyzeLaunchCertification(input) {
       ? "Auto-texting is on."
       : "Auto-texting is off; production readiness requires the owner to enable it after carrier approval.",
     settings?.sms_enabled ? "pass" : "fail",
+  );
+  addCheck(
+    checks,
+    ownerTextingApprovalReady,
+    "automatic-texting owner authorization",
+    ownerTextingApprovalReady
+      ? `Authenticated owner ${textingActivationApproval.actor_email ?? textingActivationApproval.actor_user_id} authorized activation at ${textingActivationApproval.created_at}.`
+      : textingActivationApproval
+        ? "An activation-approval event exists, but its actor is not a linked account owner."
+        : "No explicit authenticated owner authorization was retained for automatic texting.",
   );
   addCheck(
     checks,
@@ -445,7 +466,7 @@ async function loadAccountFacts(supabase, slug) {
     return { account: null };
   }
 
-  const [settings, phoneNumbers, adminUsers, leads, onboardingEvidence] = await Promise.all([
+  const [settings, phoneNumbers, adminUsers, leads, onboardingEvidence, textingActivationApprovals] = await Promise.all([
     maybeSingle(
       supabase
         .from("account_settings")
@@ -486,6 +507,16 @@ async function loadAccountFacts(supabase, slug) {
         .eq("account_id", account.id),
       "account_onboarding_evidence lookup",
     ),
+    selectRows(
+      supabase
+        .from("account_audit_events")
+        .select("action, actor_user_id, actor_email, created_at")
+        .eq("account_id", account.id)
+        .eq("action", "texting.activation_approved")
+        .order("created_at", { ascending: false })
+        .limit(1),
+      "automatic-texting approval lookup",
+    ),
   ]);
 
   return {
@@ -495,6 +526,7 @@ async function loadAccountFacts(supabase, slug) {
     adminUsers,
     latestLead: firstRow(leads),
     onboardingEvidence,
+    textingActivationApproval: firstRow(textingActivationApprovals),
   };
 }
 

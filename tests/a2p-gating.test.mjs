@@ -29,6 +29,8 @@ function makeSession(overrides = {}) {
   return {
     accountId: "acct-1",
     role: "owner",
+    userId: "user-1",
+    email: "owner@example.com",
     account: {
       smsEnabled: false,
       twilioPhoneNumber: "+15551234567",
@@ -62,7 +64,7 @@ function settingsForm(overrides = {}) {
 async function runSettingsPost({
   session = makeSession(),
   a2pStatus = "approved",
-  form = settingsForm({ sms_enabled: "on" }),
+  form = settingsForm({ sms_enabled: "on", sms_activation_consent: "on" }),
 } = {}) {
   const calls = {
     a2pLookups: [],
@@ -172,7 +174,33 @@ test("owner enabling SMS with approved A2P persists sms_enabled true", async () 
   assert.equal(calls.updates[0].update.typical_job_value_cents, 25000);
   assert.equal("call_mode" in calls.updates[0].update, false);
   assert.deepEqual(calls.billingUpdates, []);
+  assert.deepEqual(calls.auditEvents[0].events, [{
+    action: "texting.activation_approved",
+    summary: "Authorized automatic missed-call texting using the saved message",
+  }]);
   assert.deepEqual(calls.redirects, ["/settings?saved=1"]);
+});
+
+test("owner must separately authorize the first automatic-texting activation", async () => {
+  const calls = await runSettingsPost({
+    form: settingsForm({ sms_enabled: "on" }),
+  });
+
+  assert.deepEqual(calls.a2pLookups, []);
+  assert.equal(calls.updates.length, 0);
+  assert.deepEqual(calls.redirects, ["/settings?error=sms_consent_required#texting"]);
+});
+
+test("first activation UI presents a separate required owner authorization", async () => {
+  const source = await readFile(
+    new URL("../app/settings/sms-toggle.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(source, /available && enabled && !defaultEnabled/);
+  assert.match(source, /name="sms_activation_consent"/);
+  assert.match(source, /sms_activation_consent"[\s\S]*required/);
+  assert.match(source, /I authorize Relay to automatically text callers after missed calls/);
 });
 
 test("profile saves cannot advance technical setup state", async () => {

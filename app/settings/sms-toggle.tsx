@@ -53,6 +53,20 @@ export function SmsToggle({
           </span>
         </span>
       </label>
+      {available && enabled && !defaultEnabled ? (
+        <label className="sms-switch__consent">
+          <input
+            type="checkbox"
+            name="sms_activation_consent"
+            value="on"
+            required
+          />
+          <span>
+            I authorize Relay to automatically text callers after missed calls using the
+            message saved on this page. I can turn texting off at any time.
+          </span>
+        </label>
+      ) : null}
       {!available ? (
         <input type="hidden" name="sms_enabled" value={defaultEnabled ? "on" : "off"} />
       ) : null}

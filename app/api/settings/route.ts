@@ -198,6 +198,12 @@ export async function POST(request: Request) {
     const wantsSmsEnabled = formData.get("sms_enabled") === "on";
 
     if (wantsSmsEnabled && !session.account.smsEnabled) {
+      // Enabling the compliance-sensitive switch is a distinct owner decision,
+      // not an accidental side effect of saving the rest of the form.
+      if (formData.get("sms_activation_consent") !== "on") {
+        redirect("/settings?error=sms_consent_required#texting");
+      }
+
       // Turning texting ON requires an approved A2P campaign. Fail closed on
       // lookup failure: a status we cannot read is not an approved status.
       const [a2pStatus, billing] = await Promise.all([
@@ -272,6 +278,12 @@ export async function POST(request: Request) {
   };
 
   const auditEvents = diffSettingsForAudit(before, after);
+  if (session.role === "owner" && update.sms_enabled && !session.account.smsEnabled) {
+    auditEvents.push({
+      action: "texting.activation_approved",
+      summary: "Authorized automatic missed-call texting using the saved message",
+    });
+  }
 
   await recordAccountAuditEvents({
     accountId: session.accountId,

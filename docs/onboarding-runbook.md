@@ -22,7 +22,10 @@ existence of an account or Relay number as proof that the customer is live.
    tenant-scoped missed-call lead. Synthetic or duplicate webhooks do not count.
 6. Complete A2P in Twilio and use **Sync from Twilio**. This remains separate from
    call readiness. Only authoritative `approved` status permits the owner to
-   enable automatic text-back.
+   enable automatic text-back. Follow the
+   [post-approval activation runbook](operations/a2p-post-approval-activation.md):
+   the authenticated owner must separately authorize first activation, and
+   Relay must retain the resulting audit event.
 7. Run a real missed-call SMS test and wait for Twilio's `delivered` callback.
    Then use an approved landline/non-SMS destination and retain Twilio error
    `30006`; do not repeatedly text an unknown customer's landline.
@@ -59,6 +62,8 @@ existence of an account or Relay number as proof that the customer is live.
 - Operators can resolve data and blockers; they cannot manually select a
   readiness state, approve A2P, invent Stripe truth, or approve on the customer's
   behalf.
+- `sms_enabled=true` without an authenticated owner's
+  `texting.activation_approved` event is not launch-ready.
 
 ## Release order
 

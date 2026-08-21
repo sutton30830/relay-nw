@@ -4466,6 +4466,25 @@ code {
 .sms-switch--on .sms-switch__state strong {
   color: var(--good);
 }
+.sms-switch__consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  flex-basis: 100%;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in oklab, var(--good) 22%, var(--line));
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.sms-switch__consent input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--good);
+  flex-shrink: 0;
+}
 
 /* Toggle switch primitive. */
 .switch {

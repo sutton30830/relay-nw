@@ -67,6 +67,14 @@ function readyFacts(overrides = {}) {
       customer_go_live_approved_at: "2026-08-01T00:04:00.000Z",
       ...overrides.onboardingEvidence,
     },
+    textingActivationApproval: Object.hasOwn(overrides, "textingActivationApproval")
+      ? overrides.textingActivationApproval
+      : {
+          action: "texting.activation_approved",
+          actor_user_id: "user_123",
+          actor_email: "owner@example.com",
+          created_at: "2026-08-01T00:00:30.000Z",
+        },
     billingConfigResult: overrides.billingConfigResult ?? {
       ok: true,
       checks: [
@@ -122,6 +130,31 @@ test("launch verifier blocks production while automatic SMS is paused", () => {
   assert.equal(sms.level, "fail");
   assert.match(sms.detail, /production readiness requires/i);
   assert.equal(result.ok, false);
+});
+
+test("launch verifier requires explicit automatic-texting authorization from a linked owner", () => {
+  const missing = analyzeLaunchCertification(readyFacts({
+    textingActivationApproval: null,
+  }));
+  const wrongActor = analyzeLaunchCertification(readyFacts({
+    textingActivationApproval: {
+      action: "texting.activation_approved",
+      actor_user_id: "user-not-an-owner",
+      actor_email: "admin@example.com",
+      created_at: "2026-08-01T00:00:30.000Z",
+    },
+  }));
+
+  assert.equal(missing.ok, false);
+  assert.match(
+    missing.checks.find((check) => check.label === "automatic-texting owner authorization").detail,
+    /No explicit authenticated owner authorization/i,
+  );
+  assert.equal(wrongActor.ok, false);
+  assert.match(
+    wrongActor.checks.find((check) => check.label === "automatic-texting owner authorization").detail,
+    /not a linked account owner/i,
+  );
 });
 
 test("launch verifier blocks duplicate Checkout even when setup-fee truth changes", () => {

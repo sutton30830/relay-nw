@@ -84,10 +84,16 @@ expiration date, payment date, or authorization to change RYCO's policy.
 
 ## Post-approval test checklist
 
+Use the [post-approval activation runbook](operations/a2p-post-approval-activation.md)
+for the controlled sequence. Do not change RYCO's texting switch until Ryen can
+review the final message and authorize it from his own signed-in account.
+
 - [ ] Sync A2P from Twilio; Relay shows `approved` and a current sync time.
 - [ ] Confirm the RYCO Relay number is SMS-capable and in the campaign's
       Messaging Service sender pool.
-- [ ] Enable automatic texting from the authenticated owner Settings page.
+- [ ] Ryen enables automatic texting from his authenticated owner Settings page
+      and checks the separate authorization statement; confirm Relay retained
+      `texting.activation_approved` for his owner user.
 - [ ] Place one real unanswered call to RYCO's published number.
 - [ ] Confirm exactly one RYCO lead is created with the correct call time.
 - [ ] Leave a clear voicemail; confirm playback, transcript, and grounded
