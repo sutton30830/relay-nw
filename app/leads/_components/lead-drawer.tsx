@@ -104,7 +104,7 @@ export function LeadDrawer({
             ? "Voicemail saved, but no clear spoken message was detected. Listen below to double-check it."
             : "Voicemail saved. Summary unavailable. Listen to the recording below."
           : lead.voicemail_transcript
-            ? "No summary — the voicemail didn't say what they need. Listen below."
+            ? "No summary available. Review the transcript or listen below."
             : "Voicemail saved. Listen below or generate a quick summary."
         : "No voicemail left. Call back while the request is still fresh.";
 

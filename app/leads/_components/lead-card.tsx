@@ -104,7 +104,7 @@ export function LeadCard({
             ? "Voicemail saved, but no clear spoken message was detected. Open the lead to listen."
             : "Voicemail saved. Summary unavailable. Open the lead to listen."
           : lead.voicemail_transcript
-            ? "No summary — the voicemail didn't say what they need. Open the lead to listen."
+            ? "No summary available. Open the lead to review the transcript or listen."
             : "Voicemail saved. Open the lead to listen or summarize."
         : "No voicemail left. Call back while the request is still fresh.";
   const statusLabel = trashed ? "Trash" : STATUS_LABELS[lead.status];
