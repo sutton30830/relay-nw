@@ -338,7 +338,11 @@ async function regenerateVoicemailSummary(input: {
   }
 }
 
-export async function transcribeLeadVoicemail(leadId: string, accountId: string) {
+export async function transcribeLeadVoicemail(
+  leadId: string,
+  accountId: string,
+  options: { notifyOwner?: boolean } = {},
+) {
   const lead = await getLeadForVoicemailTranscription(leadId, accountId);
   const transcriptionActionKey = `voicemail_transcription:${leadId}`;
 
@@ -628,7 +632,9 @@ export async function transcribeLeadVoicemail(leadId: string, accountId: string)
       });
     }
 
-    const account = await getAccountConfigByAccountId(accountId);
+    const account = options.notifyOwner === false
+      ? null
+      : await getAccountConfigByAccountId(accountId);
     if (account) {
       const ownerSummary = summary ?? transcript.slice(0, 160);
       const voicemailSmsEnabled =

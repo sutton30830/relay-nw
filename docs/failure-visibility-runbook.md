@@ -6,21 +6,34 @@ tenant-scoped view that explains failures and recovery consistently.
 
 ## Operator response
 
-1. Open **Operations → Monitoring → Voicemail pipeline**. Review the recording,
-   transcript, summary, processing, waiting, stalled/failed, and
-   quality-suppressed counts. The latest transcription-retry outcome shows how
-   many eligible items were recovered, skipped, or failed without exposing
-   voicemail content.
-2. Select **Open affected-call evidence** for a queued, stalled, or failed item.
-   Relay links directly to the exact tenant-scoped provider action when one
-   exists; otherwise it opens that account's Diagnostics section.
-3. In **Operations → Account → Diagnostics → Provider actions**, confirm the
+1. Open **Operations → Monitoring → Voicemail health**. Use the plain-language
+   state first:
+   - **Healthy** means no operator action is required.
+   - **Relay is working** means a current attempt is still inside its safe
+     processing window.
+   - **Recovery scheduled** means Relay can safely retry the affected items at
+     the next scheduled run.
+   - **Needs you** means at least one item requires evidence review rather than
+     an automatic retry.
+2. When **Run safe recovery now** appears, use it to process only eligible work
+   for that business. The action is tenant-scoped, uses the same atomic claims
+   as scheduled recovery, records the operator, and does not email or text the
+   owner. The result banner reports recovered, already-processing, and failed
+   counts immediately.
+3. Treat **No action needed** quality suppressions as intentional. Short,
+   silent, hallucinated, or materially disagreeing audio should be played back,
+   not repeatedly sent to transcription.
+4. Select **View technical evidence** only when an item remains under **Needs
+   you** or fails again. Relay links directly to the exact tenant-scoped
+   provider action when one exists; otherwise it opens that account's
+   Diagnostics section.
+5. In **Operations → Account → Diagnostics → Provider actions**, confirm the
    account, action, provider identifier, provider status/code, attempts, retry
    eligibility, and recommended next action.
-4. If the provider identifier exists, reconcile from the provider before retrying.
-5. Never retry an SMS under the same action after an ambiguous timeout or provider
+6. If the provider identifier exists, reconcile from the provider before retrying.
+7. Never retry an SMS under the same action after an ambiguous timeout or provider
    acceptance. Wait for its signed callback or contact the person another way.
-6. Replay webhooks only with the original provider identifier. Stripe and scheduled
+8. Replay webhooks only with the original provider identifier. Stripe and scheduled
    billing failures should be recovered through reconciliation, never a second charge.
 
 For voicemail, use the displayed stage and retry policy. A verified transcript

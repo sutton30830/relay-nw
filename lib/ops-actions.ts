@@ -3,6 +3,7 @@ import type { PlatformOperatorRole } from "@/lib/supabase";
 export const OPS_ACTIONS = {
   accountRead: "account.read",
   diagnosticsRead: "diagnostics.read",
+  voicemailRecovery: "voicemail.recovery.run",
   profileEdit: "account.profile.edit",
   assignExistingNumber: "twilio.number.assign_existing",
   releaseExistingNumber: "twilio.number.release_existing",
@@ -41,6 +42,7 @@ const SUPPORT_ACTIONS = new Set<OpsAction>([
 
 const OPERATOR_ACTIONS = new Set<OpsAction>([
   ...SUPPORT_ACTIONS,
+  OPS_ACTIONS.voicemailRecovery,
   OPS_ACTIONS.profileEdit,
   OPS_ACTIONS.assignExistingNumber,
   OPS_ACTIONS.a2pSync,

@@ -210,8 +210,10 @@ test("monitoring remains operator-only and does not leak diagnostics into owner 
   const page = await readFile(new URL("../app/ops/monitoring/page.tsx", import.meta.url), "utf8");
   assert.match(page, /requirePlatformOperator\(\)/);
   assert.match(page, /loadOperationsMonitoring\(\)/);
-  assert.match(page, /Voicemail pipeline/);
-  assert.match(page, /Open affected-call evidence/);
+  assert.match(page, /Voicemail health/);
+  assert.match(page, /Run safe recovery now/);
+  assert.match(page, /View technical evidence/);
+  assert.match(page, /Technical details/);
   assert.match(page, /transcriptionCronDetail/);
   assert.doesNotMatch(page, /requireAccountUser/);
 });

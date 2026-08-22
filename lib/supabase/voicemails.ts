@@ -243,12 +243,20 @@ export async function claimVoicemailSummary(input: {
   return Boolean(data?.id);
 }
 
-export async function listLeadsNeedingTranscriptionRetry(limit = 10) {
+export async function listLeadsNeedingTranscriptionRetry(
+  limit = 10,
+  inputAccountId?: string,
+  includeOlder = false,
+) {
   // Cross-tenant by design: this is an operator cron, and transcribeLeadVoicemail
-  // re-scopes every write by the account_id returned here.
+  // re-scopes every write by the account_id returned here. Operator-triggered
+  // recovery supplies an account ID so the candidate query itself is tenant-scoped.
+  const accountId = inputAccountId
+    ? assertAccountId(inputAccountId, "listLeadsNeedingTranscriptionRetry")
+    : null;
   const staleBefore = new Date(Date.now() - 10 * 60 * 1000).toISOString();
   const createdSince = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-  const { data, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from("leads")
     .select("id, account_id, voicemail_transcription_status, voicemail_transcribed_at")
     .not("recording_sid", "is", null)
@@ -261,8 +269,17 @@ export async function listLeadsNeedingTranscriptionRetry(limit = 10) {
     .or(
       `voicemail_transcription_status.in.(pending,failed),` +
         `and(voicemail_transcription_status.eq.processing,voicemail_transcribed_at.lt.${staleBefore})`,
-    )
-    .gte("created_at", createdSince)
+    );
+
+  if (!includeOlder) {
+    query = query.gte("created_at", createdSince);
+  }
+
+  if (accountId) {
+    query = query.eq("account_id", accountId);
+  }
+
+  const { data, error } = await query
     .order("created_at", { ascending: true })
     .limit(limit);
 
@@ -271,18 +288,30 @@ export async function listLeadsNeedingTranscriptionRetry(limit = 10) {
   return (data ?? []) as Array<{ id: string; account_id: string }>;
 }
 
-export async function listLeadsNeedingSummaryRetry(limit = 10) {
+export async function listLeadsNeedingSummaryRetry(
+  limit = 10,
+  inputAccountId?: string,
+) {
   // Summary-only retries include provider failures, grounded-summary validation
   // failures, and empty model results when the transcript itself contains an
   // explicit request. Non-actionable empty/unknown summaries remain suppressed.
-  const { data, error } = await supabaseAdmin
+  const accountId = inputAccountId
+    ? assertAccountId(inputAccountId, "listLeadsNeedingSummaryRetry")
+    : null;
+  let query = supabaseAdmin
     .from("leads")
     .select("id, account_id, voicemail_transcript, voicemail_summary_validation_reasons, created_at")
     .eq("voicemail_transcription_status", "completed")
     .not("voicemail_transcript", "is", null)
     .is("voicemail_summary", null)
     .is("deleted_at", null)
-    .not("voicemail_summary_validation_reasons", "is", null)
+    .not("voicemail_summary_validation_reasons", "is", null);
+
+  if (accountId) {
+    query = query.eq("account_id", accountId);
+  }
+
+  const { data, error } = await query
     .order("created_at", { ascending: true })
     .limit(Math.max(limit * 5, limit));
 

@@ -40,6 +40,7 @@ test("support is strictly read-only", () => {
 test("operators have setup actions but no commercial, closure, paid-pause, or Stripe powers", () => {
   for (const action of [
     OPS_ACTIONS.profileEdit,
+    OPS_ACTIONS.voicemailRecovery,
     OPS_ACTIONS.assignExistingNumber,
     OPS_ACTIONS.a2pSync,
     OPS_ACTIONS.blockerManage,

@@ -2942,6 +2942,11 @@ code {
   padding: 14px 16px;
 }
 
+.ops-voicemail-pipeline--needs_you { border-left: 4px solid var(--danger); }
+.ops-voicemail-pipeline--recovery_scheduled { border-left: 4px solid var(--warn); }
+.ops-voicemail-pipeline--working,
+.ops-voicemail-pipeline--healthy { border-left: 4px solid var(--good); }
+
 .ops-voicemail-pipeline__head {
   display: flex;
   align-items: flex-start;
@@ -2956,14 +2961,31 @@ code {
   margin: 0;
 }
 
-.ops-voicemail-pipeline__head h3 { font-size: 12.5px; }
+.ops-voicemail-pipeline__head > div { display: grid; gap: 3px; }
+.ops-voicemail-pipeline__head h3 { font-family: var(--font-display); font-size: 1.25rem; }
 .ops-voicemail-pipeline__head p,
 .ops-voicemail-pipeline__retry,
 .ops-voicemail-pipeline__clear { color: var(--ink-3); font-size: 11.5px; }
 
+.ops-voicemail-pipeline__action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid color-mix(in oklab, var(--warn) 28%, var(--line-soft));
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  padding: 11px 12px;
+}
+
+.ops-voicemail-pipeline__action > div { display: grid; gap: 2px; }
+.ops-voicemail-pipeline__action strong { font-size: 12px; }
+.ops-voicemail-pipeline__action small { color: var(--ink-3); font-size: 10.5px; }
+.ops-voicemail-pipeline__action .btn { flex: 0 0 auto; }
+
 .ops-voicemail-pipeline__counts {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1px;
   overflow: hidden;
   margin: 0;
@@ -2996,6 +3018,42 @@ code {
 .ops-voicemail-issue small { color: var(--ink-3); font-size: 10.5px; }
 .ops-voicemail-issue p { margin: 0; color: var(--ink-2); font-size: 11.5px; }
 .ops-voicemail-issue .text-link { justify-self: start; font-size: 11px; }
+
+.ops-voicemail-pipeline__suppressed {
+  margin: 0;
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  padding: 8px 10px;
+  color: var(--ink-3);
+  font-size: 11px;
+}
+
+.ops-voicemail-pipeline__technical {
+  border-top: 1px solid var(--line-soft);
+  padding-top: 8px;
+}
+
+.ops-voicemail-pipeline__technical > summary {
+  cursor: pointer;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ops-voicemail-pipeline__technical-body {
+  display: grid;
+  gap: 9px;
+  padding-top: 9px;
+}
+
+@media (max-width: 640px) {
+  .ops-voicemail-pipeline__action {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ops-voicemail-pipeline__counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
 .ops-monitor-alert {
   display: grid;

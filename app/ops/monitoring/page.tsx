@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { OpsHeader } from "@/app/ops/_components/ops-header";
 import { requirePlatformOperator } from "@/lib/auth";
-import { OPS_ACTIONS } from "@/lib/ops-actions";
+import { canPerformOpsAction, OPS_ACTIONS } from "@/lib/ops-actions";
 import { loadOperationsMonitoring, recordPlatformAuditEvent } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -26,9 +26,82 @@ function formatCronSignal(value: string | null, ok: boolean | null) {
   return `${state} · ${formatDateTime(value)}`;
 }
 
-export default async function OperationsMonitoringPage() {
+type MonitoringSearchParams = {
+  account?: string;
+  voicemail_recovery?: string;
+  attempted?: string;
+  recovered?: string;
+  skipped?: string;
+  failed?: string;
+};
+
+function safeCount(value: string | undefined) {
+  const parsed = Number.parseInt(value ?? "0", 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function recoveryNotice(
+  params: MonitoringSearchParams,
+  businessName: string,
+) {
+  const recovered = safeCount(params.recovered);
+  const skipped = safeCount(params.skipped);
+  const failed = safeCount(params.failed);
+
+  switch (params.voicemail_recovery) {
+    case "recovered":
+      return {
+        tone: "success" as const,
+        message: `${businessName}: recovery finished. ${recovered} recovered${skipped ? `; ${skipped} already processing` : ""}.`,
+      };
+    case "no_work":
+      return {
+        tone: "success" as const,
+        message: `${businessName}: nothing needs a safe retry right now. Monitoring is up to date.`,
+      };
+    case "partial":
+      return {
+        tone: "error" as const,
+        message: `${businessName}: ${recovered} recovered, ${skipped} already processing, and ${failed} still need review.`,
+      };
+    case "failed":
+      return {
+        tone: "error" as const,
+        message: `${businessName}: recovery could not finish. No customer notification was sent; review the remaining issue below.`,
+      };
+    case "inactive":
+      return {
+        tone: "error" as const,
+        message: `${businessName}: recovery is unavailable while this account is paused or archived.`,
+      };
+    case "account_not_found":
+      return {
+        tone: "error" as const,
+        message: "That account is no longer available.",
+      };
+    default:
+      return null;
+  }
+}
+
+function issueTitle(stage: "recording" | "transcription" | "summary", state: string) {
+  if (stage === "recording") return "Recording needs review";
+  if (stage === "summary") return "Summary needs recovery";
+  if (state === "waiting") return "Transcript is waiting";
+  if (state === "stalled") return "Transcription stalled";
+  return "Transcription failed";
+}
+
+export default async function OperationsMonitoringPage({
+  searchParams,
+}: {
+  searchParams: Promise<MonitoringSearchParams>;
+}) {
   const operator = await requirePlatformOperator();
-  const dashboard = await loadOperationsMonitoring();
+  const [dashboard, notices] = await Promise.all([
+    loadOperationsMonitoring(),
+    searchParams,
+  ]);
   // Monitoring aggregates sensitive support diagnostics across every account.
   // Do not render it when the access event cannot be durably recorded.
   await recordPlatformAuditEvent({
@@ -39,6 +112,11 @@ export default async function OperationsMonitoringPage() {
   }, { required: true });
   const criticalCount = dashboard.rows.filter((row) => row.health.status === "critical").length;
   const warningCount = dashboard.rows.filter((row) => row.health.status === "warning").length;
+  const noticeAccount = dashboard.rows.find((row) => row.accountSlug === notices.account);
+  const notice = notices.voicemail_recovery
+    ? recoveryNotice(notices, noticeAccount?.businessName ?? notices.account ?? "Account")
+    : null;
+  const canRunRecovery = canPerformOpsAction(operator.role, OPS_ACTIONS.voicemailRecovery);
 
   return (
     <main className="leads-view">
@@ -59,6 +137,15 @@ export default async function OperationsMonitoringPage() {
           </div>
         </div>
 
+        {notice ? (
+          <div
+            className={notice.tone === "error" ? "intake-error settings-notice" : "settings-notice"}
+            aria-live="polite"
+          >
+            {notice.message}
+          </div>
+        ) : null}
+
         {dashboard.unresolvedInvalidSignatures || dashboard.unresolvedWebhookErrors ? (
           <section className="panel ops-monitoring__platform-alert" aria-label="Unresolved platform events">
             <strong>Unresolved webhook traffic needs review</strong>
@@ -78,8 +165,41 @@ export default async function OperationsMonitoringPage() {
         <div className="ops-monitoring__accounts">
           {dashboard.rows.length === 0 ? (
             <section className="panel ops-monitoring__empty">No businesses are available to monitor.</section>
-          ) : dashboard.rows.map((row) => (
-            <article className={`panel ops-monitor-card ops-monitor-card--${row.health.status}`} key={row.accountId}>
+          ) : dashboard.rows.map((row) => {
+            const automaticIssues = row.voicemailPipeline.issues.filter(
+              (issue) => issue.retryEligibility === "automatic",
+            );
+            const reviewIssues = row.voicemailPipeline.issues.filter(
+              (issue) => issue.retryEligibility !== "automatic",
+            );
+            const voicemailState = reviewIssues.length > 0
+              ? "needs_you"
+              : automaticIssues.length > 0
+                ? "recovery_scheduled"
+                : row.voicemailPipeline.processing > 0
+                  ? "working"
+                  : "healthy";
+            const voicemailStateLabel = voicemailState === "needs_you"
+              ? "Needs you"
+              : voicemailState === "recovery_scheduled"
+                ? "Recovery scheduled"
+                : voicemailState === "working"
+                  ? "Relay is working"
+                  : "Healthy";
+            const voicemailStateCopy = voicemailState === "needs_you"
+              ? `${reviewIssues.length} voicemail ${reviewIssues.length === 1 ? "needs" : "need"} review.${automaticIssues.length > 0 ? " Safe automatic recovery remains available for the other eligible items." : " Review its evidence before retrying."}`
+              : voicemailState === "recovery_scheduled"
+                ? `${automaticIssues.length} voicemail ${automaticIssues.length === 1 ? "is" : "are"} eligible for Relay's safe recovery.`
+                : voicemailState === "working"
+                  ? `Relay is currently processing ${row.voicemailPipeline.processing} voicemail${row.voicemailPipeline.processing === 1 ? "" : "s"}. No action is needed.`
+                  : "No voicemail requires operator action.";
+
+            return (
+              <article
+                className={`panel ops-monitor-card ops-monitor-card--${row.health.status}`}
+                id={`account-${row.accountSlug}`}
+                key={row.accountId}
+              >
               <header className="ops-monitor-card__head">
                 <div>
                   <p className="t-eyebrow">{row.accountStatus}</p>
@@ -126,29 +246,30 @@ export default async function OperationsMonitoringPage() {
                 </section>
               </div>
 
-              <section className="ops-voicemail-pipeline" aria-label={`${row.businessName} voicemail pipeline`}>
+              <section className={`ops-voicemail-pipeline ops-voicemail-pipeline--${voicemailState}`} aria-label={`${row.businessName} voicemail health`}>
                 <div className="ops-voicemail-pipeline__head">
                   <div>
-                    <h3>Voicemail pipeline</h3>
-                    <p>Recording → transcript → grounded summary</p>
+                    <p className="t-eyebrow">Voicemail health</p>
+                    <h3>{voicemailStateLabel}</h3>
+                    <p>{voicemailStateCopy}</p>
                   </div>
-                  <span className={row.voicemailPipeline.stalled || row.voicemailPipeline.failed ? "chip chip-danger" : row.voicemailPipeline.waiting ? "chip chip-warn" : "chip"}>
-                    {row.voicemailPipeline.stalled + row.voicemailPipeline.failed + row.voicemailPipeline.waiting} need attention
+                  <span className={voicemailState === "needs_you" ? "chip chip-danger" : voicemailState === "recovery_scheduled" ? "chip chip-warn" : "chip"}>
+                    {voicemailStateLabel}
                   </span>
                 </div>
-                <dl className="ops-voicemail-pipeline__counts">
-                  <div><dt>Recordings</dt><dd>{row.voicemailPipeline.recordings}</dd></div>
-                  <div><dt>Transcripts ready</dt><dd>{row.voicemailPipeline.transcriptsReady}</dd></div>
-                  <div><dt>Summaries ready</dt><dd>{row.voicemailPipeline.summariesReady}</dd></div>
-                  <div><dt>Processing</dt><dd>{row.voicemailPipeline.processing}</dd></div>
-                  <div><dt>Waiting</dt><dd>{row.voicemailPipeline.waiting}</dd></div>
-                  <div><dt>Stalled / failed</dt><dd>{row.voicemailPipeline.stalled} / {row.voicemailPipeline.failed}</dd></div>
-                  <div><dt>Quality-suppressed</dt><dd>{row.voicemailPipeline.suppressed}</dd></div>
-                </dl>
-                <p className="ops-voicemail-pipeline__retry">
-                  <strong>Last retry run:</strong> {formatCronSignal(row.transcriptionCronAt, row.transcriptionCronOk)}
-                  {row.transcriptionCronDetail ? ` · ${row.transcriptionCronDetail}` : ""}
-                </p>
+                {automaticIssues.length > 0 && canRunRecovery ? (
+                  <form action="/api/ops/voicemail/recover" method="post" className="ops-voicemail-pipeline__action">
+                    <input type="hidden" name="account_slug" value={row.accountSlug} />
+                    <div>
+                      <strong>Want to resolve it now?</strong>
+                      <small>This retries only eligible voicemail work. It will not email or text the owner.</small>
+                    </div>
+                    <button className="btn btn-primary btn-sm" type="submit">Run safe recovery now</button>
+                  </form>
+                ) : null}
+                {automaticIssues.length > 0 && !canRunRecovery ? (
+                  <p className="ops-voicemail-pipeline__clear">An operator can run recovery now. Your support access is read-only.</p>
+                ) : null}
                 {row.voicemailPipeline.issues.length > 0 ? (
                   <div className="ops-voicemail-pipeline__issues">
                     {row.voicemailPipeline.issues.map((issue) => {
@@ -158,19 +279,49 @@ export default async function OperationsMonitoringPage() {
                       return (
                         <article className={`ops-voicemail-issue ops-voicemail-issue--${issue.severity}`} key={`${issue.leadId}:${issue.stage}`}>
                           <div>
-                            <strong>{issue.stage} {issue.state}</strong>
+                            <strong>{issueTitle(issue.stage, issue.state)}</strong>
                             <span>{formatDateTime(issue.lastChangedAt)} · caller ••••{issue.callerLast4 ?? "unknown"}</span>
                           </div>
                           <p>{issue.detail}</p>
-                          <small>Retry: {issue.retryEligibility} · {issue.recommendedNextAction}</small>
-                          <Link className="text-link" href={evidenceHref}>Open affected-call evidence</Link>
+                          <small>
+                            {issue.retryEligibility === "automatic"
+                              ? "Relay can safely retry this automatically."
+                              : issue.retryEligibility === "manual"
+                                ? "Review the evidence before taking action."
+                                : "Relay will not retry this automatically."}
+                          </small>
+                          <Link className="text-link" href={evidenceHref}>View technical evidence</Link>
                         </article>
                       );
                     })}
                   </div>
                 ) : (
-                  <p className="ops-voicemail-pipeline__clear">No queued, stuck, or actionable voicemail failures.</p>
+                  <p className="ops-voicemail-pipeline__clear">Nothing needs recovery or review.</p>
                 )}
+                {row.voicemailPipeline.suppressed > 0 ? (
+                  <p className="ops-voicemail-pipeline__suppressed">
+                    No action needed: {row.voicemailPipeline.suppressed} recording{row.voicemailPipeline.suppressed === 1 ? " was" : "s were"} too short, silent, or unreliable to summarize safely.
+                  </p>
+                ) : null}
+                <details className="ops-voicemail-pipeline__technical">
+                  <summary>Technical details</summary>
+                  <div className="ops-voicemail-pipeline__technical-body">
+                    <dl className="ops-voicemail-pipeline__counts">
+                      <div><dt>Recordings</dt><dd>{row.voicemailPipeline.recordings}</dd></div>
+                      <div><dt>Transcripts ready</dt><dd>{row.voicemailPipeline.transcriptsReady}</dd></div>
+                      <div><dt>Summaries ready</dt><dd>{row.voicemailPipeline.summariesReady}</dd></div>
+                      <div><dt>Processing</dt><dd>{row.voicemailPipeline.processing}</dd></div>
+                      <div><dt>Waiting</dt><dd>{row.voicemailPipeline.waiting}</dd></div>
+                      <div><dt>Stalled</dt><dd>{row.voicemailPipeline.stalled}</dd></div>
+                      <div><dt>Failed</dt><dd>{row.voicemailPipeline.failed}</dd></div>
+                      <div><dt>Quality-suppressed</dt><dd>{row.voicemailPipeline.suppressed}</dd></div>
+                    </dl>
+                    <p className="ops-voicemail-pipeline__retry">
+                      <strong>Last scheduled recovery:</strong> {formatCronSignal(row.transcriptionCronAt, row.transcriptionCronOk)}
+                      {row.transcriptionCronDetail ? ` · ${row.transcriptionCronDetail}` : ""}
+                    </p>
+                  </div>
+                </details>
               </section>
 
               {row.health.alerts.length > 0 ? (
@@ -192,8 +343,9 @@ export default async function OperationsMonitoringPage() {
                   Open diagnostics
                 </Link>
               </footer>
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </div>
 
         <p className="ops-monitoring__generated">Calculated {formatDateTime(dashboard.generatedAt)}. Expected transcription-quality suppressions are excluded.</p>
