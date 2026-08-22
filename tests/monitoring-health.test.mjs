@@ -214,6 +214,7 @@ test("monitoring remains operator-only and does not leak diagnostics into owner 
   assert.match(page, /Run safe recovery now/);
   assert.match(page, /View technical evidence/);
   assert.match(page, /Technical details/);
+  assert.match(page, /system alert/);
   assert.match(page, /transcriptionCronDetail/);
   assert.doesNotMatch(page, /requireAccountUser/);
 });

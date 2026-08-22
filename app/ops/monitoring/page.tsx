@@ -206,7 +206,7 @@ export default async function OperationsMonitoringPage({
                   <h2>{row.businessName}</h2>
                 </div>
                 <span className={`ops-monitor-card__status ops-monitor-card__status--${row.health.status}`}>
-                  {row.health.status === "healthy" ? "Healthy" : `${row.health.alerts.length} issue${row.health.alerts.length === 1 ? "" : "s"}`}
+                  {row.health.status === "healthy" ? "Account checks clear" : `${row.health.alerts.length} system alert${row.health.alerts.length === 1 ? "" : "s"}`}
                 </span>
               </header>
 

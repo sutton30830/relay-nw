@@ -423,6 +423,40 @@ test("completed lead returns cached summary without claiming", async () => {
   assert.deepEqual(calls.summaryClaims, []);
 });
 
+test("cached transcript and summary repair a stale failed status", async () => {
+  const { mocks, calls } = makeVoicemailMocks({
+    claimResult: false,
+    lead: {
+      id: "lead-legacy-failure",
+      phone: "+12065550123",
+      recording_sid: "RE_legacy",
+      recording_duration: 4,
+      voicemail_transcript: "Caller needs a callback.",
+      voicemail_summary: "Caller needs a callback.",
+      voicemail_transcription_status: "failed",
+      voicemail_transcribed_at: null,
+    },
+  });
+  const { transcribeLeadVoicemail } = await loadTsModule("lib/voicemail-ai.ts", mocks);
+
+  const result = await transcribeLeadVoicemail("lead-legacy-failure", "acct-1", {
+    notifyOwner: false,
+  });
+
+  assert.equal(result.status, "completed");
+  assert.deepEqual(calls.claims, []);
+  assert.deepEqual(calls.transcriptionUpdates, [{
+    accountId: "acct-1",
+    id: "lead-legacy-failure",
+    transcript: "Caller needs a callback.",
+    summary: "Caller needs a callback.",
+    status: "completed",
+    error: null,
+  }]);
+  assert.deepEqual(calls.ownerSms, []);
+  assert.deepEqual(calls.ownerEmails, []);
+});
+
 test("completed transcript regenerates only the summary without downloading audio", async () => {
   const originalFetch = globalThis.fetch;
   const transcript = "Water is pouring out under the kitchen sink. Please come by today.";

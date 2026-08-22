@@ -1,4 +1,5 @@
 import { isExpectedQualitySuppression, type RetryEligibility } from "@/lib/provider-actions";
+import { recordingIsTooShort } from "@/lib/voicemail-quality";
 
 export type VoicemailLeadSignal = {
   id: string;
@@ -98,6 +99,14 @@ export function calculateVoicemailPipelineHealth(
     const summaryAction = latestAction(actions, lead.id, "voicemail_summary");
     const recordingAction = latestAction(actions, lead.id, "recording_retrieval");
     const changedAt = lead.transcriptionChangedAt ?? lead.createdAt;
+
+    // Old rows may predate Relay's current no-usable-voicemail error wording.
+    // Duration remains authoritative: sub-three-second recordings are never
+    // eligible for transcription and must not appear as recoverable failures.
+    if (recordingIsTooShort(lead.recordingDuration)) {
+      suppressed += 1;
+      continue;
+    }
 
     if (
       lead.recordingStatus === "failed" ||

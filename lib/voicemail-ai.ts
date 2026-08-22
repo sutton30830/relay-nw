@@ -386,6 +386,21 @@ export async function transcribeLeadVoicemail(
   }
 
   if (lead.voicemail_summary && lead.voicemail_transcript) {
+    // Legacy failures can contain fully persisted customer-facing evidence but
+    // still carry a failed status from a later notification/encoding step. A
+    // recovery must repair that status instead of returning cached content and
+    // leaving Monitoring to surface the same lead forever.
+    if (lead.voicemail_transcription_status !== "completed") {
+      await updateLeadVoicemailTranscription({
+        accountId,
+        id: leadId,
+        transcript: lead.voicemail_transcript,
+        summary: lead.voicemail_summary,
+        status: "completed",
+        error: null,
+      });
+    }
+
     return {
       transcript: lead.voicemail_transcript,
       summary: lead.voicemail_summary,

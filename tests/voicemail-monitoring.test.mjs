@@ -15,6 +15,11 @@ const require = (specifier) => {
       isExpectedQualitySuppression: (message) => /No usable voicemail|No clear spoken message|could not confidently transcribe/i.test(message ?? ""),
     };
   }
+  if (specifier === "@/lib/voicemail-quality") {
+    return {
+      recordingIsTooShort: (duration) => duration !== null && duration < 3,
+    };
+  }
   throw new Error(`Missing mock for ${specifier}`);
 };
 new vm.Script(`(function(require,module,exports){${compiled}\n})`)
@@ -133,6 +138,21 @@ test("short, silent, and uncertain voicemail remains a suppression rather than a
       hasSummary: false,
     }),
   ], [action({ internalStatus: "suppressed", suppressed: true })], now);
+
+  assert.equal(result.suppressed, 1);
+  assert.equal(result.failed, 0);
+  assert.deepEqual(result.issues, []);
+});
+
+test("legacy one-second failures are suppressed by duration instead of offered for recovery", () => {
+  const result = calculateVoicemailPipelineHealth([
+    lead({
+      recordingDuration: 1,
+      transcriptionStatus: "failed",
+      transcriptionError: "OpenAI transcription returned no text.",
+      hasSummary: false,
+    }),
+  ], [], now);
 
   assert.equal(result.suppressed, 1);
   assert.equal(result.failed, 0);
