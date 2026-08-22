@@ -7,6 +7,7 @@ const PROTECTED_MUTATION_PREFIXES = [
   "/api/leads/",
   "/api/leads-logout",
   "/api/ops/",
+  "/api/push/",
   "/api/settings",
 ];
 

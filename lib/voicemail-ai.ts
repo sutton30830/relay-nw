@@ -20,6 +20,7 @@ import {
   recordProviderAction,
   updateLeadPriority,
   updateLeadVoicemailTranscription,
+  type AccountRuntimeConfig,
 } from "@/lib/supabase";
 import { sendOwnerSms } from "@/lib/twilio";
 import { notifyAdminOperationalIssue, notifyOwnerVoicemailReady } from "@/lib/email";
@@ -242,6 +243,29 @@ async function safelyRecordVoicemailAction(
       action: input.action,
       error: error instanceof Error ? error.message : error,
     });
+  }
+}
+
+async function notifyOwnerVoicemailByPush(input: {
+  account: Pick<AccountRuntimeConfig, "accountId" | "businessName">;
+  leadId: string;
+  callerPhone: string | null;
+}) {
+  try {
+    const { notifyOwnerByWebPush } = await import("@/lib/web-push");
+    return await notifyOwnerByWebPush({
+      account: input.account,
+      event: "voicemail_ready",
+      leadId: input.leadId,
+      callerPhone: input.callerPhone,
+    });
+  } catch (error) {
+    console.error("Voicemail Web Push notification could not start", {
+      accountId: input.account.accountId,
+      leadId: input.leadId,
+      error: error instanceof Error ? error.message : error,
+    });
+    return { attempted: 0, delivered: 0, disabled: 0 };
   }
 }
 
@@ -680,12 +704,19 @@ export async function transcribeLeadVoicemail(
         });
       }
 
-      await notifyOwnerVoicemailReady({
-        account,
-        leadId,
-        callerPhone: lead.phone,
-        summary: ownerSummary,
-      });
+      await Promise.all([
+        notifyOwnerVoicemailReady({
+          account,
+          leadId,
+          callerPhone: lead.phone,
+          summary: ownerSummary,
+        }),
+        notifyOwnerVoicemailByPush({
+          account,
+          leadId,
+          callerPhone: lead.phone,
+        }),
+      ]);
     }
 
     return {

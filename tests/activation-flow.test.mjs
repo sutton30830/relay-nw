@@ -300,6 +300,9 @@ function makeMocks(state) {
       NO_USABLE_VOICEMAIL_MESSAGE: "No usable voicemail was recorded. Relay did not generate a transcript.",
       recordingIsTooShort: (duration) => typeof duration === "number" && duration < 3,
     },
+    "@/lib/web-push": {
+      notifyOwnerByWebPush: async () => ({ attempted: 0, delivered: 0, disabled: 0 }),
+    },
   };
 }
 

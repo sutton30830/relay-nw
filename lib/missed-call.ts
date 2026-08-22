@@ -17,6 +17,29 @@ import { notifyAdminOperationalIssue, notifyOwnerNewMissedCallLead } from "@/lib
 
 type OwnerSmsStatus = "sent" | "failed" | "skipped_opt_out" | "repeat_call";
 
+async function notifyOwnerNewLeadByPush(input: {
+  account: Pick<AccountRuntimeConfig, "accountId" | "businessName">;
+  leadId: string;
+  callerPhone: string;
+}) {
+  try {
+    const { notifyOwnerByWebPush } = await import("@/lib/web-push");
+    return await notifyOwnerByWebPush({
+      account: input.account,
+      event: "missed_call",
+      leadId: input.leadId,
+      callerPhone: input.callerPhone,
+    });
+  } catch (error) {
+    console.error("Owner Web Push notification could not start", {
+      accountId: input.account.accountId,
+      leadId: input.leadId,
+      error: error instanceof Error ? error.message : error,
+    });
+    return { attempted: 0, delivered: 0, disabled: 0 };
+  }
+}
+
 function ownerSmsBody(input: {
   businessName: string;
   callerPhone: string;
@@ -134,6 +157,18 @@ export async function handleMissedCall(input: {
   }
 
   const providerActionKey = `automatic_missed_call_sms:${leadResult.leadId}`;
+  // Start the A2P-independent owner alert immediately, but let the compliance-
+  // sensitive customer SMS proceed in parallel. Every terminal path below waits
+  // for this promise so the serverless invocation cannot freeze it mid-send.
+  const ownerPushPromise = notifyOwnerNewLeadByPush({
+    account,
+    leadId: leadResult.leadId,
+    callerPhone,
+  });
+  async function finish<T>(result: T) {
+    await ownerPushPromise;
+    return result;
+  }
   const recordSmsAction = async (input: Parameters<typeof recordProviderAction>[0]) => {
     if (typeof recordProviderAction !== "function") return null;
     return recordProviderAction(input);
@@ -203,7 +238,7 @@ export async function handleMissedCall(input: {
       expectedSuppression: true,
     });
 
-    return { inserted: true, becameLive: leadResult.becameLive, smsStatus: "skipped_disabled" as const };
+    return finish({ inserted: true, becameLive: leadResult.becameLive, smsStatus: "skipped_disabled" as const });
   }
 
   // Fail closed: if the cooldown or opt-out check cannot be completed, do not send
@@ -273,7 +308,7 @@ export async function handleMissedCall(input: {
       countAttempt: true,
     });
 
-    return { inserted: true, becameLive: leadResult.becameLive, smsStatus: "failed" as const, smsError: detail };
+    return finish({ inserted: true, becameLive: leadResult.becameLive, smsStatus: "failed" as const, smsError: detail });
   }
 
   if (alreadyTextedRecently) {
@@ -305,7 +340,7 @@ export async function handleMissedCall(input: {
       customerVisible: false,
       expectedSuppression: true,
     });
-    return { inserted: true, becameLive: leadResult.becameLive, smsStatus: "skipped_recent" as const };
+    return finish({ inserted: true, becameLive: leadResult.becameLive, smsStatus: "skipped_recent" as const });
   }
 
   if (optedOut) {
@@ -341,7 +376,7 @@ export async function handleMissedCall(input: {
       customerVisible: false,
       expectedSuppression: true,
     });
-    return { inserted: true, becameLive: leadResult.becameLive, smsStatus: "skipped_opt_out" as const };
+    return finish({ inserted: true, becameLive: leadResult.becameLive, smsStatus: "skipped_opt_out" as const });
   }
 
   try {
@@ -464,11 +499,12 @@ export async function handleMissedCall(input: {
         correlationId,
       });
 
-      return {
+      return finish({
         inserted: true,
+        becameLive: leadResult.becameLive,
         smsStatus: "sent_update_failed" as const,
         twilioMessageSid: message.sid,
-      };
+      });
     }
 
     await notifyOwnerNewMissedCallLead({
@@ -484,7 +520,7 @@ export async function handleMissedCall(input: {
       correlationId,
     });
 
-    return { inserted: true, becameLive: leadResult.becameLive, smsStatus: "sent" as const, twilioMessageSid: message.sid };
+    return finish({ inserted: true, becameLive: leadResult.becameLive, smsStatus: "sent" as const, twilioMessageSid: message.sid });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown SMS send error";
 
@@ -541,6 +577,6 @@ export async function handleMissedCall(input: {
       smsStatus: "failed",
       correlationId,
     });
-    return { inserted: true, becameLive: leadResult.becameLive, smsStatus: "failed" as const, smsError: message };
+    return finish({ inserted: true, becameLive: leadResult.becameLive, smsStatus: "failed" as const, smsError: message });
   }
 }

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { OwnerNotificationPreferences } from "@/lib/notification-preferences";
+import { PushNotificationControl } from "./push-notification-control";
 
 type EventKey = "missedCall" | "voicemailReady" | "inboundReply";
 type Channel = "email" | "sms";
@@ -65,9 +66,11 @@ function ChannelSwitch({
 
 export function NotificationPreferences({
   initialPreferences,
+  pushPublicKey,
   textAlertsActive,
 }: {
   initialPreferences: OwnerNotificationPreferences;
+  pushPublicKey: string | null;
   textAlertsActive: boolean;
 }) {
   const [preferences, setPreferences] = useState(initialPreferences);
@@ -85,6 +88,7 @@ export function NotificationPreferences({
   return (
     <section className="notification-preferences" aria-labelledby="notification-preferences-title">
       <input type="hidden" name="notification_preferences_present" value="1" />
+      <PushNotificationControl publicKey={pushPublicKey} />
       <div className="notification-preferences__intro">
         <div>
           <p id="notification-preferences-title" className="notification-preferences__title">

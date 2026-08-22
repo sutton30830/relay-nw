@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Instrument_Serif, Inter } from "next/font/google";
 import { SiteFooter } from "@/components/site-footer";
+import { PwaRegistration } from "@/components/pwa-registration";
 import "./globals.css";
 
 const inter = Inter({
@@ -19,6 +20,19 @@ const instrumentSerif = Instrument_Serif({
 export const metadata: Metadata = {
   title: "Relay NW",
   description: "Relay NW is a missed-call recovery service operated by Lowry Works LLC.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Relay NW",
+  },
+  icons: {
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 export const viewport: Viewport = {
@@ -39,6 +53,7 @@ export default function RootLayout({
     // silently dropped Inter and Instrument Serif across the whole app.
     <html lang="en" className={`${inter.variable} ${instrumentSerif.variable}`}>
       <body>
+        <PwaRegistration />
         {children}
         <SiteFooter />
       </body>
