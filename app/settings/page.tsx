@@ -5,6 +5,7 @@ import { isRelayOperator, requireAccountUser } from "@/lib/auth";
 import { computeBillingLifecycle } from "@/lib/billing";
 import type { AccountBillingRecord, BillingLifecycleState } from "@/lib/billing";
 import type { A2pRegistrationStatus } from "@/lib/customer-experience-contract";
+import { env } from "@/lib/env";
 import {
   getA2pRegistrationStatus,
   getAccountBillingRecord,
@@ -616,6 +617,7 @@ export default async function SettingsPage({
                 <p className="t-eyebrow settings-group-title">Notifications</p>
                 <NotificationPreferences
                   initialPreferences={account.notificationPreferences}
+                  pushPublicKey={env.webPushPublicKey ?? null}
                   textAlertsActive={account.smsEnabled && a2pStatus === "approved"}
                 />
               </>

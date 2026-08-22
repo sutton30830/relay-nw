@@ -4406,6 +4406,69 @@ code {
   border-radius: var(--r-md);
   background: var(--panel-2);
 }
+.push-notifications {
+  display: grid;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in oklab, var(--brand-soft) 34%, var(--panel));
+  padding: 15px 16px;
+}
+.push-notifications__head,
+.push-notifications__install {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+.push-notifications__install {
+  align-items: center;
+  border: 1px solid color-mix(in oklab, var(--brand) 16%, var(--line));
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  padding: 11px 12px;
+}
+.push-notifications__install > div {
+  display: grid;
+  gap: 2px;
+}
+.push-notifications__install strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+.push-notifications__install span,
+.push-notifications__message {
+  color: var(--ink-4);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.push-notifications__events {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+}
+.push-notifications__events label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.push-notifications__events input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--brand);
+}
+.push-notifications__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.push-notifications__message {
+  margin: 0;
+}
 .notification-preferences__intro {
   display: flex;
   align-items: flex-start;
@@ -4516,10 +4579,14 @@ code {
 
 @media (max-width: 560px) {
   .notification-preferences__intro,
-  .notification-event {
+  .notification-event,
+  .push-notifications__head,
+  .push-notifications__install {
     grid-template-columns: 1fr;
   }
-  .notification-preferences__intro {
+  .notification-preferences__intro,
+  .push-notifications__head,
+  .push-notifications__install {
     display: grid;
   }
   .notification-preferences__text-status {

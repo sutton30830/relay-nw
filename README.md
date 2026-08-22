@@ -139,6 +139,8 @@ Optional:
 - `OPENAI_TRANSCRIPTION_MODEL`: optional; defaults to `gpt-4o-transcribe`; only confidence-capable GPT-4o transcription models are accepted
 - `AUTH_RATE_LIMIT_SALT`: optional dedicated HMAC secret for durable authentication rate-limit identifiers; defaults to the server-only Supabase service-role key
 - `OPENAI_SUMMARY_MODEL`: optional; defaults to `gpt-4o-mini`
+- `WEB_PUSH_PUBLIC_KEY` and `WEB_PUSH_PRIVATE_KEY`: optional VAPID key pair; enables owner-opted-in browser alerts for new missed calls and completed voicemail summaries without depending on A2P approval
+- `WEB_PUSH_CONTACT`: optional VAPID contact URI; defaults to `mailto:relaynw@gmail.com`
 - `ALLOW_UNSIGNED_TWILIO_WEBHOOKS`: defaults to `false`; use `true` only for local manual webhook testing, never production
 
 Use phone numbers in E.164 format, like `+12065551234`.
@@ -178,6 +180,7 @@ The schema includes:
 - `leads`: intake and missed-call leads
 - `webhook_events`: basic Twilio webhook logs for debugging
 - `opt_outs`: phone numbers that replied STOP/UNSUBSCRIBE/CANCEL/END/QUIT
+- `owner_push_subscriptions`: device-specific, account- and user-scoped browser alert subscriptions; direct client access is denied by RLS
 - `inbound_messages`: deduped inbound SMS replies from customers
 
 `leads.call_sid` is unique when present. This prevents Twilio retries from creating duplicate missed-call leads or sending duplicate SMS messages.

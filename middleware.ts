@@ -67,6 +67,7 @@ export const config = {
     "/api/leads/:path*",
     "/api/leads-logout",
     "/api/ops/:path*",
+    "/api/push/:path*",
     "/api/recordings/:path*",
     "/api/email-test/:path*",
     "/api/settings/:path*",

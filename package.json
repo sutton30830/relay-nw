@@ -29,13 +29,15 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "resend": "^6.12.3",
-    "twilio": "^5.5.2"
+    "twilio": "^5.5.2",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.4",
     "@types/node": "^22.14.1",
     "@types/react": "^19.0.12",
     "@types/react-dom": "^19.0.4",
+    "@types/web-push": "^3.6.4",
     "eslint": "^9.39.5",
     "eslint-config-next": "^15.5.22",
     "tailwindcss": "^4.1.4",

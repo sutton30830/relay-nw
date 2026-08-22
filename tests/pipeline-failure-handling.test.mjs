@@ -78,6 +78,7 @@ function makeMissedCallMocks(overrides = {}) {
     messagesCreated: [],
     adminIssues: [],
     ownerNotifications: [],
+    ownerPush: [],
     twilioSends: [],
   };
 
@@ -125,6 +126,12 @@ function makeMissedCallMocks(overrides = {}) {
         calls.ownerNotifications.push(input);
       },
     },
+    "@/lib/web-push": {
+      notifyOwnerByWebPush: async (input) => {
+        calls.ownerPush.push(input);
+        return { attempted: 1, delivered: 1, disabled: 0 };
+      },
+    },
   };
 
   return { mocks, calls, supabase };
@@ -150,6 +157,12 @@ test("happy path: SMS sent, lead marked sent with MessageSid", async () => {
   assert.ok(sentUpdate, "lead should be marked sent");
   assert.equal(sentUpdate.twilioMessageSid, "SM_test_123");
   assert.equal(calls.messagesCreated.length, 1, "outbound message row recorded for reconciliation");
+  assert.deepEqual(calls.ownerPush, [{
+    account: ACCOUNT,
+    event: "missed_call",
+    leadId: "lead-1",
+    callerPhone: "+12065550123",
+  }]);
 });
 
 test("Twilio accepted but lead update failed: returns sent_update_failed, never marks lead failed, alerts admin", async () => {
@@ -654,6 +667,9 @@ function makeVoicemailMocks(state) {
         state.adminIssues.push(input);
       },
       notifyOwnerVoicemailReady: async () => {},
+    },
+    "@/lib/web-push": {
+      notifyOwnerByWebPush: async () => ({ attempted: 0, delivered: 0, disabled: 0 }),
     },
   };
 }

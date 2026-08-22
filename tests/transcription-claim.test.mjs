@@ -180,6 +180,7 @@ function makeVoicemailMocks({
     transcriptionUpdates: [],
     ownerSms: [],
     ownerEmails: [],
+    ownerPush: [],
     adminIssues: [],
   };
 
@@ -220,6 +221,12 @@ function makeVoicemailMocks({
     "@/lib/email": {
       notifyAdminOperationalIssue: async (input) => calls.adminIssues.push(input),
       notifyOwnerVoicemailReady: async (input) => calls.ownerEmails.push(input),
+    },
+    "@/lib/web-push": {
+      notifyOwnerByWebPush: async (input) => {
+        calls.ownerPush.push(input);
+        return { attempted: 1, delivered: 1, disabled: 0 };
+      },
     },
   };
 
@@ -613,6 +620,12 @@ test("urgent voicemail override can be disabled independently", async () => {
 
     assert.deepEqual(calls.ownerSms, []);
     assert.equal(calls.ownerEmails.length, 1);
+    assert.deepEqual(calls.ownerPush, [{
+      account,
+      event: "voicemail_ready",
+      leadId: "lead-urgent-off",
+      callerPhone: "+12065550123",
+    }]);
   } finally {
     globalThis.fetch = originalFetch;
   }

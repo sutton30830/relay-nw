@@ -11,6 +11,7 @@ export * from "./messages";
 export * from "./monitoring";
 export * from "./onboarding-evidence";
 export * from "./provider-actions";
+export * from "./push-subscriptions";
 export * from "./operators";
 export * from "./reports";
 export * from "./retention";

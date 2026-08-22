@@ -725,6 +725,9 @@ test("concurrent duplicate missed calls create one lead and one automatic caller
         fixture.state.ownerNotifications.push(input);
       },
     },
+    "@/lib/web-push": {
+      notifyOwnerByWebPush: async () => ({ attempted: 0, delivered: 0, disabled: 0 }),
+    },
   });
 
   await Promise.all(newCalls.flatMap(({ business, callSid }) => {
