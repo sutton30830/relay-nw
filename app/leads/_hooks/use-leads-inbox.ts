@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Lead, LeadStatus, OutboundMessage, ReplyPriorityOverride } from "@/lib/supabase";
 import { AUTO_VOICEMAIL_SUMMARY_LIMIT, FILTERS, INBOX_REFRESH_MS, RELATIVE_TIME_TICK_MS, SEARCH_DEBOUNCE_MS, UNDO_DELETE_MS } from "../_constants";
@@ -123,7 +123,6 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
   useEffect(() => {
     setItems((current) => applyPendingWrites(leads, current));
     if (leads.length > 0) setSampleMode(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leads]);
 
   // Keep local filter/query aligned with the server (the URL) so browser
@@ -164,7 +163,7 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
   // rows server-side. Filter changes navigate immediately; search is debounced
   // so we don't fire a request per keystroke. Either one drops the page param,
   // so a new filter/search starts from page 1.
-  function navigateToInbox(nextFilter: Filter, nextQuery: string) {
+  const navigateToInbox = useCallback((nextFilter: Filter, nextQuery: string) => {
     if (navigationInFlightRef.current) {
       queuedNavigationRef.current = { filter: nextFilter, query: nextQuery };
       return;
@@ -173,7 +172,7 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
     startNavigation(() => {
       router.push(buildInboxHref(nextFilter, nextQuery), { scroll: false });
     });
-  }
+  }, [router]);
 
   function setFilter(nextFilter: Filter) {
     if (!sampleMode && (nextFilter === filter || navigationInFlightRef.current)) return;
@@ -199,7 +198,7 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
       queuedNavigationRef.current = null;
       if (queued) navigateToInbox(queued.filter, queued.query);
     }
-  }, [isNavigating]);
+  }, [isNavigating, navigateToInbox]);
 
   function setQuery(nextQuery: string) {
     setQueryState(nextQuery);

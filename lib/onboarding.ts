@@ -330,7 +330,7 @@ function operatorNextAction(facts: OnboardingFacts, checks: OnboardingCheck[]): 
   return action("Setup complete", "Calls are covered and automatic text-back has been delivery verified.", "none", null);
 }
 
-function customerNextAction(facts: OnboardingFacts, checks: OnboardingCheck[]): OnboardingAction {
+function customerNextAction(facts: OnboardingFacts): OnboardingAction {
   if (facts.callMode === "forwarding" && !facts.signedCallVerifiedAt) {
     return action("Turn on missed-call forwarding", "Your phone still rings first. Relay answers only when you do not, then verifies the connection automatically.", "customer", "/setup#forwarding");
   }
@@ -382,6 +382,6 @@ export function deriveOnboardingReadiness(facts: OnboardingFacts): OnboardingRea
     customerAction:
       state === "blocked" && blocker.owner === "customer"
         ? action("Resolve your onboarding blocker", blocker.reason ?? "Relay needs information from you.", "customer", "/setup")
-        : customerNextAction(facts, checks),
+        : customerNextAction(facts),
   };
 }

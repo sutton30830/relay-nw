@@ -250,7 +250,13 @@ test("account_users email lookup escapes ilike wildcards so j_doe cannot match j
       createServerClient: () => ({
         auth: {
           getUser: async () => ({
-            data: { user: { id: "user-1", email: "j_doe@x.com" } },
+            data: {
+              user: {
+                id: "user-1",
+                email: "j_doe@x.com",
+                email_confirmed_at: new Date().toISOString(),
+              },
+            },
             error: null,
           }),
         },

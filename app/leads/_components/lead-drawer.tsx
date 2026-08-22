@@ -125,7 +125,6 @@ export function LeadDrawer({
     resetDrawerScroll();
     const frame = window.requestAnimationFrame(resetDrawerScroll);
     return () => window.cancelAnimationFrame(frame);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead.id]);
 
   useEffect(() => {

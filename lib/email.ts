@@ -4,6 +4,7 @@ import { env } from "@/lib/env";
 import { getOwnerNotificationEmail, recordProviderAction, type AccountRuntimeConfig } from "@/lib/supabase";
 
 let resendClient: Resend | null = null;
+const EMAIL_PROVIDER_TIMEOUT_MS = 10_000;
 
 function getResendClient() {
   if (!env.resendApiKey) {
@@ -184,6 +185,10 @@ async function sendEmail(input: {
       customerVisible: false,
       countAttempt: true,
     });
+    const requestOptions: Parameters<typeof client.emails.send>[1] & { signal: AbortSignal } = {
+      idempotencyKey: providerIdempotencyKey,
+      signal: AbortSignal.timeout(EMAIL_PROVIDER_TIMEOUT_MS),
+    };
     const { data, error } = await client.emails.send(
       {
         from: env.alertFromEmail,
@@ -192,7 +197,7 @@ async function sendEmail(input: {
         html: input.html,
         text: input.text,
       },
-      { idempotencyKey: providerIdempotencyKey },
+      requestOptions,
     );
 
     if (error) {

@@ -45,6 +45,12 @@ type AccountUserRow = {
   role: AccountRole;
 };
 
+type AuthUserIdentity = {
+  id: string;
+  email?: string | null;
+  email_confirmed_at?: string | null;
+};
+
 export async function createSupabaseAuthServerClient() {
   const cookieStore = await cookies();
 
@@ -127,7 +133,11 @@ async function bindEmailInvitesToUser(rows: AccountUserRow[], userId: string) {
     .map((row) => ({ ...row, user_id: userId }));
 }
 
-async function findAccountUserRows(userId: string, email: string | null) {
+async function findAccountUserRows(
+  userId: string,
+  email: string | null,
+  emailConfirmed: boolean,
+) {
   const byUserId = await supabaseAdmin
     .from("account_users")
     .select("id, account_id, user_id, email, role")
@@ -146,7 +156,7 @@ async function findAccountUserRows(userId: string, email: string | null) {
     return userRows;
   }
 
-  if (!email) {
+  if (!email || !emailConfirmed) {
     return [];
   }
 
@@ -163,9 +173,10 @@ async function findAccountUserRows(userId: string, email: string | null) {
   return bindEmailInvitesToUser(emailRows, userId);
 }
 
-export async function getAccountMembershipsForUser(user: { id: string; email?: string | null }) {
+export async function getAccountMembershipsForUser(user: AuthUserIdentity) {
   const email = user.email ?? null;
-  const rows = await findAccountUserRows(user.id, email);
+  const emailConfirmedAt = user.email_confirmed_at ?? null;
+  const rows = await findAccountUserRows(user.id, email, Boolean(emailConfirmedAt));
   // Account config reads are independent of the platform-operator lookup.
   // Starting them now removes one full Supabase round trip from every
   // authenticated page and lead mutation without weakening tenant checks.
@@ -173,7 +184,7 @@ export async function getAccountMembershipsForUser(user: { id: string; email?: s
     rows.map((row) => getAccountConfigByAccountId(row.account_id)),
   );
   if (typeof claimPlatformOperatorInvite === "function") {
-    await claimPlatformOperatorInvite({ userId: user.id, email });
+    await claimPlatformOperatorInvite({ userId: user.id, email, emailConfirmedAt });
   }
   const [platformOperator, accountConfigs] = await Promise.all([
     getPlatformOperatorByUserId(user.id),
@@ -206,7 +217,7 @@ export async function getAccountMembershipsForUser(user: { id: string; email?: s
 }
 
 export async function resolveAccountUserSessionForUser(
-  user: { id: string; email?: string | null } | null | undefined,
+  user: AuthUserIdentity | null | undefined,
   selectedAccount?: string | null,
 ): Promise<AccountUserResolution> {
   if (!user) {
@@ -266,7 +277,7 @@ export async function getAccountUserResolution() {
 }
 
 export async function getAccountUserSessionForUser(
-  user: { id: string; email?: string | null },
+  user: AuthUserIdentity,
   selectedAccount?: string | null,
 ) {
   const resolution = await resolveAccountUserSessionForUser(user, selectedAccount);
@@ -389,7 +400,11 @@ export async function getPlatformOperatorSession(): Promise<PlatformOperatorSess
   if (!user) return null;
 
   if (typeof claimPlatformOperatorInvite === "function") {
-    await claimPlatformOperatorInvite({ userId: user.id, email: user.email ?? null });
+    await claimPlatformOperatorInvite({
+      userId: user.id,
+      email: user.email ?? null,
+      emailConfirmedAt: user.email_confirmed_at ?? null,
+    });
   }
   const operator = await getPlatformOperatorByUserId(user.id);
   if (!operator) return null;

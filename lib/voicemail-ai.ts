@@ -45,6 +45,9 @@ type OpenAIResponsesResponse = {
 };
 
 const STALE_PROCESSING_MS = 10 * 60 * 1000;
+const RECORDING_DOWNLOAD_TIMEOUT_MS = 15_000;
+const OPENAI_TRANSCRIPTION_TIMEOUT_MS = 60_000;
+const OPENAI_SUMMARY_TIMEOUT_MS = 30_000;
 const VERIFICATION_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
 const UNCERTAIN_TRANSCRIPTION_MESSAGE =
   "Relay could not confidently transcribe this voicemail. Listen to the recording instead.";
@@ -78,6 +81,7 @@ async function fetchRecordingAudio(recordingSid: string) {
       Authorization: `Basic ${auth}`,
     },
     cache: "no-store",
+    signal: AbortSignal.timeout(RECORDING_DOWNLOAD_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -106,6 +110,7 @@ async function transcribeAudio(audio: Blob, model: string) {
       Authorization: `Bearer ${env.openaiApiKey}`,
     },
     body: form,
+    signal: AbortSignal.timeout(OPENAI_TRANSCRIPTION_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -160,6 +165,7 @@ async function summarizeTranscript(transcript: string): Promise<{
         },
       ],
     }),
+    signal: AbortSignal.timeout(OPENAI_SUMMARY_TIMEOUT_MS),
   });
 
   if (!response.ok) {

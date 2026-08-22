@@ -84,7 +84,7 @@ export function ConversationView({
   const [isTouch, setIsTouch] = useState(false);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const threadEndRef = useRef<HTMLDivElement | null>(null);
-  const currentLead: Lead = {
+  const currentLead = useMemo<Lead>(() => ({
     ...lead,
     name: name.trim() || null,
     notes,
@@ -92,7 +92,7 @@ export function ConversationView({
     reply_priority_override: priorityOverride,
     booked_at: bookedAt,
     job_value_cents: jobValueCents,
-  };
+  }), [lead, name, notes, status, priorityOverride, bookedAt, jobValueCents]);
   const booked = isBookedLead(currentLead);
 
   useEffect(() => {
@@ -151,7 +151,7 @@ export function ConversationView({
     ];
 
     return items.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-  }, [currentLead, previousLeads, inbound, outbound, sentMessages]);
+  }, [lead, currentLead, previousLeads, inbound, outbound, sentMessages]);
 
   // Start (and stay) at the newest message, like any messaging app.
   useEffect(() => {

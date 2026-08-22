@@ -25,6 +25,9 @@ import { dialForwardTwiml, forwardedMissedCallTwiml, twimlResponse } from "@/lib
 
 const VOICE_WEBHOOK_SOURCE = "twilio_voice";
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
 function errorMessage(error: unknown, fallback: string) {
   if (error instanceof Error) {
     return error.message;
@@ -93,18 +96,17 @@ function validationLogNote(input: {
   return input.smsStatus ? `Forwarding mode SMS status: ${input.smsStatus}` : null;
 }
 
-async function handleForwardingMode(input: {
+async function runForwardingPipeline(input: {
   account: TenantAccountRuntimeConfig;
-  request: Request;
   payload: Record<string, string>;
   correlationId: string;
   requestSummary: ReturnType<typeof summarizeTwilioRequest>;
   validation: ReturnType<typeof validateTwilioWebhook>;
   callerPhone: string;
   twilioSignatureValid: boolean;
+  xml: string;
 }) {
   const callSid = input.payload.CallSid ?? "";
-  const xml = missedCallTwiml(input.request, input.account);
 
   try {
     await upsertCall({
@@ -126,17 +128,15 @@ async function handleForwardingMode(input: {
       twilioSignatureValid: input.twilioSignatureValid,
     });
     if (result.becameLive && input.account.smsEnabled) {
-      after(async () => {
-        try {
-          await activateStripeTrialForAccount(input.account.accountId);
-        } catch (error) {
-          console.error("Deferred trial activation after first missed call failed", {
-            accountId: input.account.accountId,
-            correlationId: input.correlationId,
-            error: error instanceof Error ? error.message : error,
-          });
-        }
-      });
+      try {
+        await activateStripeTrialForAccount(input.account.accountId);
+      } catch (error) {
+        console.error("Deferred trial activation after first missed call failed", {
+          accountId: input.account.accountId,
+          correlationId: input.correlationId,
+          error: error instanceof Error ? error.message : error,
+        });
+      }
     }
 
     console.info("Handled forwarded missed call", {
@@ -151,7 +151,7 @@ async function handleForwardingMode(input: {
       correlationId: input.correlationId,
       payload: input.payload,
       responseStatus: 200,
-      responseBody: xml,
+      responseBody: input.xml,
       error: validationLogNote({
         matchedUrl: input.validation.matchedUrl,
         candidateUrls: input.validation.candidateUrls,
@@ -161,18 +161,25 @@ async function handleForwardingMode(input: {
   } catch (error) {
     const message = errorMessage(error, "Unknown forwarding-mode error");
 
-    await logWebhookEvent({
-      accountId: input.account.accountId,
-      source: VOICE_WEBHOOK_SOURCE,
-      correlationId: input.correlationId,
-      payload: input.payload,
-      responseStatus: 200,
-      responseBody: xml,
-      error: message,
-      internalStatus: "failed",
-      providerStatus: "local_processing_failed",
-      customerVisible: true,
-    });
+    try {
+      await logWebhookEvent({
+        accountId: input.account.accountId,
+        source: VOICE_WEBHOOK_SOURCE,
+        correlationId: input.correlationId,
+        payload: input.payload,
+        responseStatus: 200,
+        responseBody: input.xml,
+        error: message,
+        internalStatus: "failed",
+        providerStatus: "local_processing_failed",
+        customerVisible: true,
+      });
+    } catch (logError) {
+      console.error("Failed to record forwarding-mode voice error", {
+        correlationId: input.correlationId,
+        error: errorMessage(logError, "Unknown webhook logging error"),
+      });
+    }
 
     console.error("Failed to handle forwarded missed call", {
       correlationId: input.correlationId,
@@ -180,20 +187,38 @@ async function handleForwardingMode(input: {
       error: message,
     });
   }
-
-  return twimlResponse(xml);
 }
 
-async function handleDirectMode(input: {
+function handleForwardingMode(input: {
   account: TenantAccountRuntimeConfig;
   request: Request;
   payload: Record<string, string>;
   correlationId: string;
+  requestSummary: ReturnType<typeof summarizeTwilioRequest>;
   validation: ReturnType<typeof validateTwilioWebhook>;
   callerPhone: string;
+  twilioSignatureValid: boolean;
+}) {
+  const xml = missedCallTwiml(input.request, input.account);
+
+  // Twilio needs the greeting immediately. Database writes, notifications, and
+  // provider calls continue within the route's serverless lifetime after the
+  // response has been sent.
+  after(() => runForwardingPipeline({ ...input, xml }));
+
+  return twimlResponse(xml);
+}
+
+async function recordDirectCall(input: {
+  account: TenantAccountRuntimeConfig;
+  payload: Record<string, string>;
+  correlationId: string;
+  validation: ReturnType<typeof validateTwilioWebhook>;
+  callerPhone: string;
+  requestSummary: ReturnType<typeof summarizeTwilioRequest>;
+  xml: string;
 }) {
   const callSid = input.payload.CallSid ?? "";
-  const xml = directCallTwiml(input.request, input.callerPhone, input.account);
 
   try {
     await upsertCall({
@@ -203,7 +228,7 @@ async function handleDirectMode(input: {
       fromPhone: input.callerPhone,
       toPhone: input.payload.To ?? null,
       status: "ringing",
-      rawSummary: summarizeTwilioRequest(input.request, input.payload),
+      rawSummary: input.requestSummary,
     });
 
     await logWebhookEvent({
@@ -212,7 +237,7 @@ async function handleDirectMode(input: {
       correlationId: input.correlationId,
       payload: input.payload,
       responseStatus: 200,
-      responseBody: xml,
+      responseBody: input.xml,
       error: validationLogNote({
         matchedUrl: input.validation.matchedUrl,
         candidateUrls: input.validation.candidateUrls,
@@ -227,19 +252,45 @@ async function handleDirectMode(input: {
       error: message,
     });
 
-    await logWebhookEvent({
-      accountId: input.account.accountId,
-      source: VOICE_WEBHOOK_SOURCE,
-      correlationId: input.correlationId,
-      payload: input.payload,
-      responseStatus: 200,
-      responseBody: xml,
-      error: `Call row upsert failed: ${message}`,
-      internalStatus: "failed",
-      providerStatus: "local_write_failed",
-      customerVisible: true,
-    });
+    try {
+      await logWebhookEvent({
+        accountId: input.account.accountId,
+        source: VOICE_WEBHOOK_SOURCE,
+        correlationId: input.correlationId,
+        payload: input.payload,
+        responseStatus: 200,
+        responseBody: input.xml,
+        error: `Call row upsert failed: ${message}`,
+        internalStatus: "failed",
+        providerStatus: "local_write_failed",
+        customerVisible: true,
+      });
+    } catch (logError) {
+      console.error("Failed to record direct-mode voice error", {
+        correlationId: input.correlationId,
+        error: errorMessage(logError, "Unknown webhook logging error"),
+      });
+    }
   }
+}
+
+function handleDirectMode(input: {
+  account: TenantAccountRuntimeConfig;
+  request: Request;
+  payload: Record<string, string>;
+  correlationId: string;
+  validation: ReturnType<typeof validateTwilioWebhook>;
+  callerPhone: string;
+}) {
+  const xml = directCallTwiml(input.request, input.callerPhone, input.account);
+
+  after(() =>
+    recordDirectCall({
+      ...input,
+      requestSummary: summarizeTwilioRequest(input.request, input.payload),
+      xml,
+    }),
+  );
 
   // Always return TwiML so the caller still gets connected even if bookkeeping failed.
   return twimlResponse(xml);

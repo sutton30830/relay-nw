@@ -80,6 +80,9 @@ export type OperationalRetentionReport = {
   }>;
 };
 
+// PostgREST query builders are table-specific generics; this helper deliberately
+// accepts any builder so it can share retention counting across three tables.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function countBefore(table: string, timestamp: string, filters?: (query: any) => any) {
   let query = supabaseAdmin.from(table).select("*", { count: "exact", head: true }).lt("created_at", timestamp);
   if (filters) query = filters(query);
@@ -96,6 +99,7 @@ export async function runOperationalRetention(input: {
   const now = input.now ?? new Date();
   const webhookCutoff = cutoff(now, env.webhookEventRetentionDays);
   const inboundCutoff = cutoff(now, env.inboundMessageRetentionDays);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const scope = (query: any) => input.accountId ? query.eq("account_id", input.accountId) : query;
 
   const [webhookCount, inboundCount, duplicateMessageCount, inboundCandidates] = await Promise.all([

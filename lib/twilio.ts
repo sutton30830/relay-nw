@@ -27,7 +27,9 @@ type TwilioRequestSummary = {
   hasTwilioPhoneNumber: boolean;
 };
 
-export const twilioClient = twilio(env.twilioAccountSid, env.twilioAuthToken);
+export const twilioClient = twilio(env.twilioAccountSid, env.twilioAuthToken, {
+  timeout: 10_000,
+});
 
 export async function fetchA2pRegistrationEvidence(
   messagingServiceSid: string,

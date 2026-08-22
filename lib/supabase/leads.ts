@@ -343,7 +343,9 @@ type SearchLeadInboxRow = Omit<Lead, "inbound_messages" | "outbound_messages"> &
 };
 
 function rowToLead(row: SearchLeadInboxRow): Lead {
-  const { call_count: _callCount, total_count: _totalCount, ...lead } = row;
+  const { call_count, total_count, ...lead } = row;
+  void call_count;
+  void total_count;
   return { ...lead, inbound_messages: [], outbound_messages: [] };
 }
 

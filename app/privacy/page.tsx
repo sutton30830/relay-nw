@@ -47,7 +47,7 @@ export default function PrivacyPage() {
           <p>
             If a caller leaves a voicemail, Relay NW may store the recording and use service
             providers such as Twilio and OpenAI to transcribe and summarize it for the business.
-            These summaries are used to help the business understand and respond to the caller's
+            These summaries are used to help the business understand and respond to the caller&apos;s
             request. Relay NW does not use voicemail recordings, transcripts, or summaries for
             advertising.
           </p>
@@ -70,7 +70,7 @@ export default function PrivacyPage() {
           <p>
             Operational webhook logs and inbound SMS bodies are pruned on the configured daily
             schedule. Relay NW removes sanitized webhook diagnostics after 30 days by default and
-            removes inbound SMS bodies from Relay's message stores after 90 days by default. The retention periods for leads, call
+            removes inbound SMS bodies from Relay&apos;s message stores after 90 days by default. The retention periods for leads, call
             metadata, voicemail recordings, transcripts, summaries, and audit events have not yet
             been set. Those records remain until an authorized account deletion or another
             documented policy applies.
@@ -78,7 +78,7 @@ export default function PrivacyPage() {
           <p>
             A business may ask Relay NW to delete or export account records. An authorized Relay
             operator can export an account and can delete a closed account.
-            Account deletion removes the account's Relay database records, stored greeting files,
+            Account deletion removes the account&apos;s Relay database records, stored greeting files,
             and linked Twilio recordings and message resources. If a provider deletion fails,
             Relay keeps the account records so the deletion can be retried. Relay keeps a limited
             deletion record containing the account identifier, actor, time, result, failure

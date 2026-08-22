@@ -7,7 +7,7 @@
   --ink: #14211f;
   --ink-2: #263532;
   --ink-3: #5f6b67;
-  --ink-4: #8d9893;
+  --ink-4: #65716d;
   --paper: #f5f3ee;
   --paper-2: #ece7dc;
   --panel: #fffcf6;
@@ -4882,6 +4882,17 @@ code {
   }
   .attention__open {
     align-self: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

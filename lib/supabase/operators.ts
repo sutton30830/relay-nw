@@ -11,6 +11,8 @@ export type PlatformOperator = {
   createdAt?: string | null;
 };
 
+const PLATFORM_OPERATOR_INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 function normalizeRole(value: unknown): PlatformOperatorRole | null {
   return value === "super_admin" || value === "operator" || value === "support" ? value : null;
 }
@@ -52,15 +54,43 @@ export async function getPlatformOperatorByUserId(userId: string): Promise<Platf
   };
 }
 
-export async function claimPlatformOperatorInvite(input: { userId: string; email: string | null }) {
+export async function claimPlatformOperatorInvite(input: {
+  userId: string;
+  email: string | null;
+  emailConfirmedAt: string | null;
+}) {
   const email = input.email?.trim().toLowerCase();
-  if (!email) return;
-  const { data, error } = await supabaseAdmin.from("platform_operator_invites").select("email, role, status").eq("email", email).eq("status", "pending").maybeSingle();
+  if (!email || !input.emailConfirmedAt) return;
+
+  const claimedAt = new Date().toISOString();
+  const activeAfter = new Date(Date.now() - PLATFORM_OPERATOR_INVITE_TTL_MS).toISOString();
+  const { data, error } = await supabaseAdmin
+    .from("platform_operator_invites")
+    .update({ status: "claimed", claimed_at: claimedAt })
+    .eq("email", email)
+    .eq("status", "pending")
+    .gte("created_at", activeAfter)
+    .select("email, role, status, created_at")
+    .maybeSingle();
   if (error || !data) return;
   const role = normalizeRole(data.role);
   if (!role) return;
-  await supabaseAdmin.from("platform_operators").upsert({ user_id: input.userId, email, role, status: "active" }, { onConflict: "user_id" });
-  await supabaseAdmin.from("platform_operator_invites").update({ status: "claimed", claimed_at: new Date().toISOString() }).eq("email", email).eq("status", "pending");
+  const { error: operatorError } = await supabaseAdmin
+    .from("platform_operators")
+    .upsert(
+      { user_id: input.userId, email, role, status: "active" },
+      { onConflict: "user_id" },
+    );
+
+  if (operatorError) {
+    await supabaseAdmin
+      .from("platform_operator_invites")
+      .update({ status: "pending", claimed_at: null })
+      .eq("email", email)
+      .eq("status", "claimed")
+      .eq("claimed_at", claimedAt);
+    throw operatorError;
+  }
 }
 
 export async function listPlatformOperators(): Promise<PlatformOperator[]> {
@@ -82,7 +112,12 @@ export async function listPlatformOperators(): Promise<PlatformOperator[]> {
 
 export async function invitePlatformOperator(input: { email: string; role: PlatformOperatorRole; actorUserId: string }) {
   const { error } = await supabaseAdmin.from("platform_operator_invites").upsert({
-    email: input.email.trim().toLowerCase(), role: input.role, status: "pending", created_by: input.actorUserId,
+    email: input.email.trim().toLowerCase(),
+    role: input.role,
+    status: "pending",
+    created_by: input.actorUserId,
+    created_at: new Date().toISOString(),
+    claimed_at: null,
   }, { onConflict: "email" });
   if (error) throw error;
 }

@@ -67,7 +67,7 @@ export function AppHeader({
         <div className="brand-mark"><Icon name={isOperations ? "shield" : "relay"} size={18} /></div>
         <div>
           <p className="t-eyebrow" style={{ fontSize: 10 }}>{isOperations ? "Relay NW · Operations" : "Relay NW"}</p>
-          <h1 className="t-display" style={{ fontSize: 22, margin: 0 }}>{isOperations ? "Operations" : businessName}</h1>
+          <p className="t-display" style={{ fontSize: 22, margin: 0 }}>{isOperations ? "Operations" : businessName}</p>
         </div>
         {currentPage === "inbox" ? (
           <span className="live-dot" title="Auto-refreshes every few seconds">

@@ -2,7 +2,6 @@ import { AppHeader } from "@/app/leads/_components/app-header";
 
 export function OpsHeader({
   businessName,
-  operatorEmail,
   currentPage = "operations",
 }: {
   businessName?: string;

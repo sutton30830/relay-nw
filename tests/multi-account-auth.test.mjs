@@ -184,10 +184,30 @@ test("same email invited to two accounts binds both memberships without throwing
   });
   const auth = await loadTsModule("lib/auth.ts", mocks);
 
-  const memberships = await auth.getAccountMembershipsForUser({ id: "user-1", email: "owner@example.com" });
+  const memberships = await auth.getAccountMembershipsForUser({
+    id: "user-1",
+    email: "owner@example.com",
+    email_confirmed_at: new Date().toISOString(),
+  });
 
   assert.deepEqual(memberships.map((item) => item.accountId), ["acct-a", "acct-b"]);
   assert.deepEqual(updates.map((item) => item.id).sort(), ["au-a", "au-b"]);
+});
+
+test("unconfirmed email cannot claim account invitations", async () => {
+  const { mocks, updates } = makeAuthMocks({
+    rows: [membership({ id: "au-a", account_id: "acct-a", user_id: null })],
+  });
+  const auth = await loadTsModule("lib/auth.ts", mocks);
+
+  const memberships = await auth.getAccountMembershipsForUser({
+    id: "user-1",
+    email: "owner@example.com",
+    email_confirmed_at: null,
+  });
+
+  assert.deepEqual(memberships, []);
+  assert.deepEqual(updates, []);
 });
 
 test("single-account users still resolve directly", async () => {

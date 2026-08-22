@@ -59,7 +59,7 @@ export async function getRecentWebhookEventsForAccount(inputAccountId: string, l
     return [] as WebhookEvent[];
   }
 
-  let query = supabaseAdmin
+  const query = supabaseAdmin
     .from("webhook_events")
     .select("id, account_id, created_at, source, correlation_id, payload, response_status, response_body, error")
     .order("created_at", { ascending: false })
@@ -70,7 +70,7 @@ export async function getRecentWebhookEventsForAccount(inputAccountId: string, l
 
   if (error) {
     if (isMissingCorrelationIdColumnError(error)) {
-      let legacyQuery = supabaseAdmin
+      const legacyQuery = supabaseAdmin
         .from("webhook_events")
         .select("id, created_at, source, payload, response_status, response_body, error")
         .order("created_at", { ascending: false })
