@@ -6,7 +6,10 @@ import {
   listLeadsNeedingSummaryRetry,
   listLeadsNeedingTranscriptionRetry,
 } from "@/lib/supabase";
-import { transcribeLeadVoicemail } from "@/lib/voicemail-ai";
+import {
+  isExpectedVoicemailQualityErrorMessage,
+  transcribeLeadVoicemail,
+} from "@/lib/voicemail-ai";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -41,13 +44,17 @@ async function runAuthorizedTranscriptionRetry() {
   ).values()];
   let succeeded = 0;
   let skipped = 0;
+  let suppressed = 0;
   const successes: Array<{ leadId: string; accountId: string }> = [];
   const skips: Array<{ leadId: string; accountId: string }> = [];
+  const suppressions: Array<{ leadId: string; accountId: string }> = [];
   const failures: Array<{ leadId: string; accountId: string; error: string }> = [];
 
   for (const lead of leads) {
     try {
-      await transcribeLeadVoicemail(lead.id, lead.account_id);
+      // Scheduled recovery repairs Relay's stored result quietly. It must not
+      // create a delayed customer notification for an older voicemail.
+      await transcribeLeadVoicemail(lead.id, lead.account_id, { notifyOwner: false });
       succeeded += 1;
       successes.push({ leadId: lead.id, accountId: lead.account_id });
     } catch (error) {
@@ -56,6 +63,15 @@ async function runAuthorizedTranscriptionRetry() {
       if (message === "Voicemail summary is already generating.") {
         skipped += 1;
         skips.push({ leadId: lead.id, accountId: lead.account_id });
+        continue;
+      }
+
+      // Short, silent, or unreliable audio is a completed safety decision, not
+      // an outage. The lead and provider evidence are already marked suppressed
+      // by transcribeLeadVoicemail; keep the scheduled job healthy.
+      if (isExpectedVoicemailQualityErrorMessage(message)) {
+        suppressed += 1;
+        suppressions.push({ leadId: lead.id, accountId: lead.account_id });
         continue;
       }
 
@@ -72,6 +88,7 @@ async function runAuthorizedTranscriptionRetry() {
     attempted: leads.length,
     succeeded,
     skipped,
+    suppressed,
     failed: failures.length,
   });
 
@@ -81,12 +98,13 @@ async function runAuthorizedTranscriptionRetry() {
     const accountEligible = leads.filter((lead) => lead.account_id === accountId).length;
     const accountSucceeded = successes.filter((success) => success.accountId === accountId).length;
     const accountSkipped = skips.filter((skip) => skip.accountId === accountId).length;
+    const accountSuppressed = suppressions.filter((item) => item.accountId === accountId).length;
     return recordCronCheckIn({
       accountId,
       job: "scheduled_transcription_retry",
       runKey,
       ok: accountFailures.length === 0,
-      detail: `Eligible ${accountEligible}; recovered ${accountSucceeded}; skipped ${accountSkipped}; failed ${accountFailures.length}.`,
+      detail: `Eligible ${accountEligible}; recovered ${accountSucceeded}; already processing ${accountSkipped}; no usable audio ${accountSuppressed}; failed ${accountFailures.length}.`,
     });
   }));
 
@@ -98,6 +116,7 @@ async function runAuthorizedTranscriptionRetry() {
     attempted: leads.length,
     succeeded,
     skipped,
+    suppressed,
     failed: failures.length,
     checkInFailures,
     failures,

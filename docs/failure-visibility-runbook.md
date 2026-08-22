@@ -36,6 +36,11 @@ tenant-scoped view that explains failures and recovery consistently.
 8. Replay webhooks only with the original provider identifier. Stripe and scheduled
    billing failures should be recovered through reconciliation, never a second charge.
 
+The scheduled transcription check-in separates **recovered**, **already
+processing**, **no usable audio**, and **failed**. No-usable-audio outcomes are
+healthy terminal suppressions; only the failed count should produce a recovery
+alert.
+
 For voicemail, use the displayed stage and retry policy. A verified transcript
 with a summary failure is summary-only recovery; do not download or transcribe
 the audio again. A processing item older than ten minutes is stale and may be

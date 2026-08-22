@@ -861,8 +861,10 @@ function makeCronMocks({ cronSecret = "secret", leads = [], summaryLeads = [], f
       withCronMonitor: async (input) => input.run(),
     },
     "@/lib/voicemail-ai": {
-      transcribeLeadVoicemail: async (leadId, accountId) => {
-        calls.transcriptions.push({ leadId, accountId });
+      isExpectedVoicemailQualityErrorMessage: (message) =>
+        /No usable voicemail|No clear spoken message|could not confidently transcribe/i.test(message),
+      transcribeLeadVoicemail: async (leadId, accountId, options) => {
+        calls.transcriptions.push({ leadId, accountId, options });
         if (failLeadIds.has(leadId)) {
           throw new Error(`failed ${leadId}`);
         }
@@ -907,8 +909,8 @@ test("retry cron attempts each listed lead and survives one failing", async () =
 
   assert.equal(response.status, 502);
   assert.deepEqual(calls.transcriptions, [
-    { leadId: "lead-1", accountId: "acct-1" },
-    { leadId: "lead-2", accountId: "acct-2" },
+    { leadId: "lead-1", accountId: "acct-1", options: { notifyOwner: false } },
+    { leadId: "lead-2", accountId: "acct-2", options: { notifyOwner: false } },
   ]);
   assert.equal(body.attempted, 2);
   assert.equal(body.succeeded, 1);
@@ -919,11 +921,11 @@ test("retry cron attempts each listed lead and survives one failing", async () =
   assert.equal(calls.checkIns.find((item) => item.accountId === "acct-2").ok, true);
   assert.equal(
     calls.checkIns.find((item) => item.accountId === "acct-1").detail,
-    "Eligible 1; recovered 0; skipped 0; failed 1.",
+    "Eligible 1; recovered 0; already processing 0; no usable audio 0; failed 1.",
   );
   assert.equal(
     calls.checkIns.find((item) => item.accountId === "acct-2").detail,
-    "Eligible 1; recovered 1; skipped 0; failed 0.",
+    "Eligible 1; recovered 1; already processing 0; no usable audio 0; failed 0.",
   );
 });
 
@@ -937,8 +939,31 @@ test("retry cron includes completed transcripts that need summary-only recovery"
 
   assert.equal(response.status, 200);
   assert.deepEqual(calls.transcriptions, [
-    { leadId: "lead-summary", accountId: "acct-1" },
+    { leadId: "lead-summary", accountId: "acct-1", options: { notifyOwner: false } },
   ]);
   assert.equal(body.attempted, 1);
   assert.equal(body.succeeded, 1);
+});
+
+test("retry cron treats expected quality suppression as a healthy terminal outcome", async () => {
+  const { mocks, calls } = makeCronMocks({
+    leads: [{ id: "lead-silent", account_id: "acct-1" }],
+  });
+  mocks["@/lib/voicemail-ai"].transcribeLeadVoicemail = async (leadId, accountId, options) => {
+    calls.transcriptions.push({ leadId, accountId, options });
+    throw new Error("Relay could not confidently transcribe this voicemail. Listen to the recording instead.");
+  };
+
+  const response = await runCron(mocks, "secret");
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.succeeded, 0);
+  assert.equal(body.suppressed, 1);
+  assert.equal(body.failed, 0);
+  assert.equal(calls.checkIns.find((item) => item.accountId === "acct-1").ok, true);
+  assert.equal(
+    calls.checkIns.find((item) => item.accountId === "acct-1").detail,
+    "Eligible 1; recovered 0; already processing 0; no usable audio 1; failed 0.",
+  );
 });
