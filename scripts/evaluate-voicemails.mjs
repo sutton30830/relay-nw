@@ -9,6 +9,13 @@ const manifestPath = path.resolve(process.argv[2] ?? defaultManifest);
 const confidenceConfig = JSON.parse(
   await readFile(path.join(repoRoot, "lib/voicemail-confidence-config.json"), "utf8"),
 );
+const transcriptionPrompt =
+  "A caller is leaving a voicemail after a missed phone call. The message may be personal, a test, a vendor notice, or a service request. Preserve exactly what is audible, including names, stated problems, and callback requests. Do not add words that were not spoken.";
+const logprobModels = new Set([
+  "gpt-4o-transcribe",
+  "gpt-4o-mini-transcribe",
+  "gpt-4o-mini-transcribe-2025-12-15",
+]);
 
 function words(value) {
   return value
@@ -68,9 +75,17 @@ async function transcribe(audioPath, model) {
   form.append("file", new Blob([audio]), path.basename(audioPath));
   form.append("model", model);
   form.append("response_format", "json");
-  form.append("language", "en");
+  form.append("prompt", transcriptionPrompt);
+  form.append("chunking_strategy", "auto");
+  if (model === "gpt-transcribe") {
+    form.append("languages[]", "en");
+  } else {
+    form.append("language", "en");
+  }
   form.append("temperature", "0");
-  form.append("include[]", "logprobs");
+  if (logprobModels.has(model)) {
+    form.append("include[]", "logprobs");
+  }
 
   const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
     method: "POST",
@@ -108,8 +123,9 @@ if (!Array.isArray(manifest.cases) || manifest.cases.length === 0) {
   process.exit(2);
 }
 
-const primaryModel = manifest.primaryModel ?? "gpt-4o-transcribe";
-const verificationModel = manifest.verificationModel ?? "gpt-4o-mini-transcribe";
+const primaryModel = manifest.primaryModel ?? "gpt-transcribe";
+const verificationModel = manifest.verificationModel ?? "gpt-4o-transcribe";
+const adjudicationModel = manifest.adjudicationModel ?? "gpt-4o-mini-transcribe";
 const rows = [];
 
 for (const item of manifest.cases) {
@@ -118,19 +134,50 @@ for (const item of manifest.cases) {
     transcribe(audioPath, primaryModel),
     transcribe(audioPath, verificationModel),
   ]);
-  const confidence = confidenceAssessment(primary.logprobs);
-  const expectedWer = wordErrorRate(item.expectedTranscript, primary.text);
   const agreementWer = wordErrorRate(primary.text, verification.text);
+  let adjudication = null;
+  let selected = primary;
+  let recovered = false;
+
+  if (agreementWer > confidenceConfig.maximumReliableTranscriptDisagreement) {
+    adjudication = await transcribe(audioPath, adjudicationModel);
+    const primarySupported =
+      wordErrorRate(primary.text, adjudication.text) <=
+      confidenceConfig.maximumReliableTranscriptDisagreement;
+    const verificationSupported =
+      wordErrorRate(verification.text, adjudication.text) <=
+      confidenceConfig.maximumReliableTranscriptDisagreement;
+
+    selected = primarySupported && !verificationSupported
+      ? primary
+      : verificationSupported && !primarySupported
+        ? verification
+        : primarySupported && verificationSupported
+          ? primary
+          : null;
+    recovered = Boolean(selected);
+  }
+
+  const confidenceCandidates = selected && adjudication
+    ? [selected, adjudication]
+    : [primary, verification];
+  const confidence = confidenceCandidates
+    .map((candidate) => confidenceAssessment(candidate.logprobs))
+    .find((assessment) => assessment.reliable) ?? { confidence: null, reliable: false };
+  const expectedWer = selected
+    ? wordErrorRate(item.expectedTranscript, selected.text)
+    : Number.POSITIVE_INFINITY;
   const maxWer = item.maxWordErrorRate ?? manifest.maxWordErrorRate ?? 0.15;
   const accepted =
+    Boolean(selected) &&
     confidence.reliable &&
-    agreementWer <= confidenceConfig.maximumReliableTranscriptDisagreement &&
     expectedWer <= maxWer;
 
   rows.push({
     id: item.id,
     accepted,
-    expected_wer: expectedWer.toFixed(3),
+    recovered,
+    expected_wer: Number.isFinite(expectedWer) ? expectedWer.toFixed(3) : "n/a",
     model_agreement_wer: agreementWer.toFixed(3),
     confidence: confidence.confidence?.toFixed(3) ?? "n/a",
   });

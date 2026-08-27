@@ -1,6 +1,7 @@
 {
-  "primaryModel": "gpt-4o-transcribe",
-  "verificationModel": "gpt-4o-mini-transcribe",
+  "primaryModel": "gpt-transcribe",
+  "verificationModel": "gpt-4o-transcribe",
+  "adjudicationModel": "gpt-4o-mini-transcribe",
   "maxWordErrorRate": 0.15,
   "cases": [
     {

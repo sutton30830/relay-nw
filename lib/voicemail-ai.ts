@@ -36,6 +36,13 @@ type OpenAITranscriptionResponse = {
   logprobs?: TranscriptionLogprob[];
 };
 
+type AudioTranscription = {
+  model: string;
+  rawTranscript?: string;
+  transcript: string;
+  logprobs: TranscriptionLogprob[];
+};
+
 type OpenAIResponsesResponse = {
   output_text?: string;
   output?: Array<{
@@ -49,7 +56,16 @@ const STALE_PROCESSING_MS = 10 * 60 * 1000;
 const RECORDING_DOWNLOAD_TIMEOUT_MS = 15_000;
 const OPENAI_TRANSCRIPTION_TIMEOUT_MS = 60_000;
 const OPENAI_SUMMARY_TIMEOUT_MS = 30_000;
-const VERIFICATION_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
+const RECOMMENDED_TRANSCRIPTION_MODEL = "gpt-transcribe";
+const FULL_QUALITY_TRANSCRIPTION_MODEL = "gpt-4o-transcribe";
+const ADJUDICATION_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
+const LOGPROB_TRANSCRIPTION_MODELS = new Set([
+  "gpt-4o-transcribe",
+  "gpt-4o-mini-transcribe",
+  "gpt-4o-mini-transcribe-2025-12-15",
+]);
+const VOICEMAIL_TRANSCRIPTION_PROMPT =
+  "A caller is leaving a voicemail after a missed phone call. The message may be personal, a test, a vendor notice, or a service request. Preserve exactly what is audible, including names, stated problems, and callback requests. Do not add words that were not spoken.";
 const UNCERTAIN_TRANSCRIPTION_MESSAGE =
   "Relay could not confidently transcribe this voicemail. Listen to the recording instead.";
 
@@ -92,7 +108,28 @@ async function fetchRecordingAudio(recordingSid: string) {
   return response.blob();
 }
 
-async function transcribeAudio(audio: Blob, model: string) {
+function modelSupportsLogprobs(model: string) {
+  return LOGPROB_TRANSCRIPTION_MODELS.has(model);
+}
+
+function verificationModelFor(primaryModel: string) {
+  return primaryModel === RECOMMENDED_TRANSCRIPTION_MODEL
+    ? FULL_QUALITY_TRANSCRIPTION_MODEL
+    : RECOMMENDED_TRANSCRIPTION_MODEL;
+}
+
+function adjudicationModelFor(primaryModel: string, verificationModel: string) {
+  if (
+    primaryModel !== ADJUDICATION_TRANSCRIPTION_MODEL &&
+    verificationModel !== ADJUDICATION_TRANSCRIPTION_MODEL
+  ) {
+    return ADJUDICATION_TRANSCRIPTION_MODEL;
+  }
+
+  return FULL_QUALITY_TRANSCRIPTION_MODEL;
+}
+
+async function transcribeAudio(audio: Blob, model: string): Promise<AudioTranscription> {
   if (!env.openaiApiKey) {
     throw new Error("OPENAI_API_KEY is not configured.");
   }
@@ -101,9 +138,17 @@ async function transcribeAudio(audio: Blob, model: string) {
   form.append("file", audio, "voicemail.mp3");
   form.append("model", model);
   form.append("response_format", "json");
-  form.append("language", "en");
+  form.append("prompt", VOICEMAIL_TRANSCRIPTION_PROMPT);
+  form.append("chunking_strategy", "auto");
+  if (model === RECOMMENDED_TRANSCRIPTION_MODEL) {
+    form.append("languages[]", "en");
+  } else {
+    form.append("language", "en");
+  }
   form.append("temperature", "0");
-  form.append("include[]", "logprobs");
+  if (modelSupportsLogprobs(model)) {
+    form.append("include[]", "logprobs");
+  }
 
   const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
     method: "POST",
@@ -123,9 +168,105 @@ async function transcribeAudio(audio: Blob, model: string) {
   const transcript = rawTranscript?.trim();
 
   return {
+    model,
     rawTranscript,
     transcript: transcript ?? "",
     logprobs: data.logprobs ?? [],
+  };
+}
+
+function candidateIsUsable(
+  candidate: AudioTranscription,
+  duration: number | null | undefined,
+) {
+  return Boolean(candidate.transcript) &&
+    !transcriptLooksLikeSilenceHallucination(candidate.transcript, duration);
+}
+
+function reliableConfidenceSource(...candidates: AudioTranscription[]) {
+  return candidates.find(
+    (candidate) => assessTranscriptionConfidence(candidate.logprobs).quality === "reliable",
+  ) ?? null;
+}
+
+async function selectReliableTranscript(input: {
+  audio: Blob;
+  primary: AudioTranscription;
+  verification: AudioTranscription;
+  recordingDuration: number | null | undefined;
+}) {
+  const primaryVerificationRate = transcriptWordErrorRate(
+    input.primary.transcript,
+    input.verification.transcript,
+  );
+  const primaryAndVerificationAgree = !transcriptsMateriallyDisagree(
+    input.primary.transcript,
+    input.verification.transcript,
+  );
+
+  if (primaryAndVerificationAgree) {
+    return {
+      selected: input.primary,
+      confidenceSource: reliableConfidenceSource(input.primary, input.verification),
+      verification: input.verification,
+      adjudication: null,
+      initialDisagreement: false,
+      recoveredByAdjudication: false,
+      metrics: {
+        verification_word_error_rate: primaryVerificationRate,
+        adjudication_primary_word_error_rate: null,
+        adjudication_verification_word_error_rate: null,
+        transcription_passes: 2,
+      },
+    };
+  }
+
+  const adjudicationModel = adjudicationModelFor(
+    input.primary.model,
+    input.verification.model,
+  );
+  const adjudication = await transcribeAudio(input.audio, adjudicationModel);
+  const adjudicationPrimaryRate = transcriptWordErrorRate(
+    input.primary.transcript,
+    adjudication.transcript,
+  );
+  const adjudicationVerificationRate = transcriptWordErrorRate(
+    input.verification.transcript,
+    adjudication.transcript,
+  );
+  const adjudicationUsable = candidateIsUsable(adjudication, input.recordingDuration);
+  const primarySupported =
+    adjudicationUsable &&
+    candidateIsUsable(input.primary, input.recordingDuration) &&
+    !transcriptsMateriallyDisagree(input.primary.transcript, adjudication.transcript);
+  const verificationSupported =
+    adjudicationUsable &&
+    candidateIsUsable(input.verification, input.recordingDuration) &&
+    !transcriptsMateriallyDisagree(input.verification.transcript, adjudication.transcript);
+  const selected = primarySupported && !verificationSupported
+    ? input.primary
+    : verificationSupported && !primarySupported
+      ? input.verification
+      : primarySupported && verificationSupported
+        ? input.primary
+        : null;
+  const confidenceSource = selected
+    ? reliableConfidenceSource(selected, adjudication)
+    : reliableConfidenceSource(input.primary, input.verification, adjudication);
+
+  return {
+    selected,
+    confidenceSource,
+    verification: input.verification,
+    adjudication,
+    initialDisagreement: true,
+    recoveredByAdjudication: Boolean(selected && confidenceSource),
+    metrics: {
+      verification_word_error_rate: primaryVerificationRate,
+      adjudication_primary_word_error_rate: adjudicationPrimaryRate,
+      adjudication_verification_word_error_rate: adjudicationVerificationRate,
+      transcription_passes: 3,
+    },
   };
 }
 
@@ -472,56 +613,71 @@ export async function transcribeLeadVoicemail(
 
   try {
     const audio = await fetchRecordingAudio(lead.recording_sid);
-    const transcription = await transcribeAudio(audio, env.openaiTranscriptionModel);
+    const verificationModel = verificationModelFor(env.openaiTranscriptionModel);
+    const [transcription, verification] = await Promise.all([
+      transcribeAudio(audio, env.openaiTranscriptionModel),
+      transcribeAudio(audio, verificationModel),
+    ]);
 
-    // A successful transcription response with no text means the model did not
-    // detect usable speech. Repeating the same request does not recover silence,
-    // so classify this as an expected quality suppression instead of a provider
-    // failure that invites retries and pages an operator.
-    if (!transcription.transcript) {
+    const consensus = await selectReliableTranscript({
+      audio,
+      primary: transcription,
+      verification,
+      recordingDuration: lead.recording_duration,
+    });
+
+    // Two independent empty responses mean the models did not detect usable
+    // speech. Repeating the same request does not recover silence, so classify
+    // this as an expected quality suppression instead of a provider outage.
+    if (!transcription.transcript && !verification.transcript) {
       throw new ExpectedVoicemailQualityError(
         NO_SPEECH_VOICEMAIL_MESSAGE,
         "no_speech_detected",
       );
     }
-
-    const verificationModel =
-      env.openaiTranscriptionModel === VERIFICATION_TRANSCRIPTION_MODEL
-        ? "gpt-4o-transcribe"
-        : VERIFICATION_TRANSCRIPTION_MODEL;
-    const verification = await transcribeAudio(audio, verificationModel);
-    const confidenceAssessment = assessTranscriptionConfidence(transcription.logprobs);
-    const disagreementRate = transcriptWordErrorRate(
-      transcription.transcript,
-      verification.transcript,
+    const selectedTranscription = consensus.selected;
+    const confidenceAssessment = assessTranscriptionConfidence(
+      consensus.confidenceSource?.logprobs,
     );
     const qualityReasons = [...confidenceAssessment.reasons];
     const knownHallucination = transcriptLooksLikeSilenceHallucination(
-      transcription.transcript,
+      selectedTranscription?.transcript ?? transcription.transcript,
       lead.recording_duration,
-    );
-    const modelDisagreement = transcriptsMateriallyDisagree(
-      transcription.transcript,
-      verification.transcript,
     );
 
     if (knownHallucination) {
       qualityReasons.push("known_hallucination_pattern");
     }
 
-    if (modelDisagreement) {
+    if (consensus.initialDisagreement) {
       qualityReasons.push("transcription_models_disagree");
     }
 
+    if (consensus.recoveredByAdjudication) {
+      qualityReasons.push("transcription_adjudication_recovered");
+    } else if (consensus.initialDisagreement) {
+      qualityReasons.push("transcription_adjudication_failed");
+    }
+
     const quality =
-      confidenceAssessment.quality === "reliable" && !knownHallucination && !modelDisagreement
+      selectedTranscription && confidenceAssessment.quality === "reliable" && !knownHallucination
         ? "reliable"
         : confidenceAssessment.quality === "unavailable" || knownHallucination
           ? "unavailable"
           : "review_recommended";
     const transcriptionMetrics = {
       ...confidenceAssessment.metrics,
-      verification_word_error_rate: Math.round(disagreementRate * 10_000) / 10_000,
+      verification_word_error_rate:
+        Math.round(consensus.metrics.verification_word_error_rate * 10_000) / 10_000,
+      adjudication_primary_word_error_rate:
+        consensus.metrics.adjudication_primary_word_error_rate === null
+          ? null
+          : Math.round(consensus.metrics.adjudication_primary_word_error_rate * 10_000) / 10_000,
+      adjudication_verification_word_error_rate:
+        consensus.metrics.adjudication_verification_word_error_rate === null
+          ? null
+          : Math.round(consensus.metrics.adjudication_verification_word_error_rate * 10_000) / 10_000,
+      transcription_passes: consensus.metrics.transcription_passes,
     };
 
     // Persist the provider's exact output before validating or transforming
@@ -529,8 +685,8 @@ export async function transcribeLeadVoicemail(
     await updateLeadVoicemailTranscription({
       accountId,
       id: leadId,
-      rawTranscript: transcription.rawTranscript,
-      transcriptionModel: env.openaiTranscriptionModel,
+      rawTranscript: selectedTranscription?.rawTranscript ?? transcription.rawTranscript,
+      transcriptionModel: selectedTranscription?.model ?? env.openaiTranscriptionModel,
       transcriptionConfidence: confidenceAssessment.confidence,
       transcriptionQuality: quality,
       transcriptionQualityReasons: qualityReasons,
@@ -563,13 +719,13 @@ export async function transcribeLeadVoicemail(
     await updateLeadVoicemailTranscription({
       accountId,
       id: leadId,
-      transcript: transcription.transcript,
+      transcript: selectedTranscription?.transcript ?? transcription.transcript,
       transcriptionQuality: "reliable",
       status: "processing",
       error: null,
     });
 
-    const transcript = transcription.transcript;
+    const transcript = selectedTranscription?.transcript ?? transcription.transcript;
     let structuredSummary: ValidatedVoicemailSummary | null = null;
     let summaryValidationReasons: string[] = [];
 
@@ -607,8 +763,8 @@ export async function transcribeLeadVoicemail(
     await updateLeadVoicemailTranscription({
       accountId,
       id: leadId,
-      rawTranscript: transcription.rawTranscript,
-      transcriptionModel: env.openaiTranscriptionModel,
+      rawTranscript: selectedTranscription?.rawTranscript ?? transcription.rawTranscript,
+      transcriptionModel: selectedTranscription?.model ?? env.openaiTranscriptionModel,
       transcriptionConfidence: confidenceAssessment.confidence,
       transcriptionQuality: "reliable",
       transcriptionQualityReasons: qualityReasons,

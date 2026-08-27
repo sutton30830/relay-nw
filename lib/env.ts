@@ -77,6 +77,7 @@ function getAllowUnsignedTwilioWebhooks() {
 }
 
 const SUPPORTED_TRANSCRIPTION_MODELS = new Set([
+  "gpt-transcribe",
   "gpt-4o-transcribe",
   "gpt-4o-mini-transcribe",
   "gpt-4o-mini-transcribe-2025-12-15",
@@ -85,11 +86,11 @@ const SUPPORTED_TRANSCRIPTION_MODELS = new Set([
 function getOpenAITranscriptionModel() {
   const value =
     getOptionalEnvAliases("OPENAI_TRANSCRIPTION_MODEL", "OPEN_AI_TRANSCRIPTION_MODEL") ??
-    "gpt-4o-transcribe";
+    "gpt-transcribe";
 
   if (!SUPPORTED_TRANSCRIPTION_MODELS.has(value)) {
     throw new Error(
-      "Invalid OPENAI_TRANSCRIPTION_MODEL. Relay requires a confidence-capable GPT-4o transcription model.",
+      "Invalid OPENAI_TRANSCRIPTION_MODEL. Relay requires a supported OpenAI transcription model.",
     );
   }
 

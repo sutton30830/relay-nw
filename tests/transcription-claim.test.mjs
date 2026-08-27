@@ -358,7 +358,7 @@ test("empty transcription is treated as no speech and is not reported as a provi
       /No clear spoken message was detected/,
     );
 
-    assert.equal(fetches.length, 2, "do not run verification or summary after an empty primary transcript");
+    assert.equal(fetches.length, 3, "two empty full-quality passes do not trigger adjudication or summary");
     assert.equal(calls.adminIssues.length, 0, "no-speech recordings should not page an operator");
     assert.deepEqual(calls.transcriptionUpdates.at(-1), {
       accountId: "acct-1",
@@ -760,10 +760,19 @@ test("casual voicemail stays verbatim and is never sent through transcript rewri
 
     assert.equal(result.transcript, displayTranscript);
     assert.equal(result.summary, summary);
-    assert.equal(transcriptionForms.length, 2, "the new system requires agreement between two GPT-4o transcribers");
-    assert.equal(transcriptionForms[0].get("prompt"), null, "biased home-service prompt must be absent");
+    assert.equal(transcriptionForms.length, 2, "matching full-quality transcribers do not need adjudication");
+    assert.match(
+      transcriptionForms[0].get("prompt"),
+      /personal, a test, a vendor notice, or a service request/,
+      "the prompt must remain neutral about the voicemail's purpose",
+    );
+    assert.equal(transcriptionForms[0].get("chunking_strategy"), "auto");
     assert.equal(transcriptionForms[0].get("include[]"), "logprobs");
     assert.equal(transcriptionForms[0].get("language"), "en");
+    assert.equal(transcriptionForms[1].get("model"), "gpt-transcribe");
+    assert.equal(transcriptionForms[1].get("languages[]"), "en");
+    assert.equal(transcriptionForms[1].get("language"), null);
+    assert.equal(transcriptionForms[1].get("include[]"), null);
     assert.deepEqual(responseInputs, [displayTranscript], "the transcript is summarized once and never rewritten");
     assert.equal(calls.transcriptionUpdates[0].rawTranscript, rawTranscript);
     assert.equal(calls.transcriptionUpdates[0].transcriptionQuality, "reliable");
@@ -778,7 +787,7 @@ test("casual voicemail stays verbatim and is never sent through transcript rewri
   }
 });
 
-test("conflicting GPT-4o transcriptions are stored as evidence but never shown as a transcript", async () => {
+test("unresolved three-model disagreement is stored as evidence but never shown as a transcript", async () => {
   const originalFetch = globalThis.fetch;
   const responseCalls = [];
   let transcriptionCount = 0;
@@ -791,9 +800,11 @@ test("conflicting GPT-4o transcriptions are stored as evidence but never shown a
     if (String(url).endsWith("/audio/transcriptions")) {
       transcriptionCount += 1;
       return Response.json({
-        text: transcriptionCount === 1
-          ? "Hey Sutton, it's Joe. Give me a call."
-          : "For more information visit FEMA dot gov.",
+        text: [
+          "Hey Sutton, it's Joe. Give me a call.",
+          "The appointment is scheduled for tomorrow afternoon.",
+          "Please leave your name and number after the tone.",
+        ][transcriptionCount - 1],
         logprobs: reliableLogprobs,
       });
     }
@@ -833,8 +844,81 @@ test("conflicting GPT-4o transcriptions are stored as evidence but never shown a
     assert.ok(
       calls.transcriptionUpdates[0].transcriptionQualityReasons.includes("transcription_models_disagree"),
     );
+    assert.ok(
+      calls.transcriptionUpdates[0].transcriptionQualityReasons.includes("transcription_adjudication_failed"),
+    );
+    assert.equal(calls.transcriptionUpdates[0].transcriptionMetrics.transcription_passes, 3);
+    assert.equal(transcriptionCount, 3);
     assert.equal(calls.transcriptionUpdates.at(-1).status, "failed");
     assert.equal(calls.adminIssues.length, 0, "expected uncertainty is not an operational outage");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a full-quality disagreement is recovered when the adjudicator independently agrees", async () => {
+  const originalFetch = globalThis.fetch;
+  const transcript = "Hi, I have a leak under the kitchen sink. Please call me back.";
+  const structuredSummary = {
+    classification: "service_request",
+    summary: "a leak under the kitchen sink — Please call me back",
+    evidence: ["a leak under the kitchen sink", "Please call me back"],
+    urgency: "normal",
+    urgency_evidence: "",
+  };
+  const transcriptionForms = [];
+
+  globalThis.fetch = async (url, init = {}) => {
+    if (String(url).includes("Recordings/RE_recovered.mp3")) {
+      return new Response("fake-audio", { status: 200 });
+    }
+
+    if (String(url).endsWith("/audio/transcriptions")) {
+      transcriptionForms.push(init.body);
+      const model = init.body.get("model");
+      return Response.json({
+        text: model === "gpt-4o-transcribe" ? "" : transcript,
+        logprobs: model === "gpt-4o-mini-transcribe" ? reliableLogprobs : [],
+      });
+    }
+
+    if (String(url).endsWith("/responses")) {
+      return Response.json({ output_text: JSON.stringify(structuredSummary) });
+    }
+
+    throw new Error(`Unexpected fetch: ${url}`);
+  };
+
+  try {
+    const { mocks, calls } = makeVoicemailMocks({
+      lead: {
+        id: "lead-recovered",
+        phone: "+12065557678",
+        recording_sid: "RE_recovered",
+        recording_duration: 12,
+        voicemail_transcript: null,
+        voicemail_summary: null,
+        voicemail_transcription_status: "pending",
+        voicemail_transcribed_at: null,
+      },
+    });
+    const { transcribeLeadVoicemail } = await loadTsModule("lib/voicemail-ai.ts", mocks);
+
+    const result = await transcribeLeadVoicemail("lead-recovered", "acct-1");
+
+    assert.equal(result.transcript, transcript);
+    assert.equal(result.summary, structuredSummary.summary);
+    assert.deepEqual(
+      transcriptionForms.map((form) => form.get("model")),
+      ["gpt-4o-transcribe", "gpt-transcribe", "gpt-4o-mini-transcribe"],
+    );
+    assert.equal(calls.transcriptionUpdates[0].transcriptionQuality, "reliable");
+    assert.equal(calls.transcriptionUpdates[0].transcriptionModel, "gpt-transcribe");
+    assert.ok(
+      calls.transcriptionUpdates[0].transcriptionQualityReasons.includes("transcription_adjudication_recovered"),
+    );
+    assert.equal(calls.transcriptionUpdates[0].transcriptionMetrics.transcription_passes, 3);
+    assert.equal(calls.transcriptionUpdates.at(-1).status, "completed");
   } finally {
     globalThis.fetch = originalFetch;
   }

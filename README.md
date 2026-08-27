@@ -136,7 +136,7 @@ Optional:
 - `MONITORING_DAILY_CRON_STALE_HOURS`: defaults to `36`; daily job check-in threshold
 - `MONITORING_WEEKLY_CRON_STALE_HOURS`: defaults to `192`; weekly digest check-in threshold
 - `OPENAI_API_KEY`: optional; enables voicemail transcription and quick summaries from the lead drawer
-- `OPENAI_TRANSCRIPTION_MODEL`: optional; defaults to `gpt-4o-transcribe`; only confidence-capable GPT-4o transcription models are accepted
+- `OPENAI_TRANSCRIPTION_MODEL`: optional; defaults to OpenAI's recommended `gpt-transcribe`; Relay verifies it with a separate full-quality model and only uses the mini model to adjudicate disagreements
 - `AUTH_RATE_LIMIT_SALT`: optional dedicated HMAC secret for durable authentication rate-limit identifiers; defaults to the server-only Supabase service-role key
 - `OPENAI_SUMMARY_MODEL`: optional; defaults to `gpt-4o-mini`
 - `WEB_PUSH_PUBLIC_KEY` and `WEB_PUSH_PRIVATE_KEY`: optional VAPID key pair; enables owner-opted-in browser alerts for new missed calls and completed voicemail summaries without depending on A2P approval
