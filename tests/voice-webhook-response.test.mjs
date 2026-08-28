@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import { loadWebhookRoute } from "./helpers/webhook-modules.mjs";
 
 async function loadTsModule(path, mocks) {
   const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
@@ -119,7 +120,7 @@ async function postVoice(route) {
 
 test("forwarding voice webhook returns TwiML before missed-call pipeline work", async () => {
   const harness = makeHarness("forwarding");
-  const route = await loadTsModule("app/api/twilio/voice/route.ts", harness.mocks);
+  const route = await loadWebhookRoute(loadTsModule, "app/api/twilio/voice/route.ts", harness.mocks);
 
   const response = await postVoice(route);
 
@@ -139,7 +140,7 @@ test("forwarding voice webhook returns TwiML before missed-call pipeline work", 
 
 test("direct voice webhook returns dial TwiML before bookkeeping", async () => {
   const harness = makeHarness("direct");
-  const route = await loadTsModule("app/api/twilio/voice/route.ts", harness.mocks);
+  const route = await loadWebhookRoute(loadTsModule, "app/api/twilio/voice/route.ts", harness.mocks);
 
   const response = await postVoice(route);
 

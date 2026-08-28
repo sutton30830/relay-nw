@@ -1,0 +1,96 @@
+export const TWILIO_WEBHOOK_FIXTURES = [
+  {
+    name: "inbound call",
+    type: "inbound_call",
+    payload: {
+      CallSid: "CA_fixture_call",
+      ParentCallSid: "CA_fixture_parent",
+      From: "+12065550123",
+      To: "+12065550100",
+    },
+    expected: {
+      primaryKind: "call",
+      primaryValue: "CA_fixture_call",
+      from: "+12065550123",
+      to: "+12065550100",
+    },
+  },
+  {
+    name: "call result",
+    type: "call_completed",
+    payload: {
+      CallSid: "CA_fixture_call",
+      From: "+12065550123",
+      To: "+12065550100",
+      DialCallStatus: "no-answer",
+      DialCallDuration: "18",
+    },
+    expected: {
+      primaryKind: "call",
+      primaryValue: "CA_fixture_call",
+      outcome: "no_answer",
+      providerStatus: "no-answer",
+      durationSeconds: 18,
+    },
+  },
+  {
+    name: "recording ready",
+    type: "recording_ready",
+    payload: {
+      CallSid: "CA_fixture_call",
+      RecordingSid: "RE_fixture_recording",
+      RecordingUrl: "https://api.twilio.com/recordings/RE_fixture_recording",
+      RecordingDuration: "12",
+      RecordingStatus: "completed",
+      From: "+12065550123",
+      To: "+12065550100",
+    },
+    expected: {
+      primaryKind: "recording",
+      primaryValue: "RE_fixture_recording",
+      status: "ready",
+      providerStatus: "completed",
+      durationSeconds: 12,
+      mediaUrl: "https://api.twilio.com/recordings/RE_fixture_recording.mp3",
+    },
+  },
+  {
+    name: "inbound message",
+    type: "inbound_message",
+    payload: {
+      MessageSid: "SM_fixture_inbound",
+      From: "+12065550123",
+      To: "+12065550100",
+      Body: "  HELP  ",
+      NumMedia: "2",
+    },
+    expected: {
+      primaryKind: "message",
+      primaryValue: "SM_fixture_inbound",
+      body: "HELP",
+      mediaCount: 2,
+    },
+  },
+  {
+    name: "message delivery update",
+    type: "message_delivery_updated",
+    payload: {
+      MessageSid: "SM_fixture_outbound",
+      MessageStatus: "undelivered",
+      ErrorCode: "30006",
+      ErrorMessage: "Landline or unreachable carrier destination",
+      From: "+12065550100",
+      To: "+12065550123",
+    },
+    expected: {
+      primaryKind: "message",
+      primaryValue: "SM_fixture_outbound",
+      status: "undelivered",
+      providerStatus: "undelivered",
+      error: {
+        code: "30006",
+        message: "Landline or unreachable carrier destination",
+      },
+    },
+  },
+];

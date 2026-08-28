@@ -4,6 +4,7 @@ import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
 import { telephonyProviderMock } from "./helpers/telephony-provider.mjs";
+import { loadWebhookRoute } from "./helpers/webhook-modules.mjs";
 
 async function loadTsModule(path, mocks) {
   const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
@@ -148,7 +149,11 @@ function makeMocks(account = ACCOUNT) {
 
 async function postInboundSms(body, overrides = {}) {
   const { mocks, calls } = makeMocks(overrides.account ?? ACCOUNT);
-  const { POST } = await loadTsModule("app/api/twilio/sms/route.ts", mocks);
+  const { POST } = await loadWebhookRoute(
+    loadTsModule,
+    "app/api/twilio/sms/route.ts",
+    mocks,
+  );
   const payload = new URLSearchParams({
     MessageSid: overrides.messageSid ?? "SM_inbound_1",
     From: overrides.from ?? "(206) 555-0123",

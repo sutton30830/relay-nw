@@ -178,6 +178,24 @@ function nonNegativeNumber(value: string | undefined) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
+function optionalIdentifier<Kind extends ProviderResourceKind>(
+  kind: Kind,
+  value: string | undefined,
+) {
+  const normalized = value?.trim() ?? "";
+  return normalized
+    ? providerIdentifier({ provider: PROVIDER_ID, kind, value: normalized })
+    : null;
+}
+
+function recordingMediaUrl(value: string | undefined) {
+  const normalized = value?.trim() ?? "";
+  if (!normalized) return null;
+  return normalized.endsWith(".mp3") || normalized.endsWith(".wav")
+    ? normalized
+    : `${normalized}.mp3`;
+}
+
 function messageStatus(value: string | undefined): MessageDeliveryStatus {
   const normalized = value?.trim().toLowerCase();
   return normalized === "queued" || normalized === "sending" || normalized === "sent" ||
@@ -245,10 +263,8 @@ function normalizeEvent(
   const occurredAt = normalizedTimestamp(fields.Timestamp ?? fields.DateCreated, receivedAt);
   const providerEventId = (fields.EventSid ?? "").trim() || null;
   const base = { provider: PROVIDER_ID, occurredAt, receivedAt, providerEventId } as const;
-  const callId = () => providerIdentifier({ provider: PROVIDER_ID, kind: "call", value: fields.CallSid ?? "" });
-  const parentCallId = () => (fields.ParentCallSid ?? "").trim()
-    ? providerIdentifier({ provider: PROVIDER_ID, kind: "call", value: fields.ParentCallSid })
-    : null;
+  const callId = () => optionalIdentifier("call", fields.CallSid);
+  const parentCallId = () => optionalIdentifier("call", fields.ParentCallSid);
 
   if (type === "inbound_call") {
     return {
@@ -270,6 +286,7 @@ function normalizeEvent(
       to: (fields.To ?? "").trim(),
       outcome: callOutcome(fields.DialCallStatus ?? fields.CallStatus),
       durationSeconds: nonNegativeNumber(fields.DialCallDuration ?? fields.CallDuration),
+      providerStatus: (fields.DialCallStatus ?? fields.CallStatus ?? "").trim().toLowerCase() || null,
     };
   }
   if (type === "recording_ready") {
@@ -277,12 +294,11 @@ function normalizeEvent(
     return {
       ...base,
       type,
-      recordingId: providerIdentifier({
-        provider: PROVIDER_ID,
-        kind: "recording",
-        value: fields.RecordingSid ?? "",
-      }),
+      recordingId: optionalIdentifier("recording", fields.RecordingSid),
       callId: callId(),
+      from: (fields.From ?? "").trim(),
+      to: (fields.To ?? "").trim(),
+      mediaUrl: recordingMediaUrl(fields.RecordingUrl),
       durationSeconds: nonNegativeNumber(fields.RecordingDuration),
       status: rawStatus === "completed"
         ? "ready"
@@ -291,17 +307,14 @@ function normalizeEvent(
           : rawStatus === "failed"
             ? "failed"
             : "unknown",
+      providerStatus: rawStatus || null,
     };
   }
   if (type === "inbound_message") {
     return {
       ...base,
       type,
-      messageId: providerIdentifier({
-        provider: PROVIDER_ID,
-        kind: "message",
-        value: fields.MessageSid ?? fields.SmsSid ?? "",
-      }),
+      messageId: optionalIdentifier("message", fields.MessageSid ?? fields.SmsSid),
       from: (fields.From ?? "").trim(),
       to: (fields.To ?? "").trim(),
       body: (fields.Body ?? "").trim(),
@@ -314,14 +327,11 @@ function normalizeEvent(
   return {
     ...base,
     type: "message_delivery_updated",
-    messageId: providerIdentifier({
-      provider: PROVIDER_ID,
-      kind: "message",
-      value: fields.MessageSid ?? fields.SmsSid ?? "",
-    }),
+    messageId: optionalIdentifier("message", fields.MessageSid ?? fields.SmsSid),
     from: (fields.From ?? "").trim(),
     to: (fields.To ?? "").trim(),
     status: messageStatus(fields.MessageStatus ?? fields.SmsStatus),
+    providerStatus: (fields.MessageStatus ?? fields.SmsStatus ?? "").trim().toLowerCase() || null,
     error: fields.ErrorCode || fields.ErrorMessage
       ? {
           code: (fields.ErrorCode ?? "").trim() || null,
@@ -500,7 +510,11 @@ export function createTwilioProvider(
           if (dependencies.validateRequest(dependencies.authToken, signature, url, { ...input.form })) {
             return { isValid: true, matchedUrl: url, hasSignature: true };
           }
-        } catch {
+        } catch (error) {
+          console.warn("Twilio signature validation threw an error", {
+            url,
+            error: error instanceof Error ? error.message : "Unknown validation error",
+          });
           // A malformed candidate is invalid; try any remaining canonical URL.
         }
       }

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import { loadWebhookRoute } from "./helpers/webhook-modules.mjs";
 
 async function loadTsModule(path, mocks) {
   const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
@@ -141,7 +142,11 @@ function makeMocks({
 }
 
 async function postDialStatus(mocks, payload = {}) {
-  const { POST } = await loadTsModule("app/api/twilio/dial-status/route.ts", mocks);
+  const { POST } = await loadWebhookRoute(
+    loadTsModule,
+    "app/api/twilio/dial-status/route.ts",
+    mocks,
+  );
   const body = new URLSearchParams({
     CallSid: "CA_missing",
     From: "+12065550123",
@@ -179,7 +184,7 @@ test("unknown CallSid with a registered To number resolves and texts the caller"
     assert.equal(calls.missedCalls[0].callSid, "CA_missing");
     assert.equal(calls.upsertCalls.length, 1);
     assert.equal(calls.upsertCalls[0].accountId, "acct-1");
-    assert.ok(warnings.some(([message]) => String(message).includes("dial-status resolved by To-number fallback")));
+    assert.ok(warnings.some(([message]) => String(message).includes("call result resolved by destination-number fallback")));
   } finally {
     console.warn = originalWarn;
   }

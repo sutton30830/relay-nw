@@ -64,7 +64,7 @@ type CanonicalEventBase<Type extends TelephonyEventType> = {
 };
 
 export type InboundCallEvent = CanonicalEventBase<"inbound_call"> & {
-  callId: CallIdentifier;
+  callId: CallIdentifier | null;
   parentCallId: CallIdentifier | null;
   from: string;
   to: string;
@@ -80,23 +80,30 @@ export type CallCompletionOutcome =
   | "unknown";
 
 export type CallCompletionEvent = CanonicalEventBase<"call_completed"> & {
-  callId: CallIdentifier;
+  callId: CallIdentifier | null;
   parentCallId: CallIdentifier | null;
   from: string;
   to: string;
   outcome: CallCompletionOutcome;
   durationSeconds: number | null;
+  /** Provider-native status retained for diagnostics and legacy persistence. */
+  providerStatus: string | null;
 };
 
 export type RecordingReadyEvent = CanonicalEventBase<"recording_ready"> & {
-  recordingId: RecordingIdentifier;
-  callId: CallIdentifier;
+  recordingId: RecordingIdentifier | null;
+  callId: CallIdentifier | null;
+  from: string;
+  to: string;
+  mediaUrl: string | null;
   durationSeconds: number | null;
   status: "ready" | "processing" | "failed" | "unknown";
+  /** Provider-native status retained for diagnostics and legacy persistence. */
+  providerStatus: string | null;
 };
 
 export type InboundMessageEvent = CanonicalEventBase<"inbound_message"> & {
-  messageId: MessageIdentifier;
+  messageId: MessageIdentifier | null;
   from: string;
   to: string;
   body: string;
@@ -113,10 +120,12 @@ export type MessageDeliveryStatus =
   | "unknown";
 
 export type MessageDeliveryUpdateEvent = CanonicalEventBase<"message_delivery_updated"> & {
-  messageId: MessageIdentifier;
+  messageId: MessageIdentifier | null;
   from: string;
   to: string;
   status: MessageDeliveryStatus;
+  /** Provider-native status retained for diagnostics when normalization returns unknown. */
+  providerStatus: string | null;
   error: {
     code: string | null;
     message: string | null;

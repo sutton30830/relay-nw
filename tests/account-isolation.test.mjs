@@ -24,6 +24,8 @@ const files = {
   recordingWebhook: await source("app/api/twilio/recording/route.ts"),
   smsWebhook: await source("app/api/twilio/sms/route.ts"),
   smsStatusWebhook: await source("app/api/twilio/sms-status/route.ts"),
+  twilioIngress: await source("lib/telephony/providers/twilio-webhooks.ts"),
+  webhookServices: await source("lib/telephony/webhook-services.ts"),
   unresolvedHandler: await source("lib/twilio/unresolved-account.ts"),
   accountStore: await source("lib/supabase/accounts.ts"),
   leadsStore: await source("lib/supabase/leads.ts"),
@@ -58,40 +60,35 @@ test("authenticated lead, ops, recording, and transcription routes use session a
   assert.match(compact(files.leadApi), /deleteLead\(id, auth\.session\.accountId\)/);
 
   assert.match(files.recordingApi, /const auth = await requireAccountUserJson\(\)/);
-  assert.match(files.recordingApi, /getLeadRecordingForPlayback\(recordingSid, auth\.session\.accountId\)/);
+  assert.match(
+    compact(files.recordingApi),
+    /getLeadRecordingForPlayback\( providerRecordingId, auth\.session\.accountId,? \)/,
+  );
 
   assert.match(files.transcribeApi, /const auth = await requireWriteAccessJson\(\)/);
   assert.match(files.transcribeApi, /transcribeLeadVoicemail\(id, auth\.session\.accountId\)/);
 });
 
 test("Twilio webhooks resolve account context before writing tenant data", () => {
-  assert.match(files.voiceWebhook, /resolveAccountByTwilioNumber\(payload\.To\)/);
-  assert.match(files.voiceWebhook, /accountResolution\.status === "unresolved"/);
-  assert.match(files.voiceWebhook, /handleUnresolvedTwilioAccount\(\{/);
-  assert.match(files.voiceWebhook, /accountId: input\.account\.accountId/);
-  assert.match(files.voiceWebhook, /account: input\.account/);
+  for (const route of [
+    files.voiceWebhook,
+    files.dialStatusWebhook,
+    files.recordingWebhook,
+    files.smsWebhook,
+    files.smsStatusWebhook,
+  ]) {
+    assert.match(route, /@\/lib\/telephony\/providers\/twilio-webhooks/);
+    assert.doesNotMatch(route, /payload\.(?:CallSid|MessageSid|RecordingSid|From|To|Body)/);
+  }
 
-  assert.match(files.dialStatusWebhook, /resolveAccountByCallSid\(callSid\)/);
-  assert.match(files.dialStatusWebhook, /accountResolution\.status === "unresolved"/);
-  assert.match(files.dialStatusWebhook, /handleUnresolvedTwilioAccount\(\{/);
-  assert.match(files.dialStatusWebhook, /accountId: input\.account\.accountId/);
-  assert.match(files.dialStatusWebhook, /account: input\.account/);
-
-  assert.match(files.recordingWebhook, /resolveAccountByCallSid\(recording\.callSid\)/);
-  assert.match(files.recordingWebhook, /accountResolution\.status === "unresolved"/);
-  assert.match(files.recordingWebhook, /handleUnresolvedTwilioAccount\(\{/);
-  assert.match(files.recordingWebhook, /accountId: account\.accountId/);
-  assert.match(files.recordingWebhook, /transcribeLeadVoicemail\(result\.leadId!, account\.accountId\)/);
-
-  assert.match(files.smsWebhook, /resolveAccountByTwilioNumber\(message\.to \|\| payload\.To\)/);
-  assert.match(files.smsWebhook, /accountResolution\.status === "unresolved"/);
-  assert.match(files.smsWebhook, /handleUnresolvedTwilioAccount\(\{/);
-  assert.match(files.smsWebhook, /accountId: account\.accountId/);
-
-  assert.match(files.smsStatusWebhook, /resolveAccountByMessageSid\(status\.messageSid\)/);
-  assert.match(files.smsStatusWebhook, /accountResolution\.status === "unresolved"/);
-  assert.match(files.smsStatusWebhook, /handleUnresolvedTwilioAccount\(\{/);
-  assert.match(files.smsStatusWebhook, /accountId: account\.accountId/);
+  assert.match(files.webhookServices, /resolveAccountByProviderCallId\(event\.callId\?\.value\)/);
+  assert.match(files.webhookServices, /resolveAccountByProviderMessageId\(event\.messageId\?\.value\)/);
+  assert.match(files.webhookServices, /resolveAccountByRelayPhoneNumber\(event\.to\)/);
+  assert.match(files.webhookServices, /resolveConsistentAccountEvidence\(\[/);
+  assert.match(files.twilioIngress, /accountResolution\.status === "unresolved"/);
+  assert.match(files.twilioIngress, /handleUnresolvedTwilioAccount\(\{/);
+  assert.match(files.webhookServices, /accountId: input\.account\.accountId/);
+  assert.match(files.webhookServices, /transcribeLeadVoicemail\(input\.leadId, input\.account\.accountId\)/);
 });
 
 test("unresolved Twilio account handling alerts admin and avoids tenant writes", () => {
@@ -121,16 +118,16 @@ test("lead queries and mutations filter by account_id when an account is supplie
 });
 
 test("recordings, messages, calls, and webhook debug reads are account scoped", () => {
-  assert.match(files.voicemailsStore, /\.eq\("recording_sid", recordingSid\)\s*\.eq\("account_id", accountId\)/);
+  assert.match(files.voicemailsStore, /\.eq\("recording_sid", providerRecordingId\)\s*\.eq\("account_id", accountId\)/);
   assert.match(files.voicemailsStore, /\.eq\("id", id\)\s*\.eq\("account_id", accountId\)/);
-  assert.match(files.voicemailsStore, /\.eq\("call_sid", input\.callSid\)\s*\.eq\("account_id", accountId\)/);
+  assert.match(files.voicemailsStore, /\.eq\("call_sid", providerCallId\)\s*\.eq\("account_id", accountId\)/);
 
-  assert.match(files.messagesStore, /\.eq\("account_id", accountId\)\s*\.eq\("twilio_message_sid", input\.twilioMessageSid\)/);
+  assert.match(files.messagesStore, /\.eq\("account_id", accountId\)\s*\.eq\("twilio_message_sid", providerMessageId\)/);
   assert.match(files.messagesStore, /upsert\(\{ phone, account_id: accountId \}, \{ onConflict: "account_id,phone" \}\)/);
   assert.match(files.messagesStore, /account_id: accountId/);
 
   assert.match(files.callsStore, /onConflict: "account_id,call_sid"/);
-  assert.match(files.callsStore, /\.eq\("account_id", accountId\)\s*\.eq\("call_sid", input\.callSid\)/);
+  assert.match(files.callsStore, /\.eq\("account_id", accountId\)\s*\.eq\("call_sid", providerCallId\)/);
 
   assert.match(files.webhooksStore, /\.eq\("account_id", accountId\)\s*\.limit\(limit\)/);
   assert.match(files.webhooksStore, /account_id: input\.accountId \?\? null/);

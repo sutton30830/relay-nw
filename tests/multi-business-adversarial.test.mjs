@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import { loadWebhookRoute } from "./helpers/webhook-modules.mjs";
 import {
   BUSINESS_A,
   BUSINESS_B,
@@ -822,7 +823,7 @@ test("concurrent inbound SMS is deduplicated per account and conflicting SID/num
     },
   };
   const { registry } = telephonyProviderMock({ twilioClient });
-  const route = await loadTsModule("app/api/twilio/sms/route.ts", {
+  const route = await loadWebhookRoute(loadTsModule, "app/api/twilio/sms/route.ts", {
     "@/lib/env": {
       env: { allowUnsignedTwilioWebhooks: false, appBaseUrl: "https://relay.test" },
     },
@@ -934,7 +935,7 @@ test("recording and transcription callbacks stay account-scoped under concurrenc
   const common = twilioRouteMocks(fixture);
   const afterTasks = [];
   const transcribed = new Set();
-  const route = await loadTsModule("app/api/twilio/recording/route.ts", {
+  const route = await loadWebhookRoute(loadTsModule, "app/api/twilio/recording/route.ts", {
     "next/server": {
       after: (fn) => {
         const pending = Promise.resolve().then(fn);

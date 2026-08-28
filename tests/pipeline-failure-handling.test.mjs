@@ -4,6 +4,7 @@ import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
 import { telephonyProviderMock } from "./helpers/telephony-provider.mjs";
+import { loadWebhookRoute } from "./helpers/webhook-modules.mjs";
 
 // Failure-injection coverage for the missed-call -> SMS -> lead pipeline.
 // Every step must either succeed visibly or fail visibly: a failure anywhere must end
@@ -438,7 +439,11 @@ function makeSmsStatusRouteMocks(state) {
 }
 
 async function postSmsStatus(mocks, payload, url = "https://example.com/api/twilio/sms-status") {
-  const { POST } = await loadTsModule("app/api/twilio/sms-status/route.ts", mocks);
+  const { POST } = await loadWebhookRoute(
+    loadTsModule,
+    "app/api/twilio/sms-status/route.ts",
+    mocks,
+  );
   const body = new URLSearchParams(payload);
   const request = new Request(url, {
     method: "POST",

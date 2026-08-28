@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import { TWILIO_WEBHOOK_FIXTURES } from "./fixtures/twilio-webhooks.mjs";
 
 async function loadTsModule(path, mocks = {}) {
   const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
@@ -112,12 +113,28 @@ function adapterHarness() {
     ),
   };
   class VoiceResponse {
-    dial() { return { number() {} }; }
-    say() {}
-    play() {}
-    record() {}
-    hangup() {}
-    toString() { return "<Response />"; }
+    nodes = [];
+    dial(input) {
+      return {
+        number: (value) => this.nodes.push({ type: "dial", input, value }),
+      };
+    }
+    say(input, value) { this.nodes.push({ type: "say", input, value }); }
+    play(value) { this.nodes.push({ type: "play", value }); }
+    record(input) { this.nodes.push({ type: "record", input }); }
+    hangup() { this.nodes.push({ type: "hangup" }); }
+    toString() {
+      const attributes = (input) => Object.entries(input)
+        .map(([key, value]) => `${key}="${Array.isArray(value) ? value.join(" ") : value}"`)
+        .join(" ");
+      return `<Response>${this.nodes.map((node) => {
+        if (node.type === "dial") return `<Dial ${attributes(node.input)}><Number>${node.value}</Number></Dial>`;
+        if (node.type === "say") return `<Say ${attributes(node.input)}>${node.value}</Say>`;
+        if (node.type === "play") return `<Play>${node.value}</Play>`;
+        if (node.type === "record") return `<Record ${attributes(node.input)} />`;
+        return "<Hangup />";
+      }).join("")}</Response>`;
+    }
   }
   const twilioMock = Object.assign(() => client, {
     validateRequest: (_token, signature, url) => {
@@ -249,4 +266,83 @@ test("Twilio adapter verifies signatures fail-closed and emits provider-neutral 
   assert.equal(delivery.status, "undelivered");
   assert.deepEqual(delivery.error, { code: "30006", message: null });
   assert.equal("MessageSid" in delivery, false);
+});
+
+test("Twilio webhook fixtures normalize every ingress type without leaking form-field names", async () => {
+  const harness = adapterHarness();
+  const { twilioProvider } = await loadTsModule(
+    "lib/telephony/providers/twilio.ts",
+    harness.mocks,
+  );
+
+  for (const fixture of TWILIO_WEBHOOK_FIXTURES) {
+    const event = twilioProvider.normalizeWebhookEvent({
+      type: fixture.type,
+      payload: fixture.payload,
+      receivedAt: "2026-08-28T12:00:00.000Z",
+    });
+    const primary = event.type === "recording_ready"
+      ? event.recordingId
+      : event.callId ?? event.messageId;
+    assert.equal(event.type, fixture.type, fixture.name);
+    assert.equal(primary?.kind, fixture.expected.primaryKind, fixture.name);
+    assert.equal(primary?.value, fixture.expected.primaryValue, fixture.name);
+    for (const [key, value] of Object.entries(fixture.expected)) {
+      if (key === "primaryKind" || key === "primaryValue") continue;
+      assert.deepEqual(event[key], value, `${fixture.name}: ${key}`);
+    }
+    for (const providerField of [
+      "CallSid",
+      "DialCallStatus",
+      "RecordingSid",
+      "MessageSid",
+      "MessageStatus",
+      "From",
+      "To",
+      "Body",
+    ]) {
+      assert.equal(providerField in event, false, `${fixture.name}: ${providerField}`);
+    }
+  }
+});
+
+test("Twilio voice rendering preserves forwarding identity, timeout, greeting, and recording callbacks", async () => {
+  const harness = adapterHarness();
+  const { twilioProvider } = await loadTsModule(
+    "lib/telephony/providers/twilio.ts",
+    harness.mocks,
+  );
+  const direct = twilioProvider.renderVoiceInstructions([{
+    type: "forward_to_owner",
+    ownerPhoneNumber: "+12065550111",
+    callerId: "+12065550123",
+    completionCallbackUrl: "https://relay.test/api/twilio/voice-status",
+    timeoutSeconds: 18,
+  }]).body;
+  assert.match(direct, /<Dial[^>]*timeout="18"/);
+  assert.match(direct, /action="https:\/\/relay\.test\/api\/twilio\/voice-status"/);
+  assert.match(direct, /callerId="\+12065550123"/);
+  assert.match(direct, /<Number>\+12065550111<\/Number>/);
+
+  const forwarding = twilioProvider.renderVoiceInstructions([
+    {
+      type: "play_greeting",
+      greeting: { type: "audio", url: "https://relay.test/greeting.wav" },
+    },
+    {
+      type: "capture_voicemail",
+      completionCallbackUrl: "https://relay.test/api/twilio/recording",
+      maxDurationSeconds: 60,
+      silenceTimeoutSeconds: 5,
+      trimSilence: true,
+      playBeep: true,
+    },
+  ]).body;
+  assert.ok(forwarding.indexOf("<Play>") < forwarding.indexOf("<Record"));
+  assert.match(forwarding, /recordingStatusCallback="https:\/\/relay\.test\/api\/twilio\/recording"/);
+  assert.match(forwarding, /recordingStatusCallbackEvent="completed"/);
+  assert.match(forwarding, /maxLength="60"/);
+  assert.match(forwarding, /timeout="5"/);
+  assert.match(forwarding, /trim="trim-silence"/);
+  assert.match(forwarding, /playBeep="true"/);
 });

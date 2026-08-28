@@ -4,6 +4,7 @@ import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
 import { telephonyProviderMock } from "./helpers/telephony-provider.mjs";
+import { loadWebhookRoute } from "./helpers/webhook-modules.mjs";
 
 // Route-spanning activation coverage for the real revenue loop:
 // missed call -> lead -> SMS -> delivery callback -> caller reply -> voicemail.
@@ -324,11 +325,7 @@ async function loadActivationModules(mocks) {
   const missedCall = await loadTsModule("lib/missed-call.ts", mocks);
   const routeMocks = {
     ...mocks,
-    "next/server": {
-      after: (callback) => {
-        void callback();
-      },
-    },
+    "next/server": mocks["next/server"],
     "@/lib/billing-activation": {
       activateStripeTrialForAccount: async () => ({
         status: "not_eligible",
@@ -338,11 +335,18 @@ async function loadActivationModules(mocks) {
     "@/lib/missed-call": missedCall,
   };
   return {
-    dialStatus: await loadTsModule("app/api/twilio/dial-status/route.ts", routeMocks),
-    smsStatus: await loadTsModule("app/api/twilio/sms-status/route.ts", routeMocks),
-    inboundSms: await loadTsModule("app/api/twilio/sms/route.ts", routeMocks),
-    recording: await loadTsModule("app/api/twilio/recording/route.ts", routeMocks),
+    dialStatus: await loadWebhookRoute(loadTsModule, "app/api/twilio/dial-status/route.ts", routeMocks),
+    smsStatus: await loadWebhookRoute(loadTsModule, "app/api/twilio/sms-status/route.ts", routeMocks),
+    inboundSms: await loadWebhookRoute(loadTsModule, "app/api/twilio/sms/route.ts", routeMocks),
+    recording: await loadWebhookRoute(loadTsModule, "app/api/twilio/recording/route.ts", routeMocks),
   };
+}
+
+async function flushAfter(state) {
+  while (state.afterCallbacks.length > 0) {
+    const callbacks = state.afterCallbacks.splice(0);
+    for (const callback of callbacks) await callback();
+  }
 }
 
 function postForm(route, url, payload) {
@@ -369,6 +373,7 @@ test("activation flow: missed call creates lead, texts caller, reconciles delive
 
   const missed = await runMissedCall(modules);
   assert.equal(missed.status, 200);
+  await flushAfter(state);
 
   const lead = state.leads.get("lead-1");
   assert.equal(lead.account_id, state.account.accountId);
@@ -413,15 +418,16 @@ test("activation flow: missed call creates lead, texts caller, reconciles delive
   assert.equal(recording.status, 200);
   assert.equal(lead.recording_sid, RECORDING_SID);
   assert.equal(lead.recording_status, "completed");
+  assert.equal(state.transcriptions.length, 0, "recording acknowledgment must precede transcription");
+  await flushAfter(state);
 
-  for (const callback of state.afterCallbacks) {
-    await callback();
-  }
-  assert.deepEqual(state.transcriptions, [{ leadId: "lead-1", accountId: state.account.accountId }]);
+  assert.equal(state.transcriptions.length, 1);
+  assert.equal(state.transcriptions[0].leadId, "lead-1");
+  assert.equal(state.transcriptions[0].accountId, state.account.accountId);
 
   const tenantEvents = state.webhookEvents.filter((event) => event.accountId === state.account.accountId);
   assert.ok(tenantEvents.some((event) => event.source === "twilio_dial_status" && /SMS status: sent/.test(event.error ?? "")));
-  assert.ok(tenantEvents.some((event) => event.source === "twilio_sms_status" && /MessageStatus: delivered/.test(event.error ?? "")));
+  assert.ok(tenantEvents.some((event) => event.source === "twilio_sms_status" && /Message status: delivered/.test(event.error ?? "")));
   assert.ok(tenantEvents.some((event) => event.source === "twilio_inbound_sms" && /Forwarded inbound reply/.test(event.error ?? "")));
   assert.ok(tenantEvents.some((event) => event.source === "twilio_recording" && /Recording attached/.test(event.error ?? "")));
 });
@@ -430,6 +436,7 @@ test("one-second recording is stored as no voicemail and never sent for transcri
   const state = makeState();
   const modules = await loadActivationModules(makeMocks(state));
   await runMissedCall(modules);
+  await flushAfter(state);
 
   const response = await postForm(modules.recording, "https://relay.test/api/twilio/recording", {
     CallSid: CALL_SID,
@@ -472,20 +479,20 @@ test("delayed SMS status callback self-heals when Twilio accepted but the lead u
 
   const lead = state.leads.get("lead-1");
   const message = [...state.messages.values()].find((row) => row.leadId === lead.id && row.direction === "outbound");
-  assert.ok(message?.twilioMessageSid, "message row should exist for reconciliation");
+  assert.ok(message?.providerMessageId, "message row should exist for reconciliation");
   assert.equal(lead.twilio_message_sid, null, "simulated partial failure leaves the lead stale");
   assert.ok(state.adminIssues.some((issue) => /lead update failed/i.test(issue.issue)));
 
   state.failSentLeadUpdate = false;
   const callback = await postForm(modules.smsStatus, "https://relay.test/api/twilio/sms-status", {
-    MessageSid: message.twilioMessageSid,
+    MessageSid: message.providerMessageId,
     MessageStatus: "delivered",
     To: CALLER,
     From: state.account.twilioPhoneNumber,
   });
   assert.equal(callback.status, 200);
   assert.equal(lead.sms_status, "delivered");
-  assert.equal(lead.twilio_message_sid, message.twilioMessageSid);
+  assert.equal(lead.twilio_message_sid, message.providerMessageId);
   assert.ok(state.webhookEvents.some((event) => /reconciled lead lead-1/i.test(event.error ?? "")));
 });
 

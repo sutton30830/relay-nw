@@ -1,10 +1,13 @@
-import twilio from "twilio";
 import { env } from "@/lib/env";
 import { notifyAdminOperationalIssue } from "@/lib/email";
 import { logWebhookEvent, type WebhookEventSource } from "@/lib/supabase";
 import type { AccountRuntimeConfig } from "@/lib/supabase/accounts";
 import { twilioWebhookUrlCandidates } from "@/lib/twilio-webhook-urls";
 import { getTelephonyProvider } from "@/lib/telephony/registry";
+import type {
+  CanonicalTelephonyEvent,
+  TelephonyEventType,
+} from "@/lib/telephony/types";
 import { phoneLast4 } from "@/lib/phone";
 import {
   fetchTwilioA2pRegistrationEvidence,
@@ -16,7 +19,7 @@ export { twilioClient } from "@/lib/telephony/providers/twilio";
 const DEFAULT_MISSED_CALL_SMS_TEMPLATE =
   "Hi, this is {BUSINESS_NAME} - sorry we missed your call. Book or reply here: {INTAKE_URL}. Reply STOP to opt out.";
 
-type TwilioRequestSummary = {
+export type TwilioRequestSummary = {
   method: string;
   path: string;
   callSid: string | null;
@@ -114,24 +117,13 @@ export function validateTwilioRequest(input: {
   params: Record<string, string>;
   signature: string | null;
 }) {
-  if (!input.signature) {
-    return { isValid: false, matchedUrl: null as string | null };
-  }
+  const validation = getTelephonyProvider("twilio").verifyWebhookSignature({
+    candidateUrls: input.urls,
+    headers: input.signature ? { "x-twilio-signature": input.signature } : {},
+    form: input.params,
+  });
 
-  for (const url of input.urls) {
-    try {
-      if (twilio.validateRequest(env.twilioAuthToken, input.signature, url, input.params)) {
-        return { isValid: true, matchedUrl: url };
-      }
-    } catch (error) {
-      console.warn("Twilio signature validation threw an error", {
-        url,
-        error: error instanceof Error ? error.message : "Unknown validation error",
-      });
-    }
-  }
-
-  return { isValid: false, matchedUrl: null as string | null };
+  return { isValid: validation.isValid, matchedUrl: validation.matchedUrl };
 }
 
 export function validateTwilioWebhook(request: Request, payload: Record<string, string>) {
@@ -261,6 +253,46 @@ export function formDataToRecord(formData: FormData) {
   }
 
   return values;
+}
+
+type CanonicalEventOf<Type extends TelephonyEventType> = Extract<
+  CanonicalTelephonyEvent,
+  { type: Type }
+>;
+
+export type ParsedTwilioWebhook<Type extends TelephonyEventType> = {
+  event: CanonicalEventOf<Type>;
+  payload: Record<string, string>;
+  correlationId: string;
+  requestSummary: TwilioRequestSummary;
+  validation: ReturnType<typeof validateTwilioWebhook>;
+};
+
+/**
+ * Twilio ingress parsing ends here. Callers receive Relay-owned event fields;
+ * application services never inspect provider form names.
+ */
+export async function parseTwilioWebhook<Type extends TelephonyEventType>(
+  request: Request,
+  type: Type,
+): Promise<ParsedTwilioWebhook<Type>> {
+  const formData = await request.formData();
+  const payload = formDataToRecord(formData);
+  const provider = getTelephonyProvider("twilio");
+  const event = provider.normalizeWebhookEvent({
+    type,
+    payload,
+    receivedAt: new Date().toISOString(),
+  }) as CanonicalEventOf<Type>;
+
+  return {
+    event,
+    payload,
+    correlationId:
+      payload.CallSid || payload.MessageSid || payload.RecordingSid || crypto.randomUUID(),
+    requestSummary: summarizeTwilioRequest(request, payload),
+    validation: validateTwilioWebhook(request, payload),
+  };
 }
 
 export function summarizeTwilioRequest(

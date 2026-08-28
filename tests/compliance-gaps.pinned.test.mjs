@@ -18,6 +18,8 @@ const smsRoute = await readFile(new URL("../app/api/twilio/sms/route.ts", import
 const settingsRoute = await readFile(new URL("../app/api/settings/route.ts", import.meta.url), "utf8");
 const dialStatusRoute = await readFile(new URL("../app/api/twilio/dial-status/route.ts", import.meta.url), "utf8");
 const recordingRoute = await readFile(new URL("../app/api/twilio/recording/route.ts", import.meta.url), "utf8");
+const twilioWebhookIngress = await readFile(new URL("../lib/telephony/providers/twilio-webhooks.ts", import.meta.url), "utf8");
+const webhookServices = await readFile(new URL("../lib/telephony/webhook-services.ts", import.meta.url), "utf8");
 const voicemailAi = await readFile(new URL("../lib/voicemail-ai.ts", import.meta.url), "utf8");
 const messagesTs = await readFile(new URL("../lib/supabase/messages.ts", import.meta.url), "utf8");
 const intakeRoute = await readFile(new URL("../app/api/intake/route.ts", import.meta.url), "utf8");
@@ -31,7 +33,8 @@ test(
   () => {
     // Today OPT_OUT_WORDS exists but there is no re-opt-in word set and no
     // opt-out deletion path anywhere in the codebase.
-    assert.match(smsRoute, /OPT_IN_WORDS|START/);
+    assert.match(smsRoute, /twilio-webhooks/);
+    assert.match(webhookServices, /OPT_IN_WORDS|START/);
     assert.match(messagesTs, /clearOptOut|deleteOptOut|removeOptOut/);
   },
 );
@@ -39,15 +42,15 @@ test(
 test(
   "inbound SMS opt-out words include STOPALL",
   () => {
-    assert.match(smsRoute, /"STOPALL"/);
+    assert.match(webhookServices, /"STOPALL"/);
   },
 );
 
 test(
   "inbound SMS route answers HELP with business identification",
   () => {
-    assert.match(smsRoute, /HELP/);
-    assert.match(smsRoute, /helpReply|HELP_RESPONSE|handleHelp/i);
+    assert.match(webhookServices, /HELP/);
+    assert.match(twilioWebhookIngress, /helpReply|HELP_RESPONSE|handleHelp/i);
   },
 );
 
@@ -61,7 +64,8 @@ test(
 test(
   "dial-status webhook falls back to To-number account resolution when the CallSid is unknown",
   () => {
-    assert.match(dialStatusRoute, /resolveAccountByTwilioNumber/);
+    assert.match(dialStatusRoute, /twilio-webhooks/);
+    assert.match(webhookServices, /resolveAccountByRelayPhoneNumber/);
   },
 );
 
@@ -84,8 +88,9 @@ test(
 test(
   "duplicate automatic voicemail transcription callbacks are not logged as failures",
   () => {
-    assert.match(recordingRoute, /Skipping duplicate automatic voicemail transcription/);
-    assert.match(recordingRoute, /Voicemail summary is already generating\./);
+    assert.match(recordingRoute, /twilio-webhooks/);
+    assert.match(twilioWebhookIngress, /Skipping duplicate automatic voicemail transcription/);
+    assert.match(webhookServices, /Voicemail summary is already generating\./);
   },
 );
 

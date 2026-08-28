@@ -39,6 +39,7 @@ const stripeWebhookRouteTs = await readFile(new URL("../app/api/stripe/webhook/r
 const authCallbackRouteTs = await readFile(new URL("../app/auth/callback/route.ts", import.meta.url), "utf8");
 const authRecoveryPageTsx = await readFile(new URL("../app/auth/recovery/page.tsx", import.meta.url), "utf8");
 const inboundSmsRouteTs = await readFile(new URL("../app/api/twilio/sms/route.ts", import.meta.url), "utf8");
+const telephonyWebhookServicesTs = await readFile(new URL("../lib/telephony/webhook-services.ts", import.meta.url), "utf8");
 const homePageTsx = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 const loginPageTsx = await readFile(new URL("../app/login/page.tsx", import.meta.url), "utf8");
 const accountSelectPageTsx = await readFile(new URL("../app/account/select/page.tsx", import.meta.url), "utf8");
@@ -814,8 +815,9 @@ test("an existing transcript can be retried for a missing summary", () => {
 
 test("STOP opt-outs notify the owner", () => {
   assert.match(emailTs, /export async function notifyOwnerOptOut/);
-  assert.match(inboundSmsRouteTs, /notifyOwnerOptOut\(\{/);
-  assert.match(inboundSmsRouteTs, /recordOptOut\(input\.from, account\.accountId\)/);
+  assert.match(inboundSmsRouteTs, /twilio-webhooks/);
+  assert.match(telephonyWebhookServicesTs, /notifyOwnerOptOut\(\{/);
+  assert.match(telephonyWebhookServicesTs, /recordOptOut\(message\.from, input\.account\.accountId\)/);
 });
 
 test("business-owned tables carry account_id", () => {
