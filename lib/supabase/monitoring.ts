@@ -179,7 +179,7 @@ export async function loadOperationsMonitoring(): Promise<OperationsMonitoringDa
         id: String(row.id),
         phone: typeof row.phone === "string" ? row.phone : null,
         createdAt: String(row.created_at),
-        recordingSid: typeof row.recording_sid === "string" ? row.recording_sid : null,
+        providerRecordingId: typeof row.recording_sid === "string" ? row.recording_sid : null,
         recordingDuration: typeof row.recording_duration === "number" ? row.recording_duration : null,
         recordingStatus: typeof row.recording_status === "string" ? row.recording_status : null,
         transcriptionStatus: typeof row.voicemail_transcription_status === "string" ? row.voicemail_transcription_status : null,

@@ -96,7 +96,7 @@ export async function POST(request: Request) {
       schedulingUrl: null,
       callMode: "forwarding",
       smsEnabled: false,
-      twilioPhoneNumber: null,
+      relayPhoneNumber: null,
     });
     if (!accountId) throw new Error("Account provisioning returned no account ID.");
 

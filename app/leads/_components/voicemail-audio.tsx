@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 
 export function VoicemailAudio({
   className,
-  recordingSid,
+  providerRecordingId,
 }: {
   className?: string;
-  recordingSid: string;
+  providerRecordingId: string;
 }) {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +21,7 @@ export function VoicemailAudio({
       setError(null);
 
       try {
-            const response = await fetch(`/api/recordings/${recordingSid}`, {
+            const response = await fetch(`/api/recordings/${providerRecordingId}`, {
               cache: "no-store",
               credentials: "include",
               signal: controller.signal,
@@ -47,7 +47,7 @@ export function VoicemailAudio({
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [recordingSid]);
+  }, [providerRecordingId]);
 
   if (error) {
     return <p className="voicemail-audio-status">{error}. Try refreshing or listen from Twilio.</p>;
@@ -59,7 +59,7 @@ export function VoicemailAudio({
 
   return (
     <audio className={className} controls src={audioUrl}>
-      <a href={`/api/recordings/${recordingSid}`}>Open voicemail</a>
+      <a href={`/api/recordings/${providerRecordingId}`}>Open voicemail</a>
     </audio>
   );
 }

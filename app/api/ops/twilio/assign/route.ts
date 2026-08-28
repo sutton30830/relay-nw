@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     const assignment = await assignPrimaryAccountPhoneNumber({
       accountId: account.accountId,
       phoneNumber: configured.phoneNumber,
-      twilioSid: configured.numberId.value,
+      providerNumberId: configured.numberId,
     });
     if (assignment.numberChanged) {
       await clearMessagingOnboardingEvidence(account.accountId);

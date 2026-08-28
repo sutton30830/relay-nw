@@ -9,12 +9,13 @@ async function providerActionTools() {
 // Texts the owner from the account's Relay number. Never throws: notification
 // failures must not disturb the call or transcription pipeline that invoked it.
 export async function sendOwnerSms(input: {
-  account: Pick<AccountRuntimeConfig, "accountId" | "smsEnabled" | "ownerPhoneNumber" | "twilioPhoneNumber">;
+  account: Pick<AccountRuntimeConfig, "accountId" | "smsEnabled" | "ownerPhoneNumber" | "relayPhoneNumber" | "twilioPhoneNumber">;
   body: string;
   context: string;
   actionKey?: string;
 }) {
   const { account } = input;
+  const relayPhoneNumber = account.relayPhoneNumber || account.twilioPhoneNumber;
   const provider = getTelephonyProvider();
   const actionKey = input.actionKey ?? `owner_sms:${input.context}`;
   const tools = await providerActionTools().catch((error) => {
@@ -27,7 +28,7 @@ export async function sendOwnerSms(input: {
   const claimProviderActionRetry = tools?.claimProviderActionRetry;
   const recordProviderAction = tools?.recordProviderAction;
 
-  if (!account.smsEnabled || !account.ownerPhoneNumber || !account.twilioPhoneNumber) {
+  if (!account.smsEnabled || !account.ownerPhoneNumber || !relayPhoneNumber) {
     if (account.accountId && typeof recordProviderAction === "function") {
       try {
         await recordProviderAction({
@@ -97,7 +98,7 @@ export async function sendOwnerSms(input: {
 
     const message = await provider.sendSms({
       to: account.ownerPhoneNumber,
-      from: account.twilioPhoneNumber,
+      from: relayPhoneNumber,
       body: input.body,
       idempotencyKey: actionKey,
       deliveryCallback: null,

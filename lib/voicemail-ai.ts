@@ -87,12 +87,12 @@ export function isExpectedVoicemailQualityErrorMessage(message: string) {
   );
 }
 
-async function fetchRecordingAudio(recordingSid: string) {
+async function fetchRecordingAudio(providerRecordingId: string) {
   const provider = getTelephonyProvider();
   const recording = await provider.fetchRecordingAudio({
     provider: provider.identity.id,
     kind: "recording",
-    value: recordingSid,
+    value: providerRecordingId,
   });
   return recording.audio;
 }

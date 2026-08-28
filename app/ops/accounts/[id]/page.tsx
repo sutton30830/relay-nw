@@ -354,13 +354,13 @@ export default async function OpsAccountPage({
     ? formatDateTime(carrierProfile.updatedAt)
     : "Never";
   const callsDetail = opsState.calls === "ready"
-    ? `${runtime?.twilioPhoneNumber || "Relay number assigned"} · verified by a real missed call`
+    ? `${runtime?.relayPhoneNumber || "Relay number assigned"} · verified by a real missed call`
     : opsState.calls === "waiting_for_forwarding"
-      ? `${runtime?.twilioPhoneNumber || "Relay number assigned"} · forwarding not verified`
+      ? `${runtime?.relayPhoneNumber || "Relay number assigned"} · forwarding not verified`
       : opsState.calls === "paused"
         ? "Call setup is on hold"
-        : runtime?.twilioPhoneNumber
-          ? `${runtime.twilioPhoneNumber} · waiting for a verified missed call`
+        : runtime?.relayPhoneNumber
+          ? `${runtime.relayPhoneNumber} · waiting for a verified missed call`
           : "Relay number not assigned";
   const textingDetail = carrierProfile?.statusDetail ||
     (opsState.texting === "approved"
@@ -470,7 +470,7 @@ export default async function OpsAccountPage({
                   <strong>{opsState.labels.calls}</strong>
                   <small>{callsDetail}</small>
                 </span>
-                <span className="ops-task-row__action">{runtime?.twilioPhoneNumber ? "Manage" : "Assign number"} <Icon name="chevronRight" size={15} /></span>
+                <span className="ops-task-row__action">{runtime?.relayPhoneNumber ? "Manage" : "Assign number"} <Icon name="chevronRight" size={15} /></span>
               </summary>
               {operator.role !== "support" ? (
                 <div className="ops-task-row__body">
@@ -485,7 +485,7 @@ export default async function OpsAccountPage({
                       <button className="btn btn-secondary" name="action" value="attach_existing">Attach number</button>
                     </div>
                   </form>
-                  {operator.role === "super_admin" && runtime?.twilioPhoneNumber && summary.accountStatus === "archived" && summary.technicalStatus === "closed" ? (
+                  {operator.role === "super_admin" && runtime?.relayPhoneNumber && summary.accountStatus === "archived" && summary.technicalStatus === "closed" ? (
                     <form action="/api/ops/twilio/release" method="post" className="ops-compact-form">
                       <input type="hidden" name="account_slug" value={summary.accountSlug} />
                       <div>
@@ -728,7 +728,7 @@ export default async function OpsAccountPage({
               <div><dt>Owner</dt><dd>{runtime?.ownerName || "Not set"}</dd></div>
               <div><dt>Owner email</dt><dd>{runtime?.ownerEmail || summary.ownerEmail || "Not set"}</dd></div>
               <div><dt>Public number</dt><dd>{runtime?.publicBusinessNumber || "Not set"}</dd></div>
-              <div><dt>Relay number</dt><dd>{runtime?.twilioPhoneNumber || "Not assigned"}</dd></div>
+              <div><dt>Relay number</dt><dd>{runtime?.relayPhoneNumber || "Not assigned"}</dd></div>
               <div><dt>How it works</dt><dd>{runtime?.callMode === "direct" ? "Calls ring the owner first" : "Relay answers missed calls"}</dd></div>
             </dl>
             {operator.role !== "support" ? (

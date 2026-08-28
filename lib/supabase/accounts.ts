@@ -13,6 +13,13 @@ import type {
 } from "@/lib/customer-experience-contract";
 import { normalizePhoneNumber } from "@/lib/phone";
 import {
+  LEGACY_TELEPHONY_PROVIDER_ID,
+  legacyProviderValue,
+  mapLegacyTelephonyRow,
+  persistedTelephonyProviderId,
+} from "@/lib/telephony/persistence";
+import type { NumberIdentifier, TelephonyProviderId } from "@/lib/telephony/types";
+import {
   DEFAULT_OWNER_NOTIFICATION_PREFERENCES,
   normalizeOwnerNotificationPreferences,
   type OwnerNotificationPreferences,
@@ -60,6 +67,10 @@ export type AccountRuntimeConfig = {
   voicemailTranscriptionEnabled: boolean;
   notificationPreferences: OwnerNotificationPreferences;
   notificationPreferencesAvailable: boolean;
+  telephonyProvider: TelephonyProviderId;
+  relayPhoneNumber: string;
+  providerNumberId: NumberIdentifier | null;
+  /** @deprecated Compatibility alias for callers not yet moved to relayPhoneNumber. */
   twilioPhoneNumber: string;
   ownerPhoneNumber: string;
 };
@@ -578,6 +589,7 @@ const ACCOUNT_SETTINGS_SELECT_PRE_TYPICAL_VALUE =
   "account_id, business_name, owner_email, owner_phone_number, intake_url, scheduling_url, call_mode, sms_enabled, sms_template, quick_reply_templates, missed_call_voice_message, missed_call_voice_name, missed_call_greeting_audio_url, voicemail_max_seconds, dial_timeout_seconds, missed_call_sms_cooldown_hours, voicemail_transcription_enabled, accounts(slug)";
 
 export function envAccountConfig(): AccountRuntimeConfig {
+  const relayPhoneNumber = normalizePhoneNumber(env.twilioPhoneNumber);
   return {
     accountId: null,
     accountSlug: env.defaultAccountSlug,
@@ -616,12 +628,23 @@ export function envAccountConfig(): AccountRuntimeConfig {
     voicemailTranscriptionEnabled: true,
     notificationPreferences: DEFAULT_OWNER_NOTIFICATION_PREFERENCES,
     notificationPreferencesAvailable: false,
-    twilioPhoneNumber: normalizePhoneNumber(env.twilioPhoneNumber),
+    telephonyProvider: persistedTelephonyProviderId(),
+    relayPhoneNumber,
+    providerNumberId: null,
+    twilioPhoneNumber: relayPhoneNumber,
     ownerPhoneNumber: normalizePhoneNumber(env.ownerPhoneNumber),
   };
 }
 
-function configFromSettings(row: AccountSettingsRow, primaryNumber: string): AccountRuntimeConfig {
+type PrimaryAccountPhoneNumber = {
+  relayPhoneNumber: string;
+  providerNumberId: NumberIdentifier | null;
+};
+
+function configFromSettings(
+  row: AccountSettingsRow,
+  primaryNumber: PrimaryAccountPhoneNumber,
+): AccountRuntimeConfig {
   const account = Array.isArray(row.accounts) ? row.accounts[0] : row.accounts;
 
   return {
@@ -665,7 +688,10 @@ function configFromSettings(row: AccountSettingsRow, primaryNumber: string): Acc
       row,
       "notification_preferences",
     ),
-    twilioPhoneNumber: normalizePhoneNumber(primaryNumber),
+    telephonyProvider: LEGACY_TELEPHONY_PROVIDER_ID,
+    relayPhoneNumber: normalizePhoneNumber(primaryNumber.relayPhoneNumber),
+    providerNumberId: primaryNumber.providerNumberId,
+    twilioPhoneNumber: normalizePhoneNumber(primaryNumber.relayPhoneNumber),
     ownerPhoneNumber: normalizePhoneNumber(row.owner_phone_number),
   };
 }
@@ -673,7 +699,7 @@ function configFromSettings(row: AccountSettingsRow, primaryNumber: string): Acc
 async function getPrimaryAccountPhoneNumber(accountId: string) {
   const { data, error } = await supabaseAdmin
     .from("account_phone_numbers")
-    .select("phone_number, is_primary")
+    .select("phone_number, twilio_sid, is_primary")
     .eq("account_id", accountId)
     .order("is_primary", { ascending: false })
     .limit(1)
@@ -681,19 +707,28 @@ async function getPrimaryAccountPhoneNumber(accountId: string) {
 
   if (error) {
     if (error.message.includes("account_phone_numbers")) {
-      return env.twilioPhoneNumber;
+      return {
+        relayPhoneNumber: normalizePhoneNumber(env.twilioPhoneNumber),
+        providerNumberId: null,
+      };
     }
 
     throw error;
   }
 
-  return data?.phone_number ?? "";
+  const mapped = mapLegacyTelephonyRow(data ?? {});
+  return {
+    relayPhoneNumber: normalizePhoneNumber(mapped.relayPhoneNumber),
+    providerNumberId: mapped.providerNumberId,
+  };
 }
 
 export async function assignPrimaryAccountPhoneNumber(input: {
   accountId: string;
   phoneNumber: string;
-  twilioSid: string;
+  providerNumberId?: NumberIdentifier;
+  /** @deprecated Compatibility input for the existing Twilio assignment route. */
+  twilioSid?: string;
   label?: string;
 }) {
   const accountId = assertAccountId(input.accountId, "assignPrimaryAccountPhoneNumber");
@@ -701,13 +736,21 @@ export async function assignPrimaryAccountPhoneNumber(input: {
   if (!/^\+[1-9]\d{7,14}$/.test(phoneNumber)) {
     throw new Error("assignPrimaryAccountPhoneNumber requires an E.164 Relay number");
   }
+  const providerNumberId = input.providerNumberId
+    ? legacyProviderValue(input.providerNumberId)
+    : input.twilioSid?.trim() || null;
+  if (!providerNumberId) {
+    throw new Error("assignPrimaryAccountPhoneNumber requires a provider number identifier");
+  }
 
   const { data, error } = await supabaseAdmin.rpc(
     "assign_primary_account_phone_number",
     {
       p_account_id: accountId,
       p_phone_number: phoneNumber,
-      p_twilio_sid: input.twilioSid,
+      // Compatibility boundary: the deployed RPC and column intentionally keep
+      // their historical Twilio names until a second provider is implemented.
+      p_twilio_sid: providerNumberId,
       p_label: input.label ?? "Primary Relay number",
     },
   );
@@ -1808,7 +1851,7 @@ export async function getOpsBillingAccountBySlug(slug: string): Promise<OpsBilli
   };
 }
 
-export async function resolveAccountByTwilioNumber(phoneNumber: string | null | undefined) {
+export async function resolveAccountByRelayPhoneNumber(phoneNumber: string | null | undefined) {
   const normalizedPhone = normalizePhoneNumber(phoneNumber ?? "");
 
   if (!normalizedPhone || isPlaceholderSupabaseConfig()) {
@@ -1859,8 +1902,11 @@ export async function resolveAccountByTwilioNumber(phoneNumber: string | null | 
     : { status: "unresolved", reason: "twilio_number_not_registered", lookupValue: normalizedPhone } satisfies AccountResolution;
 }
 
-export async function resolveAccountByCallSid(callSid: string | null | undefined) {
-  const normalizedCallSid = callSid?.trim();
+/** @deprecated Use resolveAccountByRelayPhoneNumber. */
+export const resolveAccountByTwilioNumber = resolveAccountByRelayPhoneNumber;
+
+export async function resolveAccountByProviderCallId(providerCallId: string | null | undefined) {
+  const normalizedCallSid = providerCallId?.trim();
 
   if (!normalizedCallSid || isPlaceholderSupabaseConfig()) {
     return process.env.NODE_ENV === "production"
@@ -1919,8 +1965,11 @@ export async function resolveAccountByCallSid(callSid: string | null | undefined
     : { status: "unresolved", reason: "call_sid_not_registered", lookupValue: normalizedCallSid } satisfies AccountResolution;
 }
 
-export async function resolveAccountByMessageSid(messageSid: string | null | undefined) {
-  const normalizedMessageSid = messageSid?.trim();
+/** @deprecated Use resolveAccountByProviderCallId. */
+export const resolveAccountByCallSid = resolveAccountByProviderCallId;
+
+export async function resolveAccountByProviderMessageId(providerMessageId: string | null | undefined) {
+  const normalizedMessageSid = providerMessageId?.trim();
 
   if (!normalizedMessageSid || isPlaceholderSupabaseConfig()) {
     return process.env.NODE_ENV === "production"
@@ -1989,11 +2038,16 @@ export async function resolveAccountByMessageSid(messageSid: string | null | und
     : { status: "unresolved", reason: "message_sid_not_registered", lookupValue: normalizedMessageSid } satisfies AccountResolution;
 }
 
+/** @deprecated Use resolveAccountByProviderMessageId. */
+export const resolveAccountByMessageSid = resolveAccountByProviderMessageId;
+
 export async function provisionAccount(input: {
   slug: string;
   businessName: string;
   legalBusinessName?: string | null;
   ownerPhoneNumber: string;
+  relayPhoneNumber?: string | null;
+  /** @deprecated Compatibility input for older provisioning callers. */
   twilioPhoneNumber?: string | null;
   intakeUrl: string;
   schedulingUrl?: string | null;
@@ -2056,13 +2110,14 @@ export async function provisionAccount(input: {
 
   throwIfSupabaseError(settingsError);
 
-  if (input.twilioPhoneNumber) {
+  const relayPhoneNumber = input.relayPhoneNumber ?? input.twilioPhoneNumber;
+  if (relayPhoneNumber) {
     const { error: phoneError } = await supabaseAdmin
       .from("account_phone_numbers")
       .upsert({
         account_id: accountId,
-        phone_number: normalizePhoneNumber(input.twilioPhoneNumber),
-        label: "Primary Twilio number",
+        phone_number: normalizePhoneNumber(relayPhoneNumber),
+        label: "Primary Relay number",
         is_primary: true,
         updated_at: new Date().toISOString(),
       }, { onConflict: "phone_number" });

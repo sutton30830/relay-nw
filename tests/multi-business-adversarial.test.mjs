@@ -487,7 +487,7 @@ async function loadReplyRoute(fixture, business) {
           fixture.state.messages.some(
             (row) =>
               row.account_id === input.accountId &&
-              row.twilio_message_sid === input.twilioMessageSid,
+              row.twilio_message_sid === (input.providerMessageId ?? input.twilioMessageSid),
           )
         ) {
           return { inserted: false };
@@ -496,7 +496,7 @@ async function loadReplyRoute(fixture, business) {
           id: crypto.randomUUID(),
           account_id: input.accountId,
           lead_id: input.leadId,
-          twilio_message_sid: input.twilioMessageSid,
+          twilio_message_sid: input.providerMessageId ?? input.twilioMessageSid,
           direction: input.direction,
           from_phone: input.fromPhone,
           to_phone: input.toPhone,
@@ -639,7 +639,8 @@ test("concurrent duplicate missed calls create one lead and one automatic caller
       return account;
     },
     createMissedCallLeadIfNew: async (input) => {
-      const key = `${input.accountId}:${input.callSid}`;
+      const providerCallId = input.providerCallId ?? input.callSid;
+      const key = `${input.accountId}:${providerCallId}`;
       if (seenCalls.has(key)) return { inserted: false, leadId: null };
       seenCalls.add(key);
       const leadId = crypto.randomUUID();
@@ -647,7 +648,7 @@ test("concurrent duplicate missed calls create one lead and one automatic caller
       fixture.state.leads.push({
         id: leadId,
         account_id: input.accountId,
-        call_sid: input.callSid,
+        call_sid: providerCallId,
         phone: input.phone,
         message: input.message,
         status: "new",
@@ -669,7 +670,7 @@ test("concurrent duplicate missed calls create one lead and one automatic caller
       );
       if (row) {
         row.sms_status = input.smsStatus;
-        row.twilio_message_sid = input.twilioMessageSid ?? null;
+        row.twilio_message_sid = input.providerMessageId ?? input.twilioMessageSid ?? null;
       }
     },
     createMessageIfNew: async (input) => {
@@ -677,7 +678,7 @@ test("concurrent duplicate missed calls create one lead and one automatic caller
         id: crypto.randomUUID(),
         account_id: input.accountId,
         lead_id: input.leadId,
-        twilio_message_sid: input.twilioMessageSid,
+        twilio_message_sid: input.providerMessageId ?? input.twilioMessageSid,
         direction: input.direction,
         from_phone: input.fromPhone,
         to_phone: input.toPhone,
@@ -835,13 +836,14 @@ test("concurrent inbound SMS is deduplicated per account and conflicting SID/num
     "@/lib/supabase": {
       ...common.supabaseBase,
       createInboundMessageIfNew: async (input) => {
-        const key = `${input.accountId}:${input.messageSid}`;
+        const providerMessageId = input.providerMessageId ?? input.messageSid;
+        const key = `${input.accountId}:${providerMessageId}`;
         if (claimedInbound.has(key)) return { inserted: false };
         claimedInbound.add(key);
         fixture.state.inbound_messages.push({
           id: crypto.randomUUID(),
           account_id: input.accountId,
-          message_sid: input.messageSid,
+          message_sid: providerMessageId,
           from_phone: input.fromPhone,
           to_phone: input.toPhone,
           body: input.body,
@@ -853,13 +855,13 @@ test("concurrent inbound SMS is deduplicated per account and conflicting SID/num
           fixture.state.messages.some(
             (row) =>
               row.account_id === input.accountId &&
-              row.twilio_message_sid === input.twilioMessageSid,
+              row.twilio_message_sid === (input.providerMessageId ?? input.twilioMessageSid),
           )
         ) return { inserted: false };
         fixture.state.messages.push({
           id: crypto.randomUUID(),
           account_id: input.accountId,
-          twilio_message_sid: input.twilioMessageSid,
+          twilio_message_sid: input.providerMessageId ?? input.twilioMessageSid,
           direction: input.direction,
           from_phone: input.fromPhone,
           to_phone: input.toPhone,

@@ -20,11 +20,11 @@ function formatClock(seconds: number) {
 // fallbackDuration comes from the stored recording_duration and seeds the total
 // time before real metadata loads.
 export function VoicemailPlayer({
-  recordingSid,
+  providerRecordingId,
   fallbackDuration,
   className,
 }: {
-  recordingSid: string;
+  providerRecordingId: string;
   fallbackDuration?: number | null;
   className?: string;
 }) {
@@ -44,7 +44,7 @@ export function VoicemailPlayer({
   async function loadAudio() {
     setStatus("loading");
     try {
-      const response = await fetch(`/api/recordings/${recordingSid}`, {
+      const response = await fetch(`/api/recordings/${providerRecordingId}`, {
         cache: "no-store",
         credentials: "include",
       });

@@ -11,10 +11,10 @@ export function recordingIsTooShort(duration: number | null | undefined) {
 }
 
 export function hasUsableVoicemail(
-  recordingSid: string | null | undefined,
+  providerRecordingId: string | null | undefined,
   duration: number | null | undefined,
 ) {
-  return Boolean(recordingSid) && !recordingIsTooShort(duration);
+  return Boolean(providerRecordingId) && !recordingIsTooShort(duration);
 }
 
 const SILENCE_HALLUCINATION_PATTERNS = [

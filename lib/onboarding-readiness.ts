@@ -115,7 +115,7 @@ export async function loadAccountOnboardingReadiness(accountId: string) {
     technicalStatus: effectiveTechnicalStatus,
     callMode: runtime.callMode,
     missingProfileFields,
-    relayNumber: runtime.twilioPhoneNumber || null,
+    relayNumber: runtime.relayPhoneNumber || null,
     forwardingCarrier: runtime.forwardingCarrier,
     businessHoursConfigured: businessHoursConfigured(runtime.businessHours),
     coverageExpectationsConfigured: Boolean(runtime.coverageExpectations?.trim()),

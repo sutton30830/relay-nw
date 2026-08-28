@@ -302,7 +302,7 @@ export function LeadDrawer({
                 {formatDuration(lead.recording_duration)}
               </p>
             </div>
-            <VoicemailAudio className="voicemail-card__audio" recordingSid={lead.recording_sid} />
+            <VoicemailAudio className="voicemail-card__audio" providerRecordingId={lead.recording_sid} />
             <div className="voicemail-ai">
               {!lead.voicemail_summary && lead.voicemail_transcription_status === "processing" ? (
                 <p className="voicemail-ai__status">
@@ -495,7 +495,7 @@ export function LeadDrawer({
                     <p style={{ margin: "0 0 6px" }}>{previous.voicemail_summary}</p>
                   ) : null}
                   {hasUsableVoicemail(previous.recording_sid, previous.recording_duration) && previous.recording_sid ? (
-                    <VoicemailAudio recordingSid={previous.recording_sid} />
+                    <VoicemailAudio providerRecordingId={previous.recording_sid} />
                   ) : null}
                   {previous.voicemail_transcript ? (
                     <details className="voicemail-ai__transcript">

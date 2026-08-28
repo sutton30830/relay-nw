@@ -69,13 +69,14 @@ function ownerSmsBody(input: {
 async function notifyOwnerNewLeadBySms(input: {
   account: Pick<
     AccountRuntimeConfig,
-    "accountId" | "smsEnabled" | "ownerPhoneNumber" | "twilioPhoneNumber" | "businessName" | "notificationPreferences"
+    "accountId" | "smsEnabled" | "ownerPhoneNumber" | "relayPhoneNumber" | "twilioPhoneNumber" | "businessName" | "notificationPreferences"
   >;
   callerPhone: string;
   smsStatus: OwnerSmsStatus;
   correlationId: string;
 }) {
   const { account } = input;
+  const relayPhoneNumber = account.relayPhoneNumber || account.twilioPhoneNumber;
 
   if (account.notificationPreferences?.missedCall.sms === false) {
     console.info("Owner missed-call SMS suppressed by account preference", {
@@ -87,7 +88,7 @@ async function notifyOwnerNewLeadBySms(input: {
 
   // Owner SMS rides the same A2P-gated number as customer texting. If customer texting
   // is disabled (campaign not approved yet), do not send owner texts from it either.
-  if (!account.smsEnabled || !account.ownerPhoneNumber || !account.twilioPhoneNumber) {
+  if (!account.smsEnabled || !account.ownerPhoneNumber || !relayPhoneNumber) {
     return;
   }
 
@@ -114,7 +115,7 @@ async function notifyOwnerNewLeadBySms(input: {
       const provider = getTelephonyProvider();
       await provider.sendSms({
         to: account.ownerPhoneNumber,
-        from: account.twilioPhoneNumber,
+        from: relayPhoneNumber,
         body,
         idempotencyKey: actionKey,
         deliveryCallback: null,
@@ -133,27 +134,33 @@ async function notifyOwnerNewLeadBySms(input: {
 export async function handleMissedCall(input: {
   account?: AccountRuntimeConfig;
   callerPhone: string;
-  callSid: string;
+  providerCallId?: string;
+  /** @deprecated Compatibility alias for legacy webhook callers. */
+  callSid?: string;
   message: string | null;
   correlationId?: string | null;
+  providerSignatureValid?: boolean;
+  /** @deprecated Compatibility alias for legacy webhook callers. */
   twilioSignatureValid?: boolean;
 }) {
   const callerPhone = normalizePhoneNumber(input.callerPhone);
-  const callSid = input.callSid.trim();
-  const correlationId = input.correlationId ?? callSid;
+  const providerCallId = (input.providerCallId ?? input.callSid)?.trim() ?? "";
+  const correlationId = input.correlationId ?? providerCallId;
   const account = assertTenantAccount(input.account ?? envAccountConfig(), "handleMissedCall");
+  const relayPhoneNumber = account.relayPhoneNumber || account.twilioPhoneNumber;
   const provider = getTelephonyProvider();
 
-  if (!callerPhone || !callSid) {
-    throw new Error("Missing caller phone or CallSid on missed call webhook.");
+  if (!callerPhone || !providerCallId) {
+    throw new Error("Missing caller phone or provider call identifier on missed call webhook.");
   }
 
   const leadResult = await createMissedCallLeadIfNew({
     accountId: account.accountId,
-    callSid,
+    providerCallId,
     phone: callerPhone,
     message: input.message,
-    twilioSignatureValid: input.twilioSignatureValid === true,
+    providerSignatureValid:
+      (input.providerSignatureValid ?? input.twilioSignatureValid) === true,
   });
 
   if (!leadResult.inserted || !leadResult.leadId) {
@@ -181,7 +188,7 @@ export async function handleMissedCall(input: {
   try {
     await updateCallForMissedLead({
       accountId: account.accountId,
-      callSid,
+      providerCallId,
       leadId: leadResult.leadId,
       status: "missed",
     });
@@ -189,7 +196,7 @@ export async function handleMissedCall(input: {
     // Call-row bookkeeping must not block the customer-facing SMS.
     console.error("Could not link call row to missed-call lead", {
       correlationId,
-      callSid,
+      providerCallId,
       leadId: leadResult.leadId,
       error: error instanceof Error ? error.message : error,
     });
@@ -205,7 +212,7 @@ export async function handleMissedCall(input: {
     } catch (error) {
       console.warn("Could not mark SMS as disabled. Run supabase.sql to allow skipped_disabled.", {
         correlationId,
-        callSid,
+        providerCallId,
         callerLast4: phoneLast4(callerPhone),
         leadId: leadResult.leadId,
         error,
@@ -214,7 +221,7 @@ export async function handleMissedCall(input: {
 
     console.info("Missed-call SMS suppressed because SMS_ENABLED is false", {
       correlationId,
-      callSid,
+      providerCallId,
       callerLast4: phoneLast4(callerPhone),
       leadId: leadResult.leadId,
     });
@@ -267,7 +274,7 @@ export async function handleMissedCall(input: {
 
     console.error("Missed-call SMS pre-send checks failed; failing closed", {
       correlationId,
-      callSid,
+      providerCallId,
       callerLast4: phoneLast4(callerPhone),
       leadId: leadResult.leadId,
       error: message,
@@ -401,7 +408,7 @@ export async function handleMissedCall(input: {
     });
     const message = await provider.sendSms({
       to: callerPhone,
-      from: account.twilioPhoneNumber,
+      from: relayPhoneNumber,
       body: missedCallSmsBodyForAccount(account),
       idempotencyKey: providerActionKey,
       deliveryCallback: {
@@ -414,7 +421,7 @@ export async function handleMissedCall(input: {
         },
       },
     });
-    const messageSid = message.messageId.value;
+    const providerMessageId = message.messageId.value;
     const initialStatus = message.status === "unknown" ? "accepted" : message.status;
 
     try {
@@ -423,7 +430,7 @@ export async function handleMissedCall(input: {
         action: "automatic_missed_call_sms",
         provider: provider.identity.id,
         idempotencyKey: providerActionKey,
-        providerIdentifier: messageSid,
+        providerIdentifier: providerMessageId,
         resourceType: "lead",
         resourceId: leadResult.leadId,
         internalStatus: "accepted",
@@ -434,15 +441,15 @@ export async function handleMissedCall(input: {
         customerVisible: false,
       });
     } catch (actionError) {
-      console.error("Twilio accepted SMS, but Relay could not update provider action evidence", {
+      console.error("Provider accepted SMS, but Relay could not update provider action evidence", {
         correlationId,
         leadId: leadResult.leadId,
-        twilioMessageSid: messageSid,
+        providerMessageId,
         error: actionError instanceof Error ? actionError.message : actionError,
       });
     }
 
-    // Twilio has already accepted the SMS past this point. A failure recording it in the
+    // The provider has already accepted the SMS past this point. A failure recording it in the
     // messages table must NOT bubble into the outer catch, which would wrongly mark the
     // lead "failed" (and re-open the cooldown, risking a double text on a repeat call).
     let messageRowRecorded = true;
@@ -450,9 +457,9 @@ export async function handleMissedCall(input: {
       await createMessageIfNew({
         accountId: account.accountId,
         leadId: leadResult.leadId,
-        twilioMessageSid: messageSid,
+        providerMessageId,
         direction: "outbound",
-        fromPhone: account.twilioPhoneNumber,
+        fromPhone: relayPhoneNumber,
         toPhone: callerPhone,
         body: missedCallSmsBodyForAccount(account),
         status: "sent",
@@ -461,17 +468,17 @@ export async function handleMissedCall(input: {
       messageRowRecorded = false;
       const detail = error instanceof Error ? error.message : "Unknown message insert error";
 
-      console.error("Twilio accepted SMS, but Relay could not record the message row", {
+      console.error("Provider accepted SMS, but Relay could not record the message row", {
         correlationId,
         leadId: leadResult.leadId,
-        twilioMessageSid: messageSid,
+        providerMessageId,
         error: detail,
       });
 
       await notifyAdminOperationalIssue({
         account,
-        issue: "Twilio accepted SMS but message row insert failed",
-        detail: `${detail} (MessageSid ${messageSid})`,
+        issue: "Provider accepted SMS but message row insert failed",
+        detail: `${detail} (provider message ID ${providerMessageId})`,
         correlationId,
       });
     }
@@ -481,24 +488,24 @@ export async function handleMissedCall(input: {
         accountId: account.accountId,
         id: leadResult.leadId,
         smsStatus: "sent",
-        twilioMessageSid: messageSid,
+        providerMessageId,
       });
     } catch (error) {
       const updateErrorMessage = error instanceof Error ? error.message : "Unknown SMS update error";
 
-      console.error("Twilio accepted SMS, but Relay could not update the lead", {
+      console.error("Provider accepted SMS, but Relay could not update the lead", {
         correlationId,
         leadId: leadResult.leadId,
-        twilioMessageSid: messageSid,
+        providerMessageId,
         error: updateErrorMessage,
       });
 
       await notifyAdminOperationalIssue({
         account,
-        issue: "Twilio accepted SMS but lead update failed",
+        issue: "Provider accepted SMS but lead update failed",
         detail: messageRowRecorded
           ? `${updateErrorMessage} — the lead will self-heal when the next Twilio status callback arrives (reconciled via the messages table).`
-          : `${updateErrorMessage} — the message row also failed to record, so automatic reconciliation is not possible; check MessageSid ${messageSid} in ${provider.identity.displayName}.`,
+          : `${updateErrorMessage} — the message row also failed to record, so automatic reconciliation is not possible; check provider message ID ${providerMessageId} in ${provider.identity.displayName}.`,
         correlationId,
       });
 
@@ -513,7 +520,8 @@ export async function handleMissedCall(input: {
         inserted: true,
         becameLive: leadResult.becameLive,
         smsStatus: "sent_update_failed" as const,
-        twilioMessageSid: messageSid,
+        providerMessageId,
+        twilioMessageSid: providerMessageId,
       });
     }
 
@@ -530,7 +538,13 @@ export async function handleMissedCall(input: {
       correlationId,
     });
 
-    return finish({ inserted: true, becameLive: leadResult.becameLive, smsStatus: "sent" as const, twilioMessageSid: messageSid });
+    return finish({
+      inserted: true,
+      becameLive: leadResult.becameLive,
+      smsStatus: "sent" as const,
+      providerMessageId,
+      twilioMessageSid: providerMessageId,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown SMS send error";
 
@@ -564,7 +578,7 @@ export async function handleMissedCall(input: {
 
     console.error("Failed to send missed call SMS", {
       correlationId,
-      callSid,
+      providerCallId,
       callerLast4: phoneLast4(callerPhone),
       leadId: leadResult.leadId,
       error: message,

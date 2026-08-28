@@ -67,6 +67,7 @@ export async function POST(
   }
 
   const account = session.account;
+  const relayPhoneNumber = account.relayPhoneNumber || account.twilioPhoneNumber;
   const accountId = session.accountId;
   const actionKey = `manual_reply:${id}:${requestIdempotencyKey}`;
   const provider = getTelephonyProvider();
@@ -132,7 +133,7 @@ export async function POST(
     );
   }
 
-  let messageSid: string;
+  let providerMessageId: string;
   let initialStatus = "queued";
 
   if (
@@ -172,7 +173,7 @@ export async function POST(
               id: existing.providerIdentifier,
               lead_id: lead.id,
               twilio_message_sid: existing.providerIdentifier,
-              from_phone: account.twilioPhoneNumber,
+              from_phone: relayPhoneNumber,
               to_phone: lead.phone,
               body,
               status: existing.providerStatus ?? "accepted",
@@ -203,7 +204,7 @@ export async function POST(
   try {
     const message = await provider.sendSms({
       to: lead.phone,
-      from: account.twilioPhoneNumber,
+      from: relayPhoneNumber,
       body,
       idempotencyKey: actionKey,
       deliveryCallback: {
@@ -216,7 +217,7 @@ export async function POST(
         },
       },
     });
-    messageSid = message.messageId.value;
+    providerMessageId = message.messageId.value;
     initialStatus = message.status === "unknown" ? initialStatus : message.status;
     if (typeof recordProviderAction === "function") {
       try {
@@ -225,7 +226,7 @@ export async function POST(
           action: "manual_reply_sms",
           provider: provider.identity.id,
           idempotencyKey: actionKey,
-          providerIdentifier: messageSid,
+          providerIdentifier: providerMessageId,
           resourceType: "lead",
           resourceId: lead.id,
           internalStatus: "accepted",
@@ -236,12 +237,12 @@ export async function POST(
           customerVisible: false,
         });
       } catch (recordError) {
-        // Twilio accepted the send. Never report it as failed or invite a duplicate.
+        // The provider accepted the send. Never report it as failed or invite a duplicate.
         // The signed callback carries account/lead/action evidence and reconciles it.
-        console.error("Twilio accepted reply, but provider action evidence update failed", {
+        console.error("Provider accepted reply, but action evidence update failed", {
           accountId,
           leadId: id,
-          twilioMessageSid: messageSid,
+          providerMessageId,
           error: recordError instanceof Error ? recordError.message : recordError,
         });
       }
@@ -280,22 +281,22 @@ export async function POST(
 
   const sentAt = new Date().toISOString();
 
-  // Twilio accepted the message past this point; recording failures must not fail the request.
+  // The provider accepted the message past this point; recording failures must not fail the request.
   try {
     await createMessageIfNew({
       accountId,
       leadId: lead.id,
-      twilioMessageSid: messageSid,
+      providerMessageId,
       direction: "outbound",
-      fromPhone: account.twilioPhoneNumber,
+      fromPhone: relayPhoneNumber,
       toPhone: lead.phone,
       body,
       status: initialStatus,
     });
   } catch (error) {
-    console.error("Twilio accepted reply, but Relay could not record the message row", {
+    console.error("Provider accepted reply, but Relay could not record the message row", {
       leadId: id,
-      twilioMessageSid: messageSid,
+      providerMessageId,
       error: error instanceof Error ? error.message : error,
     });
   }
@@ -313,17 +314,18 @@ export async function POST(
 
   console.info("Owner reply sent from Relay number", {
     leadId: id,
-    twilioMessageSid: messageSid,
+    providerMessageId,
     callerLast4: phoneLast4(lead.phone),
   });
 
   return Response.json({
     ok: true,
     message: {
-      id: messageSid,
+      id: providerMessageId,
       lead_id: lead.id,
-      twilio_message_sid: messageSid,
-      from_phone: account.twilioPhoneNumber,
+      // Preserve the existing response shape consumed by the inbox client.
+      twilio_message_sid: providerMessageId,
+      from_phone: relayPhoneNumber,
       to_phone: lead.phone,
       body,
       status: initialStatus,

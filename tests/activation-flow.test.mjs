@@ -110,12 +110,13 @@ function makeMocks(state) {
       state.messages.has(messageSid) ? { status: "resolved", account: state.account } : unresolved("message_sid_not_registered", messageSid),
     resolveConsistentAccountEvidence,
     upsertCall: async (input) => {
-      const existing = state.calls.get(input.callSid) ?? {};
-      state.calls.set(input.callSid, { ...existing, ...input });
+      const providerCallId = input.providerCallId ?? input.callSid;
+      const existing = state.calls.get(providerCallId) ?? {};
+      state.calls.set(providerCallId, { ...existing, ...input });
     },
     createMissedCallLeadIfNew: async (input) => {
       for (const lead of state.leads.values()) {
-        if (lead.account_id === input.accountId && lead.call_sid === input.callSid) {
+        if (lead.account_id === input.accountId && lead.call_sid === (input.providerCallId ?? input.callSid)) {
           return { inserted: false, leadId: lead.id };
         }
       }
@@ -124,7 +125,7 @@ function makeMocks(state) {
       state.leads.set(id, {
         id,
         account_id: input.accountId,
-        call_sid: input.callSid,
+        call_sid: input.providerCallId ?? input.callSid,
         phone: input.phone,
         message: input.message,
         sms_status: "pending",
@@ -136,8 +137,9 @@ function makeMocks(state) {
       return { inserted: true, leadId: id, createdAt: new Date(state.leadSequence * 1000).toISOString() };
     },
     updateCallForMissedLead: async (input) => {
-      const call = state.calls.get(input.callSid) ?? { callSid: input.callSid };
-      state.calls.set(input.callSid, { ...call, leadId: input.leadId, status: input.status });
+      const providerCallId = input.providerCallId ?? input.callSid;
+      const call = state.calls.get(providerCallId) ?? { providerCallId };
+      state.calls.set(providerCallId, { ...call, leadId: input.leadId, status: input.status });
     },
     hasRecentMissedCallSms: async () => false,
     isOptedOut: async (phone, accountId) => state.optOuts.has(`${accountId}:${phone}`),
@@ -150,15 +152,16 @@ function makeMocks(state) {
       Object.assign(lead, {
         sms_status: input.smsStatus,
         sms_error: input.smsError ?? null,
-        twilio_message_sid: input.twilioMessageSid ?? lead.twilio_message_sid,
+        twilio_message_sid: input.providerMessageId ?? input.twilioMessageSid ?? lead.twilio_message_sid,
       });
     },
     createMessageIfNew: async (input) => {
-      if (input.twilioMessageSid && state.messages.has(input.twilioMessageSid)) {
+      const providerMessageId = input.providerMessageId ?? input.twilioMessageSid;
+      if (providerMessageId && state.messages.has(providerMessageId)) {
         return { inserted: false };
       }
       const id = `message-${++state.messageSequence}`;
-      state.messages.set(input.twilioMessageSid ?? id, {
+      state.messages.set(providerMessageId ?? id, {
         id,
         ...input,
         status: input.status ?? null,
@@ -167,7 +170,9 @@ function makeMocks(state) {
       return { inserted: true, id };
     },
     updateLeadSmsStatusByMessageSid: async (input) => {
-      const lead = [...state.leads.values()].find((row) => row.twilio_message_sid === input.twilioMessageSid);
+      const lead = [...state.leads.values()].find(
+        (row) => row.twilio_message_sid === (input.providerMessageId ?? input.twilioMessageSid),
+      );
       if (!lead) return { updated: false };
       Object.assign(lead, {
         sms_status: input.smsStatus,
@@ -175,26 +180,32 @@ function makeMocks(state) {
       });
       return { updated: true };
     },
-    getOutboundMessageLeadIdBySid: async (input) => state.messages.get(input.twilioMessageSid)?.leadId ?? null,
+    getOutboundMessageLeadIdBySid: async (input) =>
+      state.messages.get(input.providerMessageId ?? input.twilioMessageSid)?.leadId ?? null,
     updateMessageStatusBySid: async (input) => {
-      const message = state.messages.get(input.twilioMessageSid);
+      const message = state.messages.get(input.providerMessageId ?? input.twilioMessageSid);
       if (!message) return { updated: false };
       Object.assign(message, { status: input.status, error: input.error ?? null });
       return { updated: true };
     },
     createInboundMessageIfNew: async (input) => {
-      if (state.inboundMessages.has(input.messageSid)) return { inserted: false };
-      state.inboundMessages.add(input.messageSid);
+      const providerMessageId = input.providerMessageId ?? input.messageSid;
+      if (state.inboundMessages.has(providerMessageId)) return { inserted: false };
+      state.inboundMessages.add(providerMessageId);
       return { inserted: true, id: `inbound-${++state.inboundSequence}` };
     },
     clearOptOut: async (phone, accountId) => state.optOuts.delete(`${accountId}:${phone}`),
     recordOptOut: async (phone, accountId) => state.optOuts.add(`${accountId}:${phone}`),
     updateCallRecordingByCallSid: async (input) => {
-      const call = state.calls.get(input.callSid) ?? {};
-      state.calls.set(input.callSid, { ...call, recordingSid: input.recordingSid });
+      const providerCallId = input.providerCallId ?? input.callSid;
+      const providerRecordingId = input.providerRecordingId ?? input.recordingSid;
+      const call = state.calls.get(providerCallId) ?? {};
+      state.calls.set(providerCallId, { ...call, providerRecordingId });
     },
     updateLeadRecordingByCallSid: async (input) => {
-      let lead = [...state.leads.values()].find((row) => row.call_sid === input.callSid);
+      let lead = [...state.leads.values()].find(
+        (row) => row.call_sid === (input.providerCallId ?? input.callSid),
+      );
       let matchedBy = "call_sid";
       if (!lead && input.callerPhone) {
         lead = [...state.leads.values()].find((row) => row.phone === input.callerPhone);
@@ -202,7 +213,7 @@ function makeMocks(state) {
       }
       if (!lead) return { updated: false, leadId: null, matchedBy: null };
       Object.assign(lead, {
-        recording_sid: input.recordingSid,
+        recording_sid: input.providerRecordingId ?? input.recordingSid,
         recording_url: input.recordingUrl,
         recording_duration: input.recordingDuration,
         recording_status: input.recordingStatus,

@@ -155,10 +155,11 @@ test("happy path: SMS sent, lead marked sent with MessageSid", async () => {
   const result = await runMissedCall(mocks);
 
   assert.equal(result.smsStatus, "sent");
+  assert.equal(result.providerMessageId, "SM_test_123");
   assert.equal(result.twilioMessageSid, "SM_test_123");
   const sentUpdate = calls.leadSmsStatusUpdates.find((u) => u.smsStatus === "sent");
   assert.ok(sentUpdate, "lead should be marked sent");
-  assert.equal(sentUpdate.twilioMessageSid, "SM_test_123");
+  assert.equal(sentUpdate.providerMessageId, "SM_test_123");
   assert.equal(calls.messagesCreated.length, 1, "outbound message row recorded for reconciliation");
   assert.deepEqual(calls.ownerPush, [{
     account: ACCOUNT,

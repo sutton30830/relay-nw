@@ -158,6 +158,15 @@ test("legacy call without ownLeadCreatedAt: any active competitor blocks (conser
 
 async function loadAccountsModule() {
   return loadTsModule("lib/supabase/accounts.ts", {
+    "@/lib/telephony/persistence": {
+      LEGACY_TELEPHONY_PROVIDER_ID: "twilio",
+      persistedTelephonyProviderId: () => "twilio",
+      mapLegacyTelephonyRow: (row) => ({
+        relayPhoneNumber: row.phone_number ?? "",
+        providerNumberId: null,
+      }),
+      legacyProviderValue: (identifier) => identifier.value,
+    },
     "@/lib/notification-preferences": notificationPreferencesMock,
     "@/lib/billing": {
       normalizeCommercialOffer: (value) =>

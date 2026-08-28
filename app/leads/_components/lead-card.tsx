@@ -249,7 +249,7 @@ export function LeadCard({
           full inbox doesn't fetch every recording. */}
       {hasVoicemail && lead.recording_sid ? (
         <div className="lead-card__voicemail" onClick={(event) => event.stopPropagation()}>
-          <VoicemailPlayer recordingSid={lead.recording_sid} fallbackDuration={lead.recording_duration} />
+          <VoicemailPlayer providerRecordingId={lead.recording_sid} fallbackDuration={lead.recording_duration} />
         </div>
       ) : null}
 

@@ -539,7 +539,7 @@ export default async function SettingsPage({
         <section className="panel settings-section">
           <p className="t-eyebrow settings-section__title">Your Relay line</p>
           <p className="settings-section__lead">
-            Relay number: <strong>{account.twilioPhoneNumber}</strong> · Mode: {account.callMode}
+            Relay number: <strong>{account.relayPhoneNumber}</strong> · Mode: {account.callMode}
           </p>
           <p className="settings-section__meta">
             {account.callMode === "forwarding"

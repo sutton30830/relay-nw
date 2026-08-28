@@ -234,6 +234,8 @@ export async function createLead(input: {
   phone: string;
   message?: string | null;
   source: LeadSource;
+  providerCallId?: string | null;
+  /** @deprecated Compatibility alias for legacy callers. */
   callSid?: string | null;
 }) {
   const accountId = assertAccountId(input.accountId, "createLead");
@@ -244,7 +246,7 @@ export async function createLead(input: {
 
   const { error } = await supabaseAdmin.from("leads").insert({
     account_id: accountId,
-    call_sid: input.callSid ?? null,
+    call_sid: input.providerCallId ?? input.callSid ?? null,
     name: input.name ?? null,
     phone: input.phone,
     message: input.message ?? null,
@@ -257,12 +259,22 @@ export async function createLead(input: {
 
 export async function createMissedCallLeadIfNew(input: {
   accountId: string;
-  callSid: string;
+  providerCallId?: string;
+  /** @deprecated Compatibility alias for legacy callers. */
+  callSid?: string;
   phone: string;
   message: string | null;
-  twilioSignatureValid: boolean;
+  providerSignatureValid?: boolean;
+  /** @deprecated Compatibility alias for the deployed Twilio RPC argument. */
+  twilioSignatureValid?: boolean;
 }) {
   const accountId = assertAccountId(input.accountId, "createMissedCallLeadIfNew");
+  const providerCallId = (input.providerCallId ?? input.callSid)?.trim();
+  if (!providerCallId) {
+    throw new Error("createMissedCallLeadIfNew requires a provider call identifier");
+  }
+  const providerSignatureValid =
+    input.providerSignatureValid ?? input.twilioSignatureValid ?? false;
 
   if (shouldSkipDatabaseWrite("missed call lead insert", input)) {
     return { inserted: true, leadId: null, createdAt: null, becameLive: false };
@@ -273,10 +285,11 @@ export async function createMissedCallLeadIfNew(input: {
       "create_missed_call_lead_and_mark_live",
       {
         p_account_id: accountId,
-        p_call_sid: input.callSid,
+        p_call_sid: providerCallId,
         p_phone: input.phone,
         p_message: input.message,
-        p_twilio_signature_valid: input.twilioSignatureValid,
+        // The RPC name is an intentionally preserved production contract.
+        p_twilio_signature_valid: providerSignatureValid,
       },
     );
 
@@ -311,7 +324,7 @@ export async function createMissedCallLeadIfNew(input: {
     .from("leads")
     .insert({
       account_id: accountId,
-      call_sid: input.callSid,
+      call_sid: providerCallId,
       phone: input.phone,
       message: input.message,
       sms_status: "pending",

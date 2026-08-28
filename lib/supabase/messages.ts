@@ -2,11 +2,17 @@ import { isPlaceholderSupabaseConfig, shouldSkipDatabaseWrite, supabaseAdmin, th
 import { assertAccountId } from "./tenant";
 import type { SmsStatus } from "./types";
 
-export async function getOutboundMessageLeadIdBySid(input: {
+export async function getOutboundMessageLeadIdByProviderId(input: {
   accountId: string;
-  twilioMessageSid: string;
+  providerMessageId?: string;
+  /** @deprecated Compatibility alias for legacy callers. */
+  twilioMessageSid?: string;
 }) {
-  const accountId = assertAccountId(input.accountId, "getOutboundMessageLeadIdBySid");
+  const accountId = assertAccountId(input.accountId, "getOutboundMessageLeadIdByProviderId");
+  const providerMessageId = (input.providerMessageId ?? input.twilioMessageSid)?.trim();
+  if (!providerMessageId) {
+    throw new Error("getOutboundMessageLeadIdByProviderId requires a provider message identifier");
+  }
 
   if (isPlaceholderSupabaseConfig()) {
     return null;
@@ -16,7 +22,7 @@ export async function getOutboundMessageLeadIdBySid(input: {
     .from("messages")
     .select("lead_id")
     .eq("account_id", accountId)
-    .eq("twilio_message_sid", input.twilioMessageSid)
+    .eq("twilio_message_sid", providerMessageId)
     .eq("direction", "outbound")
     .maybeSingle();
 
@@ -25,11 +31,16 @@ export async function getOutboundMessageLeadIdBySid(input: {
   return (data?.lead_id as string | null) ?? null;
 }
 
+/** @deprecated Use getOutboundMessageLeadIdByProviderId. */
+export const getOutboundMessageLeadIdBySid = getOutboundMessageLeadIdByProviderId;
+
 export async function updateLeadSmsStatus(input: {
   accountId: string;
   id: string;
   smsStatus: Exclude<SmsStatus, null>;
   smsError?: string | null;
+  providerMessageId?: string | null;
+  /** @deprecated Compatibility alias for legacy callers. */
   twilioMessageSid?: string | null;
 }) {
   const accountId = assertAccountId(input.accountId, "updateLeadSmsStatus");
@@ -49,8 +60,9 @@ export async function updateLeadSmsStatus(input: {
     sms_updated_at: new Date().toISOString(),
   };
 
-  if (typeof input.twilioMessageSid !== "undefined") {
-    updates.twilio_message_sid = input.twilioMessageSid;
+  const providerMessageId = input.providerMessageId ?? input.twilioMessageSid;
+  if (typeof providerMessageId !== "undefined") {
+    updates.twilio_message_sid = providerMessageId;
   }
 
   const { error } = await supabaseAdmin
@@ -62,13 +74,19 @@ export async function updateLeadSmsStatus(input: {
   throwIfSupabaseError(error);
 }
 
-export async function updateLeadSmsStatusByMessageSid(input: {
+export async function updateLeadSmsStatusByProviderMessageId(input: {
   accountId: string;
-  twilioMessageSid: string;
+  providerMessageId?: string;
+  /** @deprecated Compatibility alias for legacy callers. */
+  twilioMessageSid?: string;
   smsStatus: Exclude<SmsStatus, null>;
   smsError?: string | null;
 }) {
-  const accountId = assertAccountId(input.accountId, "updateLeadSmsStatusByMessageSid");
+  const accountId = assertAccountId(input.accountId, "updateLeadSmsStatusByProviderMessageId");
+  const providerMessageId = (input.providerMessageId ?? input.twilioMessageSid)?.trim();
+  if (!providerMessageId) {
+    throw new Error("updateLeadSmsStatusByProviderMessageId requires a provider message identifier");
+  }
 
   if (shouldSkipDatabaseWrite("SMS status callback update", input)) {
     return { updated: false };
@@ -81,7 +99,7 @@ export async function updateLeadSmsStatusByMessageSid(input: {
       sms_error: input.smsError ?? null,
       sms_updated_at: new Date().toISOString(),
     })
-    .eq("twilio_message_sid", input.twilioMessageSid)
+    .eq("twilio_message_sid", providerMessageId)
     .eq("account_id", accountId);
 
   // Twilio may deliver duplicate callbacks out of order. Once delivery is
@@ -98,6 +116,9 @@ export async function updateLeadSmsStatusByMessageSid(input: {
 
   return { updated: Boolean(data?.id), leadId: data?.id ?? null };
 }
+
+/** @deprecated Use updateLeadSmsStatusByProviderMessageId. */
+export const updateLeadSmsStatusByMessageSid = updateLeadSmsStatusByProviderMessageId;
 
 export async function hasRecentMissedCallSms(
   phone: string,
@@ -206,12 +227,18 @@ export async function clearOptOut(phone: string, inputAccountId: string) {
 
 export async function createInboundMessageIfNew(input: {
   accountId: string;
-  messageSid: string;
+  providerMessageId?: string;
+  /** @deprecated Compatibility alias for legacy callers. */
+  messageSid?: string;
   fromPhone: string;
   toPhone?: string | null;
   body: string;
 }) {
   const accountId = assertAccountId(input.accountId, "createInboundMessageIfNew");
+  const providerMessageId = (input.providerMessageId ?? input.messageSid)?.trim();
+  if (!providerMessageId) {
+    throw new Error("createInboundMessageIfNew requires a provider message identifier");
+  }
 
   if (shouldSkipDatabaseWrite("inbound message insert", input)) {
     return { inserted: true };
@@ -219,7 +246,7 @@ export async function createInboundMessageIfNew(input: {
 
   const { error } = await supabaseAdmin.from("inbound_messages").insert({
     account_id: accountId,
-    message_sid: input.messageSid,
+    message_sid: providerMessageId,
     from_phone: input.fromPhone,
     to_phone: input.toPhone ?? null,
     body: input.body,
@@ -240,6 +267,8 @@ export async function createMessageIfNew(input: {
   accountId: string;
   leadId?: string | null;
   callId?: string | null;
+  providerMessageId?: string | null;
+  /** @deprecated Compatibility alias for legacy callers. */
   twilioMessageSid?: string | null;
   direction: "inbound" | "outbound";
   fromPhone?: string | null;
@@ -258,7 +287,7 @@ export async function createMessageIfNew(input: {
     account_id: accountId,
     lead_id: input.leadId ?? null,
     call_id: input.callId ?? null,
-    twilio_message_sid: input.twilioMessageSid ?? null,
+    twilio_message_sid: input.providerMessageId ?? input.twilioMessageSid ?? null,
     direction: input.direction,
     from_phone: input.fromPhone ?? null,
     to_phone: input.toPhone ?? null,
@@ -278,13 +307,19 @@ export async function createMessageIfNew(input: {
   return { inserted: true };
 }
 
-export async function updateMessageStatusBySid(input: {
+export async function updateMessageStatusByProviderMessageId(input: {
   accountId: string;
-  twilioMessageSid: string;
+  providerMessageId?: string;
+  /** @deprecated Compatibility alias for legacy callers. */
+  twilioMessageSid?: string;
   status: string;
   error?: string | null;
 }) {
-  const accountId = assertAccountId(input.accountId, "updateMessageStatusBySid");
+  const accountId = assertAccountId(input.accountId, "updateMessageStatusByProviderMessageId");
+  const providerMessageId = (input.providerMessageId ?? input.twilioMessageSid)?.trim();
+  if (!providerMessageId) {
+    throw new Error("updateMessageStatusByProviderMessageId requires a provider message identifier");
+  }
 
   if (shouldSkipDatabaseWrite("message status update", input)) {
     return { updated: false };
@@ -298,7 +333,7 @@ export async function updateMessageStatusBySid(input: {
       updated_at: new Date().toISOString(),
     })
     .eq("account_id", accountId)
-    .eq("twilio_message_sid", input.twilioMessageSid);
+    .eq("twilio_message_sid", providerMessageId);
 
   if (input.status !== "delivered") {
     query = query.neq("status", "delivered");
@@ -312,3 +347,6 @@ export async function updateMessageStatusBySid(input: {
 
   return { updated: Boolean(data?.id) };
 }
+
+/** @deprecated Use updateMessageStatusByProviderMessageId. */
+export const updateMessageStatusBySid = updateMessageStatusByProviderMessageId;

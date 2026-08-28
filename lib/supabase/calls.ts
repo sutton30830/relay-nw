@@ -3,7 +3,10 @@ import { assertAccountId } from "./tenant";
 
 export async function upsertCall(input: {
   accountId: string;
-  callSid: string;
+  providerCallId?: string;
+  parentProviderCallId?: string | null;
+  /** @deprecated Compatibility aliases for legacy callers. */
+  callSid?: string;
   parentCallSid?: string | null;
   fromPhone?: string | null;
   toPhone?: string | null;
@@ -12,6 +15,8 @@ export async function upsertCall(input: {
   rawSummary?: Record<string, unknown>;
 }) {
   const accountId = assertAccountId(input.accountId, "upsertCall");
+  const providerCallId = (input.providerCallId ?? input.callSid)?.trim();
+  if (!providerCallId) throw new Error("upsertCall requires a provider call identifier");
 
   if (shouldSkipDatabaseWrite("call upsert", input)) {
     return { callId: null };
@@ -21,8 +26,8 @@ export async function upsertCall(input: {
     .from("calls")
     .upsert({
       account_id: accountId,
-      call_sid: input.callSid,
-      parent_call_sid: input.parentCallSid ?? null,
+      call_sid: providerCallId,
+      parent_call_sid: input.parentProviderCallId ?? input.parentCallSid ?? null,
       from_phone: input.fromPhone ?? null,
       to_phone: input.toPhone ?? null,
       status: input.status ?? null,
@@ -40,12 +45,18 @@ export async function upsertCall(input: {
 
 export async function updateCallForMissedLead(input: {
   accountId: string;
-  callSid: string;
+  providerCallId?: string;
+  /** @deprecated Compatibility alias for legacy callers. */
+  callSid?: string;
   leadId: string | null;
   status?: string | null;
   dialCallStatus?: string | null;
 }) {
   const accountId = assertAccountId(input.accountId, "updateCallForMissedLead");
+  const providerCallId = (input.providerCallId ?? input.callSid)?.trim();
+  if (!providerCallId) {
+    throw new Error("updateCallForMissedLead requires a provider call identifier");
+  }
 
   if (shouldSkipDatabaseWrite("call missed lead update", input)) {
     return;
@@ -62,20 +73,27 @@ export async function updateCallForMissedLead(input: {
     .from("calls")
     .update(updates)
     .eq("account_id", accountId)
-    .eq("call_sid", input.callSid);
+    .eq("call_sid", providerCallId);
 
   throwIfSupabaseError(error);
 }
 
-export async function updateCallRecordingByCallSid(input: {
+export async function updateCallRecordingByProviderCallId(input: {
   accountId: string;
-  callSid: string;
+  providerCallId?: string;
+  providerRecordingId?: string | null;
+  /** @deprecated Compatibility aliases for legacy callers. */
+  callSid?: string;
   recordingSid?: string | null;
   recordingUrl?: string | null;
   recordingDuration?: number | null;
   recordingStatus?: string | null;
 }) {
-  const accountId = assertAccountId(input.accountId, "updateCallRecordingByCallSid");
+  const accountId = assertAccountId(input.accountId, "updateCallRecordingByProviderCallId");
+  const providerCallId = (input.providerCallId ?? input.callSid)?.trim();
+  if (!providerCallId) {
+    throw new Error("updateCallRecordingByProviderCallId requires a provider call identifier");
+  }
 
   if (isPlaceholderSupabaseConfig()) {
     return { updated: false };
@@ -84,14 +102,14 @@ export async function updateCallRecordingByCallSid(input: {
   const { data, error } = await supabaseAdmin
     .from("calls")
     .update({
-      recording_sid: input.recordingSid ?? null,
+      recording_sid: input.providerRecordingId ?? input.recordingSid ?? null,
       recording_url: input.recordingUrl ?? null,
       recording_duration: input.recordingDuration ?? null,
       recording_status: input.recordingStatus ?? null,
       updated_at: new Date().toISOString(),
     })
     .eq("account_id", accountId)
-    .eq("call_sid", input.callSid)
+    .eq("call_sid", providerCallId)
     .select("id")
     .maybeSingle();
 
@@ -99,3 +117,6 @@ export async function updateCallRecordingByCallSid(input: {
 
   return { updated: Boolean(data?.id) };
 }
+
+/** @deprecated Use updateCallRecordingByProviderCallId. */
+export const updateCallRecordingByCallSid = updateCallRecordingByProviderCallId;

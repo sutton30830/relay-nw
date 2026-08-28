@@ -528,6 +528,22 @@ async function loadStores(fake) {
     "./tenant": tenantMock,
   });
   const accounts = await loadTsModule("lib/supabase/accounts.ts", {
+    "@/lib/telephony/persistence": {
+      LEGACY_TELEPHONY_PROVIDER_ID: "twilio",
+      persistedTelephonyProviderId: () => "twilio",
+      mapLegacyTelephonyRow: (row) => ({
+        relayPhoneNumber: row.phone_number ?? "",
+        providerNumberId: row.twilio_sid
+          ? { provider: "twilio", kind: "number", value: row.twilio_sid }
+          : null,
+      }),
+      legacyProviderValue: (identifier) => {
+        if (identifier.provider !== "twilio") {
+          throw new Error(`Unsupported persisted telephony provider: ${identifier.provider}`);
+        }
+        return identifier.value;
+      },
+    },
     "@/lib/notification-preferences": {
       DEFAULT_OWNER_NOTIFICATION_PREFERENCES: {
         missedCall: { email: true, sms: true },
@@ -630,8 +646,8 @@ function seedData() {
       },
     ],
     account_phone_numbers: [
-      { id: "num-a", account_id: "acct-a", phone_number: "+15550001000", is_primary: true },
-      { id: "num-b", account_id: "acct-b", phone_number: "+15550002000", is_primary: true },
+      { id: "num-a", account_id: "acct-a", phone_number: "+15550001000", twilio_sid: "PN_A", is_primary: true },
+      { id: "num-b", account_id: "acct-b", phone_number: "+15550002000", twilio_sid: "PN_B", is_primary: true },
     ],
     account_carrier_profiles: [
       {
@@ -947,33 +963,41 @@ test("webhook resolution for number A and B writes rows under the resolved accou
   const fake = createSupabaseFake(seedData());
   const { accounts, calls, leads, messages } = await loadStores(fake);
 
-  const accountAResolution = await accounts.resolveAccountByTwilioNumber("+1 (555) 000-1000");
-  const accountBResolution = await accounts.resolveAccountByTwilioNumber("+1 (555) 000-2000");
+  const accountAResolution = await accounts.resolveAccountByRelayPhoneNumber("+1 (555) 000-1000");
+  const accountBResolution = await accounts.resolveAccountByRelayPhoneNumber("+1 (555) 000-2000");
 
   assert.equal(accountAResolution.status, "resolved");
   assert.equal(accountBResolution.status, "resolved");
   assert.equal(accountAResolution.account.accountId, "acct-a");
   assert.equal(accountBResolution.account.accountId, "acct-b");
+  assert.equal(accountAResolution.account.telephonyProvider, "twilio");
+  assert.equal(accountAResolution.account.relayPhoneNumber, "+15550001000");
+  assert.equal(accountAResolution.account.twilioPhoneNumber, "+15550001000");
+  assert.deepEqual(accountAResolution.account.providerNumberId, {
+    provider: "twilio",
+    kind: "number",
+    value: "PN_A",
+  });
 
   await calls.upsertCall({
     accountId: accountAResolution.account.accountId,
-    callSid: "CA_WEBHOOK_A",
+    providerCallId: "CA_WEBHOOK_A",
     fromPhone: "+15553330000",
-    toPhone: accountAResolution.account.twilioPhoneNumber,
+    toPhone: accountAResolution.account.relayPhoneNumber,
     status: "missed",
   });
   await leads.createMissedCallLeadIfNew({
     accountId: accountAResolution.account.accountId,
-    callSid: "CA_WEBHOOK_A",
+    providerCallId: "CA_WEBHOOK_A",
     phone: "+15553330000",
     message: null,
-    twilioSignatureValid: true,
+    providerSignatureValid: true,
   });
   await messages.createInboundMessageIfNew({
     accountId: accountBResolution.account.accountId,
-    messageSid: "SM_WEBHOOK_B",
+    providerMessageId: "SM_WEBHOOK_B",
     fromPhone: "+15554440000",
-    toPhone: accountBResolution.account.twilioPhoneNumber,
+    toPhone: accountBResolution.account.relayPhoneNumber,
     body: "hello",
   });
 
@@ -1019,9 +1043,9 @@ test("ambiguous provider identifiers and conflicting account evidence fail close
   const fake = createSupabaseFake(seed);
   const { accounts } = await loadStores(fake);
 
-  const callFromLeadOnly = await accounts.resolveAccountByCallSid("CA_A");
-  const messageFromLeadOnly = await accounts.resolveAccountByMessageSid("SM_A");
-  const messageFromInboundOnly = await accounts.resolveAccountByMessageSid("SM_INBOUND_ONLY");
+  const callFromLeadOnly = await accounts.resolveAccountByProviderCallId("CA_A");
+  const messageFromLeadOnly = await accounts.resolveAccountByProviderMessageId("SM_A");
+  const messageFromInboundOnly = await accounts.resolveAccountByProviderMessageId("SM_INBOUND_ONLY");
   assert.equal(callFromLeadOnly.status, "resolved");
   assert.equal(callFromLeadOnly.account.accountId, "acct-a");
   assert.equal(messageFromLeadOnly.status, "resolved");
@@ -1029,16 +1053,16 @@ test("ambiguous provider identifiers and conflicting account evidence fail close
   assert.equal(messageFromInboundOnly.status, "resolved");
   assert.equal(messageFromInboundOnly.account.accountId, "acct-a");
 
-  const ambiguousCall = await accounts.resolveAccountByCallSid("CA_AMBIGUOUS");
-  const ambiguousMessage = await accounts.resolveAccountByMessageSid("SM_AMBIGUOUS");
+  const ambiguousCall = await accounts.resolveAccountByProviderCallId("CA_AMBIGUOUS");
+  const ambiguousMessage = await accounts.resolveAccountByProviderMessageId("SM_AMBIGUOUS");
   assert.equal(ambiguousCall.status, "unresolved");
   assert.equal(ambiguousCall.reason, "call_sid_ambiguous");
   assert.equal(ambiguousMessage.status, "unresolved");
   assert.equal(ambiguousMessage.reason, "message_sid_ambiguous");
 
   const [byA, byB] = await Promise.all([
-    accounts.resolveAccountByTwilioNumber("+15550001000"),
-    accounts.resolveAccountByTwilioNumber("+15550002000"),
+    accounts.resolveAccountByRelayPhoneNumber("+15550001000"),
+    accounts.resolveAccountByRelayPhoneNumber("+15550002000"),
   ]);
   const mismatch = accounts.resolveConsistentAccountEvidence([
     { label: "CallSid", resolution: byA },
@@ -1073,7 +1097,7 @@ test("relay-number assignment cannot steal or race another account's number, and
     () => accounts.assignPrimaryAccountPhoneNumber({
       accountId: "acct-a",
       phoneNumber: "+15550002000",
-      twilioSid: "PN_B",
+      providerNumberId: { provider: "twilio", kind: "number", value: "PN_B" },
     }),
     /already assigned to another account/,
   );
@@ -1088,12 +1112,12 @@ test("relay-number assignment cannot steal or race another account's number, and
     accounts.assignPrimaryAccountPhoneNumber({
       accountId: "acct-a",
       phoneNumber: "+15550003000",
-      twilioSid: "PN_NEW",
+      providerNumberId: { provider: "twilio", kind: "number", value: "PN_NEW" },
     }),
     accounts.assignPrimaryAccountPhoneNumber({
       accountId: "acct-b",
       phoneNumber: "+15550003000",
-      twilioSid: "PN_NEW",
+      providerNumberId: { provider: "twilio", kind: "number", value: "PN_NEW" },
     }),
   ]);
   assert.equal(race.filter((result) => result.status === "fulfilled").length, 1);

@@ -5,7 +5,9 @@ export type VoicemailLeadSignal = {
   id: string;
   phone: string | null;
   createdAt: string;
-  recordingSid: string | null;
+  providerRecordingId?: string | null;
+  /** @deprecated Compatibility alias for legacy monitoring fixtures. */
+  recordingSid?: string | null;
   recordingDuration: number | null;
   recordingStatus: string | null;
   transcriptionStatus: string | null;
@@ -89,7 +91,9 @@ export function calculateVoicemailPipelineHealth(
   actions: VoicemailActionSignal[],
   now = new Date(),
 ): VoicemailPipelineHealth {
-  const recordings = leads.filter((lead) => Boolean(lead.recordingSid));
+  const recordings = leads.filter((lead) =>
+    Boolean(lead.providerRecordingId ?? lead.recordingSid),
+  );
   const issues: VoicemailPipelineIssue[] = [];
   let processing = 0;
   let suppressed = 0;

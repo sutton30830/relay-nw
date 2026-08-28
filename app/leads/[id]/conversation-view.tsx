@@ -414,7 +414,7 @@ export function ConversationView({
                 <div className="convo__msg convo__msg--in convo__vm">
                   <span className="convo__vm-label">Voicemail</span>
                   <VoicemailPlayer
-                    recordingSid={item.lead.recording_sid}
+                    providerRecordingId={item.lead.recording_sid}
                     fallbackDuration={item.lead.recording_duration}
                   />
                   {item.lead.voicemail_summary ? (

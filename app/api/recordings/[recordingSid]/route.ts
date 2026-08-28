@@ -20,17 +20,22 @@ export async function GET(
   const auth = await requireAccountUserJson();
   if (auth.response) return new Response("Unauthorized", { status: 401 });
 
-  const { recordingSid } = await params;
+  const { recordingSid: providerRecordingId } = await params;
 
-  if (!/^RE[a-fA-F0-9]{32}$/.test(recordingSid)) {
+  // Current persisted recording IDs are legacy Twilio SIDs. Keep their existing
+  // validation until additive provider-resource columns are introduced.
+  if (!/^RE[a-fA-F0-9]{32}$/.test(providerRecordingId)) {
     return new Response("Invalid recording", { status: 400 });
   }
 
-  const recording = await getLeadRecordingForPlayback(recordingSid, auth.session.accountId);
+  const recording = await getLeadRecordingForPlayback(
+    providerRecordingId,
+    auth.session.accountId,
+  );
   if (!recording) {
     console.warn("Recording request blocked", {
       reason: "recording_not_linked_to_lead",
-      recordingSid,
+      providerRecordingId,
     });
     return new Response("Recording unavailable", {
       status: 404,
@@ -40,11 +45,11 @@ export async function GET(
 
   const provider = getTelephonyProvider();
 
-  const actionKey = `recording_retrieval:${recordingSid}`;
+  const actionKey = `recording_retrieval:${providerRecordingId}`;
   const recordRetrieval = (input: Parameters<typeof recordProviderAction>[0]) => {
     if (typeof recordProviderAction !== "function") return Promise.resolve();
     return recordProviderAction(input).catch((actionError) => {
-      console.error("Recording retrieval evidence failed", { recordingSid, actionError });
+      console.error("Recording retrieval evidence failed", { providerRecordingId, actionError });
     });
   };
 
@@ -53,7 +58,7 @@ export async function GET(
     action: "recording_retrieval",
     provider: provider.identity.id,
     idempotencyKey: actionKey,
-    providerIdentifier: recordingSid,
+    providerIdentifier: providerRecordingId,
     resourceType: "lead",
     resourceId: recording.id,
     internalStatus: "processing",
@@ -70,7 +75,7 @@ export async function GET(
     recordingAudio = await provider.fetchRecordingAudio({
       provider: provider.identity.id,
       kind: "recording",
-      value: recordingSid,
+      value: providerRecordingId,
     });
   } catch (error) {
     const providerStatus = providerErrorStatus(error);
@@ -82,7 +87,7 @@ export async function GET(
       action: "recording_retrieval",
       provider: provider.identity.id,
       idempotencyKey: actionKey,
-      providerIdentifier: recordingSid,
+      providerIdentifier: providerRecordingId,
       resourceType: "lead",
       resourceId: recording.id,
       internalStatus: "failed",
@@ -109,7 +114,7 @@ export async function GET(
     action: "recording_retrieval",
     provider: provider.identity.id,
     idempotencyKey: actionKey,
-    providerIdentifier: recordingSid,
+    providerIdentifier: providerRecordingId,
     resourceType: "lead",
     resourceId: recording.id,
     internalStatus: "succeeded",

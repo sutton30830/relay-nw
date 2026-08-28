@@ -4,7 +4,7 @@ import type { VoicemailTranscriptionStatus } from "./types";
 import type { TranscriptionQuality } from "@/lib/voicemail-confidence";
 import { transcriptHasExplicitRequest } from "@/lib/voicemail-summary";
 
-export async function recordingBelongsToLead(recordingSid: string, inputAccountId: string) {
+export async function recordingBelongsToLead(providerRecordingId: string, inputAccountId: string) {
   const accountId = assertAccountId(inputAccountId, "recordingBelongsToLead");
 
   if (isPlaceholderSupabaseConfig()) {
@@ -14,7 +14,7 @@ export async function recordingBelongsToLead(recordingSid: string, inputAccountI
   const { data, error } = await supabaseAdmin
     .from("leads")
     .select("id")
-    .eq("recording_sid", recordingSid)
+    .eq("recording_sid", providerRecordingId)
     .eq("account_id", accountId)
     .limit(1)
     .maybeSingle();
@@ -24,7 +24,7 @@ export async function recordingBelongsToLead(recordingSid: string, inputAccountI
   return Boolean(data?.id);
 }
 
-export async function getLeadRecordingForPlayback(recordingSid: string, inputAccountId: string) {
+export async function getLeadRecordingForPlayback(providerRecordingId: string, inputAccountId: string) {
   const accountId = assertAccountId(inputAccountId, "getLeadRecordingForPlayback");
 
   if (isPlaceholderSupabaseConfig()) {
@@ -34,7 +34,7 @@ export async function getLeadRecordingForPlayback(recordingSid: string, inputAcc
   const { data, error } = await supabaseAdmin
     .from("leads")
     .select("id, recording_url")
-    .eq("recording_sid", recordingSid)
+    .eq("recording_sid", providerRecordingId)
     .eq("account_id", accountId)
     .limit(1)
     .maybeSingle();
@@ -335,16 +335,24 @@ export async function listLeadsNeedingSummaryRetry(
     }>;
 }
 
-export async function updateLeadRecordingByCallSid(input: {
+export async function updateLeadRecordingByProviderCallId(input: {
   accountId: string;
-  callSid: string;
+  providerCallId?: string;
   callerPhone?: string | null;
+  providerRecordingId?: string | null;
+  /** @deprecated Compatibility aliases for legacy callers. */
+  callSid?: string;
   recordingSid?: string | null;
   recordingUrl?: string | null;
   recordingDuration?: number | null;
   recordingStatus?: string | null;
 }) {
-  const accountId = assertAccountId(input.accountId, "updateLeadRecordingByCallSid");
+  const accountId = assertAccountId(input.accountId, "updateLeadRecordingByProviderCallId");
+  const providerCallId = (input.providerCallId ?? input.callSid)?.trim();
+  if (!providerCallId) {
+    throw new Error("updateLeadRecordingByProviderCallId requires a provider call identifier");
+  }
+  const providerRecordingId = input.providerRecordingId ?? input.recordingSid ?? null;
 
   if (shouldSkipDatabaseWrite("recording update", input)) {
     return { updated: false, leadId: null };
@@ -353,12 +361,12 @@ export async function updateLeadRecordingByCallSid(input: {
   const { data, error } = await supabaseAdmin
     .from("leads")
     .update({
-      recording_sid: input.recordingSid ?? null,
+      recording_sid: providerRecordingId,
       recording_url: input.recordingUrl ?? null,
       recording_duration: input.recordingDuration ?? null,
       recording_status: input.recordingStatus ?? null,
     })
-    .eq("call_sid", input.callSid)
+    .eq("call_sid", providerCallId)
     .eq("account_id", accountId)
     .select("id")
     .maybeSingle();
@@ -391,7 +399,7 @@ export async function updateLeadRecordingByCallSid(input: {
   const { data: fallbackData, error: fallbackError } = await supabaseAdmin
     .from("leads")
     .update({
-      recording_sid: input.recordingSid ?? null,
+      recording_sid: providerRecordingId,
       recording_url: input.recordingUrl ?? null,
       recording_duration: input.recordingDuration ?? null,
       recording_status: input.recordingStatus ?? null,
@@ -409,3 +417,6 @@ export async function updateLeadRecordingByCallSid(input: {
     matchedBy: fallbackData?.id ? "phone" : null,
   };
 }
+
+/** @deprecated Use updateLeadRecordingByProviderCallId. */
+export const updateLeadRecordingByCallSid = updateLeadRecordingByProviderCallId;

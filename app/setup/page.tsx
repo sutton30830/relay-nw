@@ -143,7 +143,7 @@ export default async function SetupPage() {
               </div>
               <RelayHelpLink businessName={account.businessName} />
             </div>
-            <CarrierForwarding relayNumber={account.twilioPhoneNumber} />
+            <CarrierForwarding relayNumber={account.relayPhoneNumber} />
           </section>
         ) : !callsAreLive ? (
           <section className="panel customer-setup-help" aria-label="Relay setup progress">
