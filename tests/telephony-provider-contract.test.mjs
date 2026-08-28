@@ -44,6 +44,7 @@ test("Relay contract exposes every required canonical event and voice instructio
     "outboundSms",
     "messageDeliveryUpdates",
     "recordingAudio",
+    "resourceDeletion",
     "numberSearch",
     "numberConfiguration",
     "numberRelease",
@@ -97,12 +98,13 @@ function adapterHarness() {
   const sent = [];
   const validated = [];
   const client = {
-    messages: {
+    messages: Object.assign(() => ({ remove: async () => true }), {
       create: async (input) => {
         sent.push(input);
         return { sid: "not-a-sid-shaped-id", status: "queued" };
       },
-    },
+    }),
+    recordings: () => ({ remove: async () => true }),
     availablePhoneNumbers: () => ({ local: { list: async () => [] } }),
     incomingPhoneNumbers: Object.assign(
       () => ({ update: async () => ({}), remove: async () => true }),
@@ -117,13 +119,13 @@ function adapterHarness() {
     hangup() {}
     toString() { return "<Response />"; }
   }
-  const twilioMock = {
+  const twilioMock = Object.assign(() => client, {
     validateRequest: (_token, signature, url) => {
       validated.push(url);
       return signature === "valid" && url.endsWith("/canonical");
     },
     twiml: { VoiceResponse },
-  };
+  });
 
   return {
     sent,
@@ -135,17 +137,7 @@ function adapterHarness() {
         env: { twilioAccountSid: "AC_test", twilioAuthToken: "auth_test" },
       },
       "@/lib/telephony/types": types,
-      "@/lib/twilio": {
-        twilioClient: client,
-        fetchA2pRegistrationEvidence: async () => ({
-          campaignStatus: "VERIFIED",
-          brandRegistrationSid: "BN_test",
-          errors: [],
-          serviceA2pRegistered: true,
-          relayNumberInSenderPool: true,
-          relayNumberSmsCapable: true,
-        }),
-      },
+      "@/lib/telephony/provider": contract,
     },
   };
 }
@@ -192,6 +184,12 @@ test("Twilio adapter reports Relay-required capabilities and Relay-owned idempot
     /non-empty SMS idempotency key/,
   );
   assert.equal(harness.sent.length, 1);
+
+  assert.equal(await adapter.twilioProvider.deleteResource({
+    provider: "twilio",
+    kind: "message",
+    value: "message-to-delete",
+  }), "deleted");
 });
 
 test("Twilio adapter verifies signatures fail-closed and emits provider-neutral events", async () => {

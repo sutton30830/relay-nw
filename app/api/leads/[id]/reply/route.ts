@@ -9,7 +9,8 @@ import {
   recordProviderAction,
   updateLead,
 } from "@/lib/supabase";
-import { phoneLast4, twilioClient } from "@/lib/twilio";
+import { phoneLast4 } from "@/lib/twilio";
+import { getTelephonyProvider } from "@/lib/telephony/registry";
 
 // Four GSM-7 segments. Long enough for a real reply, short enough to stay conversational.
 const MAX_REPLY_LENGTH = 640;
@@ -68,6 +69,7 @@ export async function POST(
   const account = session.account;
   const accountId = session.accountId;
   const actionKey = `manual_reply:${id}:${requestIdempotencyKey}`;
+  const provider = getTelephonyProvider();
 
   if (!account.smsEnabled) {
     return Response.json(
@@ -141,7 +143,7 @@ export async function POST(
       await recordProviderAction({
         accountId,
         action: "manual_reply_sms",
-        provider: "twilio",
+        provider: provider.identity.id,
         idempotencyKey: actionKey,
         resourceType: "lead",
         resourceId: lead.id,
@@ -199,33 +201,36 @@ export async function POST(
   }
 
   try {
-    const statusCallback = new URL("/api/twilio/sms-status", env.appBaseUrl);
-    statusCallback.searchParams.set("messageType", "manual_reply");
-    statusCallback.searchParams.set("accountId", accountId);
-    statusCallback.searchParams.set("leadId", lead.id);
-    statusCallback.searchParams.set("actionKey", actionKey);
-
-    const message = await twilioClient.messages.create({
+    const message = await provider.sendSms({
       to: lead.phone,
       from: account.twilioPhoneNumber,
       body,
-      statusCallback: statusCallback.toString(),
+      idempotencyKey: actionKey,
+      deliveryCallback: {
+        url: new URL("/api/twilio/sms-status", env.appBaseUrl).toString(),
+        metadata: {
+          messageType: "manual_reply",
+          accountId,
+          leadId: lead.id,
+          actionKey,
+        },
+      },
     });
-    messageSid = message.sid;
-    initialStatus = message.status || initialStatus;
+    messageSid = message.messageId.value;
+    initialStatus = message.status === "unknown" ? initialStatus : message.status;
     if (typeof recordProviderAction === "function") {
       try {
         await recordProviderAction({
           accountId,
           action: "manual_reply_sms",
-          provider: "twilio",
+          provider: provider.identity.id,
           idempotencyKey: actionKey,
           providerIdentifier: messageSid,
           resourceType: "lead",
           resourceId: lead.id,
           internalStatus: "accepted",
           providerStatus: initialStatus,
-          customerExplanation: "Twilio accepted the reply. Delivery confirmation is pending.",
+          customerExplanation: `${provider.identity.displayName} accepted the reply. Delivery confirmation is pending.`,
           retryEligibility: "never",
           recommendedNextAction: "Wait for the signed delivery callback; do not resend automatically.",
           customerVisible: false,
@@ -248,7 +253,7 @@ export async function POST(
         await recordProviderAction({
           accountId,
           action: "manual_reply_sms",
-          provider: "twilio",
+          provider: provider.identity.id,
           idempotencyKey: actionKey,
           resourceType: "lead",
           resourceId: lead.id,
@@ -270,7 +275,7 @@ export async function POST(
       callerLast4: phoneLast4(lead.phone),
       error: detail,
     });
-    return Response.json({ error: "Twilio could not send the reply. Try again." }, { status: 502 });
+    return Response.json({ error: `${provider.identity.displayName} could not send the reply. Try again.` }, { status: 502 });
   }
 
   const sentAt = new Date().toISOString();

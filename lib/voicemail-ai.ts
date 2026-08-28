@@ -23,6 +23,7 @@ import {
   type AccountRuntimeConfig,
 } from "@/lib/supabase";
 import { sendOwnerSms } from "@/lib/twilio";
+import { getTelephonyProvider } from "@/lib/telephony/registry";
 import { notifyAdminOperationalIssue, notifyOwnerVoicemailReady } from "@/lib/email";
 import {
   NO_SPEECH_VOICEMAIL_MESSAGE,
@@ -53,7 +54,6 @@ type OpenAIResponsesResponse = {
 };
 
 const STALE_PROCESSING_MS = 10 * 60 * 1000;
-const RECORDING_DOWNLOAD_TIMEOUT_MS = 15_000;
 const OPENAI_TRANSCRIPTION_TIMEOUT_MS = 60_000;
 const OPENAI_SUMMARY_TIMEOUT_MS = 30_000;
 const RECOMMENDED_TRANSCRIPTION_MODEL = "gpt-transcribe";
@@ -87,25 +87,14 @@ export function isExpectedVoicemailQualityErrorMessage(message: string) {
   );
 }
 
-function twilioRecordingUrl(recordingSid: string) {
-  return `https://api.twilio.com/2010-04-01/Accounts/${env.twilioAccountSid}/Recordings/${recordingSid}.mp3`;
-}
-
 async function fetchRecordingAudio(recordingSid: string) {
-  const auth = Buffer.from(`${env.twilioAccountSid}:${env.twilioAuthToken}`).toString("base64");
-  const response = await fetch(twilioRecordingUrl(recordingSid), {
-    headers: {
-      Authorization: `Basic ${auth}`,
-    },
-    cache: "no-store",
-    signal: AbortSignal.timeout(RECORDING_DOWNLOAD_TIMEOUT_MS),
+  const provider = getTelephonyProvider();
+  const recording = await provider.fetchRecordingAudio({
+    provider: provider.identity.id,
+    kind: "recording",
+    value: recordingSid,
   });
-
-  if (!response.ok) {
-    throw new Error(`Twilio recording download failed with ${response.status}.`);
-  }
-
-  return response.blob();
+  return recording.audio;
 }
 
 function modelSupportsLogprobs(model: string) {

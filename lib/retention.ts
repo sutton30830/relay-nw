@@ -13,32 +13,20 @@ import {
   supabaseAdmin,
   wasAccountDeletionCompleted,
 } from "@/lib/supabase";
-import { twilioClient } from "@/lib/twilio";
+import { getTelephonyProvider } from "@/lib/telephony/registry";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function cutoff(now: Date, days: number) {
   return new Date(now.getTime() - days * DAY_MS).toISOString();
 }
-function isTwilioMissing(error: unknown) {
-  return Boolean(
-    error && typeof error === "object" &&
-    ("status" in error && error.status === 404 || "code" in error && error.code === 20404),
-  );
-}
-
-async function deleteTwilioResource(resource: { kind: "recording" | "message"; sid: string }) {
-  try {
-    if (resource.kind === "recording") {
-      await twilioClient.recordings(resource.sid).remove();
-    } else {
-      await twilioClient.messages(resource.sid).remove();
-    }
-    return "deleted" as const;
-  } catch (error) {
-    if (isTwilioMissing(error)) return "not_found" as const;
-    throw error;
-  }
+async function deleteTelephonyResource(resource: { kind: "recording" | "message"; sid: string }) {
+  const provider = getTelephonyProvider();
+  return provider.deleteResource({
+    provider: provider.identity.id,
+    kind: resource.kind,
+    value: resource.sid,
+  });
 }
 
 export async function deleteAccountWithProviders(input: {
@@ -58,7 +46,7 @@ export async function deleteAccountWithProviders(input: {
         return { ...preview, greetingFiles: greetingFiles.length };
       },
       listProviderResources: listAccountProviderResources,
-      deleteProviderResource: deleteTwilioResource,
+      deleteProviderResource: deleteTelephonyResource,
       deleteGreetingFiles: removeGreetingFiles,
       deleteDatabaseAccount: deleteAccountDatabaseData,
       recordAction: recordDataRetentionAction,
@@ -74,7 +62,7 @@ export type OperationalRetentionReport = {
   providerFailures: number;
   providerFailureEvidence: Array<{
     accountId: string;
-    provider: "twilio";
+    provider: string;
     resourceType: "message";
     providerIdentifier: string;
   }>;
@@ -129,15 +117,16 @@ export async function runOperationalRetention(input: {
   if (input.dryRun) return report;
 
   for (const candidate of candidates) {
+    const provider = getTelephonyProvider();
     const idempotencyKey = `retention_delete_twilio_message:${candidate.message_sid}`;
     let providerStatus: "deleted" | "not_found";
     try {
-      providerStatus = await deleteTwilioResource({ kind: "message", sid: candidate.message_sid });
+      providerStatus = await deleteTelephonyResource({ kind: "message", sid: candidate.message_sid });
     } catch (error) {
       await recordProviderAction({
         accountId: candidate.account_id,
         action: "retention_delete_twilio_message",
-        provider: "twilio",
+        provider: provider.identity.id,
         idempotencyKey,
         providerIdentifier: candidate.message_sid,
         resourceType: "message",
@@ -154,7 +143,7 @@ export async function runOperationalRetention(input: {
       report.providerFailures += 1;
       report.providerFailureEvidence.push({
         accountId: candidate.account_id,
-        provider: "twilio",
+        provider: provider.identity.id,
         resourceType: "message",
         providerIdentifier: candidate.message_sid,
       });
@@ -166,7 +155,7 @@ export async function runOperationalRetention(input: {
     await recordProviderAction({
       accountId: candidate.account_id,
       action: "retention_delete_twilio_message",
-      provider: "twilio",
+      provider: provider.identity.id,
       idempotencyKey,
       providerIdentifier: candidate.message_sid,
       resourceType: "message",

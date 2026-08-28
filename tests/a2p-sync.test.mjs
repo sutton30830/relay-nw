@@ -24,10 +24,10 @@ async function loadTsModule(path) {
 const { deriveA2pSyncDecision } = await loadTsModule("lib/a2p-sync.ts");
 
 const completeEvidence = {
-  campaignStatus: "VERIFIED",
-  serviceA2pRegistered: true,
-  relayNumberInSenderPool: true,
-  relayNumberSmsCapable: true,
+  registrationStatus: "VERIFIED",
+  messagingServiceRegistered: true,
+  numberInSenderPool: true,
+  numberSmsCapable: true,
 };
 
 test("A2P approval requires campaign, service, and account-number evidence", () => {
@@ -35,37 +35,37 @@ test("A2P approval requires campaign, service, and account-number evidence", () 
 
   assert.equal(deriveA2pSyncDecision({
     ...completeEvidence,
-    serviceA2pRegistered: false,
+    messagingServiceRegistered: false,
   }).a2p, "in_progress");
 
   assert.equal(deriveA2pSyncDecision({
     ...completeEvidence,
-    relayNumberInSenderPool: false,
+    numberInSenderPool: false,
   }).a2p, "needs_attention");
 
   assert.equal(deriveA2pSyncDecision({
     ...completeEvidence,
-    relayNumberSmsCapable: false,
+    numberSmsCapable: false,
   }).a2p, "needs_attention");
 });
 
 test("campaign review and failure remain carrier-controlled", () => {
   assert.equal(deriveA2pSyncDecision({
     ...completeEvidence,
-    campaignStatus: "IN_REVIEW",
+    registrationStatus: "IN_REVIEW",
   }).a2p, "in_progress");
   assert.equal(deriveA2pSyncDecision({
     ...completeEvidence,
-    campaignStatus: "FAILED",
+    registrationStatus: "FAILED",
   }).a2p, "rejected");
   assert.equal(deriveA2pSyncDecision({
     ...completeEvidence,
-    campaignStatus: "UNKNOWN",
+    registrationStatus: "UNKNOWN",
   }), null);
 });
 
 test("the Twilio fetch verifies the specific Relay number", async () => {
-  const twilio = await readFile(new URL("../lib/twilio.ts", import.meta.url), "utf8");
+  const twilio = await readFile(new URL("../lib/telephony/providers/twilio.ts", import.meta.url), "utf8");
   const route = await readFile(
     new URL("../app/api/ops/carrier/route.ts", import.meta.url),
     "utf8",
@@ -75,5 +75,5 @@ test("the Twilio fetch verifies the specific Relay number", async () => {
   assert.match(twilio, /serviceContext\.phoneNumbers\.list/);
   assert.match(twilio, /incomingPhoneNumbers\.list\(\{ phoneNumber: relayPhoneNumber/);
   assert.match(route, /account\.relayNumber/);
-  assert.match(route, /twilio_brand_sid: external\.brandRegistrationSid/);
+  assert.match(route, /twilio_brand_sid: external\.brandRegistrationReference/);
 });

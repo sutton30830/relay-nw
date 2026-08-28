@@ -282,6 +282,15 @@ test("reply route never sends SMS when the guard rejects", async () => {
       }),
     },
     "@/lib/env": { env: { appBaseUrl: "http://test" } },
+    "@/lib/telephony/registry": {
+      getTelephonyProvider: () => ({
+        identity: { id: "twilio", displayName: "Twilio" },
+        sendSms: async () => {
+          sends += 1;
+          return { messageId: { value: "SM_test" }, status: "queued" };
+        },
+      }),
+    },
     "@/lib/supabase": {
       createMessageIfNew: async () => {},
       getLeadByIdForAccount: async () => null,

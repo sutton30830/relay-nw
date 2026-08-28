@@ -134,12 +134,18 @@ async function runNumberAssignment({ action = "attach_existing", configureError 
       },
     },
     "@/lib/ops-actions": opsActions,
-    "@/lib/twilio": {
-      configureExistingRelayNumber: async (phoneNumber) => {
-        calls.configured.push(phoneNumber);
-        if (configureError) throw configureError;
-        return { sid: "PN_owned", phoneNumber };
-      },
+    "@/lib/env": { env: { appBaseUrl: "https://relay.test" } },
+    "@/lib/telephony/registry": {
+      getTelephonyProvider: () => ({
+        configureNumber: async ({ phoneNumber }) => {
+          calls.configured.push(phoneNumber);
+          if (configureError) throw configureError;
+          return {
+            numberId: { provider: "twilio", kind: "number", value: "PN_owned" },
+            phoneNumber,
+          };
+        },
+      }),
     },
     "@/lib/supabase": {
       getOpsBillingAccountBySlug: async () => ({

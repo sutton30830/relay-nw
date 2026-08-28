@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { requirePlatformOperatorAction } from "@/lib/auth";
 import { OPS_ACTIONS } from "@/lib/ops-actions";
-import { configureExistingRelayNumber } from "@/lib/twilio";
+import { env } from "@/lib/env";
+import { getTelephonyProvider } from "@/lib/telephony/registry";
 import {
   assignPrimaryAccountPhoneNumber,
   clearMessagingOnboardingEvidence,
@@ -26,11 +27,21 @@ export async function POST(request: Request) {
   const account = await getOpsBillingAccountBySlug(slug);
   if (!account) go(slug, "account_not_found");
   try {
-    const configured = await configureExistingRelayNumber(phoneNumber);
+    const provider = getTelephonyProvider();
+    const configured = await provider.configureNumber({
+      phoneNumber,
+      webhooks: {
+        voice: {
+          url: `${env.appBaseUrl}/api/twilio/voice`,
+          fallbackUrl: `${env.appBaseUrl}/api/twilio/voice`,
+        },
+        messaging: { url: `${env.appBaseUrl}/api/twilio/sms` },
+      },
+    });
     const assignment = await assignPrimaryAccountPhoneNumber({
       accountId: account.accountId,
       phoneNumber: configured.phoneNumber,
-      twilioSid: configured.sid,
+      twilioSid: configured.numberId.value,
     });
     if (assignment.numberChanged) {
       await clearMessagingOnboardingEvidence(account.accountId);

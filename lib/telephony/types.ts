@@ -7,7 +7,7 @@ export const TELEPHONY_EVENT_TYPES = [
 ] as const;
 
 export type TelephonyEventType = (typeof TELEPHONY_EVENT_TYPES)[number];
-export type TelephonyProviderId = string;
+export type TelephonyProviderId = "twilio" | "dial";
 export type ProviderResourceKind = "call" | "message" | "recording" | "number";
 
 /**
@@ -26,11 +26,11 @@ export type RecordingIdentifier = ProviderIdentifier<"recording">;
 export type NumberIdentifier = ProviderIdentifier<"number">;
 
 export function providerIdentifier<Kind extends ProviderResourceKind>(input: {
-  provider: string;
+  provider: TelephonyProviderId;
   kind: Kind;
   value: string;
 }): ProviderIdentifier<Kind> {
-  const provider = input.provider.trim().toLowerCase();
+  const provider = input.provider.trim().toLowerCase() as TelephonyProviderId;
   const value = input.value.trim();
 
   if (!/^[a-z][a-z0-9-]*$/.test(provider)) {

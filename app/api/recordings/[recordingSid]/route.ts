@@ -1,13 +1,17 @@
-import { env } from "@/lib/env";
 import { requireAccountUserJson } from "@/lib/auth";
 import { getLeadRecordingForPlayback, recordProviderAction } from "@/lib/supabase";
-import { isTrustedTwilioMediaUrl } from "@/lib/twilio";
+import { getTelephonyProvider } from "@/lib/telephony/registry";
 
 const PRIVATE_AUDIO_HEADERS = {
   "Cache-Control": "private, no-store, max-age=0",
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "no-referrer",
 };
+
+function providerErrorStatus(error: unknown) {
+  if (!error || typeof error !== "object" || !("status" in error)) return null;
+  return typeof error.status === "number" ? error.status : null;
+}
 
 export async function GET(
   _request: Request,
@@ -34,15 +38,7 @@ export async function GET(
     });
   }
 
-  const storedUrl = recording.recording_url;
-  const isTrustedStoredUrl = isTrustedTwilioMediaUrl(storedUrl);
-  const recordingUrl = isTrustedStoredUrl
-    ? storedUrl!
-    : `https://api.twilio.com/2010-04-01/Accounts/${env.twilioAccountSid}/Recordings/${recordingSid}.mp3`;
-
-  if (storedUrl && !isTrustedStoredUrl) {
-    console.warn("Stored recording_url rejected by allowlist", { recordingSid });
-  }
+  const provider = getTelephonyProvider();
 
   const actionKey = `recording_retrieval:${recordingSid}`;
   const recordRetrieval = (input: Parameters<typeof recordProviderAction>[0]) => {
@@ -55,7 +51,7 @@ export async function GET(
   await recordRetrieval({
     accountId: auth.session.accountId,
     action: "recording_retrieval",
-    provider: "twilio",
+    provider: provider.identity.id,
     idempotencyKey: actionKey,
     providerIdentifier: recordingSid,
     resourceType: "lead",
@@ -69,62 +65,41 @@ export async function GET(
     countAttempt: true,
   });
 
-  const twilioAuth = Buffer.from(`${env.twilioAccountSid}:${env.twilioAuthToken}`).toString("base64");
-  let recordingResponse: Response;
+  let recordingAudio: Awaited<ReturnType<typeof provider.fetchRecordingAudio>>;
   try {
-    recordingResponse = await fetch(recordingUrl, {
-      headers: {
-        Authorization: `Basic ${twilioAuth}`,
-      },
-      cache: "no-store",
+    recordingAudio = await provider.fetchRecordingAudio({
+      provider: provider.identity.id,
+      kind: "recording",
+      value: recordingSid,
     });
   } catch (error) {
+    const providerStatus = providerErrorStatus(error);
+    const responseStatus = providerStatus && providerStatus >= 400 && providerStatus <= 599
+      ? providerStatus
+      : 503;
     await recordRetrieval({
       accountId: auth.session.accountId,
       action: "recording_retrieval",
-      provider: "twilio",
+      provider: provider.identity.id,
       idempotencyKey: actionKey,
       providerIdentifier: recordingSid,
       resourceType: "lead",
       resourceId: recording.id,
       internalStatus: "failed",
-      providerStatus: "request_failed",
+      providerStatus: providerStatus ? String(providerStatus) : "request_failed",
+      failureCode: providerStatus ? String(providerStatus) : null,
       diagnosticDetail: error,
-      customerExplanation: "The recording is temporarily unavailable.",
-      retryEligibility: "automatic",
-      recommendedNextAction: "Try playback again in a moment.",
-      customerVisible: true,
-    });
-    return new Response("Recording unavailable", { status: 503, headers: PRIVATE_AUDIO_HEADERS });
-  }
-
-  if (!recordingResponse.ok || !recordingResponse.body) {
-    console.warn("Twilio recording fetch failed", {
-      recordingSid,
-      status: recordingResponse.status,
-    });
-    await recordRetrieval({
-      accountId: auth.session.accountId,
-      action: "recording_retrieval",
-      provider: "twilio",
-      idempotencyKey: actionKey,
-      providerIdentifier: recordingSid,
-      resourceType: "lead",
-      resourceId: recording.id,
-      internalStatus: "failed",
-      providerStatus: String(recordingResponse.status),
-      failureCode: String(recordingResponse.status),
-      customerExplanation: recordingResponse.status === 404
+      customerExplanation: providerStatus === 404
         ? "This recording is no longer available from the phone provider."
         : "The recording is temporarily unavailable.",
-      retryEligibility: recordingResponse.status === 404 ? "never" : "automatic",
-      recommendedNextAction: recordingResponse.status === 404
+      retryEligibility: providerStatus === 404 ? "never" : "automatic",
+      recommendedNextAction: providerStatus === 404
         ? "Use the call details to contact the caller directly."
         : "Try playback again in a moment.",
       customerVisible: true,
     });
     return new Response("Recording unavailable", {
-      status: recordingResponse.status,
+      status: responseStatus,
       headers: PRIVATE_AUDIO_HEADERS,
     });
   }
@@ -132,7 +107,7 @@ export async function GET(
   await recordRetrieval({
     accountId: auth.session.accountId,
     action: "recording_retrieval",
-    provider: "twilio",
+    provider: provider.identity.id,
     idempotencyKey: actionKey,
     providerIdentifier: recordingSid,
     resourceType: "lead",
@@ -145,11 +120,11 @@ export async function GET(
     customerVisible: false,
   });
 
-  return new Response(recordingResponse.body, {
+  return new Response(recordingAudio.audio, {
     status: 200,
     headers: {
       ...PRIVATE_AUDIO_HEADERS,
-      "Content-Type": recordingResponse.headers.get("content-type") ?? "audio/mpeg",
+      "Content-Type": recordingAudio.contentType ?? "audio/mpeg",
     },
   });
 }

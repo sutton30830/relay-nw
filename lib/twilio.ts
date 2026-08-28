@@ -4,10 +4,14 @@ import { notifyAdminOperationalIssue } from "@/lib/email";
 import { logWebhookEvent, type WebhookEventSource } from "@/lib/supabase";
 import type { AccountRuntimeConfig } from "@/lib/supabase/accounts";
 import { twilioWebhookUrlCandidates } from "@/lib/twilio-webhook-urls";
-
-async function providerActionTools() {
-  return import("@/lib/supabase/provider-actions");
-}
+import { getTelephonyProvider } from "@/lib/telephony/registry";
+import { phoneLast4 } from "@/lib/phone";
+import {
+  fetchTwilioA2pRegistrationEvidence,
+} from "@/lib/telephony/providers/twilio";
+export { sendOwnerSms } from "@/lib/telephony/owner-sms";
+export { phoneLast4 };
+export { twilioClient } from "@/lib/telephony/providers/twilio";
 
 const DEFAULT_MISSED_CALL_SMS_TEMPLATE =
   "Hi, this is {BUSINESS_NAME} - sorry we missed your call. Book or reply here: {INTAKE_URL}. Reply STOP to opt out.";
@@ -27,220 +31,41 @@ type TwilioRequestSummary = {
   hasTwilioPhoneNumber: boolean;
 };
 
-export const twilioClient = twilio(env.twilioAccountSid, env.twilioAuthToken, {
-  timeout: 10_000,
-});
-
 export async function fetchA2pRegistrationEvidence(
   messagingServiceSid: string,
   campaignSid: string,
   relayPhoneNumber: string,
 ) {
-  if (!/^MG[0-9a-fA-F]{32}$/.test(messagingServiceSid)) {
-    throw new Error("Invalid Twilio Messaging Service SID.");
-  }
-  if (!/^QE[0-9a-fA-F]{32}$/.test(campaignSid)) {
-    throw new Error("Invalid Twilio A2P Campaign SID.");
-  }
-  if (!/^\+[1-9]\d{7,14}$/.test(relayPhoneNumber)) {
-    throw new Error("A valid Relay phone number is required for A2P verification.");
-  }
-
-  const serviceContext = twilioClient.messaging.v1.services(messagingServiceSid);
-  const [campaign, service, servicePhoneNumbers, incomingPhoneNumbers] = await Promise.all([
-    serviceContext.usAppToPerson(campaignSid).fetch(),
-    serviceContext.fetch(),
-    serviceContext.phoneNumbers.list({ limit: 1000 }),
-    twilioClient.incomingPhoneNumbers.list({ phoneNumber: relayPhoneNumber, limit: 2 }),
-  ]);
-  const incomingNumber = incomingPhoneNumbers.find(
-    (number) => number.phoneNumber === relayPhoneNumber,
+  return fetchTwilioA2pRegistrationEvidence(
+    messagingServiceSid,
+    campaignSid,
+    relayPhoneNumber,
   );
-
-  return {
-    campaignStatus: campaign.campaignStatus,
-    brandRegistrationSid: campaign.brandRegistrationSid,
-    errors: campaign.errors,
-    serviceA2pRegistered: service.usAppToPersonRegistered === true,
-    relayNumberInSenderPool: servicePhoneNumbers.some(
-      (number) => number.phoneNumber === relayPhoneNumber,
-    ),
-    relayNumberSmsCapable: incomingNumber?.capabilities?.sms === true,
-  };
 }
 
 export async function findAvailableRelayNumbers(areaCode: string, limit = 8) {
-  if (!/^\d{3}$/.test(areaCode)) throw new Error("Enter a three-digit area code.");
-  const numbers = await twilioClient.availablePhoneNumbers("US").local.list({
-    areaCode: Number(areaCode),
-    voiceEnabled: true,
-    smsEnabled: true,
-    limit: Math.min(20, Math.max(1, limit)),
+  const numbers = await getTelephonyProvider().findNumbers({
+    countryCode: "US",
+    areaCode,
+    limit,
+    requiredCapabilities: { voice: true, sms: true },
   });
   return numbers.map((number) => ({ phoneNumber: number.phoneNumber, locality: number.locality, region: number.region }));
 }
 
 export async function configureExistingRelayNumber(phoneNumber: string) {
-  const matches = await twilioClient.incomingPhoneNumbers.list({ phoneNumber, limit: 2 });
-  const existing = matches.find((number) => number.phoneNumber === phoneNumber);
-  if (!existing) throw new Error("That number is not owned by the configured Twilio account.");
   const base = env.appBaseUrl;
-  const updated = await twilioClient.incomingPhoneNumbers(existing.sid).update({
-    voiceUrl: `${base}/api/twilio/voice`,
-    voiceMethod: "POST",
-    voiceFallbackUrl: `${base}/api/twilio/voice`,
-    voiceFallbackMethod: "POST",
-    smsUrl: `${base}/api/twilio/sms`,
-    smsMethod: "POST",
+  const configured = await getTelephonyProvider().configureNumber({
+    phoneNumber,
+    webhooks: {
+      voice: {
+        url: `${base}/api/twilio/voice`,
+        fallbackUrl: `${base}/api/twilio/voice`,
+      },
+      messaging: { url: `${base}/api/twilio/sms` },
+    },
   });
-  return { sid: updated.sid, phoneNumber: updated.phoneNumber };
-}
-
-// Texts the owner from the account's Relay number. Never throws — notification
-// failures must not disturb the pipeline that called this. Gated on smsEnabled:
-// owner texts ride the same A2P-gated number as customer texting.
-export async function sendOwnerSms(input: {
-  account: Pick<AccountRuntimeConfig, "accountId" | "smsEnabled" | "ownerPhoneNumber" | "twilioPhoneNumber">;
-  body: string;
-  context: string;
-  actionKey?: string;
-}) {
-  const { account } = input;
-  const tools = await providerActionTools().catch((error) => {
-    console.error("Owner SMS recovery tools could not be loaded", {
-      context: input.context,
-      error: error instanceof Error ? error.message : error,
-    });
-    return null;
-  });
-  const claimProviderActionRetry = tools?.claimProviderActionRetry;
-  const recordProviderAction = tools?.recordProviderAction;
-
-  if (!account.smsEnabled || !account.ownerPhoneNumber || !account.twilioPhoneNumber) {
-    if (account.accountId && typeof recordProviderAction === "function") {
-      try {
-        await recordProviderAction({
-          accountId: account.accountId,
-          action: "owner_sms_notification",
-          provider: "twilio",
-          idempotencyKey: input.actionKey ?? `owner_sms:${input.context}`,
-          internalStatus: "suppressed",
-          providerStatus: "notification_not_configured",
-          customerExplanation: "Relay could not send the owner text because texting setup is incomplete.",
-          retryEligibility: "manual",
-          recommendedNextAction: "Verify A2P approval and the owner mobile number, then run a notification test.",
-          customerVisible: true,
-          expectedSuppression: true,
-        });
-      } catch (recordError) {
-        console.error("Could not record skipped owner SMS", {
-          accountId: account.accountId,
-          context: input.context,
-          error: recordError instanceof Error ? recordError.message : recordError,
-        });
-      }
-    }
-    return false;
-  }
-
-  try {
-    if (
-      account.accountId
-      && typeof recordProviderAction === "function"
-      && typeof claimProviderActionRetry === "function"
-    ) {
-      try {
-        await recordProviderAction({
-          accountId: account.accountId,
-          action: "owner_sms_notification",
-          provider: "twilio",
-          idempotencyKey: input.actionKey ?? `owner_sms:${input.context}`,
-          internalStatus: "pending",
-          providerStatus: "not_sent",
-          customerExplanation: "Relay is preparing the owner text notification.",
-          retryEligibility: "manual",
-          recommendedNextAction: "Wait for provider acceptance before retrying.",
-          customerVisible: false,
-        });
-        const claimed = await claimProviderActionRetry({
-          accountId: account.accountId,
-          idempotencyKey: input.actionKey ?? `owner_sms:${input.context}`,
-          staleBefore: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
-        });
-        if (!claimed) {
-          console.info("Owner SMS duplicate suppressed by idempotency reservation", {
-            accountId: account.accountId,
-            context: input.context,
-          });
-          return true;
-        }
-      } catch (recordError) {
-        console.error("Owner SMS action reservation failed; notification was not sent", {
-          accountId: account.accountId,
-          context: input.context,
-          error: recordError instanceof Error ? recordError.message : recordError,
-        });
-        return false;
-      }
-    }
-    const message = await twilioClient.messages.create({
-      to: account.ownerPhoneNumber,
-      from: account.twilioPhoneNumber,
-      body: input.body,
-    });
-    if (account.accountId && typeof recordProviderAction === "function") {
-      try {
-        await recordProviderAction({
-          accountId: account.accountId,
-          action: "owner_sms_notification",
-          provider: "twilio",
-          idempotencyKey: input.actionKey ?? `owner_sms:${input.context}`,
-          providerIdentifier: message.sid,
-          internalStatus: "accepted",
-          providerStatus: message.status || "accepted",
-          customerExplanation: "Twilio accepted the owner text notification.",
-          retryEligibility: "never",
-          recommendedNextAction: "No retry is needed unless the owner reports non-delivery.",
-          customerVisible: false,
-        });
-      } catch (recordError) {
-        console.error("Twilio accepted owner SMS, but Relay could not update action evidence", {
-          accountId: account.accountId,
-          context: input.context,
-          twilioMessageSid: message.sid,
-          error: recordError instanceof Error ? recordError.message : recordError,
-        });
-      }
-    }
-    return true;
-  } catch (error) {
-    console.error("Owner SMS failed", {
-      context: input.context,
-      ownerLast4: phoneLast4(account.ownerPhoneNumber),
-      error: error instanceof Error ? error.message : error,
-    });
-    if (account.accountId && typeof recordProviderAction === "function") {
-      try {
-        await recordProviderAction({
-          accountId: account.accountId,
-          action: "owner_sms_notification",
-          provider: "twilio",
-          idempotencyKey: input.actionKey ?? `owner_sms:${input.context}`,
-          internalStatus: "failed",
-          providerStatus: "send_failed",
-          diagnosticDetail: error,
-          customerVisible: true,
-        });
-      } catch (recordError) {
-        console.error("Could not record owner SMS failure", {
-          accountId: account.accountId,
-          context: input.context,
-          error: recordError instanceof Error ? recordError.message : recordError,
-        });
-      }
-    }
-    return false;
-  }
+  return { sid: configured.numberId.value, phoneNumber: configured.phoneNumber };
 }
 
 function replaceTemplateValues(template: string, values: Record<string, string>) {
@@ -436,19 +261,6 @@ export function formDataToRecord(formData: FormData) {
   }
 
   return values;
-}
-
-export function phoneLast4(value: string | null | undefined) {
-  if (!value) {
-    return null;
-  }
-
-  const digits = value.replace(/\D/g, "");
-  if (digits.length < 4) {
-    return null;
-  }
-
-  return digits.slice(-4);
 }
 
 export function summarizeTwilioRequest(

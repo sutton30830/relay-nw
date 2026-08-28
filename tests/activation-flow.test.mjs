@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import { telephonyProviderMock } from "./helpers/telephony-provider.mjs";
 
 // Route-spanning activation coverage for the real revenue loop:
 // missed call -> lead -> SMS -> delivery callback -> caller reply -> voicemail.
@@ -232,6 +233,7 @@ function makeMocks(state) {
       },
     },
   };
+  const { registry: telephonyRegistry } = telephonyProviderMock({ twilioClient });
 
   return {
     "next/server": {
@@ -244,6 +246,7 @@ function makeMocks(state) {
       },
     },
     "@/lib/phone": { normalizePhoneNumber },
+    "@/lib/telephony/registry": telephonyRegistry,
     "@/lib/supabase": supabase,
     "@/lib/supabase/accounts": { envAccountConfig: () => state.account },
     "@/lib/twilio": {

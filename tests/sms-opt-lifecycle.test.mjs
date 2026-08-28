@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import { telephonyProviderMock } from "./helpers/telephony-provider.mjs";
 
 async function loadTsModule(path, mocks) {
   const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
@@ -67,6 +68,15 @@ function makeMocks(account = ACCOUNT) {
     ownerForwards: [],
     webhookEvents: [],
   };
+  const twilioClient = {
+    messages: {
+      create: async (input) => {
+        calls.ownerForwards.push(input);
+        return { sid: "SM_forwarded" };
+      },
+    },
+  };
+  const { registry: telephonyRegistry } = telephonyProviderMock({ twilioClient });
 
   const mocks = {
     "@/lib/env": {
@@ -81,6 +91,7 @@ function makeMocks(account = ACCOUNT) {
       notifyOwnerOptOut: async (input) => calls.ownerOptOuts.push(input),
     },
     "@/lib/phone": { normalizePhoneNumber },
+    "@/lib/telephony/registry": telephonyRegistry,
     "@/lib/supabase": {
       assertTenantAccount: (account) => account,
       clearOptOut: async (phone, accountId) => calls.clearOptOuts.push({ phone, accountId }),
@@ -109,14 +120,6 @@ function makeMocks(account = ACCOUNT) {
       phoneLast4: (value) => String(value ?? "").slice(-4),
       rejectInvalidTwilioSignature: () => new Response("rejected", { status: 403 }),
       summarizeTwilioRequest: () => ({}),
-      twilioClient: {
-        messages: {
-          create: async (input) => {
-            calls.ownerForwards.push(input);
-            return { sid: "SM_forwarded" };
-          },
-        },
-      },
       validateTwilioWebhook: () => ({
         shouldReject: false,
         wasAllowedByOverride: false,

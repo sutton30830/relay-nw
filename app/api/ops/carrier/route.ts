@@ -10,23 +10,29 @@ import {
   updateAccountSettings,
   upsertCarrierProfile,
 } from "@/lib/supabase";
-import { fetchA2pRegistrationEvidence } from "@/lib/twilio";
+import { getTelephonyProvider } from "@/lib/telephony/registry";
 
 function go(slug: string, result: string): never {
   redirect(`/ops/accounts/${encodeURIComponent(slug)}?carrier=${result}`);
 }
 
-function campaignErrorSummary(value: unknown) {
+function campaignErrorSummary(value: unknown, providerName: string) {
   if (!Array.isArray(value)) return null;
   const messages = value
     .map((item) => {
       if (!item || typeof item !== "object") return null;
       const record = item as Record<string, unknown>;
+      if (typeof record.message === "string" && record.message.trim()) {
+        return record.message.trim();
+      }
       if (typeof record.description === "string" && record.description.trim()) {
         return record.description.trim();
       }
       if (typeof record.error_code === "number" || typeof record.error_code === "string") {
-        return `Twilio error ${String(record.error_code)}`;
+        return `${providerName} error ${String(record.error_code)}`;
+      }
+      if (typeof record.code === "number" || typeof record.code === "string") {
+        return `${providerName} error ${String(record.code)}`;
       }
       return null;
     })
@@ -52,6 +58,7 @@ export async function POST(request: Request) {
   const account = await getOpsAccountBySlug(slug);
   if (!account) go(slug, "account_not_found");
   if (!account.relayNumber) go(slug, "number_required");
+  const provider = getTelephonyProvider();
   const actionKey = `a2p_sync:${campaignSid}`;
   const recordCarrierAction = async (event: Parameters<typeof recordProviderAction>[0]) => {
     if (typeof recordProviderAction !== "function") return;
@@ -69,7 +76,7 @@ export async function POST(request: Request) {
   await recordCarrierAction({
       accountId: account.accountId,
       action: "a2p_status_sync",
-      provider: "twilio",
+      provider: provider.identity.id,
       idempotencyKey: actionKey,
       providerIdentifier: campaignSid,
       resourceType: "carrier_profile",
@@ -78,18 +85,18 @@ export async function POST(request: Request) {
       providerStatus: "requesting",
       customerExplanation: "Relay is checking carrier registration status.",
       retryEligibility: "manual",
-      recommendedNextAction: "Wait for the current Twilio lookup to finish.",
+      recommendedNextAction: `Wait for the current ${provider.identity.displayName} lookup to finish.`,
       customerVisible: false,
       countAttempt: true,
   });
 
   let external;
   try {
-    external = await fetchA2pRegistrationEvidence(
-      messagingServiceSid,
-      campaignSid,
-      account.relayNumber,
-    );
+    external = await provider.readMessagingRegistrationEvidence({
+      messagingServiceReference: messagingServiceSid,
+      registrationReference: campaignSid,
+      phoneNumber: account.relayNumber,
+    });
   } catch (error) {
     console.error("Twilio A2P status synchronization failed", {
       accountId: account.accountId,
@@ -98,7 +105,7 @@ export async function POST(request: Request) {
     await recordCarrierAction({
         accountId: account.accountId,
         action: "a2p_status_sync",
-        provider: "twilio",
+        provider: provider.identity.id,
         idempotencyKey: actionKey,
         providerIdentifier: campaignSid,
         resourceType: "carrier_profile",
@@ -117,8 +124,8 @@ export async function POST(request: Request) {
   const next = deriveA2pSyncDecision(external);
   if (!next) go(slug, "unknown_status");
 
-  const externalStatus = String(external.campaignStatus).toUpperCase();
-  const errorSummary = campaignErrorSummary(external.errors);
+  const externalStatus = String(external.registrationStatus).toUpperCase();
+  const errorSummary = campaignErrorSummary(external.issues, provider.identity.displayName);
   const detail = externalStatus === "FAILED" || externalStatus === "SUSPENDED"
     ? errorSummary ?? next.detail
     : next.detail;
@@ -126,7 +133,7 @@ export async function POST(request: Request) {
   try {
     await upsertCarrierProfile(account.accountId, {
       status: next.profile,
-      twilio_brand_sid: external.brandRegistrationSid,
+      twilio_brand_sid: external.brandRegistrationReference,
       twilio_campaign_sid: campaignSid,
       messaging_service_sid: messagingServiceSid,
       status_detail: detail,
@@ -178,7 +185,7 @@ export async function POST(request: Request) {
   await recordCarrierAction({
       accountId: account.accountId,
       action: "a2p_status_sync",
-      provider: "twilio",
+      provider: provider.identity.id,
       idempotencyKey: actionKey,
       providerIdentifier: campaignSid,
       resourceType: "carrier_profile",

@@ -10,7 +10,7 @@ export const PROVIDER_ACTION_STATUSES = [
 
 export type ProviderActionStatus = typeof PROVIDER_ACTION_STATUSES[number];
 export type RetryEligibility = "automatic" | "manual" | "never";
-export type ProviderName = "twilio" | "openai" | "resend" | "stripe" | "supabase" | "relay";
+export type ProviderName = "twilio" | "dial" | "openai" | "resend" | "stripe" | "supabase" | "relay";
 
 export type FailurePresentation = {
   customerExplanation: string;

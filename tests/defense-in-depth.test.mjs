@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import { telephonyProviderMock } from "./helpers/telephony-provider.mjs";
 
 async function loadTsModule(path, mocks) {
   const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
@@ -51,7 +52,14 @@ test("Twilio media URL allowlist only accepts https api.twilio.com URLs", async 
       },
     },
     "@/lib/email": { notifyAdminOperationalIssue: async () => ({ sent: true }) },
+    "@/lib/phone": { phoneLast4: (value) => String(value ?? "").slice(-4) },
     "@/lib/supabase": { logWebhookEvent: async () => {} },
+    "@/lib/telephony/owner-sms": { sendOwnerSms: async () => true },
+    "@/lib/telephony/providers/twilio": {
+      fetchTwilioA2pRegistrationEvidence: async () => ({}),
+      twilioClient: {},
+    },
+    "@/lib/telephony/registry": { getTelephonyProvider: () => ({}) },
     "@/lib/twilio-webhook-urls": {
       twilioWebhookUrlCandidates: ({ requestUrl }) => [requestUrl],
     },
@@ -65,25 +73,20 @@ test("Twilio media URL allowlist only accepts https api.twilio.com URLs", async 
   assert.equal(isTrustedTwilioMediaUrl(null), false);
 });
 
-test("recording playback falls back to api.twilio.com for untrusted stored URLs", async () => {
-  const fetchedUrls = [];
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async (url) => {
-    fetchedUrls.push(String(url));
-    return new Response("audio", {
-      status: 200,
-      headers: { "content-type": "audio/mpeg" },
-    });
-  };
-
-  try {
-    const { GET } = await loadTsModule("app/api/recordings/[recordingSid]/route.ts", {
-      "@/lib/env": {
-        env: {
-          twilioAccountSid: "AC_test",
-          twilioAuthToken: "token",
-        },
-      },
+test("recording playback ignores untrusted stored URLs and fetches by provider identifier", async () => {
+  const fetchedIdentifiers = [];
+  const { registry } = telephonyProviderMock({
+    fetchRecordingAudio: async (identifier) => {
+      fetchedIdentifiers.push(identifier);
+      return {
+        recordingId: identifier,
+        audio: new Blob(["audio"]),
+        contentType: "audio/mpeg",
+        contentLength: 5,
+      };
+    },
+  });
+  const { GET } = await loadTsModule("app/api/recordings/[recordingSid]/route.ts", {
       "@/lib/auth": {
         requireAccountUserJson: async () => ({
           session: { accountId: "acct-1" },
@@ -96,26 +99,19 @@ test("recording playback falls back to api.twilio.com for untrusted stored URLs"
           recording_url: "https://evil.example/x.mp3",
         }),
       },
-      "@/lib/twilio": {
-        isTrustedTwilioMediaUrl: (value) => {
-          if (!value) return false;
-          const url = new URL(value);
-          return url.protocol === "https:" && url.hostname === "api.twilio.com";
-        },
-      },
-    });
+      "@/lib/telephony/registry": registry,
+  });
 
-    const recordingSid = "RE1234567890abcdef1234567890abcdef";
-    const response = await GET(
-      new Request(`https://example.com/api/recordings/${recordingSid}`),
-      { params: Promise.resolve({ recordingSid }) },
-    );
+  const recordingSid = "RE1234567890abcdef1234567890abcdef";
+  const response = await GET(
+    new Request(`https://example.com/api/recordings/${recordingSid}`),
+    { params: Promise.resolve({ recordingSid }) },
+  );
 
-    assert.equal(response.status, 200);
-    assert.equal(fetchedUrls.length, 1);
-    assert.equal(new URL(fetchedUrls[0]).hostname, "api.twilio.com");
-    assert.doesNotMatch(fetchedUrls[0], /evil\.example/);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  assert.equal(response.status, 200);
+  assert.deepEqual(fetchedIdentifiers, [{
+    provider: "twilio",
+    kind: "recording",
+    value: recordingSid,
+  }]);
 });

@@ -9,6 +9,7 @@ import type {
   TelephonyProvider,
   TelephonyProviderCapabilities,
 } from "@/lib/telephony/provider";
+import { TelephonyProviderError } from "@/lib/telephony/provider";
 import {
   providerIdentifier,
   type CallCompletionOutcome,
@@ -18,7 +19,6 @@ import {
   type ProviderResourceKind,
   type TelephonyEventType,
 } from "@/lib/telephony/types";
-import { fetchA2pRegistrationEvidence, twilioClient } from "@/lib/twilio";
 
 const PROVIDER_ID = "twilio";
 const RECORDING_DOWNLOAD_TIMEOUT_MS = 15_000;
@@ -27,6 +27,7 @@ export const TWILIO_CAPABILITIES: TelephonyProviderCapabilities = Object.freeze(
   outboundSms: "supported",
   messageDeliveryUpdates: "supported",
   recordingAudio: "supported",
+  resourceDeletion: "supported",
   numberSearch: "supported",
   numberConfiguration: "supported",
   numberRelease: "supported",
@@ -39,6 +40,7 @@ export const TWILIO_CAPABILITIES: TelephonyProviderCapabilities = Object.freeze(
 
 type TwilioClientLike = {
   messages: {
+    (sid: string): { remove(): Promise<boolean> };
     create(input: {
       from: string;
       to: string;
@@ -46,6 +48,7 @@ type TwilioClientLike = {
       statusCallback?: string;
     }): Promise<{ sid: string; status: string | null }>;
   };
+  recordings(sid: string): { remove(): Promise<boolean> };
   availablePhoneNumbers(countryCode: string): {
     local: {
       list(input: {
@@ -85,6 +88,48 @@ type TwilioClientLike = {
   };
 };
 
+export const twilioClient = twilio(env.twilioAccountSid, env.twilioAuthToken, {
+  timeout: 10_000,
+});
+
+export async function fetchTwilioA2pRegistrationEvidence(
+  messagingServiceSid: string,
+  campaignSid: string,
+  relayPhoneNumber: string,
+) {
+  if (!/^MG[0-9a-fA-F]{32}$/.test(messagingServiceSid)) {
+    throw new Error("Invalid Twilio Messaging Service SID.");
+  }
+  if (!/^QE[0-9a-fA-F]{32}$/.test(campaignSid)) {
+    throw new Error("Invalid Twilio A2P Campaign SID.");
+  }
+  if (!/^\+[1-9]\d{7,14}$/.test(relayPhoneNumber)) {
+    throw new Error("A valid Relay phone number is required for A2P verification.");
+  }
+
+  const serviceContext = twilioClient.messaging.v1.services(messagingServiceSid);
+  const [campaign, service, servicePhoneNumbers, incomingPhoneNumbers] = await Promise.all([
+    serviceContext.usAppToPerson(campaignSid).fetch(),
+    serviceContext.fetch(),
+    serviceContext.phoneNumbers.list({ limit: 1000 }),
+    twilioClient.incomingPhoneNumbers.list({ phoneNumber: relayPhoneNumber, limit: 2 }),
+  ]);
+  const incomingNumber = incomingPhoneNumbers.find(
+    (number) => number.phoneNumber === relayPhoneNumber,
+  );
+
+  return {
+    campaignStatus: campaign.campaignStatus,
+    brandRegistrationSid: campaign.brandRegistrationSid,
+    errors: campaign.errors,
+    serviceA2pRegistered: service.usAppToPersonRegistered === true,
+    relayNumberInSenderPool: servicePhoneNumbers.some(
+      (number) => number.phoneNumber === relayPhoneNumber,
+    ),
+    relayNumberSmsCapable: incomingNumber?.capabilities?.sms === true,
+  };
+}
+
 type TwilioProviderDependencies = {
   client: TwilioClientLike;
   accountSid: string;
@@ -96,7 +141,7 @@ type TwilioProviderDependencies = {
     url: string,
     params: Record<string, string>,
   ) => boolean;
-  fetchRegistrationEvidence: typeof fetchA2pRegistrationEvidence;
+  fetchRegistrationEvidence: typeof fetchTwilioA2pRegistrationEvidence;
   createVoiceResponse: () => TwilioVoiceResponse;
 };
 
@@ -199,7 +244,7 @@ function normalizeEvent(
   const fields = recordPayload(payload);
   const occurredAt = normalizedTimestamp(fields.Timestamp ?? fields.DateCreated, receivedAt);
   const providerEventId = (fields.EventSid ?? "").trim() || null;
-  const base = { provider: PROVIDER_ID, occurredAt, receivedAt, providerEventId };
+  const base = { provider: PROVIDER_ID, occurredAt, receivedAt, providerEventId } as const;
   const callId = () => providerIdentifier({ provider: PROVIDER_ID, kind: "call", value: fields.CallSid ?? "" });
   const parentCallId = () => (fields.ParentCallSid ?? "").trim()
     ? providerIdentifier({ provider: PROVIDER_ID, kind: "call", value: fields.ParentCallSid })
@@ -326,7 +371,14 @@ export function createTwilioProvider(
         cache: "no-store",
         signal: AbortSignal.timeout(RECORDING_DOWNLOAD_TIMEOUT_MS),
       });
-      if (!response.ok) throw new Error(`Twilio recording download failed with ${response.status}.`);
+      if (!response.ok) {
+        throw new TelephonyProviderError(
+          `Twilio recording download failed with ${response.status}.`,
+          PROVIDER_ID,
+          "fetch_recording",
+          response.status,
+        );
+      }
       const contentLengthHeader = response.headers.get("content-length");
       const contentLength = contentLengthHeader === null ? Number.NaN : Number(contentLengthHeader);
       return {
@@ -335,6 +387,30 @@ export function createTwilioProvider(
         contentType: response.headers.get("content-type"),
         contentLength: Number.isFinite(contentLength) ? contentLength : null,
       };
+    },
+
+    async deleteResource(identifier) {
+      const resourceKind = (identifier as ProviderIdentifier).kind;
+      if (resourceKind !== "recording" && resourceKind !== "message") {
+        throw new Error(`Twilio cannot delete a ${resourceKind} through deleteResource.`);
+      }
+      assertTwilioIdentifier(identifier, identifier.kind);
+      try {
+        if (identifier.kind === "recording") {
+          await client.recordings(identifier.value).remove();
+        } else {
+          await client.messages(identifier.value).remove();
+        }
+        return "deleted";
+      } catch (error) {
+        if (
+          error && typeof error === "object" &&
+          (("status" in error && error.status === 404) || ("code" in error && error.code === 20404))
+        ) {
+          return "not_found";
+        }
+        throw error;
+      }
     },
 
     async findNumbers(input) {
@@ -484,11 +560,11 @@ function renderInstruction(response: TwilioVoiceResponse, instruction: RelayVoic
 }
 
 export const twilioProvider = createTwilioProvider({
-  client: twilioClient,
+  client: twilioClient as unknown as TwilioClientLike,
   accountSid: env.twilioAccountSid,
   authToken: env.twilioAuthToken,
   fetchImpl: fetch,
   validateRequest: twilio.validateRequest,
-  fetchRegistrationEvidence: fetchA2pRegistrationEvidence,
+  fetchRegistrationEvidence: fetchTwilioA2pRegistrationEvidence,
   createVoiceResponse: () => new twilio.twiml.VoiceResponse(),
 });

@@ -1,8 +1,8 @@
 export type A2pSyncEvidence = {
-  campaignStatus: string | null | undefined;
-  serviceA2pRegistered: boolean;
-  relayNumberInSenderPool: boolean;
-  relayNumberSmsCapable: boolean;
+  registrationStatus: string | null | undefined;
+  messagingServiceRegistered: boolean;
+  numberInSenderPool: boolean;
+  numberSmsCapable: boolean;
 };
 
 export type A2pSyncDecision = {
@@ -12,7 +12,7 @@ export type A2pSyncDecision = {
 };
 
 export function deriveA2pSyncDecision(evidence: A2pSyncEvidence): A2pSyncDecision | null {
-  const campaignStatus = (evidence.campaignStatus ?? "").toUpperCase();
+  const campaignStatus = (evidence.registrationStatus ?? "").toUpperCase();
 
   if (campaignStatus === "FAILED" || campaignStatus === "SUSPENDED") {
     return {
@@ -36,7 +36,7 @@ export function deriveA2pSyncDecision(evidence: A2pSyncEvidence): A2pSyncDecisio
 
   if (campaignStatus !== "VERIFIED") return null;
 
-  if (!evidence.serviceA2pRegistered) {
+  if (!evidence.messagingServiceRegistered) {
     return {
       profile: "in_progress",
       a2p: "in_progress",
@@ -44,7 +44,7 @@ export function deriveA2pSyncDecision(evidence: A2pSyncEvidence): A2pSyncDecisio
     };
   }
 
-  if (!evidence.relayNumberInSenderPool) {
+  if (!evidence.numberInSenderPool) {
     return {
       profile: "needs_changes",
       a2p: "needs_attention",
@@ -52,7 +52,7 @@ export function deriveA2pSyncDecision(evidence: A2pSyncEvidence): A2pSyncDecisio
     };
   }
 
-  if (!evidence.relayNumberSmsCapable) {
+  if (!evidence.numberSmsCapable) {
     return {
       profile: "needs_changes",
       a2p: "needs_attention",

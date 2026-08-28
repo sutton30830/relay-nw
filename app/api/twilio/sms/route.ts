@@ -1,6 +1,7 @@
 import { env } from "@/lib/env";
 import { notifyAdminOperationalIssue, notifyOwnerInboundReply, notifyOwnerOptOut } from "@/lib/email";
 import { normalizePhoneNumber } from "@/lib/phone";
+import { getTelephonyProvider } from "@/lib/telephony/registry";
 import {
   assertTenantAccount,
   createInboundMessageIfNew,
@@ -21,7 +22,6 @@ import {
   rejectInvalidTwilioSignature,
   sendOwnerSms,
   summarizeTwilioRequest,
-  twilioClient,
   validateTwilioWebhook,
 } from "@/lib/twilio";
 import { handleUnresolvedTwilioAccount } from "@/lib/twilio/unresolved-account";
@@ -202,18 +202,22 @@ async function handleInboundSms(
 
   if (shouldTextOwner) {
     const body = `New Relay reply from ${input.from}:\n${input.body}\n\nOpen leads: ${env.appBaseUrl}/leads`;
+    const actionKey = `owner_sms:inbound_reply:${correlationId}`;
     if (typeof sendOwnerSms === "function") {
       await sendOwnerSms({
         account,
         context: "inbound caller reply",
-        actionKey: `owner_sms:inbound_reply:${correlationId}`,
+        actionKey,
         body,
       });
     } else {
-      await twilioClient.messages.create({
+      const provider = getTelephonyProvider();
+      await provider.sendSms({
         to: account.ownerPhoneNumber,
         from: account.twilioPhoneNumber,
         body,
+        idempotencyKey: actionKey,
+        deliveryCallback: null,
       });
     }
 

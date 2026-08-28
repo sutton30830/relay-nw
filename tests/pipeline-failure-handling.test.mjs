@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import { telephonyProviderMock } from "./helpers/telephony-provider.mjs";
 
 // Failure-injection coverage for the missed-call -> SMS -> lead pipeline.
 // Every step must either succeed visibly or fail visibly: a failure anywhere must end
@@ -107,10 +108,12 @@ function makeMissedCallMocks(overrides = {}) {
       ...overrides.twilioMessages,
     },
   };
+  const { registry: telephonyRegistry } = telephonyProviderMock({ twilioClient });
 
   const mocks = {
     "@/lib/env": { env: { appBaseUrl: "http://localhost:3000" } },
     "@/lib/phone": { normalizePhoneNumber: (value) => value },
+    "@/lib/telephony/registry": telephonyRegistry,
     "@/lib/supabase": supabase,
     "@/lib/supabase/accounts": { envAccountConfig: () => ACCOUNT },
     "@/lib/twilio": {
@@ -328,6 +331,15 @@ test("owner SMS failure never breaks the customer-facing flow", async () => {
 test("manual replies request delivery callbacks and record Twilio's initial status", async () => {
   const twilioSends = [];
   const recordedMessages = [];
+  const twilioClient = {
+    messages: {
+      create: async (input) => {
+        twilioSends.push(input);
+        return { sid: "SM_manual_1", status: "queued" };
+      },
+    },
+  };
+  const { registry: telephonyRegistry } = telephonyProviderMock({ twilioClient });
   const { POST } = await loadTsModule("app/api/leads/[id]/reply/route.ts", {
     "@/lib/auth": {
       requireWriteAccessJson: async () => ({
@@ -336,6 +348,7 @@ test("manual replies request delivery callbacks and record Twilio's initial stat
       }),
     },
     "@/lib/env": { env: { appBaseUrl: "https://relay.example" } },
+    "@/lib/telephony/registry": telephonyRegistry,
     "@/lib/supabase": {
       createMessageIfNew: async (input) => recordedMessages.push(input),
       getLeadByIdForAccount: async () => ({
@@ -349,14 +362,6 @@ test("manual replies request delivery callbacks and record Twilio's initial stat
     },
     "@/lib/twilio": {
       phoneLast4: (phone) => phone.slice(-4),
-      twilioClient: {
-        messages: {
-          create: async (input) => {
-            twilioSends.push(input);
-            return { sid: "SM_manual_1", status: "queued" };
-          },
-        },
-      },
     },
   });
 
@@ -615,6 +620,18 @@ test("classifyPriority: emergencies are fast, time-sensitive is today, quotes ar
 });
 
 function makeVoicemailMocks(state) {
+  const { registry: telephonyRegistry } = telephonyProviderMock({
+    fetchRecordingAudio: async (identifier) => {
+      const response = await fetch(`https://api.twilio.test/recordings/${identifier.value}.mp3`);
+      if (!response.ok) throw new Error(`Twilio recording download failed with ${response.status}.`);
+      return {
+        recordingId: identifier,
+        audio: await response.blob(),
+        contentType: response.headers.get("content-type"),
+        contentLength: null,
+      };
+    },
+  });
   return {
     "@/lib/env": {
       env: {
@@ -631,6 +648,7 @@ function makeVoicemailMocks(state) {
           ? { level: "fast", reason: "mentioned flooding" }
           : { level: "normal", reason: null },
     },
+    "@/lib/telephony/registry": telephonyRegistry,
     "@/lib/voicemail-confidence": voicemailConfidenceModule,
     "@/lib/voicemail-summary": voicemailSummaryModule,
     "@/lib/voicemail-quality": voicemailQualityModule,

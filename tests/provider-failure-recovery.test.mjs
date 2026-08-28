@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import { telephonyProviderMock } from "./helpers/telephony-provider.mjs";
 
 async function loadTsModule(path, mocks = {}) {
   const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
@@ -89,6 +90,16 @@ function replyRouteMocks(overrides = {}) {
     state.actions.set(idempotencyKey, { ...action, internalStatus: "processing" });
     return true;
   };
+  const twilioClient = {
+    messages: {
+      create: async () => {
+        state.sends += 1;
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return { sid: "SM_once", status: "queued" };
+      },
+    },
+  };
+  const { registry: telephonyRegistry } = telephonyProviderMock({ twilioClient });
   const mocks = {
     "@/lib/auth": {
       requireWriteAccessJson: async () => ({
@@ -100,6 +111,7 @@ function replyRouteMocks(overrides = {}) {
       }),
     },
     "@/lib/env": { env: { appBaseUrl: "https://relay.example" } },
+    "@/lib/telephony/registry": telephonyRegistry,
     "@/lib/supabase": {
       recordProviderAction,
       claimProviderActionRetry,
@@ -116,15 +128,6 @@ function replyRouteMocks(overrides = {}) {
     },
     "@/lib/twilio": {
       phoneLast4: (phone) => phone.slice(-4),
-      twilioClient: {
-        messages: {
-          create: async () => {
-            state.sends += 1;
-            await new Promise((resolve) => setTimeout(resolve, 5));
-            return { sid: "SM_once", status: "queued" };
-          },
-        },
-      },
     },
     ...overrides,
   };

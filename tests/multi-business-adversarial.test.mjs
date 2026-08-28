@@ -9,6 +9,7 @@ import {
   BUSINESSES,
   createTwoBusinessFixture,
 } from "./helpers/two-business-fixture.mjs";
+import { telephonyProviderMock } from "./helpers/telephony-provider.mjs";
 
 async function loadTsModule(path, mocks) {
   const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
@@ -452,6 +453,21 @@ test("settings, billing, Operations, and team endpoints derive their tenant from
 
 async function loadReplyRoute(fixture, business) {
   const session = fixture.sessionFor(business, "owner");
+  const twilioClient = {
+    messages: {
+      create: async (input) => {
+        const sid = `SM${String(fixture.state.providerActions.length + 1).padStart(32, "0")}`;
+        fixture.state.providerActions.push({
+          kind: "manual_sms",
+          accountId: business.accountId,
+          sid,
+          ...input,
+        });
+        return { sid, status: "queued" };
+      },
+    },
+  };
+  const { registry } = telephonyProviderMock({ twilioClient });
   return loadTsModule("app/api/leads/[id]/reply/route.ts", {
     "@/lib/auth": {
       requireWriteAccessJson: async () => ({ session, response: null }),
@@ -496,23 +512,8 @@ async function loadReplyRoute(fixture, business) {
         if (lead) lead.status = input.status;
       },
     },
-    "@/lib/twilio": {
-      phoneLast4: (value) => String(value ?? "").slice(-4),
-      twilioClient: {
-        messages: {
-          create: async (input) => {
-            const sid = `SM${String(fixture.state.providerActions.length + 1).padStart(32, "0")}`;
-            fixture.state.providerActions.push({
-              kind: "manual_sms",
-              accountId: business.accountId,
-              sid,
-              ...input,
-            });
-            return { sid, status: "queued" };
-          },
-        },
-      },
-    },
+    "@/lib/twilio": { phoneLast4: (value) => String(value ?? "").slice(-4) },
+    "@/lib/telephony/registry": registry,
   });
 }
 
@@ -566,73 +567,62 @@ test("concurrent replies and recording playback remain in the authenticated acco
   );
 
   const recordingFetches = [];
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async (url) => {
-    recordingFetches.push(String(url));
-    return new Response("audio", {
-      status: 200,
-      headers: { "content-type": "audio/mpeg" },
+  async function recordingRoute(business) {
+    const { registry } = telephonyProviderMock({
+      fetchRecordingAudio: async (identifier) => {
+        recordingFetches.push(identifier);
+        return {
+          recordingId: identifier,
+          audio: new Blob(["audio"]),
+          contentType: "audio/mpeg",
+          contentLength: 5,
+        };
+      },
     });
-  };
-
-  try {
-    async function recordingRoute(business) {
-      return loadTsModule("app/api/recordings/[recordingSid]/route.ts", {
-        "@/lib/auth": {
-          requireAccountUserJson: async () => ({
-            session: fixture.sessionFor(business),
-            response: null,
-          }),
-        },
-        "@/lib/env": {
-          env: {
-            twilioAccountSid: "ACfixture",
-            twilioAuthToken: "fixture-token",
-          },
-        },
-        "@/lib/supabase": {
-          getLeadRecordingForPlayback: async (recordingSid, accountId) =>
-            fixture.state.leads.find(
-              (lead) =>
-                lead.account_id === accountId &&
-                lead.recording_sid === recordingSid,
-            ) ?? null,
-        },
-        "@/lib/twilio": {
-          isTrustedTwilioMediaUrl: (url) =>
-            typeof url === "string" && url.startsWith("https://api.twilio.com/"),
-        },
-      });
-    }
-
-    const [recordingA, recordingB] = await Promise.all([
-      recordingRoute(BUSINESS_A),
-      recordingRoute(BUSINESS_B),
-    ]);
-    const [playA, playB, crossPlay] = await Promise.all([
-      recordingA.GET(
-        new Request("https://relay.test/api/recordings/a"),
-        { params: Promise.resolve({ recordingSid: BUSINESS_A.recordingSid }) },
-      ),
-      recordingB.GET(
-        new Request("https://relay.test/api/recordings/b"),
-        { params: Promise.resolve({ recordingSid: BUSINESS_B.recordingSid }) },
-      ),
-      recordingA.GET(
-        new Request("https://relay.test/api/recordings/forged"),
-        { params: Promise.resolve({ recordingSid: BUSINESS_B.recordingSid }) },
-      ),
-    ]);
-
-    assert.equal(playA.status, 200);
-    assert.equal(playB.status, 200);
-    assert.equal(crossPlay.status, 404);
-    assert.equal(recordingFetches.length, 2);
-    assert.ok(recordingFetches.some((url) => url.includes(BUSINESS_A.recordingSid)));
-    assert.ok(recordingFetches.some((url) => url.includes(BUSINESS_B.recordingSid)));
-  } finally {
-    globalThis.fetch = originalFetch;
+    return loadTsModule("app/api/recordings/[recordingSid]/route.ts", {
+      "@/lib/auth": {
+        requireAccountUserJson: async () => ({
+          session: fixture.sessionFor(business),
+          response: null,
+        }),
+      },
+      "@/lib/supabase": {
+        getLeadRecordingForPlayback: async (recordingSid, accountId) =>
+          fixture.state.leads.find(
+            (lead) =>
+              lead.account_id === accountId &&
+              lead.recording_sid === recordingSid,
+          ) ?? null,
+      },
+      "@/lib/telephony/registry": registry,
+    });
   }
+
+  const [recordingA, recordingB] = await Promise.all([
+    recordingRoute(BUSINESS_A),
+    recordingRoute(BUSINESS_B),
+  ]);
+  const [playA, playB, crossPlay] = await Promise.all([
+    recordingA.GET(
+      new Request("https://relay.test/api/recordings/a"),
+      { params: Promise.resolve({ recordingSid: BUSINESS_A.recordingSid }) },
+    ),
+    recordingB.GET(
+      new Request("https://relay.test/api/recordings/b"),
+      { params: Promise.resolve({ recordingSid: BUSINESS_B.recordingSid }) },
+    ),
+    recordingA.GET(
+      new Request("https://relay.test/api/recordings/forged"),
+      { params: Promise.resolve({ recordingSid: BUSINESS_B.recordingSid }) },
+    ),
+  ]);
+
+  assert.equal(playA.status, 200);
+  assert.equal(playB.status, 200);
+  assert.equal(crossPlay.status, 404);
+  assert.equal(recordingFetches.length, 2);
+  assert.ok(recordingFetches.some((identifier) => identifier.value === BUSINESS_A.recordingSid));
+  assert.ok(recordingFetches.some((identifier) => identifier.value === BUSINESS_B.recordingSid));
 });
 
 test("concurrent duplicate missed calls create one lead and one automatic caller text per business", async () => {
@@ -697,6 +687,16 @@ test("concurrent duplicate missed calls create one lead and one automatic caller
       return { inserted: true };
     },
   };
+  const twilioClient = {
+    messages: {
+      create: async (input) => {
+        const sid = `SM${String(fixture.state.providerActions.length + 1).padStart(32, "1")}`;
+        fixture.state.providerActions.push({ kind: "missed_call_sms", sid, ...input });
+        return { sid };
+      },
+    },
+  };
+  const { registry } = telephonyProviderMock({ twilioClient });
   const missedCall = await loadTsModule("lib/missed-call.ts", {
     "@/lib/env": { env: { appBaseUrl: "https://relay.test" } },
     "@/lib/phone": { normalizePhoneNumber: (value) => value },
@@ -709,16 +709,8 @@ test("concurrent duplicate missed calls create one lead and one automatic caller
     "@/lib/twilio": {
       missedCallSmsBodyForAccount: (account) => `Missed call for ${account.businessName}`,
       phoneLast4: (value) => String(value ?? "").slice(-4),
-      twilioClient: {
-        messages: {
-          create: async (input) => {
-            const sid = `SM${String(fixture.state.providerActions.length + 1).padStart(32, "1")}`;
-            fixture.state.providerActions.push({ kind: "missed_call_sms", sid, ...input });
-            return { sid };
-          },
-        },
-      },
     },
+    "@/lib/telephony/registry": registry,
     "@/lib/email": {
       notifyAdminOperationalIssue: async () => {},
       notifyOwnerNewMissedCallLead: async (input) => {
@@ -820,6 +812,15 @@ test("concurrent inbound SMS is deduplicated per account and conflicting SID/num
     [BUSINESS_B.accountId]: `SM${"f".repeat(32)}`,
   };
   const claimedInbound = new Set();
+  const twilioClient = {
+    messages: {
+      create: async (input) => {
+        fixture.state.providerActions.push({ kind: "owner_forward", ...input });
+        return { sid: `SM${"9".repeat(32)}` };
+      },
+    },
+  };
+  const { registry } = telephonyProviderMock({ twilioClient });
   const route = await loadTsModule("app/api/twilio/sms/route.ts", {
     "@/lib/env": {
       env: { allowUnsignedTwilioWebhooks: false, appBaseUrl: "https://relay.test" },
@@ -872,15 +873,8 @@ test("concurrent inbound SMS is deduplicated per account and conflicting SID/num
     },
     "@/lib/twilio": {
       ...common.twilio,
-      twilioClient: {
-        messages: {
-          create: async (input) => {
-            fixture.state.providerActions.push({ kind: "owner_forward", ...input });
-            return { sid: `SM${"9".repeat(32)}` };
-          },
-        },
-      },
     },
+    "@/lib/telephony/registry": registry,
     "@/lib/twilio/unresolved-account": common.unresolvedHandler,
     "@/lib/twiml": common.twiml,
   });

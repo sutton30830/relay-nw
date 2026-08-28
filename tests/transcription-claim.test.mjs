@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import { telephonyProviderMock } from "./helpers/telephony-provider.mjs";
 
 async function loadTsModule(path, mocks) {
   const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
@@ -183,6 +184,18 @@ function makeVoicemailMocks({
     ownerPush: [],
     adminIssues: [],
   };
+  const { registry: telephonyRegistry } = telephonyProviderMock({
+    fetchRecordingAudio: async (identifier) => {
+      const response = await fetch(`https://api.twilio.com/Recordings/${identifier.value}.mp3`);
+      if (!response.ok) throw new Error(`Twilio recording download failed with ${response.status}.`);
+      return {
+        recordingId: identifier,
+        audio: await response.blob(),
+        contentType: response.headers.get("content-type"),
+        contentLength: null,
+      };
+    },
+  });
 
   const mocks = {
     "@/lib/env": {
@@ -198,6 +211,7 @@ function makeVoicemailMocks({
     "@/lib/priority": {
       classifyPriority: () => priority,
     },
+    "@/lib/telephony/registry": telephonyRegistry,
     "@/lib/voicemail-confidence": voicemailConfidenceModule,
     "@/lib/voicemail-summary": voicemailSummaryModule,
     "@/lib/voicemail-quality": voicemailQualityModule,

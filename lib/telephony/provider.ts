@@ -13,6 +13,7 @@ export const TELEPHONY_CAPABILITY_KEYS = [
   "outboundSms",
   "messageDeliveryUpdates",
   "recordingAudio",
+  "resourceDeletion",
   "numberSearch",
   "numberConfiguration",
   "numberRelease",
@@ -61,6 +62,21 @@ export type RecordingAudio = {
   contentType: string | null;
   contentLength: number | null;
 };
+
+export type DeletableProviderIdentifier = MessageIdentifier | RecordingIdentifier;
+
+export class TelephonyProviderError extends Error {
+  constructor(
+    message: string,
+    readonly provider: TelephonyProviderId,
+    readonly operation: string,
+    readonly status: number | null = null,
+    readonly code: string | null = null,
+  ) {
+    super(message);
+    this.name = "TelephonyProviderError";
+  }
+}
 
 export type NumberCapabilities = {
   voice: boolean;
@@ -166,6 +182,7 @@ export interface TelephonyProvider {
 
   sendSms(input: SendSmsInput): Promise<SendSmsResult>;
   fetchRecordingAudio(recordingId: RecordingIdentifier): Promise<RecordingAudio>;
+  deleteResource(identifier: DeletableProviderIdentifier): Promise<"deleted" | "not_found">;
   findNumbers(input: FindNumbersInput): Promise<AvailableNumber[]>;
   configureNumber(input: {
     phoneNumber: string;
