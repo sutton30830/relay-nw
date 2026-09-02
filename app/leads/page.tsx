@@ -1,6 +1,7 @@
 import { LeadsList } from "@/app/leads/leads-list";
 import { publicBusinessName } from "@/lib/display-name";
 import { isRelayOperator, requireAccountUser } from "@/lib/auth";
+import { loadOwnerServiceStatus } from "@/lib/onboarding-readiness";
 import {
   DEFAULT_LEADS_PAGE_LIMIT,
   getLeadInboxCountsForAccount,
@@ -44,7 +45,7 @@ export default async function LeadsPage({
 
   // Counts span the whole account (every filter pill), so they're a separate
   // query from the current filtered/searched page of rows.
-  const [leadPage, counts] = await Promise.all([
+  const [leadPage, counts, serviceStatus] = await Promise.all([
     getLeadInboxPageForAccount(accountId, {
       limit: DEFAULT_LEADS_PAGE_LIMIT,
       offset,
@@ -52,6 +53,7 @@ export default async function LeadsPage({
       query,
     }),
     getLeadInboxCountsForAccount(accountId),
+    loadOwnerServiceStatus(accountId, account),
   ]);
 
   return (
@@ -62,6 +64,7 @@ export default async function LeadsPage({
         showOperations={isRelayOperator(session)}
         leads={leadPage.leads}
         counts={counts}
+        serviceStatus={serviceStatus}
         callCounts={leadPage.callCounts ?? {}}
         pagination={{
           page,

@@ -214,7 +214,7 @@ export default async function ReportsPage() {
           <footer className="report-footer" aria-label="Statement totals">
             <div className="report-footer__lifetime" aria-label="Lifetime totals">
               <span>Current mailbox</span>
-              {bookedValue ? <strong>{bookedValue} booked</strong> : <strong>No booked value entered</strong>}
+              {inboxCounts.bookedValueCents > 0 ? <strong>{bookedValue} booked</strong> : <strong>No booked value entered</strong>}
               <span>
                 {pluralize(inboxCounts.booked, "job")} · {pluralize(inboxCounts.all, "lead")} in inbox
               </span>

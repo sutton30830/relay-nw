@@ -126,3 +126,8 @@ test("hero never renders a giant zero dollar figure", () => {
     assert.doesNotMatch(state.figure, /^\$0\b/);
   }
 });
+
+test("single counts are not pluralized", () => {
+  assert.equal(hero({ booked: 1, bookedMissingValue: 1 }).unitLine, "job booked from Relay leads");
+  assert.equal(hero({ missedCalls: 1 }).unitLine, "lead in your inbox");
+});

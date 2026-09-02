@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { Icon } from "@/components/icon";
+import type { OwnerServiceStatus } from "@/lib/owner-service-status";
 import type { Lead, LeadInboxCounts, LeadInboxFilter } from "@/lib/supabase";
 import { FILTERS } from "./_constants";
 import { AppHeader } from "./_components/app-header";
 import { LeadCard } from "./_components/lead-card";
 import { LeadDrawer } from "./_components/lead-drawer";
 import { PageHead } from "./_components/page-head";
+import { ServiceStatusStrip } from "./_components/service-status";
 import { useLeadsInbox } from "./_hooks/use-leads-inbox";
 
 export function LeadsList({
@@ -16,6 +18,7 @@ export function LeadsList({
   switchAccountHref,
   showOperations,
   counts,
+  serviceStatus,
   callCounts,
   pagination,
 }: {
@@ -24,6 +27,7 @@ export function LeadsList({
   switchAccountHref?: string;
   showOperations?: boolean;
   counts: LeadInboxCounts;
+  serviceStatus?: OwnerServiceStatus;
   callCounts: Record<string, number>;
   pagination: {
     page: number;
@@ -109,8 +113,14 @@ export function LeadsList({
       <PageHead
         eyebrow="Inbox"
         title="Inbox"
-        subtitle="Newest missed calls first. Call back, text, or update the status from each card."
+        subtitle={
+          serviceStatus && !serviceStatus.canTextFromRelay
+            ? "Newest missed calls first. Call back, text from your phone, or update the status from each card."
+            : "Newest missed calls first. Call back, text, or update the status from each card."
+        }
       />
+
+      {serviceStatus ? <ServiceStatusStrip status={serviceStatus} /> : null}
 
       <nav className="filters clean-scroll" aria-label="Filter leads" aria-busy={inbox.isSearching}>
         {FILTERS.map((item) => {
@@ -156,6 +166,7 @@ export function LeadsList({
             key={lead.id}
             lead={lead}
             now={inbox.now}
+            textingFromRelay={serviceStatus?.canTextFromRelay ?? true}
             callCount={inbox.phoneCallCounts.get(lead.phone) ?? 1}
             // Real leads navigate to their conversation page via a real link
             // (keyboard, middle-click, prefetch). Historical in-memory sample
