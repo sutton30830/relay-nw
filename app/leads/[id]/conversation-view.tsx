@@ -10,6 +10,7 @@ import type { InboundMessage, Lead, LeadStatus, OutboundMessage, ReplyPriorityOv
 import { smsDeliveryIssue, smsDeliveryStatusLabel } from "@/lib/twilio/sms-delivery";
 import { hasUsableVoicemail } from "@/lib/voicemail-quality";
 import { patchLead, requestVoicemailSummary, sendLeadReply } from "../_api";
+import { VoicemailCorrections } from "../_components/voicemail-corrections";
 import { VoicemailPlayer } from "../_components/voicemail-player";
 import { formatPhone, getLeadPriority, humanVoicemailError, initials, isBookedLead, sourceLabel, voicemailRecoveryAction } from "../_utils";
 import { BookedToggle, BookedValueInput, PriorityControl, StatusControl } from "../_components/controls";
@@ -81,6 +82,8 @@ export function ConversationView({
   // same paid retry again on the next render.
   const [summaryUnavailableIds, setSummaryUnavailableIds] = useState<Set<string>>(() => new Set());
   const [summaryErrors, setSummaryErrors] = useState<Record<string, string>>({});
+  // Owner-corrected summaries, shown immediately while the refresh catches up.
+  const [summaryOverrides, setSummaryOverrides] = useState<Record<string, string | null>>({});
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [status, setStatus] = useState<LeadStatus>(lead.status);
   const [statusSaveState, setStatusSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -438,16 +441,34 @@ export function ConversationView({
                     providerRecordingId={item.lead.recording_sid}
                     fallbackDuration={item.lead.recording_duration}
                   />
-                  {item.lead.voicemail_summary ? (
-                    <p className="convo__msg-body">{item.lead.voicemail_summary}</p>
-                  ) : null}
+                  {(() => {
+                    const shownSummary = item.lead.id in summaryOverrides
+                      ? summaryOverrides[item.lead.id]
+                      : item.lead.voicemail_summary;
+                    return shownSummary ? <p className="convo__msg-body">{shownSummary}</p> : null;
+                  })()}
                   {item.lead.voicemail_transcript ? (
                     <details className="convo__vm-transcript">
                       <summary>Transcript</summary>
                       <p>{item.lead.voicemail_transcript}</p>
                     </details>
                   ) : null}
-                  {item.lead.voicemail_transcript && !item.lead.voicemail_summary ? (
+                  {!readOnly ? (
+                    <VoicemailCorrections
+                      leadId={item.lead.id}
+                      summary={item.lead.id in summaryOverrides ? summaryOverrides[item.lead.id] : item.lead.voicemail_summary}
+                      hasTranscript={Boolean(item.lead.voicemail_transcript)}
+                      onSummarySaved={(savedLeadId, savedSummary) => {
+                        setSummaryOverrides((previous) => ({ ...previous, [savedLeadId]: savedSummary }));
+                        router.refresh();
+                      }}
+                      onDisputed={() => {
+                        setSummaryOverrides((previous) => ({ ...previous, [item.lead.id]: null }));
+                        router.refresh();
+                      }}
+                    />
+                  ) : null}
+                  {item.lead.voicemail_transcript && !item.lead.voicemail_summary && !summaryOverrides[item.lead.id] ? (
                     <p className="convo__msg-meta">
                       {summaryUnavailableIds.has(item.lead.id)
                         ? "Relay could not write a reliable summary from this transcript. The transcript is the source of truth."
@@ -467,6 +488,7 @@ export function ConversationView({
                       scheduled recovery job cannot double-run it. */}
                   {!readOnly &&
                   !summaryUnavailableIds.has(item.lead.id) &&
+                  !summaryOverrides[item.lead.id] &&
                   voicemailRecoveryAction(item.lead) ? (
                     <button
                       className="convo__vm-summarize"

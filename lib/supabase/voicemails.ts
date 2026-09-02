@@ -53,7 +53,7 @@ export async function getLeadForVoicemailTranscription(id: string, inputAccountI
 
   const { data, error } = await supabaseAdmin
     .from("leads")
-    .select("id, phone, recording_sid, recording_duration, voicemail_transcript, voicemail_summary, voicemail_transcription_status, voicemail_transcribed_at")
+    .select("id, phone, recording_sid, recording_duration, voicemail_transcript, voicemail_summary, voicemail_transcription_status, voicemail_transcription_error, voicemail_transcribed_at")
     .eq("id", id)
     .eq("account_id", accountId)
     .maybeSingle();
@@ -68,6 +68,7 @@ export async function getLeadForVoicemailTranscription(id: string, inputAccountI
     voicemail_transcript: string | null;
     voicemail_summary: string | null;
     voicemail_transcription_status: VoicemailTranscriptionStatus;
+    voicemail_transcription_error: string | null;
     voicemail_transcribed_at: string | null;
   } | null;
 }
@@ -265,6 +266,7 @@ export async function listLeadsNeedingTranscriptionRetry(
     .not("voicemail_transcription_error", "ilike", "No clear spoken message was detected%")
     .not("voicemail_transcription_error", "ilike", "No usable voicemail was recorded%")
     .not("voicemail_transcription_error", "ilike", "Relay could not confidently transcribe%")
+    .not("voicemail_transcription_error", "ilike", "You marked this transcript as wrong%")
     .is("deleted_at", null)
     .or(
       `voicemail_transcription_status.in.(pending,failed),` +

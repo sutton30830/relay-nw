@@ -3,6 +3,15 @@ export const NO_USABLE_VOICEMAIL_MESSAGE =
   "No usable voicemail was recorded. Relay did not generate a transcript.";
 export const NO_SPEECH_VOICEMAIL_MESSAGE =
   "No clear spoken message was detected. Relay did not generate a transcript.";
+// Written when the owner marks a transcript wrong. It is a human quality
+// decision, not a provider failure: monitoring treats it as an expected
+// suppression and the scheduled retry never re-transcribes over it.
+export const OWNER_DISPUTED_TRANSCRIPT_MESSAGE =
+  "You marked this transcript as wrong. Relay hid it and kept the recording.";
+
+export function isOwnerDisputedTranscript(error: string | null | undefined) {
+  return Boolean(error && /marked this transcript as wrong/i.test(error));
+}
 
 export function recordingIsTooShort(duration: number | null | undefined) {
   return typeof duration === "number" &&
