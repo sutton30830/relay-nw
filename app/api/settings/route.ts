@@ -119,7 +119,6 @@ export async function POST(request: Request) {
     !businessName ||
     !ownerPhone ||
     !ownerEmail ||
-    (session.account.callMode === "forwarding" && !publicBusinessNumber) ||
     !["generated", "recorded"].includes(greetingPreference) ||
     dialTimeout === null ||
     voicemailMax === null ||

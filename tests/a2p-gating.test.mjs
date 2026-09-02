@@ -262,6 +262,20 @@ test("owner disabling SMS never consults A2P status", async () => {
   assert.deepEqual(calls.redirects, ["/settings?saved=1"]);
 });
 
+test("owner can disable SMS without filling in an existing business phone", async () => {
+  const calls = await runSettingsPost({
+    session: makeSession({ account: { smsEnabled: true, callMode: "forwarding" } }),
+    a2pStatus: "in_progress",
+    form: settingsForm({ public_business_number: "" }),
+  });
+
+  assert.deepEqual(calls.a2pLookups, []);
+  assert.equal(calls.updates.length, 1);
+  assert.equal(calls.updates[0].update.sms_enabled, false);
+  assert.equal(calls.updates[0].update.public_business_number, null);
+  assert.deepEqual(calls.redirects, ["/settings?saved=1"]);
+});
+
 test("admin cannot mutate sms_enabled through settings", async () => {
   const calls = await runSettingsPost({
     session: makeSession({ role: "admin", account: { smsEnabled: false } }),

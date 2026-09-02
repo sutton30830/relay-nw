@@ -571,15 +571,18 @@ export default async function SettingsPage({
             <p className="form-field__hint">Sign-in email: <strong>{session.email}</strong>. Login access is managed separately so a contact edit cannot lock anyone out.</p>
 
             <Field
-              label="Existing public business number"
+              label="Existing business phone"
               hint={account.callMode === "forwarding"
-                ? "Required for forwarding instructions. This is the number customers call today."
-                : "Optional in direct mode because customers call the Relay number."}
+                ? "The number customers call today. Add it for forwarding instructions, or leave it blank and still save other settings. Any usual U.S. format works, like (206) 555-0199."
+                : "Optional. The number customers called before Relay. Any usual U.S. format works, like (206) 555-0199."}
             >
               <input
                 className="field"
                 name="public_business_number"
-                required={account.callMode === "forwarding"}
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="(206) 555-0199"
                 defaultValue={account.publicBusinessNumber ?? ""}
               />
             </Field>
