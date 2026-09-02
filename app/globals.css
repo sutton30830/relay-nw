@@ -3280,6 +3280,96 @@ code {
   line-height: 1.35;
 }
 
+/* Inbox service status: one quiet strip answering "is Relay working, and what
+   can't it do yet" before the owner reads a single lead. */
+.service-status {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  background: var(--panel);
+}
+.service-status__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.service-status__headline {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.service-status__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  color: var(--brand);
+  font-size: 13px;
+  font-weight: 700;
+}
+.service-status__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.service-status__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line-soft);
+  background: var(--panel-2);
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.2;
+}
+.service-status__title {
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 10.5px;
+}
+.service-status__label {
+  color: var(--ink-2);
+  font-weight: 600;
+}
+.service-status__item--ready {
+  border-color: color-mix(in oklab, var(--good) 35%, var(--line-soft));
+  background: var(--good-soft);
+  color: var(--good);
+}
+.service-status__item--ready .service-status__label { color: var(--good); }
+.service-status__item--attention {
+  border-color: color-mix(in oklab, var(--warn) 40%, var(--line-soft));
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.service-status__item--attention .service-status__label { color: var(--warn); }
+.service-status__item--off {
+  color: var(--ink-4);
+}
+.service-status__next {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.service-status__next strong {
+  color: var(--ink-2);
+  font-weight: 700;
+}
+
 .filters {
   display: flex;
   align-items: center;
@@ -3968,7 +4058,7 @@ code {
 }
 .customer-setup-overview__states {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0;
   border-top: 1px solid var(--line-soft);
 }
@@ -7071,6 +7161,44 @@ code {
   font-size: 11px;
   color: var(--ink-4);
 }
+/* Conversation footer while texting from the Relay number is unavailable:
+   honest explanation plus the actions that do work. */
+.convo__no-text {
+  gap: 10px;
+}
+.convo__no-text-copy {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.convo__no-text-copy svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+.convo__no-text-copy strong {
+  color: var(--ink-2);
+  font-weight: 700;
+}
+.convo__no-text-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.convo__no-text-actions .btn {
+  min-height: 40px;
+}
+.convo__event-line--quiet {
+  margin-top: 2px;
+  font-style: italic;
+}
+.convo__msg-meta--error {
+  color: var(--danger);
+}
+
 .convo__composer {
   border-top: 1px solid var(--line);
   background: var(--panel);

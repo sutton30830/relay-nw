@@ -104,7 +104,7 @@ export function computeReportHero(input: ReportHeroInput): ReportHero {
     return {
       kind: "booked_without_value",
       figure: String(booked),
-      unitLine: "jobs booked from Relay leads",
+      unitLine: `${booked === 1 ? "job" : "jobs"} booked from Relay leads`,
       subLine: "Add job values to see dollars recovered.",
       footnote: null,
       scale: "count",
@@ -115,7 +115,7 @@ export function computeReportHero(input: ReportHeroInput): ReportHero {
     return {
       kind: "calls_caught",
       figure: String(missedCalls),
-      unitLine: "leads in your inbox",
+      unitLine: `${missedCalls === 1 ? "lead" : "leads"} in your inbox`,
       subLine: "Mark booked jobs to track recovery.",
       footnote: null,
       scale: "count",

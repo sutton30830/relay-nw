@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { AppHeader } from "@/app/leads/_components/app-header";
 import { isRelayOperator, requireAccountUser } from "@/lib/auth";
+import { loadOwnerServiceStatus } from "@/lib/onboarding-readiness";
 import { getLeadConversation, listCustomerVisibleProviderActions } from "@/lib/supabase";
 import { QUICK_REPLIES } from "../_constants";
 import { ConversationView } from "./conversation-view";
@@ -18,9 +19,10 @@ export default async function LeadConversationPage({
 
   const quickReplies = account.quickReplyTemplates?.length ? account.quickReplyTemplates : QUICK_REPLIES;
 
-  const [conversation, providerIssues] = await Promise.all([
+  const [conversation, providerIssues, serviceStatus] = await Promise.all([
     getLeadConversation(accountId, id),
     listCustomerVisibleProviderActions(accountId, id),
+    loadOwnerServiceStatus(accountId, account),
   ]);
 
   if (!conversation) {
@@ -57,6 +59,7 @@ export default async function LeadConversationPage({
         readOnly={role === "viewer"}
         quickReplies={quickReplies}
         schedulingUrl={account.schedulingUrl}
+        serviceStatus={{ canTextFromRelay: serviceStatus.canTextFromRelay, texting: serviceStatus.texting }}
         providerIssues={providerIssues.map((issue) => ({
           id: issue.id,
           explanation: issue.customerExplanation,

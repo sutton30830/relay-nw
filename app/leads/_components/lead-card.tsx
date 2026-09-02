@@ -10,10 +10,18 @@ import { BookedValueInput } from "./controls";
 import { OverflowMenu } from "./overflow-menu";
 import { VoicemailPlayer } from "./voicemail-player";
 
-function smsMetaText(lead: Lead, now: number) {
+function smsMetaText(lead: Lead, now: number, textingFromRelay: boolean) {
   if (!lead.sms_status || lead.source !== "missed_call") return null;
 
   const updated = lead.sms_updated_at ? ` · ${formatRelativeTime(lead.sms_updated_at, now)}` : "";
+
+  // Texting being off is an account fact (carrier registration or the owner's
+  // choice), not a per-lead failure. While the account cannot text from its
+  // Relay number the inbox status strip explains it once; repeating a warning
+  // on every card would read as something broke on each call.
+  if (lead.sms_status === "skipped_disabled") {
+    return textingFromRelay ? `Not auto-texted${updated}` : null;
+  }
 
   if (lead.sms_status === "failed" || lead.sms_status === "undelivered") return `SMS failed${updated}`;
   if (lead.sms_status === "delivered") return `SMS delivered${updated}`;
@@ -23,7 +31,6 @@ function smsMetaText(lead: Lead, now: number) {
   }
   if (lead.sms_status === "skipped_opt_out") return `SMS skipped: opted out${updated}`;
   if (lead.sms_status === "skipped_recent") return `SMS skipped: recent text${updated}`;
-  if (lead.sms_status === "skipped_disabled") return `SMS off${updated}`;
 
   return `SMS ${lead.sms_status}${updated}`;
 }
@@ -43,6 +50,7 @@ export function LeadCard({
   lead,
   now,
   callCount = 1,
+  textingFromRelay = true,
   href,
   isOpening = false,
   onOpen,
@@ -56,6 +64,10 @@ export function LeadCard({
   lead: Lead;
   now: number;
   callCount?: number;
+  // False while the account cannot text from its Relay number (carrier
+  // registration pending or automatic text-back off). Cards then stop
+  // repeating "SMS off" per lead; the inbox status strip explains it once.
+  textingFromRelay?: boolean;
   // When set, the card is a real link to the conversation page (keyboard,
   // middle-click, prefetch). Without it (sample leads), the name is a button
   // that calls onOpen to open the in-memory drawer instead.
@@ -77,6 +89,10 @@ export function LeadCard({
   const setupRequestFields = lead.source === "intake_form" ? parseSetupRequestMessage(lead.message) : [];
   const setupSummary = setupRequestSummary(setupRequestFields);
   const hasVoicemail = hasUsableVoicemail(lead.recording_sid, lead.recording_duration);
+  // A recording exists but is too short to hold a message (the caller hung up
+  // at the beep). Relay rejected it on purpose; say so instead of implying a
+  // voicemail is waiting or that nothing was recorded.
+  const emptyRecording = Boolean(lead.recording_sid) && !hasVoicemail;
   const summaryGenerating =
     hasVoicemail && !lead.voicemail_summary && lead.voicemail_transcription_status === "processing";
   const summaryPreparing =
@@ -104,12 +120,14 @@ export function LeadCard({
             ? "Voicemail saved, but no clear spoken message was detected. Open the lead to listen."
             : "Voicemail saved. Summary unavailable. Open the lead to listen."
           : lead.voicemail_transcript
-            ? "No summary available. Open the lead to review the transcript or listen."
+            ? "No summary yet. Open the lead to read the transcript or generate a summary."
             : "Voicemail saved. Open the lead to listen or summarize."
-        : "No voicemail left. Call back while the request is still fresh.";
+        : emptyRecording
+          ? "Caller hung up without leaving a message. Call back while the request is still fresh."
+          : "No voicemail left. Call back while the request is still fresh.";
   const statusLabel = trashed ? "Trash" : STATUS_LABELS[lead.status];
   const statusTone = trashed ? "trash" : lead.status;
-  const smsMeta = smsMetaText(lead, now);
+  const smsMeta = smsMetaText(lead, now, textingFromRelay);
   const headerMeta = [
     { text: formatPhone(lead.phone), className: "t-mono" },
     { text: formatRelativeTime(lead.created_at, now) },
@@ -127,11 +145,10 @@ export function LeadCard({
           text: smsMeta,
           mobileEssential:
             smsMeta.startsWith("SMS failed") ||
-            smsMeta.startsWith("SMS off") ||
             smsMeta.startsWith("SMS skipped: opted out"),
         }
       : null,
-    lead.recording_sid ? { text: "Voicemail", mobileEssential: false } : null,
+    hasVoicemail ? { text: "Voicemail", mobileEssential: false } : null,
   ].filter((item): item is { text: string; mobileEssential: boolean } => Boolean(item));
   const hasMobileEssentialFact = quietMeta.some((item) => item.mobileEssential);
   const showPriorityCue = !trashed && priority.level !== "normal";
@@ -200,7 +217,7 @@ export function LeadCard({
               <span
                 key={`${item.text}-${index}`}
                 className={`${
-                  item.text.startsWith("SMS failed") || item.text.startsWith("SMS off")
+                  item.text.startsWith("SMS failed")
                     ? "lead-card__fact--warn"
                     : ""
                 } ${item.mobileEssential ? "lead-card__fact--essential" : "lead-card__fact--secondary"}`.trim()}
@@ -295,7 +312,11 @@ export function LeadCard({
         </div>
         {!trashed ? (
           <div className="lead-card__utility-actions">
-            <a className="btn btn-ghost btn-sm" href={`sms:${lead.phone}`}>
+            <a
+              className="btn btn-ghost btn-sm"
+              href={`sms:${lead.phone}`}
+              title={textingFromRelay ? "Text from your phone" : "Texting from your Relay number is not on yet. This opens your phone's messaging app."}
+            >
               <Icon name="message" size={13} /> Text
             </a>
             {/* The workflow menu is a core owner action, so label it instead of

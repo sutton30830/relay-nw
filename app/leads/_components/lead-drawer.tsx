@@ -7,7 +7,7 @@ import { smsDeliveryIssue, smsDeliveryStatusLabel } from "@/lib/twilio/sms-deliv
 import { hasUsableVoicemail } from "@/lib/voicemail-quality";
 import type { SendReplyResult } from "../_api";
 import { LEGACY_FORWARDING_MESSAGE, QUICK_REPLIES } from "../_constants";
-import { followUpStatusText, formatDuration, formatPhone, formatRelativeTime, getLeadPriority, initials, isBookedLead, parseSetupRequestMessage } from "../_utils";
+import { followUpStatusText, formatDuration, formatPhone, formatRelativeTime, getLeadPriority, initials, isBookedLead, parseSetupRequestMessage, voicemailTranscriptionWasSuppressed } from "../_utils";
 import { BookedBadge, SmsBadge, StatusPill, VoicemailBadge } from "./badges";
 import { BookedToggle, BookedValueInput, PriorityControl, StatusControl } from "./controls";
 import { SetupRequestDetails } from "./setup-request-details";
@@ -77,11 +77,7 @@ export function LeadDrawer({
   const hasVoicemail = hasUsableVoicemail(lead.recording_sid, lead.recording_duration);
   const summaryGenerating =
     hasVoicemail && !lead.voicemail_summary && lead.voicemail_transcription_status === "processing";
-  const transcriptionWasSuppressed = Boolean(
-    lead.voicemail_transcription_error?.includes("could not confidently transcribe") ||
-    lead.voicemail_transcription_error?.includes("No clear spoken message was detected") ||
-    lead.voicemail_transcription_error?.includes("No usable voicemail was recorded"),
-  );
+  const transcriptionWasSuppressed = voicemailTranscriptionWasSuppressed(lead.voicemail_transcription_error);
   const noSpeechDetected =
     lead.voicemail_transcription_error?.includes("No clear spoken message was detected") ?? false;
   const autoTextIssue = smsDeliveryIssue(lead.sms_status, lead.sms_error);
