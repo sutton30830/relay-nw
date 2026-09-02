@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Icon } from "@/components/icon";
 import type { Lead, LeadStatus } from "@/lib/supabase";
-import { hasUsableVoicemail } from "@/lib/voicemail-quality";
+import { hasUsableVoicemail, isOwnerDisputedTranscript } from "@/lib/voicemail-quality";
 import { LEGACY_FORWARDING_MESSAGE, STATUS_LABELS, STATUS_OPTIONS } from "../_constants";
 import { formatCurrency, formatPhone, formatRelativeTime, getLeadPriority, initials, isBookedLead, needsAttention, parseSetupRequestMessage, setupRequestSummary, shouldShowVoicemailSummaryProgress, sourceLabel } from "../_utils";
 import { BookedValueInput } from "./controls";
@@ -99,6 +99,7 @@ export function LeadCard({
     shouldShowVoicemailSummaryProgress(lead, now) && lead.voicemail_transcription_status !== "processing";
   const noSpeechDetected =
     lead.voicemail_transcription_error?.includes("No clear spoken message was detected") ?? false;
+  const ownerDisputed = isOwnerDisputedTranscript(lead.voicemail_transcription_error);
   const requestLabel = hasVoicemail && lead.voicemail_summary
     ? "What they need"
     : hasUsefulMessage
@@ -118,7 +119,9 @@ export function LeadCard({
         ? lead.voicemail_transcription_status === "failed"
           ? noSpeechDetected
             ? "Voicemail saved, but no clear spoken message was detected. Open the lead to listen."
-            : "Voicemail saved. Summary unavailable. Open the lead to listen."
+            : ownerDisputed
+              ? "You marked the transcript as wrong. Open the lead to listen, then call back."
+              : "Voicemail saved. Summary unavailable. Open the lead to listen."
           : lead.voicemail_transcript
             ? "No summary yet. Open the lead to read the transcript or generate a summary."
             : "Voicemail saved. Open the lead to listen or summarize."

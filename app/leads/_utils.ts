@@ -567,7 +567,8 @@ export function voicemailTranscriptionWasSuppressed(error: string | null | undef
   return Boolean(
     error?.includes("could not confidently transcribe") ||
     error?.includes("No clear spoken message was detected") ||
-    error?.includes("No usable voicemail was recorded"),
+    error?.includes("No usable voicemail was recorded") ||
+    error?.includes("marked this transcript as wrong"),
   );
 }
 
@@ -591,6 +592,10 @@ export function voicemailRecoveryAction(lead: Pick<Lead,
 export function humanVoicemailError(error: string | null | undefined) {
   if (!error) {
     return "Unable to summarize this voicemail. Try again or listen to the recording.";
+  }
+
+  if (error.includes("marked this transcript as wrong")) {
+    return "You marked this transcript as wrong. Listen to the recording, then call back.";
   }
 
   if (error.includes("No usable voicemail was recorded")) {

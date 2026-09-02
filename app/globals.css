@@ -7199,6 +7199,64 @@ code {
   color: var(--danger);
 }
 
+/* Inline voicemail corrections: fix the summary, or mark the transcript wrong. */
+.vm-fix {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+}
+.vm-fix__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+.vm-fix__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--brand);
+  cursor: pointer;
+}
+.vm-fix__link--muted {
+  color: var(--ink-4);
+  font-weight: 500;
+  text-decoration: underline;
+}
+.vm-fix__link:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.vm-fix__editor,
+.vm-fix__confirm {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  background: var(--panel-2);
+}
+.vm-fix__confirm p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+.vm-fix__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.vm-fix__actions .btn {
+  min-height: 40px;
+}
+
 .convo__composer {
   border-top: 1px solid var(--line);
   background: var(--panel);
