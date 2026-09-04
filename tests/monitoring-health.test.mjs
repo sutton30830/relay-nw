@@ -195,7 +195,10 @@ test("monitoring query excludes suppressed provider actions from operational fai
   assert.match(monitoringSource, /row\.suppressed !== true/);
   assert.match(monitoringSource, /row\.internal_status === "failed"/);
   assert.match(monitoringSource, /account\.accountStatus === "active"/);
-  assert.match(monitoringSource, /attemptedLeadIds/);
+  // Completed suppression also handles a call without a provider attempt.
+  assert.match(monitoringSource, /handledLeadIds/);
+  assert.match(monitoringSource, /row\.suppressed === true \|\| Number\(row\.attempt_count\) > 0/);
+  assert.match(monitoringSource, /!handledLeadIds\.has\(String\(row\.id\)\)/);
   assert.match(monitoringSource, /automatic_missed_call_sms/);
   assert.match(monitoringSource, /row\.provider === "twilio"/);
   assert.match(monitoringSource, /recentSmsActions\.filter\(\(row\) => row\.internal_status === "failed"\)/);
