@@ -10,6 +10,7 @@ import type { InboundMessage, Lead, LeadStatus, OutboundMessage, ReplyPriorityOv
 import { smsDeliveryIssue, smsDeliveryStatusLabel } from "@/lib/twilio/sms-delivery";
 import { hasUsableVoicemail } from "@/lib/voicemail-quality";
 import { patchLead, requestVoicemailSummary, sendLeadReply } from "../_api";
+import { OutcomePrompt, type OutcomePromptStage } from "../_components/outcome-prompt";
 import { VoicemailCorrections } from "../_components/voicemail-corrections";
 import { VoicemailPlayer } from "../_components/voicemail-player";
 import { formatPhone, getLeadPriority, humanVoicemailError, initials, isBookedLead, sourceLabel, voicemailRecoveryAction } from "../_utils";
@@ -84,6 +85,10 @@ export function ConversationView({
   const [summaryErrors, setSummaryErrors] = useState<Record<string, string>>({});
   // Owner-corrected summaries, shown immediately while the refresh catches up.
   const [summaryOverrides, setSummaryOverrides] = useState<Record<string, string | null>>({});
+  // Session-only follow-through: "Did you reach them?" after Call, then "Did
+  // this become a job?" once Contacted. Answers are ordinary status/booked
+  // edits, so nothing new is persisted.
+  const [outcomePrompt, setOutcomePrompt] = useState<OutcomePromptStage | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [status, setStatus] = useState<LeadStatus>(lead.status);
   const [statusSaveState, setStatusSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -220,6 +225,7 @@ export function ConversationView({
 
     confirmedStatusRef.current = nextStatus;
     setStatusSaveState("saved");
+    setOutcomePrompt(nextStatus === "contacted" && !booked ? "outcome" : null);
     statusSavedTimerRef.current = window.setTimeout(() => {
       if (version === statusSaveVersionRef.current) setStatusSaveState("idle");
     }, 1_500);
@@ -272,7 +278,14 @@ export function ConversationView({
           <p className="convo__name">{currentLead.name || formatPhone(lead.phone)}</p>
           {currentLead.name ? <p className="convo__number">{formatPhone(lead.phone)}</p> : null}
         </div>
-        <a className="btn btn-secondary btn-sm" href={`tel:${lead.phone}`}>
+        <a
+          className="btn btn-secondary btn-sm"
+          href={`tel:${lead.phone}`}
+          onClick={() => {
+            if (readOnly || booked) return;
+            setOutcomePrompt(status === "contacted" ? "outcome" : "reached");
+          }}
+        >
           <Icon name="phone" size={14} /> Call
         </a>
         {!readOnly ? (
@@ -287,6 +300,24 @@ export function ConversationView({
         ) : null}
       </header>
 
+      {outcomePrompt && !readOnly && !booked ? (
+        <div className="convo__outcome-prompt">
+          <OutcomePrompt
+            stage={outcomePrompt}
+            onReached={() => void saveStatus("contacted")}
+            onBooked={() => {
+              const previousBookedAt = bookedAt;
+              setOutcomePrompt(null);
+              setBookedAt(previousBookedAt ?? new Date().toISOString());
+              setDetailsOpen(true);
+              void saveLeadPatch({ booked: true }).then((ok) => {
+                if (!ok) setBookedAt(previousBookedAt);
+              });
+            }}
+            onDismiss={() => setOutcomePrompt(null)}
+          />
+        </div>
+      ) : null}
       {priority.level !== "normal" ? (
         <p className={`convo__banner ${priority.level === "fast" ? "convo__banner--fast" : ""}`}>
           <Icon name={priority.level === "fast" ? "alertTriangle" : "clock"} size={13} />
@@ -554,7 +585,14 @@ export function ConversationView({
             </span>
           </p>
           <div className="convo__no-text-actions">
-            <a className="btn btn-primary btn-sm" href={`tel:${lead.phone}`}>
+            <a
+              className="btn btn-primary btn-sm"
+              href={`tel:${lead.phone}`}
+              onClick={() => {
+                if (booked) return;
+                setOutcomePrompt(status === "contacted" ? "outcome" : "reached");
+              }}
+            >
               <Icon name="phone" size={13} /> Call back
             </a>
             <a className="btn btn-secondary btn-sm" href={`sms:${lead.phone}`}>

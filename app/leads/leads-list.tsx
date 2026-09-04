@@ -180,6 +180,9 @@ export function LeadsList({
             onJobValue={inbox.updateJobValue}
             onDelete={inbox.deleteLead}
             onRestore={inbox.restoreLead}
+            outcomePrompt={inbox.outcomePrompts.get(lead.id) ?? null}
+            onCallBack={inbox.noteCallBack}
+            onOutcomeAnswer={inbox.answerOutcomePrompt}
           />
         ))}
 

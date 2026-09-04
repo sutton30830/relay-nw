@@ -7,6 +7,7 @@ import { hasUsableVoicemail, isOwnerDisputedTranscript } from "@/lib/voicemail-q
 import { LEGACY_FORWARDING_MESSAGE, STATUS_LABELS, STATUS_OPTIONS } from "../_constants";
 import { formatCurrency, formatPhone, formatRelativeTime, getLeadPriority, initials, isBookedLead, needsAttention, parseSetupRequestMessage, setupRequestSummary, shouldShowVoicemailSummaryProgress, sourceLabel } from "../_utils";
 import { BookedValueInput } from "./controls";
+import { OutcomePrompt, type OutcomePromptStage } from "./outcome-prompt";
 import { OverflowMenu } from "./overflow-menu";
 import { VoicemailPlayer } from "./voicemail-player";
 
@@ -60,6 +61,9 @@ export function LeadCard({
   onJobValue,
   onDelete,
   onRestore,
+  outcomePrompt = null,
+  onCallBack,
+  onOutcomeAnswer,
 }: {
   lead: Lead;
   now: number;
@@ -80,6 +84,11 @@ export function LeadCard({
   onJobValue: (id: string, jobValueCents: number | null) => void;
   onDelete: (id: string) => void;
   onRestore: (id: string, status: LeadStatus) => void;
+  // Session-only follow-through after a call-back: "Did you reach them?" then
+  // "Did this become a job?". Answers land as status/booked edits.
+  outcomePrompt?: OutcomePromptStage | null;
+  onCallBack?: (id: string) => void;
+  onOutcomeAnswer?: (id: string, answer: "reached" | "booked" | "dismiss") => void;
 }) {
   const attention = needsAttention(lead);
   const booked = isBookedLead(lead);
@@ -280,6 +289,17 @@ export function LeadCard({
         </div>
       ) : null}
 
+      {outcomePrompt && !trashed && !booked ? (
+        <div onClick={(event) => event.stopPropagation()}>
+          <OutcomePrompt
+            stage={outcomePrompt}
+            onReached={() => onOutcomeAnswer?.(lead.id, "reached")}
+            onBooked={() => onOutcomeAnswer?.(lead.id, "booked")}
+            onDismiss={() => onOutcomeAnswer?.(lead.id, "dismiss")}
+          />
+        </div>
+      ) : null}
+
       {booked ? (
         <div className="lead-card__value" onClick={(event) => event.stopPropagation()}>
           <span className="lead-card__value-label">
@@ -289,6 +309,7 @@ export function LeadCard({
           <BookedValueInput
             compact
             valueCents={lead.job_value_cents}
+            showPresets={!lead.job_value_cents}
             onSave={(jobValueCents) => onJobValue(lead.id, jobValueCents)}
           />
         </div>
@@ -308,7 +329,7 @@ export function LeadCard({
               }))}
             />
           ) : (
-            <a className="btn btn-primary btn-sm" href={`tel:${lead.phone}`}>
+            <a className="btn btn-primary btn-sm" href={`tel:${lead.phone}`} onClick={() => onCallBack?.(lead.id)}>
               <Icon name="phone" size={13} /> Call back
             </a>
           )}

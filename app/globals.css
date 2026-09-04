@@ -7257,6 +7257,44 @@ code {
   min-height: 40px;
 }
 
+/* Outcome follow-through: the two questions that turn a call-back into a
+   number on Reports. Inline on the card and as a strip on the conversation. */
+.outcome-prompt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in oklab, var(--good) 35%, var(--line-soft));
+  border-radius: var(--r-md);
+  background: color-mix(in oklab, var(--good-soft) 55%, var(--panel));
+}
+.outcome-prompt__question {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 650;
+}
+.outcome-prompt__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.outcome-prompt__actions .btn {
+  min-height: 40px;
+}
+.lead-card .outcome-prompt {
+  position: relative;
+  margin: 10px 0 0;
+}
+.convo__outcome-prompt {
+  padding: 8px 14px 0;
+}
+
 .convo__composer {
   border-top: 1px solid var(--line);
   background: var(--panel);
