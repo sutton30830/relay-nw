@@ -14,6 +14,7 @@ const ACCOUNT_EXPORT_TABLES = [
   "messages",
   "inbound_messages",
   "opt_outs",
+  "account_known_contacts",
   "webhook_events",
   "provider_action_events",
 ] as const;
@@ -147,6 +148,21 @@ export async function exportAccountData(inputAccountId: string) {
   if (!accountResult.data) return null;
 
   const entries = await Promise.all(ACCOUNT_EXPORT_TABLES.map(async (table) => {
+    if (table === "account_known_contacts") {
+      const contacts: Record<string, unknown>[] = [];
+      let afterId: string | null = null;
+      while (true) {
+        let query = supabaseAdmin.from(table).select("*").eq("account_id", accountId).order("id", { ascending: true }).limit(500);
+        if (afterId) query = query.gt("id", afterId);
+        const { data, error } = await query;
+        throwIfSupabaseError(error);
+        if (!data) throw new Error("Contact export unavailable");
+        if (!data.length) break;
+        contacts.push(...data);
+        afterId = String(data[data.length - 1].id);
+      }
+      return [table, contacts] as const;
+    }
     const { data, error } = await supabaseAdmin.from(table).select("*").eq("account_id", accountId);
     throwIfSupabaseError(error);
     return [table, data ?? []] as const;

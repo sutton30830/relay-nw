@@ -94,3 +94,20 @@ export type Lead = {
   deleted_at: string | null;
   created_at: string;
 };
+
+export type ContactClassification = "unclassified" | "customer" | "personal";
+export type ContactSmsPolicy = "suppress" | "standard";
+export type ContactSource = "manual" | "lead" | "csv" | "vcard" | "phone_picker";
+export type KnownContact = {
+  id: string;
+  account_id: string;
+  phone: string;
+  display_name: string | null;
+  classification: ContactClassification;
+  auto_sms_policy: ContactSmsPolicy;
+  source: ContactSource;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+export type KnownContactMergeResult = { contact: KnownContact; created: boolean };

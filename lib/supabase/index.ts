@@ -5,6 +5,7 @@ export * from "./accounts";
 export * from "./auth-rate-limits";
 export * from "./audit";
 export * from "./calls";
+export * from "./contacts";
 export * from "./carrier-profiles";
 export * from "./leads";
 export * from "./messages";

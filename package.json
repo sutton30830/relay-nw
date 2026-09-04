@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "db:local": "node scripts/local-db.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -19,12 +20,14 @@
     "test": "node --test tests/*.test.mjs",
     "security:check": "node --test tests/operational-security.test.mjs",
     "typecheck": "tsc --noEmit --incremental false",
-    "lint": "eslint . --max-warnings 0"
+    "lint": "eslint . --max-warnings 0",
+    "test:contacts:db": "node --test tests/integration/known-contacts-db.test.mjs"
   },
   "dependencies": {
     "@sentry/nextjs": "^10.68.0",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.49.4",
+    "libphonenumber-js": "1.13.12",
     "next": "^15.5.22",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -40,6 +43,7 @@
     "@types/web-push": "^3.6.4",
     "eslint": "^9.39.5",
     "eslint-config-next": "^15.5.22",
+    "pg": "8.23.0",
     "tailwindcss": "^4.1.4",
     "typescript": "^5.8.3"
   },
