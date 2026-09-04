@@ -141,6 +141,10 @@ export const env = {
   twilioAuthToken: getRequiredEnv("TWILIO_AUTH_TOKEN"),
   twilioPhoneNumber: getRequiredEnv("TWILIO_PHONE_NUMBER"),
   ownerPhoneNumber: getRequiredEnv("OWNER_PHONE_NUMBER"),
+  // Relay-owned number (registered under Relay's own A2P brand) used only to
+  // text account OWNERS while their own campaign is pending. Unset = owner
+  // texts stay gated on the account's own number. Never used to text callers.
+  ownerAlertFromNumber: getOptionalEnv("OWNER_ALERT_FROM_NUMBER"),
   supabaseUrl: getOptionalEnv("SUPABASE_URL") ?? getRequiredEnv("NEXT_PUBLIC_SUPABASE_URL"),
   supabaseAnonKey: getRequiredEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
   supabaseServiceRoleKey: getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY"),

@@ -3,6 +3,9 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import { loadOwnerAlerts } from "./helpers/owner-alerts.mjs";
+
+const ownerAlerts = await loadOwnerAlerts();
 
 // Failure-injection coverage for the missed-call -> SMS -> lead pipeline.
 // Every step must either succeed visibly or fail visibly: a failure anywhere must end
@@ -110,6 +113,7 @@ function makeMissedCallMocks(overrides = {}) {
 
   const mocks = {
     "@/lib/env": { env: { appBaseUrl: "http://localhost:3000" } },
+    "@/lib/owner-alerts": ownerAlerts,
     "@/lib/phone": { normalizePhoneNumber: (value) => value },
     "@/lib/supabase": supabase,
     "@/lib/supabase/accounts": { envAccountConfig: () => ACCOUNT },

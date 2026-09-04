@@ -699,8 +699,8 @@ export async function transcribeLeadVoicemail(
             ? `owner_sms:urgent_voicemail:${leadId}`
             : `owner_sms:voicemail_ready:${leadId}`,
           body: isUrgent
-            ? `Relay NW URGENT: voicemail from ${lead.phone} — ${classification.reason}. "${ownerSummary.slice(0, 160)}" Call back now or reply from your inbox: ${env.appBaseUrl}/leads`
-            : `Relay NW: voicemail from ${lead.phone} — "${ownerSummary.slice(0, 180)}" Open your inbox: ${env.appBaseUrl}/leads`,
+            ? `Relay NW URGENT: voicemail from ${lead.phone} (${classification.reason}). "${ownerSummary.slice(0, 160)}" Call back now: ${lead.phone}. Lead: ${env.appBaseUrl}/leads/${leadId}`
+            : `Relay NW: voicemail from ${lead.phone}. "${ownerSummary.slice(0, 180)}" Lead: ${env.appBaseUrl}/leads/${leadId}`,
         });
       }
 

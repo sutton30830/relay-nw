@@ -3,6 +3,9 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import { loadOwnerAlerts } from "./helpers/owner-alerts.mjs";
+
+const ownerAlerts = await loadOwnerAlerts();
 
 async function loadTsModule(path, mocks) {
   const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
@@ -37,6 +40,7 @@ function twilioModuleMock() {
 test("Twilio media URL allowlist only accepts https api.twilio.com URLs", async () => {
   const { isTrustedTwilioMediaUrl } = await loadTsModule("lib/twilio.ts", {
     "twilio": twilioModuleMock(),
+    "@/lib/owner-alerts": ownerAlerts,
     "@/lib/env": {
       env: {
         twilioAccountSid: "AC_test",

@@ -99,7 +99,7 @@ export function NotificationPreferences({
           </p>
         </div>
         <span className={`notification-preferences__text-status ${textAlertsActive ? "is-active" : ""}`}>
-          Text alerts {textAlertsActive ? "available" : "waiting for texting"}
+          Text alerts {textAlertsActive ? "available" : "not available yet"}
         </span>
       </div>
 
@@ -153,7 +153,7 @@ export function NotificationPreferences({
 
       <p className="notification-preferences__mandatory">
         Billing, account security, and required compliance notices always go to the notification email.
-        {!textAlertsActive ? " Text choices are saved now and take effect when automatic texting is active." : ""}
+        {!textAlertsActive ? " Text choices are saved now and take effect as soon as Relay can text you." : ""}
       </p>
     </section>
   );
