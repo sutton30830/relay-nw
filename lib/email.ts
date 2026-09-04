@@ -2,6 +2,7 @@ import * as Sentry from "@sentry/nextjs";
 import { Resend } from "resend";
 import { env } from "@/lib/env";
 import { getOwnerNotificationEmail, recordProviderAction, type AccountRuntimeConfig } from "@/lib/supabase";
+import type { RecoveryStats } from "@/lib/supabase/reports";
 
 let resendClient: Resend | null = null;
 const EMAIL_PROVIDER_TIMEOUT_MS = 10_000;
@@ -763,57 +764,36 @@ export async function notifyAdminOperationalIssue(input: {
   });
 }
 
-function formatDollars(cents: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(cents / 100);
-}
-
 export async function notifyOwnerWeeklyDigest(input: {
   account: AccountRuntimeConfig;
-  stats: {
-    missedCalls: number;
-    textedBack: number;
-    urgent: number;
-    replies: number;
-    booked: number;
-    recoveredCents: number;
-  };
+  stats: RecoveryStats;
   periodLabel: string;
+  textingOn: boolean;
 }) {
   const recipient = await ownerEmail(input.account);
-  const { stats } = input;
-
-  const headline = stats.recoveredCents > 0
-    ? `Relay recovered ${formatDollars(stats.recoveredCents)} for ${input.account.businessName} ${input.periodLabel}.`
-    : `Relay caught ${stats.missedCalls} missed ${stats.missedCalls === 1 ? "call" : "calls"} for ${input.account.businessName} ${input.periodLabel}.`;
-
-  const lines = [
-    headline,
-    `Missed calls caught: ${stats.missedCalls}`,
-    `Callers texted back automatically: ${stats.textedBack}`,
-    `ASAP callbacks flagged: ${stats.urgent}`,
-    `Customer replies: ${stats.replies}`,
-    stats.booked > 0 && stats.recoveredCents > 0
-      ? `Jobs booked: ${stats.booked} (${formatDollars(stats.recoveredCents)})`
-      : stats.booked > 0
-        ? `Jobs booked: ${stats.booked} — add job values so this report can show recovered revenue.`
-        : "Jobs booked: none yet — mark leads as booked with a value so this report can show recovered revenue.",
-  ];
+  // Loaded lazily so this module's dependency surface stays unchanged for
+  // callers and tests that only need the alert paths.
+  const { buildWeeklyDigest } = await import("@/lib/weekly-digest");
+  const digest = buildWeeklyDigest({
+    businessName: input.account.businessName,
+    stats: input.stats,
+    periodLabel: input.periodLabel,
+    textingOn: input.textingOn,
+    typicalJobValueCents: input.account.typicalJobValueCents,
+    appBaseUrl: env.appBaseUrl,
+  });
 
   return sendEmail({
     to: recipient,
-    subject: `Your week with Relay NW: ${stats.missedCalls} missed ${stats.missedCalls === 1 ? "call" : "calls"} caught${stats.recoveredCents > 0 ? `, ${formatDollars(stats.recoveredCents)} recovered` : ""}`,
+    subject: digest.subject,
     html: emailHtml({
       title: "Your weekly recovery report",
-      preview: headline,
-      lines,
-      actionLabel: "See the full report",
-      actionUrl: `${env.appBaseUrl}/reports`,
+      preview: digest.headline,
+      lines: [digest.headline, ...digest.lines],
+      actionLabel: digest.actionLabel,
+      actionUrl: digest.actionUrl,
     }),
-    text: `${lines.join("\n")}\n\nFull report: ${env.appBaseUrl}/reports`,
+    text: `${[digest.headline, ...digest.lines].join("\n")}\n\nFull report: ${digest.actionUrl}`,
     tag: "owner_weekly_digest",
     accountId: input.account.accountId,
     actionKey: `owner_weekly_digest:${input.account.accountId}:${input.periodLabel}`,

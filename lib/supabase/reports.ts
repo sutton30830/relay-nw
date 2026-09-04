@@ -1,5 +1,6 @@
 import { median } from "@/lib/report-metrics";
 import { isPlaceholderSupabaseConfig, supabaseAdmin, throwIfSupabaseError } from "./client";
+import { MIN_VOICEMAIL_DURATION_SECONDS } from "@/lib/voicemail-quality";
 import { assertAccountId } from "./tenant";
 
 export type RecoveryStats = {
@@ -14,6 +15,13 @@ export type RecoveryStats = {
   // Auto-texts that failed to reach the caller (failed/undelivered). Paired with
   // textedBack this gives a text success rate.
   smsFailed: number;
+  // Auto-texts Twilio confirmed as delivered. textedBack also counts "sent",
+  // which is acceptance, not delivery; owner-facing copy must not conflate them.
+  textedDelivered: number;
+  // Missed calls that left a usable voicemail, and how many of those Relay
+  // turned into a clear request summary.
+  voicemails: number;
+  voicemailsWithRequest: number;
 };
 
 export const EMPTY_RECOVERY_STATS: RecoveryStats = {
@@ -26,6 +34,9 @@ export const EMPTY_RECOVERY_STATS: RecoveryStats = {
   bookedMissingValue: 0,
   recoveredCents: 0,
   smsFailed: 0,
+  textedDelivered: 0,
+  voicemails: 0,
+  voicemailsWithRequest: 0,
 };
 
 export type ResponseStats = {
@@ -149,15 +160,22 @@ export async function getAccountRecoveryStats(
   const [
     missedCalls,
     textedBack,
+    textedDelivered,
     smsFailed,
     urgent,
+    voicemails,
+    voicemailsWithRequest,
     replyStats,
     { data: bookedRows, error: bookedError },
   ] = await Promise.all([
     countLeadsWhere(accountId, since, until, (query) => query.eq("source", "missed_call")),
     countLeadsWhere(accountId, since, until, (query) => query.in("sms_status", ["sent", "delivered"])),
+    countLeadsWhere(accountId, since, until, (query) => query.eq("sms_status", "delivered")),
     countLeadsWhere(accountId, since, until, (query) => query.in("sms_status", ["failed", "undelivered"])),
     countLeadsWhere(accountId, since, until, (query) => query.eq("priority", "fast")),
+    countLeadsWhere(accountId, since, until, (query) =>
+      query.not("recording_sid", "is", null).gte("recording_duration", MIN_VOICEMAIL_DURATION_SECONDS)),
+    countLeadsWhere(accountId, since, until, (query) => query.not("voicemail_summary", "is", null)),
     getReplyStats(accountId, since, until),
     bookedQuery.limit(2000),
   ]);
@@ -181,6 +199,9 @@ export async function getAccountRecoveryStats(
     bookedMissingValue,
     recoveredCents,
     smsFailed,
+    textedDelivered,
+    voicemails,
+    voicemailsWithRequest,
   };
 }
 

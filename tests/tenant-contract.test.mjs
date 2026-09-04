@@ -16,6 +16,7 @@ const twilioTs = await readFile(new URL("../lib/twilio.ts", import.meta.url), "u
 const twimlTs = await readFile(new URL("../lib/twiml.ts", import.meta.url), "utf8");
 const authTs = await readFile(new URL("../lib/auth.ts", import.meta.url), "utf8");
 const emailTs = await readFile(new URL("../lib/email.ts", import.meta.url), "utf8");
+const weeklyDigestTs = await readFile(new URL("../lib/weekly-digest.ts", import.meta.url), "utf8");
 const missedCallTs = await readFile(new URL("../lib/missed-call.ts", import.meta.url), "utf8");
 const accountStore = await readFile(new URL("../lib/supabase/accounts.ts", import.meta.url), "utf8");
 const intakeRouteTs = await readFile(new URL("../app/api/intake/route.ts", import.meta.url), "utf8");
@@ -525,8 +526,11 @@ test("booked value controls do not render missing money as zero dollars", () => 
   assert.doesNotMatch(leadControlsTsx, /placeholder="0"/);
   assert.match(leadUtilsTs, /if \(!cents \|\| cents <= 0\) return "No value entered"/);
   assert.doesNotMatch(leadUtilsTs, /if \(!cents\) return "\$0"/);
-  assert.match(emailTs, /Jobs booked: \$\{stats\.booked\} — add job values/);
-  assert.doesNotMatch(emailTs, /stats\.booked > 0\s*\?\s*`Jobs booked: \$\{stats\.booked\} \(\$\{formatDollars\(stats\.recoveredCents\)\}\)`/);
+  // The weekly recap copy lives in the shared builder now; a booked job with
+  // no value is counted, never priced at $0.
+  assert.match(weeklyDigestTs, /booked from Relay leads\. Add job values and next week's recap will show dollars\./);
+  assert.doesNotMatch(weeklyDigestTs, /\$0\b/);
+  assert.doesNotMatch(emailTs, /Jobs booked: \$\{stats\.booked\} \(\$\{formatDollars/);
 });
 
 test("lead card hides raw sms error codes behind owner-facing language", () => {
