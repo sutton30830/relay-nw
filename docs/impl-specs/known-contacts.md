@@ -1,10 +1,10 @@
 # Known-contact handling — implementation specification
 
-Status: **Steps 1–4 implemented locally. Steps 5–8 not implemented.** Step 4 feature checks pass; the full regression suite has one unchanged monitoring-test failure, recorded in §16. No production rollout was performed in this sequence. The Step 2 push triggered a Vercel Preview deployment; see the commit/deployment note in §16.
+Status: **Steps 1–4 implemented and deployed to production on 2026-09-04. Steps 5–8 not implemented.** All three production database migrations passed before the application deployment. The regression suite passes 667/667 after the stale monitoring test correction. See §17 for preparation history and §18 for the completed release, live commit, verification, and remaining limits. Earlier local-only and blocker statements below describe their respective checkpoints.
 
 Local database prerequisite: **complete**, following the separately authorized setup on 2026-09-03. PostgreSQL 17.11 now runs in the repository's private socket-only cluster, with the checked-in schema loaded and real role/RLS/RPC/constraint checks passing. See [local database operations](../operations/local-test-database.md). The Step 2 contact migration and feature-specific SQL/RLS checks have also passed (see §14).
 
-Inspected on 2026-09-03 America/Los_Angeles (2026-09-04 UTC). Repository: `/Users/suttonlowry/Documents/relay-nw copy`. Feature branch: `codex/known-contacts`, created from `codex/pwa-owner-alerts` at `0799c38a915d44e41014528bcf4d5b2ac2e0dd41`. This document describes intended changes, not deployed behavior.
+Inspected on 2026-09-03 America/Los_Angeles (2026-09-04 UTC). Repository: `/Users/suttonlowry/Documents/relay-nw copy`. Feature branch: `codex/known-contacts`, created from `codex/pwa-owner-alerts` at `0799c38a915d44e41014528bcf4d5b2ac2e0dd41`. Sections 1–13 record the original specification; later implementation and release sections identify completed and deployed behavior.
 
 ## 1. Persistent instructions and scope
 
@@ -499,7 +499,7 @@ No Step 4 implementation blocker remains. The unchanged monitoring source-contra
 The owner requested the Step 4 commit after implementation. Read-only GitHub checks confirmed that remote `codex/known-contacts` still points to Step 2, `bd787b549b4e8ed7a3e31181d4a43f1c81f68b1e`; Step 3 (`75ddee3`) is local. The Step 2 push automatically created a successful **Preview** deployment on 2026-09-04 at 04:02:43 UTC: [Vercel deployment](https://vercel.com/sutton-lowrys-projects/relay-nw/5xaS6L66nhcKjzJuzYMjakP5MpdY), GitHub deployment ID `6257619648`. Earlier “not deployed” wording refers to no intentional production rollout, and should not be read as absence of this automatic preview. The Step 4 commit operation does not push either local commit or run a deployment. Database migrations were verified/applied only locally; preview build success is not hosted-database or production-readiness verification.
 
 
-## 17. Authorized production release — preparation and current blocker
+## 17. Authorized production release — preparation history (blocker resolved in §18)
 
 On 2026-09-04 the owner explicitly requested deploying Steps 3–4 to production following Step 2. This authorizes the required ordered database migrations and cumulative application deployment; it supersedes the earlier local-only scope for this release. It does not request test SMS/email/push delivery or contact imports.
 
@@ -515,3 +515,36 @@ A transaction-wrapped bundle of the three unchanged feature migrations is prepar
 
 
 Release preparation completed: commits through `fcbd4b13e8de643c26107fad104df075bc871545` were pushed to `origin/codex/known-contacts`, including Steps 3–4 and the corrected monitoring test. The branch push is a Preview trigger only. Production remains unchanged pending Supabase sign-in and the three database migrations. The GitHub sign-in tab for Supabase was retained for owner handoff. Full build evidence is `/private/tmp/relay-release-build.log`; regression, lint, and security logs are `/private/tmp/relay-release-{tests,lint,security}.log`. The temporary production environment export was removed after the read-only checks; re-fetch it if needed after sign-in, and never print credential values.
+
+## 18. Completed production release — 2026-09-04
+
+The owner completed Supabase sign-in and authorized continuing the release. The SQL Editor was verified to belong to **Relay NW**, project `ghrciuvlbqgmyoxnvidb`, before running any DDL. The preflight confirmed the contact table and Step 3 attempt function were absent.
+
+Applied these unchanged, locally tested migrations in order inside one transaction, with the prepared lock/statement timeouts and PostgREST schema reload notification:
+
+1. `docs/migrations/2026-09-03-known-contacts.sql`
+2. `docs/migrations/2026-09-04-known-contact-sms.sql`
+3. `docs/migrations/2026-09-04-known-contact-views.sql`
+
+The SQL Editor reported **Success. No rows returned**. No contacts were imported, no retained history was deleted or backfilled, and no skipped messages were replayed. The account-deletion function was defined by the migration, not invoked.
+
+Production verification after commit:
+
+| Check | Result |
+| --- | --- |
+| SQL security/schema query | **9/9 true**: contact-table RLS enabled; anon/authenticated contact-table and view reads denied; client execution denied and service-role execution granted for all 12 checked contact/attempt/inbox/report RPCs; both new SMS statuses constrained; contact table empty; historical phone normalization correct; contact view uses security-invoker rights. |
+| Hosted PostgREST reads | **HTTP 200** for contact table/view with `limit=0`, inbox counts, Personal inbox search, recovery totals, and response totals. Aggregate/search checks used a nonexistent account UUID and inspected response shape, without retrieving customer records. |
+| Attempt-function availability | Hosted schema API includes `record_automatic_sms_attempt`; the function was not invoked as a production test. |
+| Release gates already completed | **667/667** repository tests; **30** real local PostgreSQL checks covering fresh/upgrade/repeated migrations, role restrictions, tenant isolation, and large mixed fixtures; typecheck, lint, **4/4** security checks, and isolated production build passed. |
+
+After database verification, created a fresh Vercel **production** deployment from the exact pushed Git commit `96f1495c6fd432a90e45cb7c8c84689914c44b16` on `codex/known-contacts`. This includes Step 1 documentation, Step 2 foundation, Step 3 suppression, Step 4 inbox/reporting, and the monitoring test correction. Deployment used the Git source and production environment, not the local synthetic build or untracked workspace files.
+
+- Deployment: `dpl_GN88YyCYMFpq1hhtGzdn7FGYWVAR`, **READY**.
+- [Vercel release](https://vercel.com/sutton-lowrys-projects/relay-nw/GN88YyCYMFpq1hhtGzdn7FGYWVAR).
+- [Live application](https://www.relay-nw.com); immutable deployment URL: `https://relay-hijpaex1h-sutton-lowrys-projects.vercel.app`.
+- Vercel's lookup for `www.relay-nw.com` confirmed this deployment ID and exact SHA, with `www.relay-nw.com`, `relay-nw.com`, and `relay-nw.vercel.app` assigned as aliases. Verified by 2026-09-04 17:12 UTC.
+- Read-only HTTP checks: home **200**, login **200**, Reports **307** to login, contacts GET **401**. Unauthenticated Leads uses a **200 streamed Next.js response containing the explicit `/login` redirect**, confirmed in both the redirect marker and refresh metadata; it is not an authenticated inbox verification.
+
+No production release blocker remains. Signed-in Relay UI/device review and real SMS/email/push delivery were **not performed** during this rollout. Production contacts remain empty at verification. The release does not claim completion of the full feature or Step 8: owner Settings/quick actions, imports, contact picker support, and the remaining acceptance/pilot work are still Steps 5–8. Do not roll back to an app that ignores saved contact suppression once contacts are in use.
+
+The release record update is documentation-only and may be committed after the deployed SHA. Future feature-branch pushes still create Previews because Vercel's production Git branch remains `main`; they require an explicit production release to change the live site. Unrelated local documents and edits remain untouched.
