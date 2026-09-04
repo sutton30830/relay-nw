@@ -60,6 +60,9 @@ export default async function LeadsPage({
     <main className="leads-view">
       <LeadsList
         businessName={businessName}
+        readOnly={session.role === "viewer"}
+        quickReplies={account.quickReplyTemplates?.length ? account.quickReplyTemplates : undefined}
+        schedulingUrl={account.schedulingUrl}
         switchAccountHref={membershipCount > 1 ? "/account/select?next=/leads" : undefined}
         showOperations={isRelayOperator(session)}
         leads={leadPage.leads}

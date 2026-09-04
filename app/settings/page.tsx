@@ -12,6 +12,7 @@ import {
   getAccountTechnicalSetupStatus,
 } from "@/lib/supabase";
 import { QUICK_REPLIES } from "@/app/leads/_constants";
+import { ContactsSection } from "./contacts-section";
 import { SmsToggle } from "./sms-toggle";
 import { GreetingRecorder } from "./greeting-recorder";
 import { NotificationPreferences } from "./notification-preferences";
@@ -550,6 +551,8 @@ export default async function SettingsPage({
             Automatic text-back: {A2P_LABELS[a2pStatus ?? ""] ?? "Relay is checking availability"}
           </p>
         </section>
+
+        <ContactsSection key={session.accountId} readOnly={readOnly} />
 
         <BillingSection billing={billing} lifecycle={billingLifecycle} role={role} />
 

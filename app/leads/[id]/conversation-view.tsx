@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { contactLeadFields, contactReplyDraft, type ContactDetails } from "@/lib/contact-client";
+import { LeadContactControls } from "../_components/lead-contact-controls";
 import { CopyButton } from "@/app/copy-button";
 import { Icon } from "@/components/icon";
 import type { OwnerServiceStatus } from "@/lib/owner-service-status";
@@ -71,6 +73,8 @@ export function ConversationView({
   const router = useRouter();
   const [name, setName] = useState(lead.name ?? "");
   const [notes, setNotes] = useState(lead.notes ?? "");
+  const [contactOverride, setContactOverride] = useState<ContactDetails | null | undefined>(undefined);
+  const [reviewDraft, setReviewDraft] = useState(false);
   const [replyText, setReplyText] = useState("");
   const [replySending, setReplySending] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
@@ -101,14 +105,18 @@ export function ConversationView({
   const threadEndRef = useRef<HTMLDivElement | null>(null);
   const currentLead = useMemo<Lead>(() => ({
     ...lead,
+    ...(contactOverride === undefined ? {} : contactLeadFields(contactOverride)),
     name: name.trim() || null,
     notes,
     status,
     reply_priority_override: priorityOverride,
     booked_at: bookedAt,
     job_value_cents: jobValueCents,
-  }), [lead, name, notes, status, priorityOverride, bookedAt, jobValueCents]);
+  }), [lead, contactOverride, name, notes, status, priorityOverride, bookedAt, jobValueCents]);
   const booked = isBookedLead(currentLead);
+
+  useEffect(() => { setContactOverride(undefined); }, [lead]);
+  useEffect(() => { setReplyText(""); setReplyError(null); setReviewDraft(false); setSentMessages([]); }, [lead.id]);
 
   useEffect(() => {
     setIsTouch(window.matchMedia("(hover: none) and (pointer: coarse)").matches);
@@ -227,7 +235,7 @@ export function ConversationView({
 
   async function submitReply() {
     const body = replyText.trim();
-    if (!body || replySending) return;
+    if (!body || body.length > 640 || replySending || readOnly || !serviceStatus.canTextFromRelay) return;
 
     setReplySending(true);
     setReplyError(null);
@@ -238,6 +246,7 @@ export function ConversationView({
 
     if (result.ok) {
       setReplyText("");
+      setReviewDraft(false);
       setSentMessages((previous) => [...previous, result.message]);
       router.refresh();
     } else {
@@ -312,6 +321,15 @@ export function ConversationView({
           </div>
         </div>
       ))}
+
+      {lead.sms_status === "skipped_known_contact" ? <div className="convo__banner contact-skipped">
+        <span>Not auto-texted: known contact</span>
+        {!readOnly && serviceStatus.canTextFromRelay ? <button className="btn btn-secondary btn-sm" type="button" disabled={replySending} onClick={() => {
+          setReplyText((current) => contactReplyDraft(current, quickReplies, schedulingUrl));
+          setReplyError(null); setReviewDraft(true); composerRef.current?.focus();
+        }}>Text them anyway</button> : null}
+      </div> : null}
+      <LeadContactControls lead={lead} readOnly={readOnly} onChanged={setContactOverride} />
 
       {detailsOpen && !readOnly ? (
         <section className="convo__details">
@@ -434,6 +452,7 @@ export function ConversationView({
                 <Icon name={item.lead.source === "missed_call" ? "phone" : "message"} size={12} />{" "}
                 {leadEventLabel(item.lead)} · {formatTime(item.created_at)}
               </p>
+              {item.lead.sms_status === "skipped_known_contact" ? <p className="convo__event-line">Not auto-texted: known contact</p> : null}
               {hasUsableVoicemail(item.lead.recording_sid, item.lead.recording_duration) && item.lead.recording_sid ? (
                 <div className="convo__msg convo__msg--in convo__vm">
                   <span className="convo__vm-label">Voicemail</span>
@@ -580,6 +599,7 @@ export function ConversationView({
               {replyError}
             </p>
           ) : null}
+          {reviewDraft ? <p role="status" className="convo__composer-hint">Review this draft, then select Send text. Recipient opt-outs still apply. This reply will not turn automatic texts on.</p> : null}
           <div className="convo__chips clean-scroll">
             {quickReplies.map((template) => (
               <button
@@ -623,6 +643,7 @@ export function ConversationView({
               rows={1}
               maxLength={640}
               enterKeyHint={isTouch ? "enter" : "send"}
+              aria-label="Reply message"
               placeholder="Text from your business number..."
               value={replyText}
               disabled={replySending}
@@ -633,7 +654,7 @@ export function ConversationView({
               onKeyDown={(event) => {
                 // Desktop only: Enter sends, Shift+Enter is a newline. On touch,
                 // Enter falls through to its default (newline) and the button sends.
-                if (!isTouch && event.key === "Enter" && !event.shiftKey) {
+                if (!reviewDraft && !isTouch && event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
                   void submitReply();
                 }
@@ -643,14 +664,14 @@ export function ConversationView({
               className="convo__send"
               type="button"
               aria-label="Send text"
-              disabled={replySending || !replyText.trim()}
+              disabled={replySending || !replyText.trim() || replyText.trim().length > 640}
               onClick={() => void submitReply()}
             >
               <Icon name="arrowRight" size={18} />
             </button>
           </div>
           <p className="convo__composer-hint">
-            <strong>Enter</strong> sends · <strong>Shift+Enter</strong> for a new line
+            {reviewDraft || isTouch ? "Use Send text to send · Enter adds a new line" : <><strong>Enter</strong> sends · <strong>Shift+Enter</strong> for a new line</>}
           </p>
         </footer>
       ) : null}

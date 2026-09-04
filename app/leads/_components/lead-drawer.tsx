@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { contactLeadFields, contactReplyDraft, type ContactDetails } from "@/lib/contact-client";
+import { LeadContactControls } from "./lead-contact-controls";
 import { Icon } from "@/components/icon";
 import type { Lead, LeadStatus, ReplyPriorityOverride } from "@/lib/supabase";
 import { smsDeliveryIssue, smsDeliveryStatusLabel } from "@/lib/twilio/sms-delivery";
@@ -14,7 +16,11 @@ import { SetupRequestDetails } from "./setup-request-details";
 import { VoicemailAudio } from "./voicemail-audio";
 
 export function LeadDrawer({
-  lead,
+  lead: savedLead,
+  readOnly = false,
+  textingFromRelay = true,
+  quickReplies = QUICK_REPLIES,
+  schedulingUrl = null,
   previousLeads = [],
   onClose,
   onStatus,
@@ -29,6 +35,10 @@ export function LeadDrawer({
   isTranscribing,
 }: {
   lead: Lead;
+  readOnly?: boolean;
+  textingFromRelay?: boolean;
+  quickReplies?: string[];
+  schedulingUrl?: string | null;
   previousLeads?: Lead[];
   onClose: () => void;
   onStatus: (id: string, status: LeadStatus) => void;
@@ -42,6 +52,11 @@ export function LeadDrawer({
   onReply: (id: string, body: string) => Promise<SendReplyResult>;
   isTranscribing: boolean;
 }) {
+  const [contactOverride, setContactOverride] = useState<ContactDetails | null | undefined>(undefined);
+  const lead = { ...savedLead, ...(contactOverride === undefined ? {} : contactLeadFields(contactOverride)) };
+  useEffect(() => { setContactOverride(undefined); }, [savedLead]);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const [reviewDraft, setReviewDraft] = useState(false);
   const drawerRef = useRef<HTMLElement | null>(null);
   const drawerHeadRef = useRef<HTMLElement | null>(null);
   const [name, setName] = useState(lead.name ?? "");
@@ -151,7 +166,7 @@ export function LeadDrawer({
 
   async function submitReply() {
     const body = replyText.trim();
-    if (!body || replySending) return;
+    if (!body || body.length > 640 || replySending || readOnly || !textingFromRelay) return;
 
     setReplySending(true);
     setReplyError(null);
@@ -225,6 +240,12 @@ export function LeadDrawer({
             </div>
           </div>
         </div>
+
+        <LeadContactControls lead={savedLead} readOnly={readOnly} onChanged={setContactOverride} />
+
+        {lead.sms_status === "skipped_known_contact" ? (
+          <p className="contact-notice">Not auto-texted: known contact</p>
+        ) : null}
 
         <div className="drawer__status-row">
           <span className="t-eyebrow">Status</span>
@@ -405,8 +426,14 @@ export function LeadDrawer({
               </div>
             </div>
           ) : null}
-          <div style={{ display: "grid", gap: 8 }}>
+          {!readOnly && textingFromRelay ? <><div style={{ display: "grid", gap: 8 }}>
+            {lead.sms_status === "skipped_known_contact" ? <button className="btn btn-secondary btn-sm" type="button" disabled={replySending} onClick={() => {
+              setReplyText((current) => contactReplyDraft(current, quickReplies, schedulingUrl)); setReviewDraft(true); composerRef.current?.focus();
+            }}>Text them anyway</button> : null}
+            {reviewDraft ? <p role="status">Review the draft, then select Send. Opt-outs still apply; this reply does not turn automatic texts on.</p> : null}
             <textarea
+              ref={composerRef}
+              aria-label="Reply message"
               className="field"
               rows={2}
               maxLength={640}
@@ -418,7 +445,7 @@ export function LeadDrawer({
                 if (replyError) setReplyError(null);
               }}
               onKeyDown={(event) => {
-                if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                if (!reviewDraft && event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
                   event.preventDefault();
                   void submitReply();
                 }
@@ -433,7 +460,7 @@ export function LeadDrawer({
               <button
                 className="btn btn-primary follow-up-actions__primary"
                 type="button"
-                disabled={replySending || !replyText.trim()}
+                disabled={replySending || !replyText.trim() || replyText.trim().length > 640}
                 onClick={() => void submitReply()}
               >
                 <Icon name="message" size={14} /> {replySending ? "Sending..." : "Send text"}
@@ -446,7 +473,7 @@ export function LeadDrawer({
           <details className="follow-up-shortcuts">
             <summary>Text shortcuts</summary>
             <div className="follow-up-quick">
-              {QUICK_REPLIES.map((template) => (
+              {quickReplies.map((template) => (
                 <button
                   key={template}
                   className="quick-reply"
@@ -464,7 +491,7 @@ export function LeadDrawer({
           <p className="follow-up-hint">
             Replies go out from your Relay business number, so the customer sees one conversation.{" "}
             <a href={`sms:${lead.phone}`}>Use your phone instead</a>
-          </p>
+          </p></> : !readOnly ? <p>Texting from your Relay number is not on. You can still call back.</p> : null}
         </div>
 
         {previousLeads.length > 0 ? (

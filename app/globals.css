@@ -4391,6 +4391,35 @@ code {
   color: var(--ink-4);
   font-size: 13px;
 }
+.contacts-section { scroll-margin-top: 24px; }
+.contact-heading, .contact-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.contact-heading h2 { margin: 0 0 8px; font-size: 22px; }
+.contact-heading .btn, .contact-row .btn { flex-shrink: 0; }
+.contact-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.contact-search { display: flex; align-items: flex-end; gap: 12px; margin: 20px 0; }
+.contact-search .form-field { flex: 1; margin: 0; min-width: 0; }
+.contact-list { list-style: none; padding: 0; margin: 0 0 18px; }
+.contact-list > li { border-top: 1px solid var(--line); padding: 16px 0; }
+.contact-row > div { min-width: 0; overflow-wrap: anywhere; }
+.contact-phone, .contact-meta { display: block; margin-top: 4px; font-size: 13px; color: var(--ink-3); }
+.contact-editor { margin: 16px 0; padding: 16px; border: 1px solid var(--line); border-radius: 12px; }
+.contact-editor fieldset { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 14px; }
+.contact-editor .form-field { margin: 0; }
+.contact-editor select { width: 100%; }
+.contact-checkbox { display: flex; align-items: flex-start; gap: 8px; }
+.contact-checkbox input { margin-top: 4px; }
+.contact-removal { border-top: 1px solid var(--line); padding-top: 10px; font-size: 13px; }
+.contact-notice { font-size: 14px; padding: 12px; background: var(--panel-2, var(--panel)); border-radius: 8px; }
+.lead-contact-controls { padding: 14px 20px; border-bottom: 1px solid var(--line); display: grid; gap: 10px; }
+.lead-contact-controls p { margin: 0; }
+.contact-undo { display: grid; gap: 6px; justify-items: start; }
+.contact-skipped { flex-wrap: wrap; justify-content: space-between; }
+@media (max-width: 540px) {
+  .contact-heading { flex-direction: column; gap: 10px; }
+  .contact-editor { padding: 12px; }
+  .contact-actions .btn { min-height: 40px; }
+  .lead-contact-controls { padding: 14px; }
+}
 .settings-billing {
   scroll-margin-top: 24px;
 }

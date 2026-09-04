@@ -1,6 +1,6 @@
 # Known-contact handling — implementation specification
 
-Status: **Steps 1–4 implemented and deployed to production on 2026-09-04. Steps 5–8 not implemented.** All three production database migrations passed before the application deployment. The regression suite passes 667/667 after the stale monitoring test correction. See §17 for preparation history and §18 for the completed release, live commit, verification, and remaining limits. Earlier local-only and blocker statements below describe their respective checkpoints.
+Status: **Steps 1–4 implemented and deployed to production on 2026-09-04. Step 5 is implemented and verified locally but not deployed. Steps 6–8 are not implemented.** All three production database migrations passed before the Steps 1–4 application deployment. The current Step 5 regression suite passes 672/672. See §17–18 for the production release and §19 for Step 5 behavior and verification. Earlier local-only and blocker statements below describe their respective checkpoints.
 
 Local database prerequisite: **complete**, following the separately authorized setup on 2026-09-03. PostgreSQL 17.11 now runs in the repository's private socket-only cluster, with the checked-in schema loaded and real role/RLS/RPC/constraint checks passing. See [local database operations](../operations/local-test-database.md). The Step 2 contact migration and feature-specific SQL/RLS checks have also passed (see §14).
 
@@ -548,3 +548,37 @@ After database verification, created a fresh Vercel **production** deployment fr
 No production release blocker remains. Signed-in Relay UI/device review and real SMS/email/push delivery were **not performed** during this rollout. Production contacts remain empty at verification. The release does not claim completion of the full feature or Step 8: owner Settings/quick actions, imports, contact picker support, and the remaining acceptance/pilot work are still Steps 5–8. Do not roll back to an app that ignores saved contact suppression once contacts are in use.
 
 The release record update is documentation-only and may be committed after the deployed SHA. Future feature-branch pushes still create Previews because Vercel's production Git branch remains `main`; they require an explicit production release to change the live site. Unrelated local documents and edits remain untouched.
+
+## 19. Step 5 implementation and verification
+
+Implemented locally on `codex/known-contacts` after confirming Vercel production deployment `dpl_AsEzYPeB5pJMKEZApGFcoNLCZXsZ` is **READY** and serves the branch's then-current commit `03f71714584b8cd6bcc92e25e8a11eba57452a05` at both Relay domains. Step 5 has not been pushed or deployed by this implementation step. It needs no database migration because it uses the Step 2 APIs and Step 4 projections already deployed.
+
+### Owner controls
+
+- Settings now includes a searchable, 20-per-page Contacts section. Owners/admins can manually add, edit, classify, change Customer automatic-text eligibility, and remove contacts. Viewers receive the same account-scoped list without mutation controls. Focus, disabled controls, loading/empty/error states, retry, pagination clamping, and current-version conflict recovery are explicit.
+- Manual adds submit only phone and optional display name. The existing server merge creates an `unclassified`, suppressed contact, so no UI request can default a new contact to enabled automation. Existing entries retain their classification, policy, and name. The UI explains that adding creates no lead and sends no message.
+- Personal and unclassified edits force `suppress` in the client as well as in database constraints. Only a Customer exposes the future automatic-text checkbox. Copy states that this affects future missed calls, remains subject to account texting/recipient opt-outs, grants no consent, and does not replay past skips.
+- Removal uses the contact version and an explicit in-flow explanation. After confirmed removal, retained history is regrouped by authoritative server reads. Trash and past SMS outcomes remain unchanged. Ambiguous network/storage and stale-version failures keep the editor recoverable rather than showing a false success.
+- Successful mutations refresh `/settings`, `/leads`, `/reports`, and the current router data. Settings also refreshes its server list after focus when no edit/add form is open. It never derives contact membership from a lead name or reply.
+
+### Lead and manual-reply controls
+
+- The full conversation and fallback lead drawer expose separate **Turn off automatic texts** and **Mark as personal** actions through `/api/leads/{id}/contact`. They pass the projected current contact ID/version when one exists. Confirmed changes update the open lead's contact name/classification immediately, then refresh authoritative inbox/Reports data.
+- Each quick action has a version-checked Undo. Undo restores the prior contact classification and policy, or removes only the contact that the quick action just created. Concurrent changes fail with a reload action rather than being overwritten. The full editor remains available for reclassification, Customer re-enablement, name changes, or removal.
+- A lead whose recorded SMS status is `skipped_known_contact` shows **Not auto-texted: known contact**. **Text them anyway** fills the existing Relay composer with the first nonblank account reply template and the booking link, without overwriting an in-progress draft. It never invokes the reply endpoint until the owner selects Send. The review state disables desktop Enter-to-send and explains that opt-outs still apply and a manual reply will not enable future automatic messages.
+- The composer still uses the existing manual-reply API, idempotency, account-texting gate, and recipient opt-out check. When Relay texting is unavailable, the existing call/text-from-phone alternatives remain; no new sending system or consent path was added. Viewer controls remain read-only.
+
+### Verification evidence
+
+| Check | Result | Evidence and limits |
+| --- | --- | --- |
+| Vercel preflight | **Passed** | `www.relay-nw.com` resolves to READY deployment `dpl_AsEzYPeB5pJMKEZApGFcoNLCZXsZ`, exact commit `03f7171`, ref `codex/known-contacts`, with both Relay custom domains assigned. This was a read-only check before Step 5 changes. |
+| `npm test` | **672 passed, 0 failed/skipped** | Full suite after Step 5. Five new tests cover safe classification/policy patches, preservation of lead names/SMS history, draft behavior, fetch/version conflict contracts, role/error/loading/paging controls, both reply surfaces, and review-before-send. The existing route authorization, opt-out, inbox/report, SMS, account, and provider regressions remain green. |
+| `npm run lint` | **Passed** | Full workspace ESLint, no warnings. |
+| Clean `npm run typecheck` | **Passed** | Checked the complete application/Step 5 source in an isolated copy excluding four unrelated untracked `route 2.ts` files. A direct workspace typecheck is blocked by those duplicate files' pre-existing missing `notificationId` arguments; Step 5 files have no TypeScript errors. The unrelated files were preserved. |
+| Isolated production build | **Passed** | Complete app build with the real Step 5 sources, installed dependencies, and synthetic environment values. No production credential or data was used. |
+| Desktop browser review | **Passed** | Actual React/Next UI against a local synthetic contact API at 1280×900: contact list, 23-row pagination, editor, classification copy, and lead conversation controls rendered correctly. |
+| Mobile browser review | **Passed** | Actual UI at 390×844: Settings list/add form and lead controls/composer fit without horizontal overflow (`innerWidth`, document/body, conversation, and composer widths all 390px). Touch-size action wrapping and focused form fields were inspected. |
+| Interaction states | **Passed with synthetic data** | Verified loading-to-list, Add form focus/copy, successful local save feedback, lead quick controls, skipped reason, and **Text them anyway** draft. The populated draft remained unsent. Error/stale behavior is covered by focused tests and explicit local API responses; no production contact was changed and no real SMS/email/push was sent. |
+
+Step 6 remains CSV/vCard preview, validation, selection, and repeatable merge. Step 7 remains the feature-detected phone picker. Step 8 remains integration review, real-device evidence, and pilot preparation. Do not deploy Step 5 or use customer contacts as test data without a separate release instruction.

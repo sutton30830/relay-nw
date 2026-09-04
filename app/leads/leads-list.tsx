@@ -14,6 +14,9 @@ import { useLeadsInbox } from "./_hooks/use-leads-inbox";
 
 export function LeadsList({
   leads,
+  readOnly = false,
+  quickReplies,
+  schedulingUrl,
   businessName,
   switchAccountHref,
   showOperations,
@@ -23,6 +26,9 @@ export function LeadsList({
   pagination,
 }: {
   leads: Lead[];
+  readOnly?: boolean;
+  quickReplies?: string[];
+  schedulingUrl?: string | null;
   businessName: string;
   switchAccountHref?: string;
   showOperations?: boolean;
@@ -220,6 +226,10 @@ export function LeadsList({
         <LeadDrawer
           key={inbox.openLead.id}
           lead={inbox.openLead}
+          readOnly={readOnly}
+          textingFromRelay={serviceStatus?.canTextFromRelay ?? false}
+          quickReplies={quickReplies}
+          schedulingUrl={schedulingUrl}
           previousLeads={inbox.activeItems
             .filter(
               (lead) =>

@@ -106,7 +106,7 @@ test("conversation composer appears only when the server-side reply gate would p
 test("while texting is blocked the owner still gets working non-SMS actions", () => {
   const panel = conversationView.slice(
     conversationView.indexOf('convo__no-text"'),
-    conversationView.indexOf("{!readOnly && serviceStatus.canTextFromRelay"),
+    conversationView.indexOf("{!readOnly && serviceStatus.canTextFromRelay", conversationView.indexOf('convo__no-text"')),
   );
   assert.match(panel, /href=\{`tel:\$\{lead\.phone\}`\}/);
   assert.match(panel, /href=\{`sms:\$\{lead\.phone\}`\}/);
