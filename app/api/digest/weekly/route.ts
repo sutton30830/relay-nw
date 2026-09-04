@@ -32,7 +32,8 @@ export async function GET(request: Request) {
 }
 
 async function runAuthorizedWeeklyDigest() {
-  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const until = new Date().toISOString();
+  const since = new Date(Date.parse(until) - 7 * 24 * 60 * 60 * 1000).toISOString();
   const accountIds = await listActiveAccountIds();
   const results: Array<{ accountId: string; sent: boolean; error?: string }> = [];
   const runKey = new Date().toISOString().slice(0, 10);
@@ -51,7 +52,7 @@ async function runAuthorizedWeeklyDigest() {
         continue;
       }
 
-      const stats = await getAccountRecoveryStats(accountId, { since });
+      const stats = await getAccountRecoveryStats(accountId, { since, until });
 
       // Nothing happened, nothing to brag about — skip rather than send an empty email.
       if (stats.missedCalls === 0 && stats.replies === 0 && stats.booked === 0) {

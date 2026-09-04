@@ -784,6 +784,8 @@ export async function notifyOwnerWeeklyDigest(input: {
   stats: {
     missedCalls: number;
     textedBack: number;
+    knownContactSkipped: number;
+    preSendBlocked: number;
     urgent: number;
     replies: number;
     booked: number;
@@ -802,6 +804,8 @@ export async function notifyOwnerWeeklyDigest(input: {
     headline,
     `Missed calls caught: ${stats.missedCalls}`,
     `Callers texted back automatically: ${stats.textedBack}`,
+    ...(stats.knownContactSkipped > 0 ? [`Not auto-texted: known contact (${stats.knownContactSkipped})`] : []),
+    ...(stats.preSendBlocked > 0 ? [`Held before sending: texting checks unavailable (${stats.preSendBlocked})`] : []),
     `ASAP callbacks flagged: ${stats.urgent}`,
     `Customer replies: ${stats.replies}`,
     stats.booked > 0 && stats.recoveredCents > 0

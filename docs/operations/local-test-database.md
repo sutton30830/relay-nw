@@ -75,3 +75,6 @@ Prompt 2 is now implemented and verified: the dedicated known-contact migration 
 
 
 Step 3 adds `docs/migrations/2026-09-04-known-contact-sms.sql` after the contact foundation. It is applied locally. The same `npm run test:contacts:db` suite now runs **20** checks through both migrations and a fresh full schema, including the new SMS status constraints, no-attempt suppression, and idempotent actual-attempt evidence. Application/provider behavior is checked separately by `tests/known-contact-sms.test.mjs`; no real messaging services are used.
+
+
+Step 4 adds `docs/migrations/2026-09-04-known-contact-views.sql` after the SMS migration. It is applied locally. `npm run test:contacts:db` now passes **30** checks through all three migrations and a fresh schema, including actual role restrictions on the contact-aware view/RPCs and mixed/large-account inbox/report/reply fixtures. See [Step 4 evidence](../impl-specs/known-contacts.md#16-step-4-implementation-and-verification) for application checks and the separate unchanged monitoring-test failure.

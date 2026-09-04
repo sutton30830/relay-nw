@@ -52,7 +52,7 @@ export function LeadsList({
     : loadedEnd < knownTotal;
   const trimmedQuery = inbox.query.trim();
   const hasSearch = trimmedQuery.length > 0;
-  const accountHasAnyLeads = inbox.counts.all + inbox.counts.trash > 0;
+  const accountHasAnyLeads = inbox.counts.all + inbox.counts.personal + inbox.counts.trash > 0;
   const activeFilter = FILTERS.find((item) => item.key === inbox.filter);
   const emptyStateTitle = hasSearch
     ? `No leads match "${trimmedQuery}".`
@@ -67,7 +67,9 @@ export function LeadsList({
     ? "There are leads in the inbox — this keyword just does not match them. Clear the search or try a different word."
     : !accountHasAnyLeads
       ? "Once someone calls and you miss it, Relay NW will save the caller, voicemail, and follow-up status here."
-      : inbox.filter === "trash"
+      : inbox.filter === "personal"
+        ? "Calls from contacts marked Personal appear here. Their history is kept and excluded from business Reports and recaps."
+        : inbox.filter === "trash"
         ? "Deleted leads will appear here so you can restore them if you make a mistake."
         : "Try another status filter or wait for new missed calls to come in.";
 
@@ -142,6 +144,10 @@ export function LeadsList({
         })}
         {inbox.isSearching ? <span className="filters__loading" role="status">Loading leads…</span> : null}
       </nav>
+
+      {inbox.filter === "personal" ? (
+        <p className="ledger__hint">Personal calls are kept here and excluded from business Reports and recaps. Automatic texts are off.</p>
+      ) : null}
 
       {hasPreviousPage || hasNextPage ? (
         <div className="inbox-page-meta">

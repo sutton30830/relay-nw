@@ -117,8 +117,8 @@ test(
     assert.match(leadsInboxHook, /applyCountDeltas/);
     assert.doesNotMatch(leadsInboxHook, /setFilter\(status\)/);
     assert.match(leadsInboxHook, /Status is an edit, not an inbox navigation/);
-    assert.match(leadsInboxHook, /setItems\(\(current\) => applyPendingWrites\(leads, current\)\)/);
-    assert.match(leadsInboxHook, /missingPendingItems/);
+    assert.match(leadsInboxHook, /setItems\(applyPendingWrites\(leads, pendingLeadWrites\.current, pendingPhoneWrites\.current\)\)/);
+    assert.doesNotMatch(leadsInboxHook, /missingPendingItems/);
     assert.match(leadsInboxHook, /router\.prefetch\(buildInboxHref\(item\.key, query\)\)/);
   },
 );

@@ -23,6 +23,7 @@ export const FILTERS: Array<{ key: Filter; label: string }> = [
   { key: "contacted", label: "Contacted" },
   { key: "dead", label: "Closed" },
   { key: "booked", label: "Booked" },
+  { key: "personal", label: "Personal" },
   { key: "trash", label: "Trash" },
 ];
 

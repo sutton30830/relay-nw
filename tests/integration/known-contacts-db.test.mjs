@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import pg from "pg";
+import { verifyContactViews } from "./known-contact-views.mjs";
 import { loadContactModule, phoneFixtures } from "../helpers/contacts.mjs";
 const root = await realpath(fileURLToPath(new URL("../../", import.meta.url)));
 const state = join(root, ".local/postgres");
@@ -24,6 +25,7 @@ async function connect(database) {
 }
 const migration = await readFile(join(root,"docs/migrations/2026-09-03-known-contacts.sql"),"utf8");
 const smsMigration = await readFile(join(root,"docs/migrations/2026-09-04-known-contact-sms.sql"),"utf8");
+const viewsMigration = await readFile(join(root,"docs/migrations/2026-09-04-known-contact-views.sql"),"utf8");
 const schema = await readFile(join(root,"supabase.sql"),"utf8");
 const baseline = execFileSync("git",["show","0799c38a915d44e41014528bcf4d5b2ac2e0dd41:supabase.sql"],{cwd:root,encoding:"utf8",maxBuffer:4*1024*1024});
 const bootstrap = await readFile(join(root,"scripts/local-db/bootstrap.sql"),"utf8");
@@ -58,6 +60,8 @@ for (const mode of ["upgrade", "fresh"]) test(`real PostgreSQL: ${mode} schema, 
       await client.query(migration);
       await client.query(smsMigration);
       await client.query(smsMigration);
+      await client.query(viewsMigration);
+      await client.query(viewsMigration);
       assert.equal((await client.query("select name from leads where account_id=$1",[A])).rows[0].name,"Original");
     } else {
       await client.query(schema);
@@ -201,6 +205,7 @@ for (const mode of ["upgrade", "fresh"]) test(`real PostgreSQL: ${mode} schema, 
       }
       await client.query("reset role");await client.query("set role service_role");
     });
+    await verifyContactViews(client,t);
     await t.test("account deletion records exact contact count and leaves the other tenant intact",async()=>{
       await assert.rejects(rpc(client,"delete_account_data",[A,actor,null]),/archived/);
       await client.query("update accounts set status='archived',onboarding_status='closed' where id=$1",[A]);

@@ -313,6 +313,7 @@ function createSupabaseFake(seed) {
       booked_count: booked.length,
       dead_count: visible.filter((lead) => lead.status === "dead").length,
       trash_count: rollup.filter((lead) => lead.deleted_at).length,
+      personal_count: 0, sms_blocked_count: 0, known_contact_skipped_count: 0,
       sms_issues_count: visible.filter((lead) => lead.status === "new" && ["failed", "undelivered"].includes(lead.sms_status)).length,
       booked_value_cents: booked.reduce((sum, lead) => sum + (lead.job_value_cents ?? 0), 0),
       booked_with_value_count: booked.filter((lead) => (lead.job_value_cents ?? 0) > 0).length,
@@ -348,11 +349,11 @@ function createSupabaseFake(seed) {
 
     const total = filtered.length;
 
-    return filtered.slice(offset, offset + limit).map((lead) => ({
+    return { total, leads: filtered.slice(offset, offset + limit).map((lead) => ({
       ...lead,
       call_count: callCounts.get(lead.phone) ?? 1,
-      total_count: total,
-    }));
+      is_personal: false,
+    })) };
   }
 
   function rpcResult(data, error = null) {
@@ -375,10 +376,10 @@ function createSupabaseFake(seed) {
         return new Query(tableName);
       },
       rpc(name, params) {
-        if (name === "search_lead_inbox") {
+        if (name === "search_lead_inbox_v2") {
           return rpcResult(searchLeadInbox(params));
         }
-        if (name === "lead_inbox_counts") {
+        if (name === "lead_inbox_counts_v2") {
           return rpcResult(leadInboxCounts(params));
         }
         if (name === "create_missed_call_lead_and_mark_live") {

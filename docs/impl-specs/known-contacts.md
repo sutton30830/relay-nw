@@ -1,6 +1,6 @@
 # Known-contact handling — implementation specification
 
-Status: **Steps 1–3 complete. Steps 4–8 not implemented.**
+Status: **Steps 1–4 implemented locally. Steps 5–8 not implemented.** Step 4 feature checks pass; the full regression suite has one unchanged monitoring-test failure, recorded in §16. No production rollout was performed in this sequence. The Step 2 push triggered a Vercel Preview deployment; see the commit/deployment note in §16.
 
 Local database prerequisite: **complete**, following the separately authorized setup on 2026-09-03. PostgreSQL 17.11 now runs in the repository's private socket-only cluster, with the checked-in schema loaded and real role/RLS/RPC/constraint checks passing. See [local database operations](../operations/local-test-database.md). The Step 2 contact migration and feature-specific SQL/RLS checks have also passed (see §14).
 
@@ -329,13 +329,13 @@ These are implementation requirements, not blockers requiring a new product deci
 | Local database prerequisite | Complete | PostgreSQL 17.11; unchanged base schema loaded; actual client-role RLS, service RPC, idempotency, check constraint, and tenant FK verified. |
 | 2 — Data/API | Complete | Schema/migration, scoped services/APIs, export/deletion, 12 feature tests and 18 real database checks passed; full suite 627/627, typecheck and lint passed. |
 | 3 — SMS suppression | Complete | Ordered/final contact gate, intentional and blocked statuses, independent owner alerts, zero-attempt/idempotent attempt evidence, UI/monitoring distinction; 659 regression tests and 20 real SQL checks passed. |
-| 4 — Inbox/Reports | Not started | Implement shared classification projections and metric rules. |
+| 4 — Inbox/Reports | Complete locally | Contact-aware SQL projections, Personal view, historical business aggregates, and recap filtering implemented. 30 SQL checks and 8 feature tests pass; full regression has one unchanged monitoring failure (§16). |
 | 5 — UI | Not started | Build contact and Personal controls against verified APIs. |
 | 6 — CSV/vCard import | Not started | Build preview/merge and validate representative exports. |
 | 7 — Phone picker | Not started | Add supported-browser adapter and record device evidence. |
 | 8 — Review/pilot preparation | Not started | Complete release gates and write pilot runbook. |
 
-Next numbered step when requested: **Step 4 — Inbox/Reports**. Caller automation now honors contact preferences in local code. Personal history grouping, contact-name projections across the inbox, and business-report filtering remain Step 4 work. No production resources or real messages were used.
+Next numbered step when requested: **Step 5 — Settings and lead controls**. Steps 2–4 supply contact APIs, caller suppression, current history grouping, and business filtering. Owner contact-management/import controls remain unimplemented. No production resources or real messages were used.
 
 
 ## 14. Step 2 implementation and verification
@@ -433,3 +433,67 @@ Manual reply implementation remains on the existing composer/route and its opt-o
 Transient logs: `/private/tmp/relay-known-contacts-step3-tests.log`, `/private/tmp/relay-known-contacts-step3-focused.log`, `/private/tmp/relay-known-contacts-step3-final-focused.log`, and `/private/tmp/relay-known-contacts-step3-sql.log`. Commands and test files are the durable evidence. Existing fixture changes supply the mandatory contact/attempt service dependencies; no production fallback treats a missing contact service as an unknown caller.
 
 No concrete Step 3 blocker remains. Step 4 must still add current-contact joins, name precedence across cards/conversations/search, Personal versus Trash grouping, complete business/reply/revenue filtering, and separate aggregate skip/blocked counters. Steps 5–7 add the owner controls/imports/picker, and Step 8 remains the release gate. Do not treat this partial feature as ready for a production pilot or deploy an older app that ignores saved suppression.
+
+
+## 16. Step 4 implementation and verification
+
+Implemented locally on the existing `codex/known-contacts` branch after `75ddee3` (Step 3). This section supersedes the Step 3 “remaining work” paragraph for inbox/reporting. Step 4 is recorded in a separate feature commit. Pushing and deployment are separate operations. Unrelated operations/checklist edits and local documents were preserved.
+
+### Final read contracts and behavior
+
+- `docs/migrations/2026-09-04-known-contact-views.sql` and the matching appended definitions in `supabase.sql` add a `security_invoker` view, `lead_contact_context`. It projects the existing owner-facing lead columns plus raw contact metadata, `display_name`, and `is_personal`. It never updates a lead, call, message, booking, or delivery outcome.
+- `lead_inbox_context(p_account)` preserves one newest card per **raw phone string and live/Trash bucket**, with `created_at DESC, id DESC` tie-breaking. The contact join uses account identity and the existing canonical phone helper; historical formatting variants share contact metadata while keeping their existing separate cards.
+- `lead_inbox_counts_v2(p_account)` returns a JSON object with the existing `_count`/value fields plus `personal_count`, `sms_blocked_count`, and `known_contact_skipped_count`. Business counts exclude Personal and Trash. SMS failures mean failed/undelivered; blocked checks and intentional skips remain separate. Known-contact skips count current business cards, not unique people.
+- `search_lead_inbox_v2(p_account,p_filter,p_query,p_limit,p_offset)` returns `{leads,total}`. Each lead includes the contact projection and `call_count` across all raw-phone call rows, including Personal and Trash. Filtering and literal case-insensitive search run before paging. `total` stays correct even when the requested page is empty. Query length is capped at 200 characters; page size is 1–250. Search covers effective display name, phone, original lead message, notes, voicemail summary, and transcript. This preserves the existing server search scope; it does not introduce an all-message search feature.
+- Legacy `status='booked'` rows remain booked outcomes and appear in Closed, matching the existing TypeScript normalization to `dead` plus a booking flag. This resolves the previous server/client mismatch without rewriting stored statuses. Historical booking aggregates still require an actual `booked_at`, preserving their existing date attribution.
+- Personal is a filter independent of status and Trash. Customer/unclassified contacts remain business calls. Personal cards/conversations retain names, call records, messages, voicemail, and booking controls. Trash includes both classifications, and a restored call follows its **current** contact classification. Reclassification/removal recomputes retained history without restoring independently trashed rows or changing past SMS outcomes.
+- Display names use nonblank owner-entered `leads.name`, then contact name, then the existing unknown/phone presentation. Raw editable names remain raw; contact fallback is never saved as a lead-name edit. Phone numbers remain visible beside contact-name headings.
+- All new SQL surfaces deny `public`, `anon`, and `authenticated`; service-role execution/select is explicitly granted. Functions are invoker functions with a fixed search path and account predicates. The same phone in another account supplies neither contact metadata nor reply linkage.
+
+### Business metrics and recap
+
+- `account_business_replies(account,since,until)` counts `inbound_messages` once. An inbound `messages` mirror can supply a verified link only when account and provider message ID match. The existing `(account_id,twilio_message_sid)` uniqueness prevents duplicate mirrors in one account; the existing global uniqueness on `inbound_messages.message_sid` remains unchanged.
+- Current Personal senders are excluded even without a lead. Verified linked Personal/Trash leads are also excluded. Unlinked replies from senders with only trashed matching calls are excluded; live business history or no history remains eligible. Foreign-account mirrors cannot supply a link. `uniqueReplyLeads` counts actual distinct verified links, and `unlinkedReplyCount` reports eligible unlinked messages separately.
+- `account_business_recovery_stats` aggregates the complete eligible dataset in SQL. Calls/text outcomes use lead creation time; bookings/revenue use booking time; replies use inbound creation time. Period bounds are inclusive `since`, exclusive `until`; null means unbounded. Reports remain a current-card snapshot, while the recap remains historical activity.
+- `account_business_response_stats` computes the median first-outbound delay for eligible missed-call leads created in the period. Existing response semantics are preserved: the outbound can fall after the period, its delivery status is not newly restricted, and negative intervals are excluded. Suppression does not invent an outbound event.
+- Reports show intentional known-contact skips separately from failed texts and held texting checks. Weekly email copy makes the same distinction. The digest uses one shared seven-day window for every account and skips Personal-only activity. Query failure is a failed account check-in, not a zero-activity recap.
+- Operational call-capture monitoring, activation evidence, `getLastRecoveredCallAt`, and `getSignedCallVerificationAt` remain unchanged. Their evidence does not exclude Personal because Personal calls still prove forwarding/capture work.
+
+### Client integration and file checklist
+
+| Files | Completed behavior |
+| --- | --- |
+| `lib/supabase/{leads,reports,types}.ts` | Typed contact projections, v2 reads, complete SQL metric adapters, new counters; missing projections/RPCs fail visibly instead of using unfiltered fallbacks or fake zero totals. |
+| `app/leads/page.tsx`, `_constants.ts`, `_utils.ts`, `leads-list.tsx` | Personal navigation/counts, name fallback/search, client grouping parity, Personal guidance, bounded query input. Real search membership comes from the server; the client does not re-filter an already searched page with different search rules. |
+| `app/leads/_inbox-state.ts`, `_hooks/use-leads-inbox.ts` | Existing optimistic bookkeeping extracted into testable helpers. Fresh global counts are rebased with only outstanding edits and current contact metadata. Server-absent rows are never reinserted from stale local state. Failed edits use the current server snapshot, and Undo restores by ID even after the row has left the page. |
+| `app/leads/_components/{lead-card,lead-drawer}.tsx`, `app/leads/[id]/conversation-view.tsx` | Consistent fallback names/Personal labels and preserved raw editing/composer behavior. |
+| `app/leads/error.tsx`, `app/reports/error.tsx` | Recoverable error states with a retry button when required reads fail. |
+| `app/reports/page.tsx`, `lib/email.ts`, `app/api/digest/weekly/route.ts` | Business-only totals and recap eligibility, separate skip/blocked wording, stable digest window. |
+| `tests/known-contact-views.test.mjs`, `tests/integration/known-contact-views.mjs` | Behavioral projection/client/digest checks plus real SQL mixed/large-account checks. Existing isolation, report, and UI source contracts updated for the new APIs without weakening tenant restrictions. |
+
+### Verification evidence
+
+| Check | Result | Evidence and limits |
+| --- | --- | --- |
+| `npm run test:contacts:db` | **30 passed, 0 failed/skipped** | PostgreSQL 17.11; both a fresh full schema and ordered upgrade from the original baseline through Steps 2–4. Each migration is reapplied to verify repeatability. Actual client roles cannot use the new view/functions. Mixed Personal/customer/unclassified/unknown/opted-out/Trash fixtures cover name precedence, canonical variants, tenant identity, literal search, paging, complete counts, linked/unlinked replies, event dates, response medians, reclassification, removal, and restoration. |
+| Large real SQL fixture | **Passed** | 2,205 calls (100 Personal) produce 2,105 business cards/bookings and the correct final page/revenue. All 5,205 eligible unlinked replies count, with zero invented unique lead links. Exceeds the previous 2,000/5,000-row reporting limits. |
+| `node --test tests/known-contact-views.test.mjs tests/compliance-gaps.pinned.test.mjs` | **22 passed, 0 failed/skipped** | Eight feature tests plus 14 existing pinned contracts, repeated after the final Undo/refresh changes. Tests run actual adapters, helpers, digest route, and email formatter with synthetic data and a mocked provider. No real email is sent. |
+| `npm test` | **666 passed, 1 failed, 0 skipped** | The sole failure is unchanged `tests/monitoring-health.test.mjs:198`, which asserts the literal `attemptedLeadIds` exists in `lib/supabase/monitoring.ts`. Both files are byte-for-byte unchanged from Step 3 HEAD (`git diff HEAD --` for both is empty). No other tests failed; the full suite is explicitly **not green**. The earlier Step 3 recorded 659/659 result is not reproducible from the current unchanged monitoring sources; do not use that old record as a current passing gate. |
+| `npm run typecheck`, `npm run lint`, `git diff --check` | **Passed** | Final TypeScript/lint run completed successfully after the Undo and refresh changes. No lint warnings or tracked whitespace errors. |
+| Private local migration | **Passed** | Applied the Step 4 migration to the existing socket-only `relay_nw_test` database with the guarded local runner. Integration fixtures use disposable databases created and removed by the test invocation. |
+| Browser/device review, production build, hosted Supabase HTTP integration, real delivery | **Not run in Step 4** | SQL/role checks use the real local engine; application/provider checks use mocks. No deployment, production data changes, or real SMS/email/push. |
+
+Transient logs: `/private/tmp/relay-step4-db.log`, `/private/tmp/relay-step4-final-focused.log`, `/private/tmp/relay-step4-final-tests.log`, and `/private/tmp/relay-step4-final-lint.log`. Checked-in test files and commands are the durable evidence.
+
+### Order and remaining work
+
+Apply the foundation migration, the Step 3 SMS migration, then `2026-09-04-known-contact-views.sql` **before** switching the app to these v2 reads. Legacy RPCs remain available; do not roll back to an app that ignores saved contact suppression. No migration removes or backfills history, and no suppressed message is replayed.
+
+Step 5 should build Settings/contact controls and lead quick actions against the existing APIs. After a successful contact mutation, refresh inbox/Reports/current conversation data and global counts; never manufacture contact membership from a name edit or reply. The existing contact API invalidations plus authoritative queries handle all pages, while open views update when refreshed. Preserve the existing conversation window of 25 previous calls and 100 messages per direction; Step 4 does not claim to add full-history pagination or change data retention.
+
+No Step 4 implementation blocker remains. The unchanged monitoring source-contract failure blocks claiming a fully passing repository regression gate and must be resolved before the Step 8 release gate. Contact management, imports, supported-device testing, and production pilot preparation remain Steps 5–8.
+
+
+### Commit and deployment clarification
+
+The owner requested the Step 4 commit after implementation. Read-only GitHub checks confirmed that remote `codex/known-contacts` still points to Step 2, `bd787b549b4e8ed7a3e31181d4a43f1c81f68b1e`; Step 3 (`75ddee3`) is local. The Step 2 push automatically created a successful **Preview** deployment on 2026-09-04 at 04:02:43 UTC: [Vercel deployment](https://vercel.com/sutton-lowrys-projects/relay-nw/5xaS6L66nhcKjzJuzYMjakP5MpdY), GitHub deployment ID `6257619648`. Earlier “not deployed” wording refers to no intentional production rollout, and should not be read as absence of this automatic preview. The Step 4 commit operation does not push either local commit or run a deployment. Database migrations were verified/applied only locally; preview build success is not hosted-database or production-readiness verification.

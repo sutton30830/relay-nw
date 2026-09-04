@@ -76,12 +76,12 @@ test("reports never format missing booked value as zero dollars", () => {
 test("reports stats distinguish reply leads and booked jobs missing value", () => {
   assert.match(reportsData, /uniqueReplyLeads/);
   assert.match(reportsData, /bookedMissingValue/);
-  assert.match(reportsData, /new Set/);
-  assert.match(reportsData, /job_value_cents/);
+  assert.match(reportsData, /unlinkedReplyCount/);
+  assert.match(reportsData, /account_business_recovery_stats/);
 });
 
-test("reports stats degrade safely when unique reply lead data is unavailable", () => {
-  assert.match(reportsData, /isMissingReplyLeadIdError/);
-  assert.match(reportsData, /falling back to raw reply count/);
-  assert.match(reportsData, /uniqueReplyLeads: replies/);
+test("reports fail visibly if contact-aware aggregate data is unavailable", () => {
+  assert.match(reportsData, /throwIfSupabaseError\(error\)/);
+  assert.match(reportsData, /Business reporting is unavailable/);
+  assert.doesNotMatch(reportsData, /uniqueReplyLeads: replies|falling back to raw reply count/);
 });

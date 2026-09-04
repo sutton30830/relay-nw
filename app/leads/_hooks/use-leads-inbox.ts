@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { applyPendingWrites, applyPendingCounts, applyCountDeltas } from "../_inbox-state";
 import type { Lead, LeadStatus, OutboundMessage, ReplyPriorityOverride } from "@/lib/supabase";
 import { AUTO_VOICEMAIL_SUMMARY_LIMIT, FILTERS, INBOX_REFRESH_MS, RELATIVE_TIME_TICK_MS, SEARCH_DEBOUNCE_MS, UNDO_DELETE_MS } from "../_constants";
 import type { Filter, LeadCounts } from "../_types";
 import { deleteLead as deleteLeadRequest, patchLead, requestVoicemailSummary, sendLeadReply, type SendReplyResult } from "../_api";
-import { condenseLeadsByPhone, countCallsByPhone, countLeads, createSampleLeads, filterLeads, isBookedLead, hasSmsDeliveryFailure, shouldAutoSummarizeVoicemail, sortLeadsForWork } from "../_utils";
+import { condenseLeadsByPhone, countCallsByPhone, countLeads, createSampleLeads, filterLeads, leadDisplayName, shouldAutoSummarizeVoicemail, sortLeadsForWork } from "../_utils";
 
 // Filter and search now run on the server (the RPC in lib/supabase/leads.ts):
 // the page fetches only the rows that match the active filter/query across the
@@ -35,60 +36,6 @@ type UndoableDelete = {
   label: string;
 };
 
-// Fields where the server generates its own value (timestamps), so "did the
-// server confirm this edit?" is a truthy comparison, not strict equality.
-const TRUTHY_MATCH_FIELDS = new Set<keyof Lead>(["deleted_at", "booked_at"]);
-
-function serverConfirms(field: keyof Lead, serverValue: unknown, optimisticValue: unknown) {
-  if (TRUTHY_MATCH_FIELDS.has(field)) {
-    return Boolean(serverValue) === Boolean(optimisticValue);
-  }
-
-  return (serverValue ?? null) === (optimisticValue ?? null);
-}
-
-function countContribution(lead: Lead): LeadCounts {
-  const visible = !lead.deleted_at;
-  const booked = visible && isBookedLead(lead);
-  const bookedValueCents = booked ? (lead.job_value_cents ?? 0) : 0;
-  const bookedWithValue = booked && lead.job_value_cents ? 1 : 0;
-
-  return {
-    all: visible ? 1 : 0,
-    new: visible && lead.status === "new" ? 1 : 0,
-    contacted: visible && lead.status === "contacted" ? 1 : 0,
-    booked: booked ? 1 : 0,
-    dead: visible && lead.status === "dead" ? 1 : 0,
-    trash: lead.deleted_at ? 1 : 0,
-    actionable: visible && (lead.status === "new" || lead.status === "contacted") ? 1 : 0,
-    smsIssues: visible && hasSmsDeliveryFailure(lead) ? 1 : 0,
-    bookedValueCents,
-    bookedWithValue,
-  };
-}
-
-function applyCountDelta(counts: LeadCounts, before: Lead, after: Lead): LeadCounts {
-  const previous = countContribution(before);
-  const next = countContribution(after);
-
-  return {
-    all: counts.all - previous.all + next.all,
-    new: counts.new - previous.new + next.new,
-    contacted: counts.contacted - previous.contacted + next.contacted,
-    booked: counts.booked - previous.booked + next.booked,
-    dead: counts.dead - previous.dead + next.dead,
-    trash: counts.trash - previous.trash + next.trash,
-    actionable: counts.actionable - previous.actionable + next.actionable,
-    smsIssues: counts.smsIssues - previous.smsIssues + next.smsIssues,
-    bookedValueCents: counts.bookedValueCents - previous.bookedValueCents + next.bookedValueCents,
-    bookedWithValue: counts.bookedWithValue - previous.bookedWithValue + next.bookedWithValue,
-  };
-}
-
-function applyCountDeltas(counts: LeadCounts, changes: Array<{ before: Lead; after: Lead }>): LeadCounts {
-  return changes.reduce((nextCounts, change) => applyCountDelta(nextCounts, change.before, change.after), counts);
-}
-
 export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
   const router = useRouter();
   const searchRef = useRef<HTMLInputElement | null>(null);
@@ -113,6 +60,7 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
   const [expandedLeadIds, setExpandedLeadIds] = useState<Set<string>>(() => new Set());
   const [undoableDelete, setUndoableDelete] = useState<UndoableDelete | null>(null);
   const [optimisticCounts, setOptimisticCounts] = useState<LeadCounts>(server.counts);
+  const latestServerSnapshot = useRef({ counts: server.counts, leads });
   const [openingLeadId, setOpeningLeadId] = useState<string | null>(null);
   const [isNavigating, startNavigation] = useTransition();
   const navigationStartedRef = useRef(false);
@@ -121,7 +69,7 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
   const activeItems = sampleMode ? sampleItems : items;
 
   useEffect(() => {
-    setItems((current) => applyPendingWrites(leads, current));
+    setItems(applyPendingWrites(leads, pendingLeadWrites.current, pendingPhoneWrites.current));
     if (leads.length > 0) setSampleMode(false);
   }, [leads]);
 
@@ -146,9 +94,12 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
 
   useEffect(() => {
     if (sampleMode) return;
-    if (pendingLeadWrites.current.size > 0 || pendingPhoneWrites.current.size > 0) return;
-    setOptimisticCounts(server.counts);
-  }, [server.counts, sampleMode]);
+    // Refresh global counts even while an edit is pending. Apply only the
+    // outstanding edits to rows in the authoritative page, using fresh contact
+    // metadata so reclassification cannot leave stale business totals behind.
+    latestServerSnapshot.current = { counts: server.counts, leads };
+    setOptimisticCounts(applyPendingCounts(server.counts, leads, pendingLeadWrites.current, pendingPhoneWrites.current));
+  }, [leads, server.counts, sampleMode]);
 
   useEffect(() => {
     if (sampleMode) return;
@@ -201,6 +152,7 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
   }, [isNavigating, navigateToInbox]);
 
   function setQuery(nextQuery: string) {
+    nextQuery = nextQuery.slice(0, 200);
     setQueryState(nextQuery);
     if (sampleMode) return;
     pendingQueryRef.current = nextQuery.trim();
@@ -312,12 +264,14 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
     [condensed, condensedTrash],
   );
   const counts = sampleMode ? sampleCounts : optimisticCounts;
+  // The server already searched the complete account. Re-filtering its page
+  // by client-only search fields can hide rows while leaving totals unchanged.
   const filteredItems = useMemo(
     () =>
       (sampleMode ? filter : server.filter) === "trash"
-        ? filterLeads(condensedTrash.leads, sampleMode ? filter : server.filter, sampleMode ? query : server.query)
-        : filterLeads(condensed.leads, sampleMode ? filter : server.filter, sampleMode ? query : server.query),
-    [condensed, condensedTrash, filter, query, sampleMode, server.filter, server.query],
+        ? filterLeads(condensedTrash.leads, sampleMode ? filter : server.filter, sampleMode ? query : "")
+        : filterLeads(condensed.leads, sampleMode ? filter : server.filter, sampleMode ? query : ""),
+    [condensed, condensedTrash, filter, query, sampleMode, server.filter],
   );
   const sortedItems = useMemo(
     () => sortLeadsForWork(filteredItems),
@@ -358,59 +312,6 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
   function updateLocalLead(id: string, updates: Partial<Lead>) {
     const setter = sampleMode ? setSampleItems : setItems;
     setter((current) => current.map((lead) => (lead.id === id ? { ...lead, ...updates } : lead)));
-  }
-
-  // Reconcile server data against in-flight optimistic edits. Fields the
-  // server already reflects are confirmed and dropped; the rest stay applied
-  // on top so a stale refresh can never undo what the user just did.
-  function applyPendingWrites(nextItems: Lead[], currentItems: Lead[] = []) {
-    if (pendingLeadWrites.current.size === 0 && pendingPhoneWrites.current.size === 0) {
-      return nextItems;
-    }
-
-    for (const [id, fields] of pendingLeadWrites.current) {
-      const serverLead = nextItems.find((lead) => lead.id === id);
-      if (!serverLead) continue;
-
-      for (const key of Object.keys(fields) as Array<keyof Lead>) {
-        if (serverConfirms(key, serverLead[key], fields[key])) {
-          delete fields[key];
-        }
-      }
-
-      if (Object.keys(fields).length === 0) pendingLeadWrites.current.delete(id);
-    }
-
-    for (const [phone, fields] of pendingPhoneWrites.current) {
-      const phoneLeads = nextItems.filter((lead) => lead.phone === phone);
-      if (phoneLeads.length === 0) continue;
-
-      for (const key of Object.keys(fields) as Array<keyof Lead>) {
-        if (phoneLeads.every((lead) => serverConfirms(key, lead[key], fields[key]))) {
-          delete fields[key];
-        }
-      }
-
-      if (Object.keys(fields).length === 0) pendingPhoneWrites.current.delete(phone);
-    }
-
-    const mergedItems = nextItems.map((lead) => {
-      const phoneFields = pendingPhoneWrites.current.get(lead.phone);
-      const leadFields = pendingLeadWrites.current.get(lead.id);
-      if (!phoneFields && !leadFields) return lead;
-      return { ...lead, ...phoneFields, ...leadFields };
-    });
-
-    if (pendingLeadWrites.current.size === 0 && pendingPhoneWrites.current.size === 0) {
-      return mergedItems;
-    }
-
-    const serverIds = new Set(mergedItems.map((lead) => lead.id));
-    const missingPendingItems = currentItems
-      .filter((lead) => !serverIds.has(lead.id) && pendingLeadWrites.current.has(lead.id))
-      .map((lead) => ({ ...lead, ...pendingLeadWrites.current.get(lead.id) }));
-
-    return [...missingPendingItems, ...mergedItems];
   }
 
   function recordPendingWrite(map: Map<string, Partial<Lead>>, key: string, fields: Partial<Lead>) {
@@ -482,14 +383,8 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
         discardPendingWrite(pendingLeadWrites.current, target.id, Object.keys(target.fields));
       }
 
-      if (optimisticChanges.length > 0) {
-        setOptimisticCounts((current) =>
-          applyCountDeltas(
-            current,
-            optimisticChanges.map((change) => ({ before: change.after, after: change.before })),
-          ),
-        );
-      }
+      const latest = latestServerSnapshot.current;
+      setOptimisticCounts(applyPendingCounts(latest.counts, latest.leads, pendingLeadWrites.current, pendingPhoneWrites.current));
 
       setItems((current) =>
         current.map((lead) => {
@@ -499,6 +394,7 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
       );
     }
 
+    router.refresh();
     return saved;
   }
 
@@ -546,7 +442,7 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
 
     if (saved && !sampleMode) {
       if (undoTimerRef.current) window.clearTimeout(undoTimerRef.current);
-      setUndoableDelete({ leadId: id, label: lead.name || "Lead" });
+      setUndoableDelete({ leadId: id, label: leadDisplayName(lead) || "Lead" });
       undoTimerRef.current = window.setTimeout(() => setUndoableDelete(null), UNDO_DELETE_MS);
     }
   }
@@ -580,7 +476,16 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
     if (!undoableDelete) return;
     const { leadId } = undoableDelete;
     dismissUndo();
-    await restoreLead(leadId);
+    if (leadById(leadId)) {
+      await restoreLead(leadId);
+    } else {
+      // A completed delete removes the row from the server page. Undo still
+      // works by id; the refreshed page uses its current contact classification.
+      recordPendingWrite(pendingLeadWrites.current, leadId, { deleted_at: null });
+      const saved = await patchLead(leadId, { deleted: false });
+      if (!saved) discardPendingWrite(pendingLeadWrites.current, leadId, ["deleted_at"]);
+      router.refresh();
+    }
   }
 
   async function updateName(id: string, name: string | null) {

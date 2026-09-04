@@ -111,6 +111,13 @@ export default async function ReportsPage() {
       tone: "warning",
     },
     {
+      label: "Texting checks unavailable",
+      count: inboxCounts.smsBlocked,
+      hint: "Relay held these texts before sending. Open the lead to follow up.",
+      href: "/leads?filter=new",
+      tone: "warning",
+    },
+    {
       label: "Booked missing value",
       count: bookedMissingValue,
       hint:
@@ -161,7 +168,7 @@ export default async function ReportsPage() {
               <LedgerRow
                 label="Leads in inbox"
                 value={String(inboxCounts.all)}
-                hint="Current non-trash lead cards in your inbox."
+                hint="Current non-trash lead cards in your inbox. Personal contacts are excluded."
               />
               <LedgerRow
                 label="New leads"
@@ -184,6 +191,11 @@ export default async function ReportsPage() {
                 emphasis
               />
             </div>
+            {inboxCounts.knownContactSkipped > 0 ? (
+              <p className="ledger__hint">
+                {pluralize(inboxCounts.knownContactSkipped, "lead")} not auto-texted: known contact.
+              </p>
+            ) : null}
           </section>
 
           <section className="report-period" aria-label="Needs attention">

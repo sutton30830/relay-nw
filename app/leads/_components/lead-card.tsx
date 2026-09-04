@@ -5,7 +5,7 @@ import { Icon } from "@/components/icon";
 import type { Lead, LeadStatus } from "@/lib/supabase";
 import { hasUsableVoicemail, isOwnerDisputedTranscript } from "@/lib/voicemail-quality";
 import { LEGACY_FORWARDING_MESSAGE, STATUS_LABELS, STATUS_OPTIONS } from "../_constants";
-import { formatCurrency, formatPhone, formatRelativeTime, getLeadPriority, initials, isBookedLead, needsAttention, parseSetupRequestMessage, setupRequestSummary, shouldShowVoicemailSummaryProgress, sourceLabel } from "../_utils";
+import { formatCurrency, formatPhone, formatRelativeTime, getLeadPriority, initials, leadDisplayName, isPersonalLead, isBookedLead, needsAttention, parseSetupRequestMessage, setupRequestSummary, shouldShowVoicemailSummaryProgress, sourceLabel } from "../_utils";
 import { BookedValueInput } from "./controls";
 import { OverflowMenu } from "./overflow-menu";
 import { VoicemailPlayer } from "./voicemail-player";
@@ -130,7 +130,7 @@ export function LeadCard({
         : emptyRecording
           ? "Caller hung up without leaving a message. Call back while the request is still fresh."
           : "No voicemail left. Call back while the request is still fresh.";
-  const statusLabel = trashed ? "Trash" : STATUS_LABELS[lead.status];
+  const statusLabel = trashed ? (isPersonalLead(lead) ? "Trash · Personal" : "Trash") : isPersonalLead(lead) ? "Personal" : STATUS_LABELS[lead.status];
   const statusTone = trashed ? "trash" : lead.status;
   const smsMeta = smsMetaText(lead, now, textingFromRelay);
   const headerMeta = [
@@ -189,7 +189,7 @@ export function LeadCard({
                     onMouseEnter={() => onPrefetch?.(lead.id)}
                     onTouchStart={() => onPrefetch?.(lead.id)}
                   >
-                    <span className="lead-card__name-text">{lead.name || "Unknown caller"}</span>
+                    <span className="lead-card__name-text">{leadDisplayName(lead) || "Unknown caller"}</span>
                   </Link>
                 ) : (
                   <button
@@ -200,7 +200,7 @@ export function LeadCard({
                     onMouseEnter={() => onPrefetch?.(lead.id)}
                     onTouchStart={() => onPrefetch?.(lead.id)}
                   >
-                    <span className="lead-card__name-text">{lead.name || "Unknown caller"}</span>
+                    <span className="lead-card__name-text">{leadDisplayName(lead) || "Unknown caller"}</span>
                   </button>
                 )}
               </h3>

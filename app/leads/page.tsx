@@ -11,7 +11,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const VALID_FILTERS: LeadInboxFilter[] = ["all", "new", "contacted", "booked", "dead", "trash"];
+const VALID_FILTERS: LeadInboxFilter[] = ["all", "new", "contacted", "booked", "dead", "personal", "trash"];
 
 function readPage(value: string | string[] | undefined) {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -26,7 +26,7 @@ function readFilter(value: string | string[] | undefined): LeadInboxFilter {
 
 function readQuery(value: string | string[] | undefined) {
   const raw = Array.isArray(value) ? value[0] : value;
-  return (raw ?? "").trim();
+  return (raw ?? "").trim().slice(0, 200);
 }
 
 export default async function LeadsPage({

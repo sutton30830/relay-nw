@@ -1,8 +1,7 @@
 export type LeadSource = "missed_call" | "intake_form";
 export type LeadStatus = "new" | "contacted" | "booked" | "dead";
-// The inbox's filter pills add two views beyond a single status: "all" and
-// the soft-deleted "trash" bucket.
-export type LeadInboxFilter = LeadStatus | "all" | "trash";
+// Inbox filters include business status views, Personal, and Trash.
+export type LeadInboxFilter = LeadStatus | "all" | "personal" | "trash";
 export type ReplyPriorityOverride = "fast" | "today" | "normal" | null;
 export type SmsStatus =
   | "pending"
@@ -64,6 +63,13 @@ export type OutboundMessage = {
 
 
 export type Lead = {
+  display_name?: string | null;
+  contact_id?: string | null;
+  contact_name?: string | null;
+  contact_classification?: ContactClassification | null;
+  contact_auto_sms_policy?: ContactSmsPolicy | null;
+  contact_version?: number | null;
+  is_personal?: boolean;
   id: string;
   account_id?: string | null;
   call_sid: string | null;

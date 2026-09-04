@@ -108,9 +108,10 @@ test("unresolved Twilio account handling alerts admin and avoids tenant writes",
 test("lead queries and mutations filter by account_id when an account is supplied", () => {
   assert.match(files.tenantStore, /export function assertAccountId/);
   assert.match(files.leadsStore, /query = query\.eq\("account_id", accountId\)/);
-  assert.match(files.leadsStore, /\.range\(offset, offset \+ limit - 1\)/);
+  assert.match(files.leadsStore, /rpc\("search_lead_inbox_v2"/);
+  assert.match(files.leadsStore, /p_account: accountId[\s\S]*p_limit: limit, p_offset: offset/);
   assert.match(files.leadsStore, /DEFAULT_LEADS_PAGE_LIMIT = 50/);
-  assert.match(files.leadsStore, /legacyQuery = legacyQuery\.eq\("account_id", accountId\)/);
+  assert.doesNotMatch(files.leadsStore, /legacyQuery/);
   assert.match(files.leadsStore, /\.eq\("id", input\.id\)\s*\.eq\("account_id", accountId\)/);
   assert.match(files.leadsStore, /\.eq\("id", id\)\s*\.eq\("account_id", accountId\)/);
   assert.doesNotMatch(files.leadsStore, /\.match\([^)]*account_id[^)]*:\s*\{\}/);

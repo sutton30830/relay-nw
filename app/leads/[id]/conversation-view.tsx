@@ -12,7 +12,7 @@ import { hasUsableVoicemail } from "@/lib/voicemail-quality";
 import { patchLead, requestVoicemailSummary, sendLeadReply } from "../_api";
 import { VoicemailCorrections } from "../_components/voicemail-corrections";
 import { VoicemailPlayer } from "../_components/voicemail-player";
-import { formatPhone, getLeadPriority, humanVoicemailError, initials, isBookedLead, sourceLabel, voicemailRecoveryAction } from "../_utils";
+import { formatPhone, getLeadPriority, humanVoicemailError, initials, leadDisplayName, isPersonalLead, isBookedLead, sourceLabel, voicemailRecoveryAction } from "../_utils";
 import { BookedToggle, BookedValueInput, PriorityControl, StatusControl } from "../_components/controls";
 
 type ThreadItem =
@@ -267,10 +267,10 @@ export function ConversationView({
         <Link className="convo__back" href="/leads" aria-label="Back to inbox">
           &larr;
         </Link>
-        <div className="lead-card__avatar">{initials(lead) ?? <Icon name="user" size={16} />}</div>
+        <div className="lead-card__avatar">{initials(currentLead) ?? <Icon name="user" size={16} />}</div>
         <div className="convo__who">
-          <p className="convo__name">{currentLead.name || formatPhone(lead.phone)}</p>
-          {currentLead.name ? <p className="convo__number">{formatPhone(lead.phone)}</p> : null}
+          <p className="convo__name">{leadDisplayName(currentLead) || formatPhone(lead.phone)}{isPersonalLead(currentLead) ? " · Personal" : ""}</p>
+          {leadDisplayName(currentLead) ? <p className="convo__number">{formatPhone(lead.phone)}</p> : null}
         </div>
         <a className="btn btn-secondary btn-sm" href={`tel:${lead.phone}`}>
           <Icon name="phone" size={14} /> Call

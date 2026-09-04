@@ -513,7 +513,9 @@ test("server inbox counts and booked filter use the same condensed live mailbox"
 });
 
 test("lead card actions keep workflow controls explicit and avoid duplicate details", () => {
-  assert.match(leadCardTsx, /const statusLabel = trashed \? "Trash" : STATUS_LABELS\[lead\.status\]/);
+  assert.match(leadCardTsx, /Trash · Personal/);
+  assert.match(leadCardTsx, /isPersonalLead\(lead\)/);
+  assert.match(leadCardTsx, /STATUS_LABELS\[lead\.status\]/);
   assert.match(leadCardTsx, /lead-card__status-pill lead-card__status-pill--\$\{statusTone\}/);
   assert.match(leadCardTsx, /trigger=\{<>Status<\/>\}/);
   assert.match(leadCardTsx, /triggerAriaLabel="Change lead status"/);
@@ -566,7 +568,7 @@ test("lead outcome editing offers quick booked-value presets off the compact car
 
 test("lead inbox empty states distinguish search misses from no leads", () => {
   assert.match(leadsListTsx, /const hasSearch = trimmedQuery\.length > 0/);
-  assert.match(leadsListTsx, /accountHasAnyLeads = inbox\.counts\.all \+ inbox\.counts\.trash > 0/);
+  assert.match(leadsListTsx, /accountHasAnyLeads = inbox\.counts\.all \+ inbox\.counts\.personal \+ inbox\.counts\.trash > 0/);
   assert.doesNotMatch(leadsListTsx, /Sample data/);
   assert.doesNotMatch(appHeaderTsx, /Sample data|Hide sample data|app-head__sample/);
   assert.match(leadsListTsx, /No leads match/);

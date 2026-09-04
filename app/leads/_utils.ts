@@ -175,9 +175,16 @@ export function centsToInputValue(cents: number | null) {
   return cents && cents > 0 ? String(Math.round(cents / 100)) : "";
 }
 
+export function leadDisplayName(lead: Lead) {
+  return lead.name?.trim() || lead.contact_name?.trim() || null;
+}
+export function isPersonalLead(lead: Lead) {
+  return lead.contact_classification === "personal" || lead.is_personal === true;
+}
 export function initials(lead: Lead) {
-  if (!lead.name) return null;
-  return lead.name
+  const name = leadDisplayName(lead);
+  if (!name) return null;
+  return name
     .split(" ")
     .map((word) => word[0])
     .join("")
@@ -463,7 +470,7 @@ export function isBookedLead(lead: Lead) {
 }
 
 export function countLeads(leads: Lead[]): LeadCounts {
-  const visibleLeads = leads.filter((lead) => !lead.deleted_at);
+  const visibleLeads = leads.filter((lead) => !lead.deleted_at && !isPersonalLead(lead));
 
   return {
     all: visibleLeads.length,
@@ -473,6 +480,9 @@ export function countLeads(leads: Lead[]): LeadCounts {
     booked: visibleLeads.filter(isBookedLead).length,
     dead: visibleLeads.filter((lead) => lead.status === "dead").length,
     trash: leads.filter((lead) => lead.deleted_at).length,
+    personal: leads.filter((lead) => !lead.deleted_at && isPersonalLead(lead)).length,
+    smsBlocked: visibleLeads.filter((lead) => lead.status === "new" && lead.sms_status === "blocked_pre_send").length,
+    knownContactSkipped: visibleLeads.filter((lead) => lead.sms_status === "skipped_known_contact").length,
     smsIssues: visibleLeads.filter(hasSmsDeliveryFailure).length,
     bookedValueCents: visibleLeads
       .filter(isBookedLead)
@@ -488,7 +498,7 @@ export function leadMatchesSearch(lead: Lead, query: string) {
   }
 
   return [
-    lead.name || "Unknown caller",
+    leadDisplayName(lead) || "Unknown caller",
     lead.phone,
     lead.message,
     lead.notes,
@@ -556,6 +566,9 @@ export function filterLeads(leads: Lead[], filter: Filter, query: string) {
     if (lead.deleted_at) {
       return false;
     }
+
+    if (filter === "personal") return isPersonalLead(lead) && leadMatchesSearch(lead, query);
+    if (isPersonalLead(lead)) return false;
 
     const matchesFilter = filter === "all"
       || (filter === "booked" && isBookedLead(lead))

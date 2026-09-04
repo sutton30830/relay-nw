@@ -7,7 +7,7 @@ import { smsDeliveryIssue, smsDeliveryStatusLabel } from "@/lib/twilio/sms-deliv
 import { hasUsableVoicemail } from "@/lib/voicemail-quality";
 import type { SendReplyResult } from "../_api";
 import { LEGACY_FORWARDING_MESSAGE, QUICK_REPLIES } from "../_constants";
-import { followUpStatusText, formatDuration, formatPhone, formatRelativeTime, getLeadPriority, initials, isBookedLead, parseSetupRequestMessage, voicemailTranscriptionWasSuppressed } from "../_utils";
+import { followUpStatusText, formatDuration, formatPhone, formatRelativeTime, getLeadPriority, initials, leadDisplayName, isPersonalLead, isBookedLead, parseSetupRequestMessage, voicemailTranscriptionWasSuppressed } from "../_utils";
 import { BookedBadge, SmsBadge, StatusPill, VoicemailBadge } from "./badges";
 import { BookedToggle, BookedValueInput, PriorityControl, StatusControl } from "./controls";
 import { SetupRequestDetails } from "./setup-request-details";
@@ -187,7 +187,7 @@ export function LeadDrawer({
         ref={drawerRef}
         className="drawer"
         role="dialog"
-        aria-label={`Lead ${lead.name || lead.phone}`}
+        aria-label={`Lead ${leadDisplayName(lead) || lead.phone}`}
       >
         <header ref={drawerHeadRef} className="drawer__head" tabIndex={-1}>
           <button className="btn btn-ghost btn-sm" type="button" onClick={onClose}>
@@ -201,7 +201,7 @@ export function LeadDrawer({
           </div>
           <div>
             <h2 className="t-display" style={{ fontSize: 34, margin: 0 }}>
-              {lead.name || "Unknown caller"}
+              {leadDisplayName(lead) || "Unknown caller"}{isPersonalLead(lead) ? " · Personal" : ""}
             </h2>
             <p className="t-mono" style={{ margin: "4px 0 0", color: "var(--ink-2)", fontSize: 15 }}>
               {formatPhone(lead.phone)}
@@ -410,7 +410,7 @@ export function LeadDrawer({
               className="field"
               rows={2}
               maxLength={640}
-              placeholder={`Text ${lead.name?.split(" ")[0] ?? formatPhone(lead.phone)} back...`}
+              placeholder={`Text ${leadDisplayName(lead)?.split(" ")[0] ?? formatPhone(lead.phone)} back...`}
               value={replyText}
               disabled={replySending}
               onChange={(event) => {

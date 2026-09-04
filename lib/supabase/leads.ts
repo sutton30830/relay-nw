@@ -2,38 +2,11 @@ import { isPlaceholderSupabaseConfig, shouldSkipDatabaseWrite, supabaseAdmin, th
 import { assertAccountId } from "./tenant";
 import type { InboundMessage, Lead, LeadInboxFilter, LeadSource, LeadStatus, OutboundMessage, ReplyPriorityOverride } from "./types";
 
+const CONTACT_SELECT_COLUMNS = "contact_id, contact_name, contact_classification, contact_auto_sms_policy, contact_version, is_personal, display_name";
 const LEAD_SELECT_COLUMNS =
   "id, account_id, call_sid, name, phone, message, notes, booked_at, job_value_cents, reply_priority_override, priority, priority_reason, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, voicemail_transcript, voicemail_summary, voicemail_transcription_status, voicemail_transcription_error, voicemail_transcribed_at, deleted_at, created_at";
-const LEGACY_LEAD_SELECT_COLUMNS =
-  "id, account_id, call_sid, name, phone, message, notes, job_value_cents, reply_priority_override, source, status, sms_status, sms_error, twilio_message_sid, sms_updated_at, recording_sid, recording_url, recording_duration, recording_status, created_at";
-
 function isMissingBookedAtColumnError(error: { message: string } | null) {
   return Boolean(error?.message.includes("booked_at"));
-}
-
-function isMissingSearchRpcError(error: { message: string; code?: string } | null) {
-  // 42883: undefined_function (raw Postgres). PGRST202: PostgREST's "could not
-  // find function in schema cache" — either way, supabase.sql hasn't been run yet.
-  return Boolean(
-    error?.code === "42883" ||
-      error?.code === "PGRST202" ||
-      error?.message.includes("search_lead_inbox") ||
-      error?.message.includes("lead_inbox_counts"),
-  );
-}
-
-function isMissingOptionalLeadColumnError(error: { message: string } | null) {
-  return Boolean(
-    error?.message.includes("booked_at") ||
-      error?.message.includes("voicemail_transcript") ||
-      error?.message.includes("voicemail_summary") ||
-      error?.message.includes("voicemail_transcription_status") ||
-      error?.message.includes("voicemail_transcription_error") ||
-      error?.message.includes("voicemail_transcribed_at") ||
-      error?.message.includes("deleted_at") ||
-      error?.message.includes("reply_priority_override") ||
-      error?.message.includes("priority"),
-  );
 }
 
 function normalizeLead(lead: Lead): Lead {
@@ -146,7 +119,7 @@ export type LeadsPageResult = {
   limit: number;
   offset: number;
   // Total call rows per phone across the whole account (the "Called N×" badge).
-  // Empty on the legacy fallback path, where the client recomputes it locally.
+  // Includes Personal and independently trashed historical calls.
   callCounts?: Record<string, number>;
 };
 
@@ -350,92 +323,36 @@ export async function createMissedCallLeadIfNew(input: {
   };
 }
 
-type SearchLeadInboxRow = Omit<Lead, "inbound_messages" | "outbound_messages"> & {
-  call_count: number | string;
-  total_count: number | string;
-};
-
-function rowToLead(row: SearchLeadInboxRow): Lead {
-  const { call_count, total_count, ...lead } = row;
-  void call_count;
-  void total_count;
-  return { ...lead, inbound_messages: [], outbound_messages: [] };
+type SearchLeadInboxRow = Omit<Lead, "inbound_messages" | "outbound_messages"> & { call_count: number };
+function contactLead(row: Lead): Lead {
+  if (typeof row.is_personal !== "boolean") throw new Error("Contact-aware inbox data is unavailable");
+  return normalizeLead(row);
 }
 
 export type LeadInboxCounts = {
-  all: number;
-  new: number;
-  contacted: number;
-  booked: number;
-  dead: number;
-  trash: number;
-  actionable: number;
-  smsIssues: number;
-  bookedValueCents: number;
-  bookedWithValue: number;
+  all: number; new: number; contacted: number; booked: number; dead: number;
+  trash: number; personal: number; actionable: number; smsIssues: number;
+  smsBlocked: number; knownContactSkipped: number; bookedValueCents: number; bookedWithValue: number;
+};
+const COUNT_FIELDS: Record<keyof LeadInboxCounts, string> = {
+  all: "all_count", new: "new_count", contacted: "contacted_count", booked: "booked_count", dead: "dead_count",
+  trash: "trash_count", personal: "personal_count", actionable: "actionable_count", smsIssues: "sms_issues_count",
+  smsBlocked: "sms_blocked_count", knownContactSkipped: "known_contact_skipped_count",
+  bookedValueCents: "booked_value_cents", bookedWithValue: "booked_with_value_count",
 };
 
-const EMPTY_LEAD_INBOX_COUNTS: LeadInboxCounts = {
-  all: 0,
-  new: 0,
-  contacted: 0,
-  booked: 0,
-  dead: 0,
-  trash: 0,
-  actionable: 0,
-  smsIssues: 0,
-  bookedValueCents: 0,
-  bookedWithValue: 0,
-};
-
-// Server-side counterpart to countLeads in app/leads/_utils.ts, computed over
-// every lead for the account (not just the loaded page) so filter-pill counts
-// stay correct past the first page.
 export async function getLeadInboxCountsForAccount(inputAccountId: string): Promise<LeadInboxCounts> {
   const accountId = assertAccountId(inputAccountId, "getLeadInboxCountsForAccount");
-
-  if (isPlaceholderSupabaseConfig()) {
-    return EMPTY_LEAD_INBOX_COUNTS;
-  }
-
-  const { data, error } = await supabaseAdmin.rpc("lead_inbox_counts", { p_account: accountId }).maybeSingle();
-
-  if (isMissingSearchRpcError(error)) {
-    console.warn("lead_inbox_counts is missing. Run supabase.sql to enable server-side lead counts.");
-    return EMPTY_LEAD_INBOX_COUNTS;
-  }
-
+  if (isPlaceholderSupabaseConfig()) throw new Error("Contact-aware inbox counts are unavailable");
+  const { data, error } = await supabaseAdmin.rpc("lead_inbox_counts_v2", { p_account: accountId });
   throwIfSupabaseError(error);
-
-  if (!data) {
-    return EMPTY_LEAD_INBOX_COUNTS;
+  if (!data) throw new Error("Contact-aware inbox counts are unavailable");
+  const counts = {} as LeadInboxCounts;
+  for (const [key, column] of Object.entries(COUNT_FIELDS)) {
+    if (typeof data[column] !== "number" || !Number.isFinite(data[column])) throw new Error("Contact-aware inbox counts are unavailable");
+    counts[key as keyof LeadInboxCounts] = data[column];
   }
-
-  const row = data as {
-    all_count: number | string;
-    new_count: number | string;
-    contacted_count: number | string;
-    booked_count: number | string;
-    dead_count: number | string;
-    trash_count: number | string;
-    actionable_count: number | string;
-    sms_issues_count: number | string;
-    booked_value_cents: number | string;
-    booked_with_value_count: number | string;
-  };
-
-  return {
-    all: Number(row.all_count),
-    new: Number(row.new_count),
-    contacted: Number(row.contacted_count),
-    booked: Number(row.booked_count),
-    dead: Number(row.dead_count),
-    trash: Number(row.trash_count),
-    actionable: Number(row.actionable_count),
-    smsIssues: Number(row.sms_issues_count),
-    bookedValueCents: Number(row.booked_value_cents),
-    bookedWithValue: Number(row.booked_with_value_count),
-  };
+  return counts;
 }
 
 export async function getLeadInboxPageForAccount(
@@ -444,83 +361,19 @@ export async function getLeadInboxPageForAccount(
 ): Promise<LeadsPageResult> {
   const accountId = assertAccountId(inputAccountId, "getLeadsForAccount");
   const { limit, offset } = normalizePageOptions(options);
-  const filter = options?.filter ?? "all";
-  const query = options?.query?.trim() ?? "";
-
-  if (isPlaceholderSupabaseConfig()) {
-    return { leads: [] as Lead[], total: 0, limit, offset };
-  }
-
-  const { data: rows, error: rpcError } = await supabaseAdmin.rpc("search_lead_inbox", {
-    p_account: accountId,
-    p_filter: filter,
-    p_query: query,
-    p_limit: limit,
-    p_offset: offset,
+  if (isPlaceholderSupabaseConfig()) throw new Error("Contact-aware inbox is unavailable");
+  const { data, error } = await supabaseAdmin.rpc("search_lead_inbox_v2", {
+    p_account: accountId, p_filter: options?.filter ?? "all", p_query: options?.query?.trim() ?? "", p_limit: limit, p_offset: offset,
   });
-
-  if (!isMissingSearchRpcError(rpcError)) {
-    throwIfSupabaseError(rpcError);
-
-    const searchRows = (rows ?? []) as SearchLeadInboxRow[];
-    const total = searchRows.length > 0 ? Number(searchRows[0].total_count) : 0;
-    const callCounts: Record<string, number> = {};
-    for (const row of searchRows) {
-      callCounts[row.phone] = Number(row.call_count);
-    }
-    const leads = await attachThreadMessages(searchRows.map(rowToLead).map(normalizeLead), accountId);
-
-    return { leads, total, limit, offset, callCounts };
-  }
-
-  console.warn("search_lead_inbox is missing. Run supabase.sql to enable server-side lead search and filtering.");
-
-  let legacyBaseQuery = supabaseAdmin
-    .from("leads")
-    .select(LEAD_SELECT_COLUMNS, { count: "exact" })
-    .order("created_at", { ascending: false })
-    .range(offset, offset + limit - 1);
-
-  legacyBaseQuery = legacyBaseQuery.eq("account_id", accountId);
-
-  const { data, error, count } = await legacyBaseQuery;
-
-  if (isMissingOptionalLeadColumnError(error)) {
-    console.warn("Some optional leads columns are missing. Run supabase.sql to enable all inbox features.");
-
-    let legacyQuery = supabaseAdmin
-      .from("leads")
-      .select(LEGACY_LEAD_SELECT_COLUMNS, { count: "exact" })
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    legacyQuery = legacyQuery.eq("account_id", accountId);
-
-    const { data: legacyData, error: legacyError, count: legacyCount } = await legacyQuery;
-
-    throwIfSupabaseError(legacyError);
-
-    const legacyLeads = (legacyData ?? []).map((lead) =>
-      normalizeLead({
-        ...lead,
-        booked_at: lead.status === "booked" ? lead.created_at : null,
-        deleted_at: null,
-      } as Lead),
-    );
-
-    const leads = await attachThreadMessages(legacyLeads, accountId);
-    return { leads, total: legacyCount ?? null, limit, offset };
-  }
-
   throwIfSupabaseError(error);
-
-  const leads = await attachThreadMessages(((data ?? []) as Lead[]).map(normalizeLead), accountId);
-  return {
-    leads,
-    total: count ?? null,
-    limit,
-    offset,
-  };
+  if (!data || !Array.isArray(data.leads) || typeof data.total !== "number") throw new Error("Contact-aware inbox is unavailable");
+  const callCounts: Record<string, number> = {};
+  const pageLeads = (data.leads as SearchLeadInboxRow[]).map((row) => {
+    const { call_count, ...lead } = row;
+    callCounts[row.phone] = Number(call_count);
+    return contactLead({ ...lead, inbound_messages: [], outbound_messages: [] });
+  });
+  return { leads: await attachThreadMessages(pageLeads, accountId), total: data.total, limit, offset, callCounts };
 }
 
 export async function getLeadsForAccount(inputAccountId: string) {
@@ -703,19 +556,18 @@ export type LeadConversation = {
   outbound: OutboundMessage[];
 };
 
-// Full history for the conversation page: the lead, every earlier lead from the
-// same number (each one is a call event), and ALL SMS in both directions keyed
-// by phone — unlike the inbox attach helpers, nothing is capped per lead.
+// Conversation history uses the existing call/message window limits. Contact
+// metadata resolves dynamically on every returned call without editing history.
 export async function getLeadConversation(inputAccountId: string, id: string): Promise<LeadConversation | null> {
   const accountId = assertAccountId(inputAccountId, "getLeadConversation");
 
   if (isPlaceholderSupabaseConfig()) {
-    return null;
+    throw new Error("Contact-aware conversation is unavailable");
   }
 
   const { data, error } = await supabaseAdmin
-    .from("leads")
-    .select(LEAD_SELECT_COLUMNS)
+    .from("lead_contact_context")
+    .select(`${LEAD_SELECT_COLUMNS}, ${CONTACT_SELECT_COLUMNS}`)
     .eq("account_id", accountId)
     .eq("id", id)
     .maybeSingle();
@@ -726,12 +578,12 @@ export async function getLeadConversation(inputAccountId: string, id: string): P
     return null;
   }
 
-  const lead = normalizeLead(data as unknown as Lead);
+  const lead = contactLead(data as unknown as Lead);
 
   const [siblings, inboundResult, outboundResult] = await Promise.all([
     supabaseAdmin
-      .from("leads")
-      .select(LEAD_SELECT_COLUMNS)
+      .from("lead_contact_context")
+      .select(`${LEAD_SELECT_COLUMNS}, ${CONTACT_SELECT_COLUMNS}`)
       .eq("account_id", accountId)
       .eq("phone", lead.phone)
       .neq("id", lead.id)
@@ -757,13 +609,13 @@ export async function getLeadConversation(inputAccountId: string, id: string): P
   ]);
 
   // Message history is non-fatal: the page still renders the lead and calls.
-  if (siblings.error) console.warn("Could not load earlier calls for conversation.", { error: siblings.error });
+  throwIfSupabaseError(siblings.error);
   if (inboundResult.error) console.warn("Could not load inbound SMS for conversation.", { error: inboundResult.error });
   if (outboundResult.error) console.warn("Could not load outbound SMS for conversation.", { error: outboundResult.error });
 
   return {
     lead,
-    previousLeads: ((siblings.data ?? []) as unknown as Lead[]).map(normalizeLead),
+    previousLeads: ((siblings.data ?? []) as unknown as Lead[]).map(contactLead),
     inbound: (inboundResult.data ?? []) as InboundMessage[],
     outbound: (outboundResult.data ?? []) as OutboundMessage[],
   };
