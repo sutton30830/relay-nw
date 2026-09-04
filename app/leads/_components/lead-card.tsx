@@ -23,6 +23,8 @@ function smsMetaText(lead: Lead, now: number, textingFromRelay: boolean) {
     return textingFromRelay ? `Not auto-texted${updated}` : null;
   }
 
+  if (lead.sms_status === "skipped_known_contact") return `Not auto-texted: known contact${updated}`;
+  if (lead.sms_status === "blocked_pre_send") return `Not texted: texting checks unavailable${updated}`;
   if (lead.sms_status === "failed" || lead.sms_status === "undelivered") return `SMS failed${updated}`;
   if (lead.sms_status === "delivered") return `SMS delivered${updated}`;
   if (lead.sms_status === "sent") return `SMS sent${updated}`;
@@ -276,7 +278,7 @@ export function LeadCard({
       {attention ? (
         <div className="lead-card__alert">
           <Icon name="alertTriangle" size={14} />
-          <span>{smsAlertText(lead.sms_error)}</span>
+          <span>{lead.sms_status === "blocked_pre_send" ? "Texting checks unavailable. Call them or review before replying." : smsAlertText(lead.sms_error)}</span>
         </div>
       ) : null}
 

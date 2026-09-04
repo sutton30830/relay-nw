@@ -144,6 +144,7 @@ export async function loadWebhookHandlers(loadTsModule, mocks) {
   const legacySupabase = mocks["@/lib/supabase"] ?? {};
   const supabase = {
     ...legacySupabase,
+    recordAutomaticSmsAttempt: legacySupabase.recordAutomaticSmsAttempt ?? (async () => {}),
     resolveAccountByProviderCallId:
       legacySupabase.resolveAccountByProviderCallId ?? legacySupabase.resolveAccountByCallSid,
     resolveAccountByProviderMessageId:

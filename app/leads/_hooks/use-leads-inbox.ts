@@ -6,7 +6,7 @@ import type { Lead, LeadStatus, OutboundMessage, ReplyPriorityOverride } from "@
 import { AUTO_VOICEMAIL_SUMMARY_LIMIT, FILTERS, INBOX_REFRESH_MS, RELATIVE_TIME_TICK_MS, SEARCH_DEBOUNCE_MS, UNDO_DELETE_MS } from "../_constants";
 import type { Filter, LeadCounts } from "../_types";
 import { deleteLead as deleteLeadRequest, patchLead, requestVoicemailSummary, sendLeadReply, type SendReplyResult } from "../_api";
-import { condenseLeadsByPhone, countCallsByPhone, countLeads, createSampleLeads, filterLeads, isBookedLead, needsAttention, shouldAutoSummarizeVoicemail, sortLeadsForWork } from "../_utils";
+import { condenseLeadsByPhone, countCallsByPhone, countLeads, createSampleLeads, filterLeads, isBookedLead, hasSmsDeliveryFailure, shouldAutoSummarizeVoicemail, sortLeadsForWork } from "../_utils";
 
 // Filter and search now run on the server (the RPC in lib/supabase/leads.ts):
 // the page fetches only the rows that match the active filter/query across the
@@ -61,7 +61,7 @@ function countContribution(lead: Lead): LeadCounts {
     dead: visible && lead.status === "dead" ? 1 : 0,
     trash: lead.deleted_at ? 1 : 0,
     actionable: visible && (lead.status === "new" || lead.status === "contacted") ? 1 : 0,
-    smsIssues: visible && needsAttention(lead) ? 1 : 0,
+    smsIssues: visible && hasSmsDeliveryFailure(lead) ? 1 : 0,
     bookedValueCents,
     bookedWithValue,
   };

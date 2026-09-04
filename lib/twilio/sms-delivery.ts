@@ -42,6 +42,11 @@ export function smsDeliveryIssue(
   status: string | null | undefined,
   error: string | null | undefined,
 ): SmsDeliveryIssue | null {
+  if (status === "blocked_pre_send") return {
+    title: "Not texted: texting checks unavailable",
+    guidance: "Call the caller or review the texting checks before replying. Relay will not send this automatic text later.",
+    diagnostic: "No provider submission was made.",
+  };
   if (status !== "failed" && status !== "undelivered") {
     return null;
   }
@@ -69,6 +74,8 @@ export function smsDeliveryIssue(
 }
 
 export function smsDeliveryStatusLabel(status: string | null | undefined) {
+  if (status === "skipped_known_contact") return "Not auto-texted: known contact";
+  if (status === "blocked_pre_send") return "Not texted: texting checks unavailable";
   if (status === "queued" || status === "sending") return "Sending";
   if (status === "sent") return "Sent";
   if (status === "delivered") return "Delivered";

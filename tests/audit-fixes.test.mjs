@@ -138,6 +138,8 @@ test("failed/undelivered/skipped leads never block a retry", async () => {
     pendingLead("lead-f", "2026-06-10T08:00:00.000Z", { sms_status: "failed" }),
     pendingLead("lead-u", "2026-06-10T09:00:00.000Z", { sms_status: "undelivered" }),
     pendingLead("lead-s", "2026-06-10T10:00:00.000Z", { sms_status: "skipped_recent" }),
+    pendingLead("lead-known", "2026-06-10T10:00:00.000Z", { sms_status: "skipped_known_contact" }),
+    pendingLead("lead-blocked", "2026-06-10T10:00:00.000Z", { sms_status: "blocked_pre_send" }),
     pendingLead("lead-new", T2),
   ];
   const { hasRecentMissedCallSms } = await loadMessagesModule(rows);

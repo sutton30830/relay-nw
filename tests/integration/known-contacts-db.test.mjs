@@ -23,6 +23,7 @@ async function connect(database) {
   return client;
 }
 const migration = await readFile(join(root,"docs/migrations/2026-09-03-known-contacts.sql"),"utf8");
+const smsMigration = await readFile(join(root,"docs/migrations/2026-09-04-known-contact-sms.sql"),"utf8");
 const schema = await readFile(join(root,"supabase.sql"),"utf8");
 const baseline = execFileSync("git",["show","0799c38a915d44e41014528bcf4d5b2ac2e0dd41:supabase.sql"],{cwd:root,encoding:"utf8",maxBuffer:4*1024*1024});
 const bootstrap = await readFile(join(root,"scripts/local-db/bootstrap.sql"),"utf8");
@@ -55,6 +56,8 @@ for (const mode of ["upgrade", "fresh"]) test(`real PostgreSQL: ${mode} schema, 
       await client.query("insert into leads(account_id,phone,source,name,status,job_value_cents) values($1,'(206) 555-0101','missed_call','Original','booked',50000)",[A]);
       await client.query(migration);
       await client.query(migration);
+      await client.query(smsMigration);
+      await client.query(smsMigration);
       assert.equal((await client.query("select name from leads where account_id=$1",[A])).rows[0].name,"Original");
     } else {
       await client.query(schema);
@@ -171,6 +174,32 @@ for (const mode of ["upgrade", "fresh"]) test(`real PostgreSQL: ${mode} schema, 
         }
       } finally { await client.query("rollback"); }
       await client.query("set role service_role");
+    });
+    await t.test("SMS statuses and attempt evidence preserve suppression and faster callbacks",async()=>{
+      for (const status of ["skipped_known_contact","blocked_pre_send"]) {
+        await client.query("update leads set sms_status=$1 where id=$2",[status,lead.id]);
+        assert.equal((await client.query("select sms_status from leads where id=$1",[lead.id])).rows[0].sms_status,status);
+      }
+      await assert.rejects(client.query("update leads set sms_status='invented_status' where id=$1",[lead.id]),{code:"23514"});
+      const key = `automatic_missed_call_sms:${lead.id}`;
+      await client.query("insert into provider_action_events(account_id,action,provider,idempotency_key,internal_status,retry_eligibility,recommended_next_action,customer_explanation) values($1,'automatic_missed_call_sms','twilio',$2,'processing','never','Wait','Checking eligibility')",[A,key]);
+      assert.equal((await client.query("select attempt_count from provider_action_events where account_id=$1 and idempotency_key=$2",[A,key])).rows[0].attempt_count,0);
+      await client.query("update provider_action_events set internal_status='suppressed',suppressed=true,provider_status='known_contact' where account_id=$1 and idempotency_key=$2",[A,key]);
+      assert.equal(await rpc(client,"record_automatic_sms_attempt",[A,key]),false);
+      assert.equal(await rpc(client,"claim_provider_action_retry",[A,key,new Date().toISOString()]),false);
+      // A final gate permitted the next simulated submission. Its callback
+      // arrived before the provider's original request promise resolved.
+      await client.query("update provider_action_events set internal_status='succeeded',suppressed=false,provider_status='delivered',provider_identifier='LOCAL_SMS' where account_id=$1 and idempotency_key=$2",[A,key]);
+      assert.equal(await rpc(client,"record_automatic_sms_attempt",[B,key]),false);
+      assert.equal(await rpc(client,"record_automatic_sms_attempt",[A,key]),true);
+      assert.equal(await rpc(second,"record_automatic_sms_attempt",[A,key]),true);
+      const row=(await client.query("select attempt_count,internal_status,provider_status from provider_action_events where account_id=$1 and idempotency_key=$2",[A,key])).rows[0];
+      assert.deepEqual(row,{attempt_count:1,internal_status:"succeeded",provider_status:"delivered"});
+      for (const role of ["anon","authenticated"]) {
+        await client.query("reset role");await client.query(`set role ${role}`);
+        await assert.rejects(rpc(client,"record_automatic_sms_attempt",[A,key]),{code:"42501"});
+      }
+      await client.query("reset role");await client.query("set role service_role");
     });
     await t.test("account deletion records exact contact count and leaves the other tenant intact",async()=>{
       await assert.rejects(rpc(client,"delete_account_data",[A,actor,null]),/archived/);

@@ -242,6 +242,10 @@ export function setupRequestSummary(fields: SetupRequestField[]) {
 }
 
 export function needsAttention(lead: Lead) {
+  return hasSmsDeliveryFailure(lead) || (lead.status === "new" && lead.sms_status === "blocked_pre_send");
+}
+
+export function hasSmsDeliveryFailure(lead: Lead) {
   return lead.status === "new" && (lead.sms_status === "failed" || lead.sms_status === "undelivered");
 }
 
@@ -321,7 +325,7 @@ export function getLeadNextAction(lead: Lead, now: number): NextAction | null {
   if (needsAttention(lead)) {
     return {
       label: "Call directly",
-      detail: "Auto-text did not go through.",
+      detail: lead.sms_status === "blocked_pre_send" ? "Not texted: texting checks unavailable." : "Auto-text did not go through.",
       icon: "alertTriangle",
       tone: "danger",
     };
@@ -359,7 +363,7 @@ export function getLeadNextAction(lead: Lead, now: number): NextAction | null {
 
 export function getFollowUpCue(lead: Lead) {
   if (needsAttention(lead)) {
-    return { label: "Text failed", tone: "danger" };
+    return { label: lead.sms_status === "blocked_pre_send" ? "Texting checks unavailable" : "Text failed", tone: "danger" };
   }
 
   if (isBookedLead(lead) && !lead.job_value_cents) {
@@ -383,6 +387,7 @@ export function getFollowUpCue(lead: Lead) {
 }
 
 export function getFollowUpReason(lead: Lead) {
+  if (lead.sms_status === "blocked_pre_send") return "Texting checks were unavailable. Call them or review before replying.";
   if (needsAttention(lead)) {
     return "The automatic text did not go through, so call this person directly.";
   }
@@ -468,7 +473,7 @@ export function countLeads(leads: Lead[]): LeadCounts {
     booked: visibleLeads.filter(isBookedLead).length,
     dead: visibleLeads.filter((lead) => lead.status === "dead").length,
     trash: leads.filter((lead) => lead.deleted_at).length,
-    smsIssues: visibleLeads.filter(needsAttention).length,
+    smsIssues: visibleLeads.filter(hasSmsDeliveryFailure).length,
     bookedValueCents: visibleLeads
       .filter(isBookedLead)
       .reduce((total, lead) => total + (lead.job_value_cents ?? 0), 0),
@@ -641,6 +646,9 @@ export function followUpStatusText(lead: Lead) {
   if (lead.sms_status === "failed" || lead.sms_status === "undelivered") {
     return "Auto-text failed. Follow up manually.";
   }
+
+  if (lead.sms_status === "skipped_known_contact") return "Not auto-texted: known contact.";
+  if (lead.sms_status === "blocked_pre_send") return "Not texted: texting checks unavailable. Call them or review before replying.";
 
   if (lead.sms_status === "skipped_recent") {
     return "Auto-text skipped because this caller was recently texted.";

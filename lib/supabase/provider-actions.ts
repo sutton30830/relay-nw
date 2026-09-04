@@ -168,3 +168,13 @@ export async function claimProviderActionRetry(input: {
   throwIfSupabaseError(error);
   return Boolean(data);
 }
+
+// Invocation is after submission or a verified callback, never a reservation.
+export async function recordAutomaticSmsAttempt(inputAccountId: string, actionKey: string) {
+  const accountId = assertAccountId(inputAccountId, "recordAutomaticSmsAttempt");
+  const { data, error } = await supabaseAdmin.rpc("record_automatic_sms_attempt", {
+    p_account_id: accountId, p_action_key: actionKey,
+  });
+  throwIfSupabaseError(error);
+  if (data !== true) throw new Error("Automatic SMS action evidence is unavailable");
+}

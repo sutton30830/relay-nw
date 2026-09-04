@@ -87,6 +87,9 @@ function makeMissedCallMocks(overrides = {}) {
   const supabase = {
     createMissedCallLeadIfNew: async () => ({ inserted: true, leadId: "lead-1" }),
     updateCallForMissedLead: async () => {},
+    getKnownContactByPhone: async () => null,
+    recordProviderAction: async () => null,
+    recordAutomaticSmsAttempt: async () => {},
     hasRecentMissedCallSms: async () => false,
     isOptedOut: async () => false,
     assertTenantAccount: (account) => account,
@@ -215,7 +218,7 @@ test("Twilio accepted but message row insert failed: lead still marked sent, adm
   assert.equal(calls.adminIssues.length, 1);
 });
 
-test("cooldown/opt-out check failure fails closed: no SMS sent, lead marked failed with reason, admin alerted", async () => {
+test("cooldown/opt-out check failure fails closed: no SMS sent, lead marked blocked before submission, admin alerted", async () => {
   const { mocks, calls } = makeMissedCallMocks({
     supabase: {
       hasRecentMissedCallSms: async () => {
@@ -225,11 +228,11 @@ test("cooldown/opt-out check failure fails closed: no SMS sent, lead marked fail
   });
   const result = await runMissedCall(mocks);
 
-  assert.equal(result.smsStatus, "failed");
-  assert.equal(calls.twilioSends.length, 0, "must not text when opt-out/cooldown cannot be verified");
-  const failedUpdate = calls.leadSmsStatusUpdates.find((u) => u.smsStatus === "failed");
-  assert.ok(failedUpdate, "lead should be marked failed, not left pending");
-  assert.match(failedUpdate.smsError, /cooldown\/opt-out/i);
+  assert.equal(result.smsStatus, "blocked_pre_send");
+  assert.equal(calls.twilioSends.filter((send) => send.to === "+12065550123").length, 0, "must not text when opt-out/cooldown cannot be verified");
+  const failedUpdate = calls.leadSmsStatusUpdates.find((u) => u.smsStatus === "blocked_pre_send");
+  assert.ok(failedUpdate, "lead should be marked blocked, not left pending");
+  assert.match(failedUpdate.smsError, /opt-out\/contact\/cooldown/i);
   assert.equal(calls.adminIssues.length, 1);
 });
 
@@ -479,6 +482,19 @@ test("status callback with matching lead: lead updated, webhook event logged", a
   assert.equal(state.webhookEvents.length, 1);
   assert.equal(state.onboardingEvidence[0].accountId, ACCOUNT.accountId);
   assert.equal(state.onboardingEvidence[0].status, "delivered");
+});
+
+test("signed automatic callbacks report an idempotent attempt; manual callbacks do not", async () => {
+  const state = smsStatusState({ leadHasMessageSid: true, messageRowLeadId: null });
+  const mocks = makeSmsStatusRouteMocks(state);
+  const attempts = [];
+  mocks["@/lib/supabase"].recordProviderAction = async () => {};
+  mocks["@/lib/supabase"].recordAutomaticSmsAttempt = async (...args) => attempts.push(args);
+  const base = "https://example.com/api/twilio/sms-status?accountId=acct-1&leadId=lead-1&actionKey=automatic_missed_call_sms%3Alead-1";
+  await postSmsStatus(mocks, { MessageSid: "SM_test", MessageStatus: "delivered" }, `${base}&messageType=auto_text`);
+  assert.deepEqual(attempts, [[ACCOUNT.accountId, "automatic_missed_call_sms:lead-1"]]);
+  await postSmsStatus(mocks, { MessageSid: "SM_manual", MessageStatus: "delivered" }, `${base}&messageType=manual_reply`);
+  assert.equal(attempts.length, 1);
 });
 
 test("signed Twilio landline callback reaches the tenant onboarding evidence recorder", async () => {

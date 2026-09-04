@@ -25,6 +25,7 @@ import {
   getOutboundMessageLeadIdByProviderId,
   recordOptOut,
   recordProviderAction,
+  recordAutomaticSmsAttempt,
   recordSmsOnboardingEvidence,
   resolveAccountByProviderCallId,
   resolveAccountByProviderMessageId,
@@ -646,6 +647,11 @@ export async function processMessageDeliveryUpdate(input: {
       recommendedNextAction: terminalSuccess ? "No action is needed." : undefined,
       customerVisible: terminalFailure,
     });
+  }
+
+  if (messageId && status && input.callback.messageType === "auto_text" && input.callback.actionKey) {
+    try { await recordAutomaticSmsAttempt(input.account.accountId, input.callback.actionKey); }
+    catch { console.error("Could not reconcile automatic SMS attempt evidence", { accountId: input.account.accountId }); }
   }
 
   if (

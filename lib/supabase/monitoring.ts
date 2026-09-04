@@ -135,7 +135,7 @@ export async function loadOperationsMonitoring(): Promise<OperationsMonitoringDa
     supabaseAdmin.from("leads").select("account_id, id, phone, source, sms_status, created_at, recording_sid, recording_duration, recording_status, voicemail_transcription_status, voicemail_transcription_error, voicemail_transcribed_at, voicemail_summary, voicemail_summary_validation_reasons").in("account_id", accountIds).eq("source", "missed_call").is("deleted_at", null).order("created_at", { ascending: false }).limit(5000),
     supabaseAdmin.from("messages").select("account_id, lead_id, direction, status, twilio_message_sid, created_at").in("account_id", accountIds).eq("direction", "outbound").order("created_at", { ascending: false }).limit(5000),
     supabaseAdmin.from("webhook_events").select("account_id, created_at, source, response_status, error").in("account_id", accountIds).gte("created_at", webhookSince).order("created_at", { ascending: false }).limit(5000),
-    supabaseAdmin.from("provider_action_events").select("id, account_id, action, provider, resource_id, internal_status, provider_status, failure_code, diagnostic_detail, retry_eligibility, recommended_next_action, suppressed, last_attempt_at").in("account_id", accountIds).gte("last_attempt_at", providerSince).order("last_attempt_at", { ascending: false }).limit(5000),
+    supabaseAdmin.from("provider_action_events").select("id, account_id, action, provider, provider_identifier, attempt_count, resource_id, internal_status, provider_status, failure_code, diagnostic_detail, retry_eligibility, recommended_next_action, suppressed, last_attempt_at").in("account_id", accountIds).gte("last_attempt_at", providerSince).order("last_attempt_at", { ascending: false }).limit(5000),
     supabaseAdmin.from("account_phone_numbers").select("account_id, phone_number, is_primary").in("account_id", accountIds).limit(1000),
     supabaseAdmin.from("account_audit_events").select("account_id, action, created_at").in("account_id", accountIds).eq("action", "onboarding.first_call_live").order("created_at", { ascending: false }).limit(1000),
     supabaseAdmin.from("stripe_events").select("account_id, received_at").in("account_id", accountIds).order("received_at", { ascending: false }).limit(5000),
@@ -217,6 +217,7 @@ export async function loadOperationsMonitoring(): Promise<OperationsMonitoringDa
     const recentSmsActions = recentActions.filter((row) =>
       row.provider === "twilio" &&
       row.suppressed !== true &&
+      (row.action !== "automatic_missed_call_sms" || Number(row.attempt_count) > 0 || Boolean(row.provider_identifier)) &&
       String(row.action ?? "").includes("sms")
     );
     // The provider-action ledger remains visible when Twilio accepted a request
@@ -230,10 +231,13 @@ export async function loadOperationsMonitoring(): Promise<OperationsMonitoringDa
       const status = String(row.dial_call_status ?? row.status ?? "");
       return MISSED_CALL_STATUSES.has(status) && !row.lead_id && timestamp(row, "created_at")! < leadGraceCutoff;
     }).length;
-    const attemptedLeadIds = new Set([
+    const handledLeadIds = new Set([
       ...recentMessages.map((row) => row.lead_id).filter((value): value is string => typeof value === "string"),
       ...recentActions
-        .filter((row) => row.action === "automatic_missed_call_sms")
+        .filter((row) => row.action === "automatic_missed_call_sms" && (
+          row.suppressed === true || Number(row.attempt_count) > 0 || Boolean(row.provider_identifier) ||
+          row.provider_status === "pre_send_check_failed"
+        ))
         .map((row) => row.resource_id)
         .filter((value): value is string => typeof value === "string"),
     ]);
@@ -241,8 +245,15 @@ export async function loadOperationsMonitoring(): Promise<OperationsMonitoringDa
       row.sms_status === "pending" &&
       timestamp(row, "created_at")! >= activitySince &&
       timestamp(row, "created_at")! < smsGraceCutoff &&
-      !attemptedLeadIds.has(String(row.id))
+      !handledLeadIds.has(String(row.id))
     ).length;
+    const preSendCheckFailures = new Set([
+      ...recentActions.filter((row) => row.internal_status === "failed" &&
+        ["pre_send_check_failed", "contact_lookup_failed"].includes(String(row.provider_status)))
+        .map((row) => String(row.resource_id ?? row.id)),
+      ...accountLeads.filter((row) => row.sms_status === "blocked_pre_send" && timestamp(row, "created_at")! >= activitySince)
+        .map((row) => String(row.id)),
+    ]).size;
     const invalidWebhookSignatures = recentWebhooks.filter((row) => /invalid twilio signature|unsigned\/invalid twilio signature/i.test(String(row.error ?? ""))).length;
     const failedWebhookActions = recentActions.filter((row) => String(row.action).startsWith("webhook_") && row.internal_status === "failed").length;
     const webhookResponseErrors = recentWebhooks.filter((row) => Number(row.response_status) >= 500).length;
@@ -277,6 +288,7 @@ export async function loadOperationsMonitoring(): Promise<OperationsMonitoringDa
       accountId: account.accountId,
       callsWithoutLeads,
       missedCallsWithoutTextAttempt,
+      preSendCheckFailures,
       smsAttempts,
       smsFailures,
       invalidWebhookSignatures,

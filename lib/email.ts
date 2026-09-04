@@ -363,6 +363,7 @@ export async function notifyOwnerNewMissedCallLead(input: {
   account: AccountRuntimeConfig;
   leadId: string;
   callerPhone: string;
+  callerName?: string | null;
   smsStatus: string;
 }) {
   if (input.account.notificationPreferences?.missedCall.email === false) {
@@ -375,12 +376,19 @@ export async function notifyOwnerNewMissedCallLead(input: {
 
   const recipient = await ownerEmail(input.account);
   const last4 = phoneLast4(input.callerPhone) ?? "unknown";
-  const smsLine = input.account.smsEnabled
-    ? `SMS status: ${input.smsStatus}.`
-    : "SMS is disabled until A2P/10DLC is approved.";
+  const callerName = input.callerName?.replace(/[\r\n\t]/g, " ").trim().slice(0, 120);
+  const callerLabel = callerName ? `${callerName} (caller ending in ${last4})` : `Caller ending in ${last4}`;
+  const leadUrl = `${env.appBaseUrl}/leads/${encodeURIComponent(input.leadId)}`;
+  const smsLine = input.smsStatus === "skipped_known_contact"
+    ? "Not auto-texted: known contact. You can review and reply from the conversation."
+    : input.smsStatus === "blocked_pre_send"
+      ? "Not texted: texting checks unavailable. Call them or review before replying."
+      : input.account.smsEnabled
+        ? `SMS status: ${input.smsStatus}.`
+        : "SMS is disabled until A2P/10DLC is approved.";
   const lines = [
     `New missed-call lead for ${input.account.businessName}.`,
-    `Caller ending in ${last4}.`,
+    `${callerLabel}.`,
     smsLine,
   ];
 
@@ -399,12 +407,12 @@ export async function notifyOwnerNewMissedCallLead(input: {
     subject: `New missed call for ${input.account.businessName}`,
     html: emailHtml({
       title: "New missed call",
-      preview: `Caller ending in ${last4}`,
+      preview: callerLabel,
       lines,
-      actionLabel: "Open leads",
-      actionUrl: `${env.appBaseUrl}/leads`,
+      actionLabel: "Open conversation",
+      actionUrl: leadUrl,
     }),
-    text: `${lines.join("\n")}\n\nOpen leads: ${env.appBaseUrl}/leads`,
+    text: `${lines.join("\n")}\n\nOpen conversation: ${leadUrl}`,
     tag: "owner_new_missed_call",
     accountId: input.account.accountId,
     actionKey: `owner_new_missed_call:${input.leadId}`,

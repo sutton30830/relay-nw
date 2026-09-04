@@ -142,6 +142,9 @@ function makeMocks(state) {
       const call = state.calls.get(providerCallId) ?? { providerCallId };
       state.calls.set(providerCallId, { ...call, leadId: input.leadId, status: input.status });
     },
+    getKnownContactByPhone: async () => null,
+    recordProviderAction: async () => null,
+    recordAutomaticSmsAttempt: async () => {},
     hasRecentMissedCallSms: async () => false,
     isOptedOut: async (phone, accountId) => state.optOuts.has(`${accountId}:${phone}`),
     updateLeadSmsStatus: async (input) => {

@@ -663,6 +663,9 @@ test("concurrent duplicate missed calls create one lead and one automatic caller
       };
     },
     updateCallForMissedLead: async () => {},
+    getKnownContactByPhone: async () => null,
+    recordProviderAction: async () => null,
+    recordAutomaticSmsAttempt: async () => {},
     hasRecentMissedCallSms: async () => false,
     isOptedOut: async () => false,
     updateLeadSmsStatus: async (input) => {

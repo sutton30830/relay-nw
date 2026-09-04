@@ -21,6 +21,7 @@ export type MonitoringThresholds = {
 };
 
 export type MonitoringAlertCode =
+  | "pre_send_check_failed"
   | "call_without_lead"
   | "missed_call_without_text_attempt"
   | "terminal_sms_failure"
@@ -52,6 +53,7 @@ export type AccountMonitoringInput = {
   accountId: string;
   callsWithoutLeads: number;
   missedCallsWithoutTextAttempt: number;
+  preSendCheckFailures?: number;
   smsAttempts: number;
   smsFailures: number;
   invalidWebhookSignatures: number;
@@ -154,6 +156,15 @@ export function calculateAccountHealth(
       detail: `${input.missedCallsWithoutTextAttempt} eligible missed call${input.missedCallsWithoutTextAttempt === 1 ? "" : "s"} remained pending beyond ${thresholds.missingAutomaticTextGraceMinutes} minutes.`,
       owner: "relay",
       recommendedAction: "Check the lead, opt-out, A2P, and provider-action evidence before any manual send.",
+    }));
+  }
+
+  if ((input.preSendCheckFailures ?? 0) > 0) {
+    alerts.push(alert({
+      accountId: input.accountId, code: "pre_send_check_failed", severity: "critical",
+      title: "Texting checks unavailable",
+      detail: `${input.preSendCheckFailures} missed-call texting checks could not complete. Caller texts were withheld.`,
+      owner: "relay", recommendedAction: "Check contact/opt-out storage and the action evidence. Follow up manually; do not replay automatic texts.",
     }));
   }
 

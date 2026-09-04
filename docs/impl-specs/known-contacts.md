@@ -1,6 +1,6 @@
 # Known-contact handling — implementation specification
 
-Status: **Steps 1–2 complete. Steps 3–8 not implemented.**
+Status: **Steps 1–3 complete. Steps 4–8 not implemented.**
 
 Local database prerequisite: **complete**, following the separately authorized setup on 2026-09-03. PostgreSQL 17.11 now runs in the repository's private socket-only cluster, with the checked-in schema loaded and real role/RLS/RPC/constraint checks passing. See [local database operations](../operations/local-test-database.md). The Step 2 contact migration and feature-specific SQL/RLS checks have also passed (see §14).
 
@@ -328,14 +328,14 @@ These are implementation requirements, not blockers requiring a new product deci
 | 1 — Architecture/specification | Complete | Current paths inspected, product/technical contracts recorded, 253 baseline tests and typecheck passed. |
 | Local database prerequisite | Complete | PostgreSQL 17.11; unchanged base schema loaded; actual client-role RLS, service RPC, idempotency, check constraint, and tenant FK verified. |
 | 2 — Data/API | Complete | Schema/migration, scoped services/APIs, export/deletion, 12 feature tests and 18 real database checks passed; full suite 627/627, typecheck and lint passed. |
-| 3 — SMS suppression | Not started | Implement gate/status/owner-alert behavior after Step 2. |
+| 3 — SMS suppression | Complete | Ordered/final contact gate, intentional and blocked statuses, independent owner alerts, zero-attempt/idempotent attempt evidence, UI/monitoring distinction; 659 regression tests and 20 real SQL checks passed. |
 | 4 — Inbox/Reports | Not started | Implement shared classification projections and metric rules. |
 | 5 — UI | Not started | Build contact and Personal controls against verified APIs. |
 | 6 — CSV/vCard import | Not started | Build preview/merge and validate representative exports. |
 | 7 — Phone picker | Not started | Add supported-browser adapter and record device evidence. |
 | 8 — Review/pilot preparation | Not started | Complete release gates and write pilot runbook. |
 
-Next numbered step when requested: **Step 3 — SMS suppression**. Step 2 has not connected stored preferences to caller automation or business/Personal grouping. No production resources or real messages were used.
+Next numbered step when requested: **Step 4 — Inbox/Reports**. Caller automation now honors contact preferences in local code. Personal history grouping, contact-name projections across the inbox, and business-report filtering remain Step 4 work. No production resources or real messages were used.
 
 
 ## 14. Step 2 implementation and verification
@@ -388,4 +388,48 @@ Database functions (all restricted to service role, fixed `public` search path):
 | `git diff --check` | Passed | Tracked diff whitespace check. |
 | Production build, browser/device checks, hosted Supabase HTTP integration | Not run in Step 2 | No UI or telephony behavior was implemented here. Local engine has no PostgREST/Auth/Storage HTTP servers. These results do not certify deployment, real delivery, or a browser flow. |
 
-Repeatable commands and test files above are the durable evidence. Detailed transient logs: `/private/tmp/relay-known-contacts-step2-tests.log` and `/private/tmp/relay-known-contacts-step2-sql.log`. No unrelated failures were repaired. No concrete Step 2 blocker remains. Steps 3–8 remain outstanding; automatic SMS eligibility and business/Personal history grouping are unchanged until their respective steps.
+Repeatable commands and test files above are the durable evidence. Detailed transient logs: `/private/tmp/relay-known-contacts-step2-tests.log` and `/private/tmp/relay-known-contacts-step2-sql.log`. No unrelated failures were repaired. No concrete Step 2 blocker remains. At Step 2 completion, Steps 3–8 remained outstanding. Step 3 completion is recorded below; business/Personal history grouping remains future work.
+
+
+## 15. Step 3 implementation and verification
+
+Completed locally on 2026-09-03 America/Los_Angeles (2026-09-04 UTC), continuing `codex/known-contacts` from the pushed Step 2 checkpoint `bd787b5`. Applicable repository instructions and the branch/diff were checked again. The pre-existing unrelated document/Word changes were preserved. This is application implementation and local verification, not a production rollout.
+
+### Caller gate and notification behavior
+
+`lib/missed-call.ts::handleMissedCall` remains the common automatic caller SMS entry point. Both forwarding-mode voice ingestion and missed-call completion (including the dial-status compatibility alias) already invoke it; no new send/retry route was introduced. Durable lead creation, signed first-call activation, duplicate exit, call linkage, and the existing cooldown's creation-time/ID tie-break remain intact. Earlier calls, lead names, manual replies, and START do not save contacts.
+
+After capture, Web Push starts independently. Contact metadata is read even with account texting disabled; contact names are passed to owner email/SMS without writing them into leads. The gate order is now disabled → opted out → contact policy → cooldown. Only a Customer with explicit `standard` proceeds past the contact gate. A malformed Personal/standard combination also suppresses defensively. Disabled and opted-out reasons survive a metadata failure, which instead records a separate `known_contact_lookup` operational issue. Other required lookup failures block caller submission.
+
+Before an otherwise eligible send, the body/callback metadata are prepared and the existing automatic action key is reserved with `countAttempt: false` and no retry eligibility. Recipient opt-out and contact policy are then read again without caching. There is no awaited owner alert or bookkeeping operation between the final contact read and `provider.sendSms`. A contact committed before that database read's snapshot affects the decision. An edit committed after the read can race with submission; an initiated or accepted provider request cannot be recalled. Settings/help must carry this explanation when contact management is added in Step 5.
+
+All terminal outcomes independently attempt the configured email/SMS notifications and await the already-started push. This includes repeat callers and checks that blocked texting. A failure in an alert, administrator notification, or terminal status/action write cannot fall through to caller submission. The provider-send catch is separate from post-acceptance bookkeeping, so subsequent recording/notification failures cannot mark an accepted send failed. Owner SMS still obeys texting eligibility, sender availability, preferences, and the self-call guard; push remains independent of A2P.
+
+### Statuses, evidence, and displays
+
+- Dedicated additive migration: `docs/migrations/2026-09-04-known-contact-sms.sql`, applied locally **after** the Step 2 contact migration. `supabase.sql` and `SmsStatus` include `skipped_known_contact` and `blocked_pre_send`. Old status values and records are retained; no backfill or replay occurs. Apply this migration before deploying this code in any separately authorized rollout.
+- Contact suppression: automatic action key `automatic_missed_call_sms:{leadId}`, provider `relay`, status `known_contact`, internal status `suppressed`, expected suppression true, zero attempts, retry `never`. No outbound message row is inserted.
+- Required pre-send failure (including inability to reserve evidence): lead `blocked_pre_send`, provider `supabase`, status `pre_send_check_failed`, internal status `failed`, expected suppression false, zero attempts, retry `never`. Diagnostics identify the unavailable check using fixed stage labels without logging contact contents. Guidance points to Operations and an explicit manual reply/call, never an automatic replay.
+- New `record_automatic_sms_attempt(uuid,text)` RPC and `recordAutomaticSmsAttempt(accountId, actionKey)` service set the matching account's automatic action count to at least 1 **after actual provider invocation resolves or rejects**, or after its signed automatic callback. They cannot mark a suppressed action, touch a different account/action type, overwrite terminal status, or increment twice when callback and send completion race. The RPC uses invoker rights and a fixed search path, revoked public/client execution, and service-role access. Send completion and callback report the same one submission; processing reservations remain zero. If the process exits before recording the outcome, a signed callback can repair attempt evidence. No transactional guarantee with the external provider is implied.
+- `lib/telephony/webhook-services.ts` records the idempotent attempt for signed `auto_text` callbacks with an action key. Manual callbacks retain their separate message-only behavior and never change the automatic contact policy or lead SMS outcome.
+- `lib/email.ts` and owner SMS now use bounded contact names and direct `/leads/{id}` links. Email HTML uses the existing escaping helper. Push content is unchanged. Known-contact and blocked-check wording never describes an intentional skip as a carrier failure.
+- `lib/twilio/sms-delivery.ts`, lead card, and shared lead helpers show “Not auto-texted: known contact” and “Not texted: texting checks unavailable.” New blocked leads receive the existing attention treatment. `hasSmsDeliveryFailure` keeps blocked checks out of the existing `smsIssues` totals and optimistic count deltas; a separate aggregate blocked count belongs to Step 4.
+- Operations monitoring reads actual attempt counts/provider identifiers. Zero-attempt reservations and intentional skips do not count as SMS submissions/failures. A distinct `pre_send_check_failed` health alert covers failed eligibility/metadata reads, deduplicated by lead. A stalled zero-attempt reservation does not hide a pending-call problem; recorded intentional suppression does. Raw call-capture evidence remains included. Existing dashboard query caps and business-report definitions are not broadened here.
+
+Manual reply implementation remains on the existing composer/route and its opt-out, account texting, and idempotency checks. The new tests prove a Personal contact can be manually replied to when eligible, while its suppression policy and historical auto-text status stay unchanged. Removing/reclassifying a contact affects future automatic eligibility; duplicate webhook replays still exit without sending.
+
+### Verification evidence
+
+| Check | Result | Scope |
+| --- | --- | --- |
+| `npm test` | **659 passed, 0 failed/skipped** | Full repository suite including new contact SMS tests and signed-callback attempt reconciliation. Existing activation, signed ingress, duplicate/cooldown, manual reply, tenant, push, and provider regressions passed. |
+| `node --test tests/known-contact-sms.test.mjs` | **31 passed** | Unknown/default/enabled/Personal policies; account and opt-out precedence; initial/final failures; before/after-send barriers; two tenants; removal/replay; parallel duplicate calls; all-channel failure isolation; manual replies; escaped names; statuses and monitoring aggregates. |
+| Final focused pipeline run | **55 passed, 0 failed/skipped** | `node --test tests/known-contact-sms.test.mjs tests/pipeline-failure-handling.test.mjs`, repeated after final diagnostic wording and monitoring changes. |
+| `npm run test:contacts:db` | **20 passed, 0 failed/skipped** | Real PostgreSQL 17.11: fresh schema and ordered upgrade from original baseline through Steps 2–3, repeated migrations, actual client-role restrictions, status constraints, zero-attempt suppression, no retry claim, tenant-scoped attempt marking, and idempotence with an already-delivered callback. All Step 2 integrity/concurrency checks still pass. |
+| Local Step 3 migration | **Passed** | Applied to the existing private `relay_nw_test` database using the guarded local runner; no production connection. |
+| `npm run typecheck`, `npm run lint`, `git diff --check` | **Passed** | TypeScript, full configured lint scope, tracked whitespace validation. |
+| Production build, browser/device review, hosted Supabase HTTP integration, real delivery | **Not run in Step 3** | SQL uses the real local engine; app/provider/notification tests use synthetic fixtures and module mocks. No real SMS/email/push was sent. No deployment or production data changes. |
+
+Transient logs: `/private/tmp/relay-known-contacts-step3-tests.log`, `/private/tmp/relay-known-contacts-step3-focused.log`, `/private/tmp/relay-known-contacts-step3-final-focused.log`, and `/private/tmp/relay-known-contacts-step3-sql.log`. Commands and test files are the durable evidence. Existing fixture changes supply the mandatory contact/attempt service dependencies; no production fallback treats a missing contact service as an unknown caller.
+
+No concrete Step 3 blocker remains. Step 4 must still add current-contact joins, name precedence across cards/conversations/search, Personal versus Trash grouping, complete business/reply/revenue filtering, and separate aggregate skip/blocked counters. Steps 5–7 add the owner controls/imports/picker, and Step 8 remains the release gate. Do not treat this partial feature as ready for a production pilot or deploy an older app that ignores saved suppression.

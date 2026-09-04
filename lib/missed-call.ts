@@ -4,6 +4,9 @@ import {
   createMessageIfNew,
   createMissedCallLeadIfNew,
   hasRecentMissedCallSms,
+  getKnownContactByPhone,
+  recordAutomaticSmsAttempt,
+  type KnownContact,
   isOptedOut,
   recordProviderAction,
   assertTenantAccount,
@@ -16,7 +19,7 @@ import { missedCallSmsBodyForAccount, phoneLast4, sendOwnerSms } from "@/lib/twi
 import { getTelephonyProvider } from "@/lib/telephony/registry";
 import { notifyAdminOperationalIssue, notifyOwnerNewMissedCallLead } from "@/lib/email";
 
-type OwnerSmsStatus = "sent" | "failed" | "skipped_opt_out" | "repeat_call";
+type OwnerSmsStatus = "sent" | "failed" | "skipped_opt_out" | "skipped_recent" | "skipped_disabled" | "skipped_known_contact" | "blocked_pre_send";
 
 async function notifyOwnerNewLeadByPush(input: {
   account: Pick<AccountRuntimeConfig, "accountId" | "businessName">;
@@ -45,22 +48,34 @@ function ownerSmsBody(input: {
   businessName: string;
   callerPhone: string;
   smsStatus: OwnerSmsStatus;
+  leadId: string;
+  callerName?: string | null;
 }) {
-  const inboxUrl = `${env.appBaseUrl}/leads`;
+  const inboxUrl = `${env.appBaseUrl}/leads/${encodeURIComponent(input.leadId)}`;
+  const caller = input.callerName ? `${input.callerName.slice(0, 120)} (${input.callerPhone})` : input.callerPhone;
 
   if (input.smsStatus === "sent") {
-    return `Relay NW: missed call for ${input.businessName} from ${input.callerPhone}. We texted them back. Reply from your inbox: ${inboxUrl}`;
+    return `Relay NW: missed call for ${input.businessName} from ${caller}. We texted them back. Reply from your inbox: ${inboxUrl}`;
   }
 
   if (input.smsStatus === "skipped_opt_out") {
-    return `Relay NW: missed call for ${input.businessName} from ${input.callerPhone}. They opted out of texting, so call them back. Inbox: ${inboxUrl}`;
+    return `Relay NW: missed call for ${input.businessName} from ${caller}. They opted out of texting, so call them back. Inbox: ${inboxUrl}`;
   }
 
-  if (input.smsStatus === "repeat_call") {
-    return `Relay NW: ${input.callerPhone} called ${input.businessName} again and was missed. They were already texted, so no new auto-text went out. Consider calling back. Inbox: ${inboxUrl}`;
+  if (input.smsStatus === "skipped_recent") {
+    return `Relay NW: ${caller} called ${input.businessName} again and was missed. They were already texted, so no new auto-text went out. Consider calling back. Inbox: ${inboxUrl}`;
   }
 
-  return `Relay NW: missed call for ${input.businessName} from ${input.callerPhone}. The auto-text FAILED. Call them back now. Inbox: ${inboxUrl}`;
+  if (input.smsStatus === "skipped_known_contact") {
+    return `Relay NW: missed call for ${input.businessName} from ${caller}. Not auto-texted: known contact. Reply or call from your inbox: ${inboxUrl}`;
+  }
+  if (input.smsStatus === "blocked_pre_send") {
+    return `Relay NW: missed call for ${input.businessName} from ${caller}. Not texted: texting checks unavailable. Call them or review before replying: ${inboxUrl}`;
+  }
+  if (input.smsStatus === "skipped_disabled") {
+    return `Relay NW: missed call for ${input.businessName} from ${caller}. Automatic texting is disabled. Inbox: ${inboxUrl}`;
+  }
+  return `Relay NW: missed call for ${input.businessName} from ${caller}. The auto-text FAILED. Call them back now. Inbox: ${inboxUrl}`;
 }
 
 // Texts the owner about a new missed-call lead. Email can sit unread for hours; owners
@@ -74,6 +89,8 @@ async function notifyOwnerNewLeadBySms(input: {
   callerPhone: string;
   smsStatus: OwnerSmsStatus;
   correlationId: string;
+  leadId: string;
+  callerName?: string | null;
 }) {
   const { account } = input;
   const relayPhoneNumber = account.relayPhoneNumber || account.twilioPhoneNumber;
@@ -102,6 +119,8 @@ async function notifyOwnerNewLeadBySms(input: {
       businessName: account.businessName,
       callerPhone: input.callerPhone,
       smsStatus: input.smsStatus,
+      leadId: input.leadId,
+      callerName: input.callerName,
     });
     const actionKey = `owner_sms:missed_call:${input.correlationId}`;
     if (typeof sendOwnerSms === "function") {
@@ -149,458 +168,185 @@ export async function handleMissedCall(input: {
   const account = assertTenantAccount(input.account ?? envAccountConfig(), "handleMissedCall");
   const relayPhoneNumber = account.relayPhoneNumber || account.twilioPhoneNumber;
   const provider = getTelephonyProvider();
+  if (!callerPhone || !providerCallId) throw new Error("Missing caller phone or provider call identifier on missed call webhook.");
 
-  if (!callerPhone || !providerCallId) {
-    throw new Error("Missing caller phone or provider call identifier on missed call webhook.");
-  }
-
+  // Durable capture and duplicate handling precede every preference lookup.
   const leadResult = await createMissedCallLeadIfNew({
-    accountId: account.accountId,
-    providerCallId,
-    phone: callerPhone,
-    message: input.message,
-    providerSignatureValid:
-      (input.providerSignatureValid ?? input.twilioSignatureValid) === true,
+    accountId: account.accountId, providerCallId, phone: callerPhone, message: input.message,
+    providerSignatureValid: (input.providerSignatureValid ?? input.twilioSignatureValid) === true,
   });
-
   if (!leadResult.inserted || !leadResult.leadId) {
     return { inserted: false, becameLive: false, smsStatus: "duplicate" as const };
   }
-
-  const providerActionKey = `automatic_missed_call_sms:${leadResult.leadId}`;
-  // Start the A2P-independent owner alert immediately, but let the compliance-
-  // sensitive customer SMS proceed in parallel. Every terminal path below waits
-  // for this promise so the serverless invocation cannot freeze it mid-send.
-  const ownerPushPromise = notifyOwnerNewLeadByPush({
-    account,
-    leadId: leadResult.leadId,
-    callerPhone,
-  });
-  async function finish<T>(result: T) {
-    await ownerPushPromise;
-    return result;
-  }
-  const recordSmsAction = async (input: Parameters<typeof recordProviderAction>[0]) => {
-    if (typeof recordProviderAction !== "function") return null;
-    return recordProviderAction(input);
+  const leadId = leadResult.leadId;
+  const providerActionKey = `automatic_missed_call_sms:${leadId}`;
+  const action = {
+    accountId: account.accountId, action: "automatic_missed_call_sms", idempotencyKey: providerActionKey,
+    resourceType: "lead", resourceId: leadId,
   };
+  const ownerPushPromise = notifyOwnerNewLeadByPush({ account, leadId, callerPhone });
+  let contact: KnownContact | null = null;
+  let contactUnavailable = false;
+  const suppresses = (value: KnownContact | null) => value !== null &&
+    (value.classification !== "customer" || value.auto_sms_policy !== "standard");
 
-  try {
-    await updateCallForMissedLead({
-      accountId: account.accountId,
-      providerCallId,
-      leadId: leadResult.leadId,
-      status: "missed",
-    });
-  } catch (error) {
-    // Call-row bookkeeping must not block the customer-facing SMS.
-    console.error("Could not link call row to missed-call lead", {
-      correlationId,
-      providerCallId,
-      leadId: leadResult.leadId,
-      error: error instanceof Error ? error.message : error,
-    });
+  async function safely(label: string, operation: () => Promise<unknown>) {
+    try { await operation(); }
+    catch { console.error(label, { accountId: account.accountId, leadId, correlationId }); }
+  }
+  async function adminIssue(issue: string, detail: string) {
+    await safely("Could not notify Operations", () => notifyAdminOperationalIssue({ account, issue, detail, correlationId }));
+  }
+  async function finish<T extends { smsStatus: string }>(result: T) {
+    const smsStatus: OwnerSmsStatus = result.smsStatus === "sent_update_failed" ? "sent" : result.smsStatus as OwnerSmsStatus;
+    // Keep channels independent, including when persistence or a notification fails.
+    await Promise.all([
+      safely("Owner missed-call email failed", () => notifyOwnerNewMissedCallLead({
+        account, leadId, callerPhone, callerName: contact?.display_name, smsStatus,
+      })),
+      safely("Owner missed-call SMS failed", () => notifyOwnerNewLeadBySms({
+        account, leadId, callerPhone, callerName: contact?.display_name, smsStatus, correlationId,
+      })),
+      ownerPushPromise,
+    ]);
+    return { inserted: true, becameLive: leadResult.becameLive, ...result };
+  }
+  async function metadataIssue() {
+    await safely("Could not record contact lookup issue", () => recordProviderAction({
+      accountId: account.accountId, action: "known_contact_lookup", provider: "supabase",
+      idempotencyKey: `known_contact_lookup:${leadId}`, resourceType: "lead", resourceId: leadId,
+      internalStatus: "failed", providerStatus: "contact_lookup_failed", countAttempt: false,
+      diagnosticDetail: "Contact metadata was unavailable; established SMS suppression remains in effect.",
+      customerExplanation: "Contact details could not be loaded.", customerVisible: false,
+      retryEligibility: "never", recommendedNextAction: "Check contact storage in Operations. No automatic resend is scheduled.",
+    }));
+    await adminIssue("Missed-call contact lookup failed", "Contact metadata was unavailable. Existing account or recipient suppression was preserved.");
+  }
+  async function skip(smsStatus: "skipped_disabled" | "skipped_opt_out" | "skipped_known_contact" | "skipped_recent") {
+    const reasons = {
+      skipped_disabled: ["sms_disabled", "Automatic texting is not enabled for this account."],
+      skipped_opt_out: ["opted_out", "The caller opted out of texting, so Relay did not send a message."],
+      skipped_known_contact: ["known_contact", "Not auto-texted: known contact."],
+      skipped_recent: ["cooldown", "Relay did not send a duplicate automatic text during the cooldown window."],
+    } as const;
+    await safely("Could not record skipped SMS status", () => updateLeadSmsStatus({ accountId: account.accountId, id: leadId, smsStatus }));
+    await safely("Could not record SMS suppression", () => recordProviderAction({
+      ...action, provider: "relay", internalStatus: "suppressed", providerStatus: reasons[smsStatus][0],
+      customerExplanation: reasons[smsStatus][1], retryEligibility: "never",
+      recommendedNextAction: "Review the missed call and follow up manually if appropriate.",
+      customerVisible: false, expectedSuppression: true, countAttempt: false,
+    }));
+    if (contactUnavailable) await metadataIssue();
+    return finish({ smsStatus });
+  }
+  async function blocked(check: string) {
+    const detail = `Could not verify SMS account/opt-out/contact/cooldown checks. SMS not sent. Unavailable check: ${check}.`;
+    await safely("Could not record blocked pre-send status", () => updateLeadSmsStatus({
+      accountId: account.accountId, id: leadId, smsStatus: "blocked_pre_send", smsError: detail,
+    }));
+    await safely("Could not record pre-send check failure", () => recordProviderAction({
+      ...action, provider: "supabase", internalStatus: "failed", providerStatus: "pre_send_check_failed",
+      diagnosticDetail: detail, customerExplanation: "Not texted: texting checks unavailable.",
+      retryEligibility: "never", recommendedNextAction: "Check Operations, then call or explicitly reply from the inbox. Do not replay this automatic text.",
+      customerVisible: true, expectedSuppression: false, countAttempt: false,
+    }));
+    await adminIssue("Missed-call SMS pre-send checks failed (SMS not sent)", detail);
+    return finish({ smsStatus: "blocked_pre_send" as const, smsError: detail });
   }
 
-  if (!account.smsEnabled) {
-    try {
-      await updateLeadSmsStatus({
-        accountId: account.accountId,
-        id: leadResult.leadId,
-        smsStatus: "skipped_disabled",
-      });
-    } catch (error) {
-      console.warn("Could not mark SMS as disabled. Run supabase.sql to allow skipped_disabled.", {
-        correlationId,
-        providerCallId,
-        callerLast4: phoneLast4(callerPhone),
-        leadId: leadResult.leadId,
-        error,
-      });
-    }
+  await safely("Could not link call row to missed-call lead", () => updateCallForMissedLead({
+    accountId: account.accountId, providerCallId, leadId, status: "missed",
+  }));
+  // Resolve metadata even when caller texting is disabled. Never treat a failed
+  // lookup as evidence that a number is unknown.
+  try { contact = await getKnownContactByPhone(account.accountId, callerPhone); }
+  catch { contactUnavailable = true; }
+  if (!account.smsEnabled) return skip("skipped_disabled");
 
-    console.info("Missed-call SMS suppressed because SMS_ENABLED is false", {
-      correlationId,
-      providerCallId,
-      callerLast4: phoneLast4(callerPhone),
-      leadId: leadResult.leadId,
-    });
-
-    await notifyOwnerNewMissedCallLead({
-      account,
-      leadId: leadResult.leadId,
-      callerPhone,
-      smsStatus: "skipped_disabled",
-    });
-
-    await recordSmsAction({
-      accountId: account.accountId,
-      action: "automatic_missed_call_sms",
-      provider: provider.identity.id,
-      idempotencyKey: providerActionKey,
-      resourceType: "lead",
-      resourceId: leadResult.leadId,
-      internalStatus: "suppressed",
-      providerStatus: "sms_disabled",
-      customerExplanation: "Automatic texting is not enabled for this account.",
-      retryEligibility: "never",
-      recommendedNextAction: "Enable texting only after A2P approval, then contact this caller manually.",
-      customerVisible: false,
-      expectedSuppression: true,
-    });
-
-    return finish({ inserted: true, becameLive: leadResult.becameLive, smsStatus: "skipped_disabled" as const });
-  }
-
-  // Fail closed: if the cooldown or opt-out check cannot be completed, do not send
-  // (compliance-safe) and mark the lead "failed" so it is never left ambiguously "pending".
-  let alreadyTextedRecently: boolean;
-  let optedOut: boolean;
+  let recentlyTexted: boolean;
+  let smsRequest: Parameters<typeof provider.sendSms>[0];
+  let check = "recipient opt-out";
   try {
-    const cooldownSince = new Date(
-      Date.now() - account.missedCallSmsCooldownHours * 60 * 60 * 1000,
+    if (await isOptedOut(callerPhone, account.accountId)) return skip("skipped_opt_out");
+    if (contactUnavailable) return blocked("known-contact lookup");
+    if (suppresses(contact)) return skip("skipped_known_contact");
+    check = "cooldown";
+    recentlyTexted = await hasRecentMissedCallSms(
+      callerPhone, new Date(Date.now() - account.missedCallSmsCooldownHours * 60 * 60 * 1000),
+      account.accountId, leadId, leadResult.createdAt ?? null,
     );
-    alreadyTextedRecently = await hasRecentMissedCallSms(
-      callerPhone,
-      cooldownSince,
-      account.accountId,
-      leadResult.leadId,
-      leadResult.createdAt ?? null,
-    );
-    optedOut = !alreadyTextedRecently && (await isOptedOut(callerPhone, account.accountId));
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown pre-send check error";
-    const detail = `Could not verify SMS cooldown/opt-out, SMS not sent: ${message}`;
-
-    console.error("Missed-call SMS pre-send checks failed; failing closed", {
-      correlationId,
-      providerCallId,
-      callerLast4: phoneLast4(callerPhone),
-      leadId: leadResult.leadId,
-      error: message,
-    });
-
-    try {
-      await updateLeadSmsStatus({
-        accountId: account.accountId,
-        id: leadResult.leadId,
-        smsStatus: "failed",
-        smsError: detail,
-      });
-    } catch (updateError) {
-      console.error("Could not mark lead failed after pre-send check failure", {
-        correlationId,
-        leadId: leadResult.leadId,
-        error: updateError instanceof Error ? updateError.message : updateError,
-      });
-    }
-
-    await notifyAdminOperationalIssue({
-      account,
-      issue: "Missed-call SMS pre-send checks failed (SMS not sent)",
-      detail,
-      correlationId,
-    });
-
-    await recordSmsAction({
-      accountId: account.accountId,
-      action: "automatic_missed_call_sms",
-      provider: "supabase",
-      idempotencyKey: providerActionKey,
-      resourceType: "lead",
-      resourceId: leadResult.leadId,
-      internalStatus: "failed",
-      providerStatus: "pre_send_check_failed",
-      diagnosticDetail: message,
-      customerExplanation: "Relay could not safely verify texting consent, so no message was sent.",
-      retryEligibility: "manual",
-      recommendedNextAction: "Verify opt-out and cooldown records, then call the customer or retry once from Operations.",
-      customerVisible: true,
-      countAttempt: true,
-    });
-
-    return finish({ inserted: true, becameLive: leadResult.becameLive, smsStatus: "failed" as const, smsError: detail });
-  }
-
-  if (alreadyTextedRecently) {
-    await updateLeadSmsStatus({
-      accountId: account.accountId,
-      id: leadResult.leadId,
-      smsStatus: "skipped_recent",
-    });
-    // A repeat missed call inside the cooldown window used to be invisible to the
-    // owner. It is often the opposite of ignorable: the caller is trying again.
-    await notifyOwnerNewLeadBySms({
-      account,
-      callerPhone,
-      smsStatus: "repeat_call",
-      correlationId,
-    });
-    await recordSmsAction({
-      accountId: account.accountId,
-      action: "automatic_missed_call_sms",
-      provider: "relay",
-      idempotencyKey: providerActionKey,
-      resourceType: "lead",
-      resourceId: leadResult.leadId,
-      internalStatus: "suppressed",
-      providerStatus: "cooldown",
-      customerExplanation: "Relay did not send a duplicate automatic text during the cooldown window.",
-      retryEligibility: "never",
-      recommendedNextAction: "Call the repeat caller from the inbox.",
-      customerVisible: false,
-      expectedSuppression: true,
-    });
-    return finish({ inserted: true, becameLive: leadResult.becameLive, smsStatus: "skipped_recent" as const });
-  }
-
-  if (optedOut) {
-    await updateLeadSmsStatus({
-      accountId: account.accountId,
-      id: leadResult.leadId,
-      smsStatus: "skipped_opt_out",
-    });
-    await notifyOwnerNewMissedCallLead({
-      account,
-      leadId: leadResult.leadId,
-      callerPhone,
-      smsStatus: "skipped_opt_out",
-    });
-    await notifyOwnerNewLeadBySms({
-      account,
-      callerPhone,
-      smsStatus: "skipped_opt_out",
-      correlationId,
-    });
-    await recordSmsAction({
-      accountId: account.accountId,
-      action: "automatic_missed_call_sms",
-      provider: "relay",
-      idempotencyKey: providerActionKey,
-      resourceType: "lead",
-      resourceId: leadResult.leadId,
-      internalStatus: "suppressed",
-      providerStatus: "opted_out",
-      customerExplanation: "The caller opted out of text messages, so Relay did not send one.",
-      retryEligibility: "never",
-      recommendedNextAction: "Call the customer instead.",
-      customerVisible: false,
-      expectedSuppression: true,
-    });
-    return finish({ inserted: true, becameLive: leadResult.becameLive, smsStatus: "skipped_opt_out" as const });
-  }
-
-  try {
-    await recordSmsAction({
-      accountId: account.accountId,
-      action: "automatic_missed_call_sms",
-      provider: provider.identity.id,
-      idempotencyKey: providerActionKey,
-      resourceType: "lead",
-      resourceId: leadResult.leadId,
-      internalStatus: "processing",
-      providerStatus: "requesting",
-      customerExplanation: "Relay is sending the automatic missed-call text.",
-      retryEligibility: "manual",
-      recommendedNextAction: `Wait for ${provider.identity.displayName}'s signed delivery callback.`,
-      customerVisible: false,
-      countAttempt: true,
-    });
-    const message = await provider.sendSms({
-      to: callerPhone,
-      from: relayPhoneNumber,
-      body: missedCallSmsBodyForAccount(account),
+    if (recentlyTexted) return skip("skipped_recent");
+    check = "message preparation";
+    smsRequest = {
+      to: callerPhone, from: relayPhoneNumber, body: missedCallSmsBodyForAccount(account),
       idempotencyKey: providerActionKey,
       deliveryCallback: {
         url: new URL("/api/twilio/sms-status", env.appBaseUrl).toString(),
-        metadata: {
-          messageType: "auto_text",
-          accountId: account.accountId,
-          leadId: leadResult.leadId,
-          actionKey: providerActionKey,
-        },
+        metadata: { messageType: "auto_text", accountId: account.accountId, leadId, actionKey: providerActionKey },
       },
+    };
+    check = "provider action reservation";
+    await recordProviderAction({
+      ...action, provider: provider.identity.id, internalStatus: "processing", providerStatus: "checking_eligibility",
+      customerExplanation: "Relay is checking whether this automatic text can be sent.",
+      retryEligibility: "never", recommendedNextAction: "Wait for eligibility checks. Do not resend automatically.",
+      customerVisible: false, countAttempt: false,
     });
-    const providerMessageId = message.messageId.value;
-    const initialStatus = message.status === "unknown" ? "accepted" : message.status;
+    // Final, uncached decision boundary. Build/reserve everything before these
+    // reads; no notification or bookkeeping await may follow the contact read
+    // before initiating the provider request. Later edits cannot recall a send.
+    check = "final recipient opt-out";
+    if (await isOptedOut(callerPhone, account.accountId)) return skip("skipped_opt_out");
+    check = "final known-contact lookup";
+    contact = await getKnownContactByPhone(account.accountId, callerPhone);
+    if (suppresses(contact)) return skip("skipped_known_contact");
+  } catch { return blocked(check); }
 
-    try {
-      await recordSmsAction({
-        accountId: account.accountId,
-        action: "automatic_missed_call_sms",
-        provider: provider.identity.id,
-        idempotencyKey: providerActionKey,
-        providerIdentifier: providerMessageId,
-        resourceType: "lead",
-        resourceId: leadResult.leadId,
-        internalStatus: "accepted",
-        providerStatus: initialStatus,
-        customerExplanation: `${provider.identity.displayName} accepted the automatic text. Delivery confirmation is pending.`,
-        retryEligibility: "never",
-        recommendedNextAction: "Wait for the signed delivery callback; do not resend automatically.",
-        customerVisible: false,
-      });
-    } catch (actionError) {
-      console.error("Provider accepted SMS, but Relay could not update provider action evidence", {
-        correlationId,
-        leadId: leadResult.leadId,
-        providerMessageId,
-        error: actionError instanceof Error ? actionError.message : actionError,
-      });
-    }
+  let message: Awaited<ReturnType<typeof provider.sendSms>>;
+  try {
+    message = await provider.sendSms(smsRequest);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "Unknown SMS send error";
+    await safely("Could not record automatic SMS provider failure", () => recordProviderAction({
+      ...action, provider: provider.identity.id, internalStatus: "failed", providerStatus: "send_failed",
+      diagnosticDetail: detail, customerVisible: true, retryEligibility: "never",
+      recommendedNextAction: "Check provider evidence before explicitly replying or calling. Do not automatically resend.",
+    }));
+    await safely("Could not record automatic SMS attempt", () => recordAutomaticSmsAttempt(account.accountId, providerActionKey));
+    await safely("Could not record SMS failure", () => updateLeadSmsStatus({ accountId: account.accountId, id: leadId, smsStatus: "failed", smsError: detail }));
+    await adminIssue("Missed-call SMS send failed", detail);
+    return finish({ smsStatus: "failed" as const, smsError: detail });
+  }
 
-    // The provider has already accepted the SMS past this point. A failure recording it in the
-    // messages table must NOT bubble into the outer catch, which would wrongly mark the
-    // lead "failed" (and re-open the cooldown, risking a double text on a repeat call).
-    let messageRowRecorded = true;
-    try {
-      await createMessageIfNew({
-        accountId: account.accountId,
-        leadId: leadResult.leadId,
-        providerMessageId,
-        direction: "outbound",
-        fromPhone: relayPhoneNumber,
-        toPhone: callerPhone,
-        body: missedCallSmsBodyForAccount(account),
-        status: "sent",
-      });
-    } catch (error) {
-      messageRowRecorded = false;
-      const detail = error instanceof Error ? error.message : "Unknown message insert error";
-
-      console.error("Provider accepted SMS, but Relay could not record the message row", {
-        correlationId,
-        leadId: leadResult.leadId,
-        providerMessageId,
-        error: detail,
-      });
-
-      await notifyAdminOperationalIssue({
-        account,
-        issue: "Provider accepted SMS but message row insert failed",
-        detail: `${detail} (provider message ID ${providerMessageId})`,
-        correlationId,
-      });
-    }
-
-    try {
-      await updateLeadSmsStatus({
-        accountId: account.accountId,
-        id: leadResult.leadId,
-        smsStatus: "sent",
-        providerMessageId,
-      });
-    } catch (error) {
-      const updateErrorMessage = error instanceof Error ? error.message : "Unknown SMS update error";
-
-      console.error("Provider accepted SMS, but Relay could not update the lead", {
-        correlationId,
-        leadId: leadResult.leadId,
-        providerMessageId,
-        error: updateErrorMessage,
-      });
-
-      await notifyAdminOperationalIssue({
-        account,
-        issue: "Provider accepted SMS but lead update failed",
-        detail: messageRowRecorded
-          ? `${updateErrorMessage} — the lead will self-heal when the next Twilio status callback arrives (reconciled via the messages table).`
-          : `${updateErrorMessage} — the message row also failed to record, so automatic reconciliation is not possible; check provider message ID ${providerMessageId} in ${provider.identity.displayName}.`,
-        correlationId,
-      });
-
-      await notifyOwnerNewLeadBySms({
-        account,
-        callerPhone,
-        smsStatus: "sent",
-        correlationId,
-      });
-
-      return finish({
-        inserted: true,
-        becameLive: leadResult.becameLive,
-        smsStatus: "sent_update_failed" as const,
-        providerMessageId,
-        twilioMessageSid: providerMessageId,
-      });
-    }
-
-    await notifyOwnerNewMissedCallLead({
-      account,
-      leadId: leadResult.leadId,
-      callerPhone,
-      smsStatus: "sent",
-    });
-    await notifyOwnerNewLeadBySms({
-      account,
-      callerPhone,
-      smsStatus: "sent",
-      correlationId,
-    });
-
-    return finish({
-      inserted: true,
-      becameLive: leadResult.becameLive,
-      smsStatus: "sent" as const,
-      providerMessageId,
-      twilioMessageSid: providerMessageId,
+  // Provider acceptance is irreversible. No persistence/notification failure
+  // below can enter the provider-send catch or turn acceptance into a failure.
+  const providerMessageId = message.messageId.value;
+  await safely("Provider accepted SMS, but action evidence could not be recorded", () => recordProviderAction({
+    ...action, provider: provider.identity.id, providerIdentifier: providerMessageId,
+    internalStatus: "accepted", providerStatus: message.status === "unknown" ? "accepted" : message.status,
+    customerExplanation: `${provider.identity.displayName} accepted the automatic text. Delivery confirmation is pending.`,
+    retryEligibility: "never", recommendedNextAction: "Wait for the signed delivery callback; do not resend automatically.",
+    customerVisible: false, countAttempt: false,
+  }));
+  await safely("Could not record automatic SMS attempt", () => recordAutomaticSmsAttempt(account.accountId, providerActionKey));
+  let messageRowRecorded = true;
+  try {
+    await createMessageIfNew({
+      accountId: account.accountId, leadId, providerMessageId, direction: "outbound",
+      fromPhone: relayPhoneNumber, toPhone: callerPhone, body: smsRequest.body, status: "sent",
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown SMS send error";
-
-    try {
-      await recordSmsAction({
-        accountId: account.accountId,
-        action: "automatic_missed_call_sms",
-        provider: provider.identity.id,
-        idempotencyKey: providerActionKey,
-        resourceType: "lead",
-        resourceId: leadResult.leadId,
-        internalStatus: "failed",
-        providerStatus: "send_failed",
-        diagnosticDetail: message,
-        customerVisible: true,
-      });
-    } catch (actionError) {
-      console.error("Could not record automatic SMS provider failure", {
-        correlationId,
-        leadId: leadResult.leadId,
-        error: actionError instanceof Error ? actionError.message : actionError,
-      });
-    }
-
-    await updateLeadSmsStatus({
-      accountId: account.accountId,
-      id: leadResult.leadId,
-      smsStatus: "failed",
-      smsError: message,
-    });
-
-    console.error("Failed to send missed call SMS", {
-      correlationId,
-      providerCallId,
-      callerLast4: phoneLast4(callerPhone),
-      leadId: leadResult.leadId,
-      error: message,
-    });
-    await notifyAdminOperationalIssue({
-      account,
-      issue: "Missed-call SMS send failed",
-      detail: message,
-      correlationId,
-    });
-    await notifyOwnerNewMissedCallLead({
-      account,
-      leadId: leadResult.leadId,
-      callerPhone,
-      smsStatus: "failed",
-    });
-    await notifyOwnerNewLeadBySms({
-      account,
-      callerPhone,
-      smsStatus: "failed",
-      correlationId,
-    });
-    return finish({ inserted: true, becameLive: leadResult.becameLive, smsStatus: "failed" as const, smsError: message });
+    messageRowRecorded = false;
+    await adminIssue("Provider accepted SMS but message row insert failed", `${error instanceof Error ? error.message : "Message insert failed"} (provider message ID ${providerMessageId})`);
   }
+  try {
+    await updateLeadSmsStatus({ accountId: account.accountId, id: leadId, smsStatus: "sent", providerMessageId });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "Lead update failed";
+    await adminIssue("Provider accepted SMS but lead update failed", messageRowRecorded
+      ? `${detail} — the signed status callback can reconcile the lead via the messages table.`
+      : `${detail} — the message row also failed; check provider message ID ${providerMessageId} in ${provider.identity.displayName}.`);
+    return finish({ smsStatus: "sent_update_failed" as const, providerMessageId, twilioMessageSid: providerMessageId });
+  }
+  return finish({ smsStatus: "sent" as const, providerMessageId, twilioMessageSid: providerMessageId });
 }

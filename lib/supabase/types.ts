@@ -15,6 +15,8 @@ export type SmsStatus =
   | "skipped_disabled"
   | "skipped_opt_out"
   | "skipped_recent"
+  | "skipped_known_contact"
+  | "blocked_pre_send"
   | null;
 export type VoicemailTranscriptionStatus = "pending" | "processing" | "completed" | "failed" | null;
 export type WebhookEventSource =
