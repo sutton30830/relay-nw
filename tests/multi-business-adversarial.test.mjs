@@ -9,6 +9,9 @@ import {
   BUSINESSES,
   createTwoBusinessFixture,
 } from "./helpers/two-business-fixture.mjs";
+import { loadOwnerAlerts } from "./helpers/owner-alerts.mjs";
+
+const ownerAlerts = await loadOwnerAlerts();
 
 async function loadTsModule(path, mocks) {
   const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
@@ -699,6 +702,7 @@ test("concurrent duplicate missed calls create one lead and one automatic caller
   };
   const missedCall = await loadTsModule("lib/missed-call.ts", {
     "@/lib/env": { env: { appBaseUrl: "https://relay.test" } },
+    "@/lib/owner-alerts": ownerAlerts,
     "@/lib/phone": { normalizePhoneNumber: (value) => value },
     "@/lib/supabase": supabase,
     "@/lib/supabase/accounts": {

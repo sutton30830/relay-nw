@@ -6,6 +6,7 @@ import { computeBillingLifecycle } from "@/lib/billing";
 import type { AccountBillingRecord, BillingLifecycleState } from "@/lib/billing";
 import type { A2pRegistrationStatus } from "@/lib/customer-experience-contract";
 import { env } from "@/lib/env";
+import { ownerTextAlertsAvailable } from "@/lib/owner-alerts";
 import {
   getA2pRegistrationStatus,
   getAccountBillingRecord,
@@ -618,7 +619,12 @@ export default async function SettingsPage({
                 <NotificationPreferences
                   initialPreferences={account.notificationPreferences}
                   pushPublicKey={env.webPushPublicKey ?? null}
-                  textAlertsActive={account.smsEnabled && a2pStatus === "approved"}
+                  textAlertsActive={ownerTextAlertsAvailable({
+                    smsEnabled: account.smsEnabled && a2pStatus === "approved",
+                    twilioPhoneNumber: account.twilioPhoneNumber,
+                    ownerPhoneNumber: account.ownerPhoneNumber,
+                    platformAlertNumber: env.ownerAlertFromNumber,
+                  })}
                 />
               </>
             ) : null}

@@ -1,5 +1,6 @@
 import twilio from "twilio";
 import { env } from "@/lib/env";
+import { resolveOwnerAlertSender } from "@/lib/owner-alerts";
 import { notifyAdminOperationalIssue } from "@/lib/email";
 import { logWebhookEvent, type WebhookEventSource } from "@/lib/supabase";
 import type { AccountRuntimeConfig } from "@/lib/supabase/accounts";
@@ -96,9 +97,11 @@ export async function configureExistingRelayNumber(phoneNumber: string) {
   return { sid: updated.sid, phoneNumber: updated.phoneNumber };
 }
 
-// Texts the owner from the account's Relay number. Never throws — notification
-// failures must not disturb the pipeline that called this. Gated on smsEnabled:
-// owner texts ride the same A2P-gated number as customer texting.
+// Texts the owner. Never throws: notification failures must not disturb the
+// pipeline that called this. The sender is resolved by resolveOwnerAlertSender:
+// the account's own number once its campaign is approved and texting is on,
+// otherwise Relay's platform alert number when one is configured. Callers are
+// never texted from the platform number; only account.ownerPhoneNumber is.
 export async function sendOwnerSms(input: {
   account: Pick<AccountRuntimeConfig, "accountId" | "smsEnabled" | "ownerPhoneNumber" | "twilioPhoneNumber">;
   body: string;
@@ -116,7 +119,14 @@ export async function sendOwnerSms(input: {
   const claimProviderActionRetry = tools?.claimProviderActionRetry;
   const recordProviderAction = tools?.recordProviderAction;
 
-  if (!account.smsEnabled || !account.ownerPhoneNumber || !account.twilioPhoneNumber) {
+  const sender = resolveOwnerAlertSender({
+    smsEnabled: account.smsEnabled,
+    twilioPhoneNumber: account.twilioPhoneNumber,
+    ownerPhoneNumber: account.ownerPhoneNumber,
+    platformAlertNumber: env.ownerAlertFromNumber,
+  });
+
+  if (!sender || !account.ownerPhoneNumber) {
     if (account.accountId && typeof recordProviderAction === "function") {
       try {
         await recordProviderAction({
@@ -126,9 +136,9 @@ export async function sendOwnerSms(input: {
           idempotencyKey: input.actionKey ?? `owner_sms:${input.context}`,
           internalStatus: "suppressed",
           providerStatus: "notification_not_configured",
-          customerExplanation: "Relay could not send the owner text because texting setup is incomplete.",
+          customerExplanation: "Relay could not text you about this because no texting-capable number is available yet. Email and browser alerts still work.",
           retryEligibility: "manual",
-          recommendedNextAction: "Verify A2P approval and the owner mobile number, then run a notification test.",
+          recommendedNextAction: "Verify the owner mobile number, then either wait for A2P approval or configure OWNER_ALERT_FROM_NUMBER.",
           customerVisible: true,
           expectedSuppression: true,
         });
@@ -185,7 +195,7 @@ export async function sendOwnerSms(input: {
     }
     const message = await twilioClient.messages.create({
       to: account.ownerPhoneNumber,
-      from: account.twilioPhoneNumber,
+      from: sender.from,
       body: input.body,
     });
     if (account.accountId && typeof recordProviderAction === "function") {
@@ -197,7 +207,7 @@ export async function sendOwnerSms(input: {
           idempotencyKey: input.actionKey ?? `owner_sms:${input.context}`,
           providerIdentifier: message.sid,
           internalStatus: "accepted",
-          providerStatus: message.status || "accepted",
+          providerStatus: `${message.status || "accepted"}:${sender.channel}`,
           customerExplanation: "Twilio accepted the owner text notification.",
           retryEligibility: "never",
           recommendedNextAction: "No retry is needed unless the owner reports non-delivery.",

@@ -3,13 +3,17 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { CopyButton } from "@/app/copy-button";
 import { Icon } from "@/components/icon";
+import type { OwnerServiceStatus } from "@/lib/owner-service-status";
 import type { InboundMessage, Lead, LeadStatus, OutboundMessage, ReplyPriorityOverride } from "@/lib/supabase";
 import { smsDeliveryIssue, smsDeliveryStatusLabel } from "@/lib/twilio/sms-delivery";
 import { hasUsableVoicemail } from "@/lib/voicemail-quality";
 import { patchLead, requestVoicemailSummary, sendLeadReply } from "../_api";
+import { OutcomePrompt, type OutcomePromptStage } from "../_components/outcome-prompt";
+import { VoicemailCorrections } from "../_components/voicemail-corrections";
 import { VoicemailPlayer } from "../_components/voicemail-player";
-import { formatPhone, getLeadPriority, initials, isBookedLead, sourceLabel } from "../_utils";
+import { formatPhone, getLeadPriority, humanVoicemailError, initials, isBookedLead, sourceLabel, voicemailRecoveryAction } from "../_utils";
 import { BookedToggle, BookedValueInput, PriorityControl, StatusControl } from "../_components/controls";
 
 type ThreadItem =
@@ -50,6 +54,7 @@ export function ConversationView({
   quickReplies,
   schedulingUrl,
   providerIssues,
+  serviceStatus,
 }: {
   lead: Lead;
   previousLeads: Lead[];
@@ -59,6 +64,10 @@ export function ConversationView({
   quickReplies: string[];
   schedulingUrl: string | null;
   providerIssues: Array<{ id: string; explanation: string; nextAction: string }>;
+  // Texting from the Relay number is gated server-side (A2P approval plus the
+  // owner's automatic text-back choice). The composer only appears when a
+  // send would actually succeed; otherwise the owner gets non-SMS actions.
+  serviceStatus: Pick<OwnerServiceStatus, "canTextFromRelay" | "texting">;
 }) {
   const router = useRouter();
   const [name, setName] = useState(lead.name ?? "");
@@ -69,6 +78,17 @@ export function ConversationView({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [sentMessages, setSentMessages] = useState<OutboundMessage[]>([]);
   const [transcribingId, setTranscribingId] = useState<string | null>(null);
+  // Summary-only recovery that finished without a grounded summary. Remembered
+  // so the owner is told to use the transcript instead of being offered the
+  // same paid retry again on the next render.
+  const [summaryUnavailableIds, setSummaryUnavailableIds] = useState<Set<string>>(() => new Set());
+  const [summaryErrors, setSummaryErrors] = useState<Record<string, string>>({});
+  // Owner-corrected summaries, shown immediately while the refresh catches up.
+  const [summaryOverrides, setSummaryOverrides] = useState<Record<string, string | null>>({});
+  // Session-only follow-through: "Did you reach them?" after Call, then "Did
+  // this become a job?" once Contacted. Answers are ordinary status/booked
+  // edits, so nothing new is persisted.
+  const [outcomePrompt, setOutcomePrompt] = useState<OutcomePromptStage | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [status, setStatus] = useState<LeadStatus>(lead.status);
   const [statusSaveState, setStatusSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -205,6 +225,7 @@ export function ConversationView({
 
     confirmedStatusRef.current = nextStatus;
     setStatusSaveState("saved");
+    setOutcomePrompt(nextStatus === "contacted" && !booked ? "outcome" : null);
     statusSavedTimerRef.current = window.setTimeout(() => {
       if (version === statusSaveVersionRef.current) setStatusSaveState("idle");
     }, 1_500);
@@ -232,8 +253,17 @@ export function ConversationView({
 
   async function summarize(callLeadId: string) {
     setTranscribingId(callLeadId);
-    await requestVoicemailSummary(callLeadId);
+    setSummaryErrors((previous) => ({ ...previous, [callLeadId]: "" }));
+    const result = await requestVoicemailSummary(callLeadId);
     setTranscribingId(null);
+
+    if (result.ok) {
+      if (!result.data.summary) {
+        setSummaryUnavailableIds((previous) => new Set(previous).add(callLeadId));
+      }
+    } else {
+      setSummaryErrors((previous) => ({ ...previous, [callLeadId]: result.error }));
+    }
     router.refresh();
   }
 
@@ -248,7 +278,14 @@ export function ConversationView({
           <p className="convo__name">{currentLead.name || formatPhone(lead.phone)}</p>
           {currentLead.name ? <p className="convo__number">{formatPhone(lead.phone)}</p> : null}
         </div>
-        <a className="btn btn-secondary btn-sm" href={`tel:${lead.phone}`}>
+        <a
+          className="btn btn-secondary btn-sm"
+          href={`tel:${lead.phone}`}
+          onClick={() => {
+            if (readOnly || booked) return;
+            setOutcomePrompt(status === "contacted" ? "outcome" : "reached");
+          }}
+        >
           <Icon name="phone" size={14} /> Call
         </a>
         {!readOnly ? (
@@ -263,6 +300,24 @@ export function ConversationView({
         ) : null}
       </header>
 
+      {outcomePrompt && !readOnly && !booked ? (
+        <div className="convo__outcome-prompt">
+          <OutcomePrompt
+            stage={outcomePrompt}
+            onReached={() => void saveStatus("contacted")}
+            onBooked={() => {
+              const previousBookedAt = bookedAt;
+              setOutcomePrompt(null);
+              setBookedAt(previousBookedAt ?? new Date().toISOString());
+              setDetailsOpen(true);
+              void saveLeadPatch({ booked: true }).then((ok) => {
+                if (!ok) setBookedAt(previousBookedAt);
+              });
+            }}
+            onDismiss={() => setOutcomePrompt(null)}
+          />
+        </div>
+      ) : null}
       {priority.level !== "normal" ? (
         <p className={`convo__banner ${priority.level === "fast" ? "convo__banner--fast" : ""}`}>
           <Icon name={priority.level === "fast" ? "alertTriangle" : "clock"} size={13} />
@@ -417,32 +472,73 @@ export function ConversationView({
                     recordingSid={item.lead.recording_sid}
                     fallbackDuration={item.lead.recording_duration}
                   />
-                  {item.lead.voicemail_summary ? (
-                    <p className="convo__msg-body">{item.lead.voicemail_summary}</p>
-                  ) : null}
+                  {(() => {
+                    const shownSummary = item.lead.id in summaryOverrides
+                      ? summaryOverrides[item.lead.id]
+                      : item.lead.voicemail_summary;
+                    return shownSummary ? <p className="convo__msg-body">{shownSummary}</p> : null;
+                  })()}
                   {item.lead.voicemail_transcript ? (
                     <details className="convo__vm-transcript">
                       <summary>Transcript</summary>
                       <p>{item.lead.voicemail_transcript}</p>
                     </details>
                   ) : null}
-                  {item.lead.voicemail_transcript && !item.lead.voicemail_summary ? (
-                    <p className="convo__msg-meta">No clear summary — listen or read the transcript.</p>
+                  {!readOnly ? (
+                    <VoicemailCorrections
+                      leadId={item.lead.id}
+                      summary={item.lead.id in summaryOverrides ? summaryOverrides[item.lead.id] : item.lead.voicemail_summary}
+                      hasTranscript={Boolean(item.lead.voicemail_transcript)}
+                      onSummarySaved={(savedLeadId, savedSummary) => {
+                        setSummaryOverrides((previous) => ({ ...previous, [savedLeadId]: savedSummary }));
+                        router.refresh();
+                      }}
+                      onDisputed={() => {
+                        setSummaryOverrides((previous) => ({ ...previous, [item.lead.id]: null }));
+                        router.refresh();
+                      }}
+                    />
                   ) : null}
+                  {item.lead.voicemail_transcript && !item.lead.voicemail_summary && !summaryOverrides[item.lead.id] ? (
+                    <p className="convo__msg-meta">
+                      {summaryUnavailableIds.has(item.lead.id)
+                        ? "Relay could not write a reliable summary from this transcript. The transcript is the source of truth."
+                        : "No summary yet — read the transcript, or generate one from it."}
+                    </p>
+                  ) : null}
+                  {!item.lead.voicemail_transcript &&
+                  item.lead.voicemail_transcription_status === "failed" ? (
+                    <p className="convo__msg-meta">{humanVoicemailError(item.lead.voicemail_transcription_error)}</p>
+                  ) : null}
+                  {summaryErrors[item.lead.id] ? (
+                    <p className="convo__msg-meta convo__msg-meta--error" role="alert">{summaryErrors[item.lead.id]}</p>
+                  ) : null}
+                  {/* A transcript-only voicemail recovers its summary from the
+                      stored transcript (no audio download, no retranscription);
+                      the server claims the lead so concurrent taps and the
+                      scheduled recovery job cannot double-run it. */}
                   {!readOnly &&
-                  !item.lead.voicemail_summary &&
-                  !item.lead.voicemail_transcript &&
-                  item.lead.voicemail_transcription_status !== "processing" ? (
+                  !summaryUnavailableIds.has(item.lead.id) &&
+                  !summaryOverrides[item.lead.id] &&
+                  voicemailRecoveryAction(item.lead) ? (
                     <button
                       className="convo__vm-summarize"
                       type="button"
                       disabled={transcribingId === item.lead.id}
                       onClick={() => void summarize(item.lead.id)}
                     >
-                      {transcribingId === item.lead.id ? "Summarizing..." : "Summarize"}
+                      {transcribingId === item.lead.id
+                        ? "Summarizing..."
+                        : voicemailRecoveryAction(item.lead) === "summary"
+                          ? "Generate summary from transcript"
+                          : "Summarize"}
                     </button>
                   ) : null}
                 </div>
+              ) : item.lead.recording_sid ? (
+                <p className="convo__event-line convo__event-line--quiet">
+                  Caller hung up without leaving a message.
+                </p>
               ) : null}
             </div>
           ) : item.kind === "autotext" ? (
@@ -479,7 +575,43 @@ export function ConversationView({
         <div ref={threadEndRef} />
       </div>
 
-      {!readOnly ? (
+      {!readOnly && !serviceStatus.canTextFromRelay ? (
+        <footer className="convo__composer convo__no-text" aria-label="Follow-up actions">
+          <p className="convo__no-text-copy">
+            <Icon name="info" size={13} />
+            <span>
+              <strong>Texting from your Relay number is not on yet.</strong>{" "}
+              {serviceStatus.texting.nextStep ?? serviceStatus.texting.detail}
+            </span>
+          </p>
+          <div className="convo__no-text-actions">
+            <a
+              className="btn btn-primary btn-sm"
+              href={`tel:${lead.phone}`}
+              onClick={() => {
+                if (booked) return;
+                setOutcomePrompt(status === "contacted" ? "outcome" : "reached");
+              }}
+            >
+              <Icon name="phone" size={13} /> Call back
+            </a>
+            <a className="btn btn-secondary btn-sm" href={`sms:${lead.phone}`}>
+              <Icon name="message" size={13} /> Text from my phone
+            </a>
+            <CopyButton value={formatPhone(lead.phone)} label="Copy number" />
+            <button
+              className="btn btn-ghost btn-sm"
+              type="button"
+              aria-expanded={detailsOpen}
+              onClick={() => setDetailsOpen(true)}
+            >
+              Add note or mark contacted
+            </button>
+          </div>
+        </footer>
+      ) : null}
+
+      {!readOnly && serviceStatus.canTextFromRelay ? (
         <footer className="convo__composer">
           {replyError ? (
             <p className="convo__error" role="alert">

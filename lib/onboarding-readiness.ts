@@ -1,10 +1,14 @@
 import { isSetupFeeSettled } from "@/lib/billing";
+import type { TechnicalSetupStatus } from "@/lib/customer-experience-contract";
+import { env } from "@/lib/env";
 import { missingCustomerProfileFields } from "@/lib/onboarding-profile";
 import {
   deriveOnboardingReadiness,
   type OnboardingFacts,
 } from "@/lib/onboarding";
+import { deriveOwnerServiceStatus } from "@/lib/owner-service-status";
 import {
+  type AccountRuntimeConfig,
   getAccountBillingRecord,
   getAccountConfigByAccountId,
   getAccountOnboardingEvidence,
@@ -16,6 +20,39 @@ import {
   getSignedCallVerificationAt,
   hasLinkedOwnerAuth,
 } from "@/lib/supabase";
+
+// Lightweight owner-facing status for the inbox: three queries, no billing or
+// evidence lookups. Setup keeps using the full readiness loader.
+export async function loadOwnerServiceStatus(
+  accountId: string,
+  account: Pick<AccountRuntimeConfig, "smsEnabled" | "voicemailTranscriptionEnabled">,
+) {
+  const [technicalStatus, a2pStatus, signedCallVerificationAt] = await Promise.all([
+    getAccountTechnicalSetupStatus(accountId),
+    getA2pRegistrationStatus(accountId),
+    getSignedCallVerificationAt(accountId),
+  ]);
+
+  return deriveOwnerServiceStatus({
+    technicalStatus: effectiveTechnicalStatus(technicalStatus, signedCallVerificationAt),
+    a2pStatus,
+    smsEnabled: account.smsEnabled,
+    voicemailTranscriptionEnabled: account.voicemailTranscriptionEnabled,
+    transcriptionProviderConfigured: Boolean(env.openaiApiKey),
+  });
+}
+
+// A harmless profile edit in an older build could regress the editable
+// technical status after a verified call. The protected audit event remains
+// authoritative and repairs the derived state without inventing evidence.
+function effectiveTechnicalStatus(
+  technicalStatus: TechnicalSetupStatus,
+  signedCallVerificationAt: string | null,
+): TechnicalSetupStatus {
+  return signedCallVerificationAt && (
+    technicalStatus === "setting_up" || technicalStatus === "waiting_for_forwarding"
+  ) ? "live" : technicalStatus;
+}
 
 function businessHoursConfigured(value: Record<string, unknown> | null) {
   return Boolean(value && Object.keys(value).length > 0);
@@ -100,19 +137,13 @@ export async function loadAccountOnboardingReadiness(accountId: string) {
     setupFeeSettled && Boolean(billing.stripeDefaultPaymentMethodId)
   );
 
-  // A harmless profile edit in an older build could regress the editable
-  // technical status after a verified call. The protected audit event remains
-  // authoritative and repairs the derived state without inventing evidence.
   const signedCallVerifiedAt = signedCallVerificationAt ?? (
     technicalStatus === "live" ? lastRecoveredCallAt : null
   );
-  const effectiveTechnicalStatus = signedCallVerificationAt && (
-    technicalStatus === "setting_up" || technicalStatus === "waiting_for_forwarding"
-  ) ? "live" : technicalStatus;
 
   const facts: OnboardingFacts = {
     accountStatus,
-    technicalStatus: effectiveTechnicalStatus,
+    technicalStatus: effectiveTechnicalStatus(technicalStatus, signedCallVerificationAt),
     callMode: runtime.callMode,
     missingProfileFields,
     relayNumber: runtime.twilioPhoneNumber || null,

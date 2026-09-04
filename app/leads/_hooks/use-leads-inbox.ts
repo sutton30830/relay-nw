@@ -6,6 +6,7 @@ import type { Lead, LeadStatus, OutboundMessage, ReplyPriorityOverride } from "@
 import { AUTO_VOICEMAIL_SUMMARY_LIMIT, FILTERS, INBOX_REFRESH_MS, RELATIVE_TIME_TICK_MS, SEARCH_DEBOUNCE_MS, UNDO_DELETE_MS } from "../_constants";
 import type { Filter, LeadCounts } from "../_types";
 import { deleteLead as deleteLeadRequest, patchLead, requestVoicemailSummary, sendLeadReply, type SendReplyResult } from "../_api";
+import type { OutcomePromptStage } from "../_components/outcome-prompt";
 import { condenseLeadsByPhone, countCallsByPhone, countLeads, createSampleLeads, filterLeads, isBookedLead, needsAttention, shouldAutoSummarizeVoicemail, sortLeadsForWork } from "../_utils";
 
 // Filter and search now run on the server (the RPC in lib/supabase/leads.ts):
@@ -110,6 +111,11 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [transcribingIds, setTranscribingIds] = useState<Set<string>>(() => new Set());
+  // Session-only prompts that walk a lead from call-back to booked value:
+  // "Did you reach them?" after Call back, "Did this become a job?" after
+  // Contacted. Never persisted; the Status menu stays the manual path.
+  const [outcomePrompts, setOutcomePrompts] = useState<Map<string, OutcomePromptStage>>(() => new Map());
+
   const [expandedLeadIds, setExpandedLeadIds] = useState<Set<string>>(() => new Set());
   const [undoableDelete, setUndoableDelete] = useState<UndoableDelete | null>(null);
   const [optimisticCounts, setOptimisticCounts] = useState<LeadCounts>(server.counts);
@@ -525,7 +531,45 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
     // the entire inbox to the destination category, racing the PATCH with a
     // server render and the periodic refresh. Keep the drawer/conversation
     // stable and let the optimistic lead/count update render immediately.
-    await mutateLeads([{ id, fields: { status } }], () => patchLead(id, { status }));
+    const saved = await mutateLeads([{ id, fields: { status } }], () => patchLead(id, { status }));
+
+    // Reaching a caller is the moment "did it become a job?" is answerable.
+    // Ask once, right there on the card; the answer feeds Reports.
+    const lead = leadById(id);
+    if (saved && status === "contacted" && lead && !isBookedLead(lead)) {
+      setOutcomePromptFor(id, "outcome");
+    } else {
+      setOutcomePromptFor(id, null);
+    }
+  }
+
+  function setOutcomePromptFor(id: string, stage: OutcomePromptStage | null) {
+    setOutcomePrompts((previous) => {
+      if ((previous.get(id) ?? null) === stage) return previous;
+      const next = new Map(previous);
+      if (stage) next.set(id, stage);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function noteCallBack(id: string) {
+    const lead = leadById(id);
+    if (!lead || lead.deleted_at || isBookedLead(lead)) return;
+    setOutcomePromptFor(id, lead.status === "contacted" ? "outcome" : "reached");
+  }
+
+  async function answerOutcomePrompt(id: string, answer: "reached" | "booked" | "dismiss") {
+    if (answer === "dismiss") {
+      setOutcomePromptFor(id, null);
+      return;
+    }
+    if (answer === "reached") {
+      await updateStatus(id, "contacted");
+      return;
+    }
+    setOutcomePromptFor(id, null);
+    await updateBooked(id, true);
   }
 
   // Trashing a caller trashes the whole thread: the visible card is just the
@@ -795,5 +839,8 @@ export function useLeadsInbox(leads: Lead[], server: ServerInboxState) {
     updatePriority,
     updateStatus,
     updateVoicemailSummary,
+    outcomePrompts,
+    noteCallBack,
+    answerOutcomePrompt,
   };
 }

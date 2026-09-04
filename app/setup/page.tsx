@@ -3,7 +3,9 @@ import { PageHead } from "@/app/leads/_components/page-head";
 import { Icon } from "@/components/icon";
 import Link from "next/link";
 import { isRelayOperator, requireAccountUser } from "@/lib/auth";
+import { env } from "@/lib/env";
 import { loadAccountOnboardingReadiness } from "@/lib/onboarding-readiness";
+import { deriveOwnerServiceStatus } from "@/lib/owner-service-status";
 import { CarrierForwarding } from "./carrier-forwarding";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +31,15 @@ export default async function SetupPage() {
   const waitingForForwarding = technicalStatus === "waiting_for_forwarding";
   const serviceUnavailable = technicalStatus === "paused" || technicalStatus === "closed";
   const textingIsAvailable = a2pStatus === "approved";
-  const textingNeedsAttention = a2pStatus === "rejected" || a2pStatus === "needs_attention" || a2pStatus === "paused";
+  // Calls, voicemail transcription, and texting are independent facts. The
+  // same derivation feeds the inbox status strip so both surfaces agree.
+  const serviceStatus = deriveOwnerServiceStatus({
+    technicalStatus,
+    a2pStatus,
+    smsEnabled: account.smsEnabled,
+    voicemailTranscriptionEnabled: account.voicemailTranscriptionEnabled,
+    transcriptionProviderConfigured: Boolean(env.openaiApiKey),
+  });
   const callsLabel = callsAreLive
     ? "Live"
     : waitingForForwarding
@@ -46,20 +56,11 @@ export default async function SetupPage() {
       : serviceUnavailable
         ? "Contact Relay if this is unexpected."
         : "We’ll let you know if we need anything.";
-  const textingLabel = account.smsEnabled
-    ? "On"
-    : textingIsAvailable
-      ? "Ready to turn on"
-      : textingNeedsAttention
-        ? "Relay is resolving this"
-        : "Relay is preparing this";
-  const textingDetail = account.smsEnabled
-    ? "Missed callers receive an automatic text-back."
-    : textingIsAvailable
-      ? "You can enable automatic text-back in Settings."
-      : textingNeedsAttention
-        ? "Calls and your inbox continue to work normally."
-        : "This happens separately from call setup.";
+  const textingLabel = serviceStatus.texting.label;
+  const textingDetail = serviceStatus.texting.detail;
+  const textingNextStep = serviceStatus.texting.owner === "relay" ? serviceStatus.texting.nextStep : null;
+  const voicemailLabel = serviceStatus.transcription.label;
+  const voicemailDetail = serviceStatus.transcription.detail;
   return (
     <main className="leads-view">
       <section className="leads-shell setup-status">
@@ -99,7 +100,7 @@ export default async function SetupPage() {
             <div>
               <p className="t-eyebrow">Your service</p>
               <h2>{callsAreLive ? "Missed-call coverage is on" : waitingForForwarding ? "Connect your current number" : "Relay is setting up your line"}</h2>
-              <p>Calls and automatic text-back are separate, so one can work while the other is still being prepared.</p>
+              <p>Calls and automatic text-back are separate, and so is voicemail, so one can work while another is still being prepared.</p>
             </div>
             {callsAreLive ? <span className="readiness__badge"><Icon name="check" size={13} /> Calls live</span> : null}
           </div>
@@ -108,11 +109,19 @@ export default async function SetupPage() {
               <dt><Icon name="phone" size={16} /> Calls</dt>
               <dd><strong>{callsLabel}</strong><span>{callsDetail}</span></dd>
             </div>
-            <div className={account.smsEnabled ? "customer-setup-overview__state--good" : ""}>
+            <div className={serviceStatus.transcription.tone === "ready" ? "customer-setup-overview__state--good" : ""}>
+              <dt><Icon name="sparkle" size={16} /> Voicemail</dt>
+              <dd>
+                <strong>{voicemailLabel}</strong>
+                <span>{voicemailDetail}</span>
+              </dd>
+            </div>
+            <div className={serviceStatus.canTextFromRelay ? "customer-setup-overview__state--good" : ""}>
               <dt><Icon name="message" size={16} /> Automatic text-back</dt>
               <dd>
                 <strong>{textingLabel}</strong>
                 <span>{textingDetail}</span>
+                {textingNextStep ? <span>Calls and your inbox continue to work normally. {textingNextStep}</span> : null}
                 {callsAreLive && textingIsAvailable && !account.smsEnabled ? (
                   <Link className="customer-setup-overview__link" href="/settings#texting">Enable text-back <Icon name="arrowRight" size={14} /></Link>
                 ) : null}

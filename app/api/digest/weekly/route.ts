@@ -64,6 +64,7 @@ async function runAuthorizedWeeklyDigest() {
         account,
         stats,
         periodLabel: "this week",
+        textingOn: account.smsEnabled,
       });
 
       results.push({ accountId, sent: Boolean(outcome.sent) });

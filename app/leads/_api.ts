@@ -99,3 +99,23 @@ export async function requestVoicemailSummary(id: string): Promise<TranscribeRes
     };
   }
 }
+
+export type DisputeResult = { ok: true } | { ok: false; error: string };
+
+// "This transcript is wrong": hides the transcript and summary for this lead
+// and keeps the recording. Idempotent on the server, so a double tap is safe.
+export async function disputeVoicemailTranscript(id: string): Promise<DisputeResult> {
+  try {
+    const response = await fetch(`/api/leads/${id}/voicemail-dispute`, { method: "POST" });
+    const data = await response.json().catch(() => null) as { ok?: boolean; error?: string } | null;
+
+    if (!response.ok || !data?.ok) {
+      return { ok: false, error: data?.error || "Could not hide this transcript. Try again." };
+    }
+
+    return { ok: true };
+  } catch (error) {
+    console.error("Failed to dispute voicemail transcript", { leadId: id, error });
+    return { ok: false, error: "Could not reach Relay. Check your connection and try again." };
+  }
+}

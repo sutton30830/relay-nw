@@ -4,6 +4,7 @@ import {
   type LeadStatus,
   type ReplyPriorityOverride,
   updateLead,
+  updateLeadPriority,
 } from "@/lib/supabase";
 
 const MAX_NOTES_LENGTH = 2000;
@@ -151,6 +152,22 @@ export async function PATCH(
 
   try {
     await updateLead({ accountId: auth.session.accountId, id, ...update });
+
+    // An owner-corrected summary is the most trustworthy text on the lead, so
+    // the persisted urgency follows it (a fixed "no heat" upgrades the cue, a
+    // fixed mishearing downgrades it). A manual callback-timing override still
+    // wins at display time. Loaded lazily so plain status/notes edits keep the
+    // route's dependency surface unchanged.
+    if (typeof update.voicemailSummary === "string") {
+      const { classifyPriority } = await import("@/lib/priority");
+      const classified = classifyPriority(update.voicemailSummary);
+      await updateLeadPriority({
+        accountId: auth.session.accountId,
+        id,
+        priority: classified.level,
+        priorityReason: classified.reason,
+      });
+    }
   } catch (error) {
     console.error("Failed to update lead", { leadId: id, error });
     return Response.json({ error: "Unable to update lead" }, { status: 500 });

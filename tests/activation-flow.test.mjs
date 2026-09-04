@@ -3,6 +3,9 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import { loadOwnerAlerts } from "./helpers/owner-alerts.mjs";
+
+const ownerAlerts = await loadOwnerAlerts();
 
 // Route-spanning activation coverage for the real revenue loop:
 // missed call -> lead -> SMS -> delivery callback -> caller reply -> voicemail.
@@ -244,6 +247,7 @@ function makeMocks(state) {
       },
     },
     "@/lib/phone": { normalizePhoneNumber },
+    "@/lib/owner-alerts": ownerAlerts,
     "@/lib/supabase": supabase,
     "@/lib/supabase/accounts": { envAccountConfig: () => state.account },
     "@/lib/twilio": {

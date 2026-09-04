@@ -560,9 +560,42 @@ export function filterLeads(leads: Lead[], filter: Filter, query: string) {
 }
 
 
+// A transcription that Relay deliberately suppressed (silence, too short, or
+// unreliable audio) is a finished safety decision. Offering "retry" would spend
+// another paid transcription on the same audio and return the same answer.
+export function voicemailTranscriptionWasSuppressed(error: string | null | undefined) {
+  return Boolean(
+    error?.includes("could not confidently transcribe") ||
+    error?.includes("No clear spoken message was detected") ||
+    error?.includes("No usable voicemail was recorded") ||
+    error?.includes("marked this transcript as wrong"),
+  );
+}
+
+// Which recovery a voicemail row can honestly offer right now.
+// - "summary": a completed transcript exists, so a summary can be regenerated
+//   from stored text without downloading or retranscribing the recording.
+// - "transcription": no transcript yet and the last attempt was not a
+//   suppression, so a fresh transcription attempt is reasonable.
+// - null: nothing to offer (already summarized, in progress, or suppressed).
+export function voicemailRecoveryAction(lead: Pick<Lead,
+  "recording_sid" | "recording_duration" | "voicemail_transcript" | "voicemail_summary" |
+  "voicemail_transcription_status" | "voicemail_transcription_error"
+>): "summary" | "transcription" | null {
+  if (!hasUsableVoicemail(lead.recording_sid, lead.recording_duration)) return null;
+  if (lead.voicemail_summary || lead.voicemail_transcription_status === "processing") return null;
+  if (lead.voicemail_transcript) return "summary";
+  if (voicemailTranscriptionWasSuppressed(lead.voicemail_transcription_error)) return null;
+  return "transcription";
+}
+
 export function humanVoicemailError(error: string | null | undefined) {
   if (!error) {
     return "Unable to summarize this voicemail. Try again or listen to the recording.";
+  }
+
+  if (error.includes("marked this transcript as wrong")) {
+    return "You marked this transcript as wrong. Listen to the recording, then call back.";
   }
 
   if (error.includes("No usable voicemail was recorded")) {

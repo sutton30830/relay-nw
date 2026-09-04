@@ -14,8 +14,9 @@ import {
 import { envAccountConfig } from "@/lib/supabase/accounts";
 import { missedCallSmsBodyForAccount, phoneLast4, sendOwnerSms, twilioClient } from "@/lib/twilio";
 import { notifyAdminOperationalIssue, notifyOwnerNewMissedCallLead } from "@/lib/email";
+import { resolveOwnerAlertSender } from "@/lib/owner-alerts";
 
-type OwnerSmsStatus = "sent" | "failed" | "skipped_opt_out" | "repeat_call";
+type OwnerSmsStatus = "sent" | "failed" | "skipped_opt_out" | "repeat_call" | "skipped_disabled";
 
 async function notifyOwnerNewLeadByPush(input: {
   account: Pick<AccountRuntimeConfig, "accountId" | "businessName">;
@@ -44,8 +45,15 @@ function ownerSmsBody(input: {
   businessName: string;
   callerPhone: string;
   smsStatus: OwnerSmsStatus;
+  leadId?: string | null;
 }) {
-  const inboxUrl = `${env.appBaseUrl}/leads`;
+  // Deep-link the specific lead so one tap lands on the recording, transcript,
+  // and call-back button instead of the whole inbox.
+  const inboxUrl = input.leadId ? `${env.appBaseUrl}/leads/${input.leadId}` : `${env.appBaseUrl}/leads`;
+
+  if (input.smsStatus === "skipped_disabled") {
+    return `Relay NW: missed call for ${input.businessName} from ${input.callerPhone}. No auto-text went out (texting is not on yet), so call them back: ${input.callerPhone}. Lead: ${inboxUrl}`;
+  }
 
   if (input.smsStatus === "sent") {
     return `Relay NW: missed call for ${input.businessName} from ${input.callerPhone}. We texted them back. Reply from your inbox: ${inboxUrl}`;
@@ -73,6 +81,7 @@ async function notifyOwnerNewLeadBySms(input: {
   callerPhone: string;
   smsStatus: OwnerSmsStatus;
   correlationId: string;
+  leadId?: string | null;
 }) {
   const { account } = input;
 
@@ -84,9 +93,16 @@ async function notifyOwnerNewLeadBySms(input: {
     return;
   }
 
-  // Owner SMS rides the same A2P-gated number as customer texting. If customer texting
-  // is disabled (campaign not approved yet), do not send owner texts from it either.
-  if (!account.smsEnabled || !account.ownerPhoneNumber || !account.twilioPhoneNumber) {
+  // Owner texts use the account's number once texting is on, or Relay's
+  // platform alert number while the customer's campaign is pending. With
+  // neither available there is nothing to send from; email and push still go.
+  const sender = resolveOwnerAlertSender({
+    smsEnabled: account.smsEnabled,
+    twilioPhoneNumber: account.twilioPhoneNumber,
+    ownerPhoneNumber: account.ownerPhoneNumber,
+    platformAlertNumber: env.ownerAlertFromNumber,
+  });
+  if (!sender || !account.ownerPhoneNumber) {
     return;
   }
 
@@ -100,6 +116,7 @@ async function notifyOwnerNewLeadBySms(input: {
       businessName: account.businessName,
       callerPhone: input.callerPhone,
       smsStatus: input.smsStatus,
+      leadId: input.leadId,
     });
     if (typeof sendOwnerSms === "function") {
       await sendOwnerSms({
@@ -113,7 +130,7 @@ async function notifyOwnerNewLeadBySms(input: {
       // idempotent, evidence-recording sendOwnerSms path above.
       await twilioClient.messages.create({
         to: account.ownerPhoneNumber,
-        from: account.twilioPhoneNumber,
+        from: sender.from,
         body,
       });
     }
@@ -221,6 +238,16 @@ export async function handleMissedCall(input: {
       callerPhone,
       smsStatus: "skipped_disabled",
     });
+    // While the customer's own texting is off, the owner alert is the only
+    // thing that gets this call into their pocket fast. It rides Relay's
+    // platform number when configured; otherwise it's a quiet no-op.
+    await notifyOwnerNewLeadBySms({
+      account,
+      callerPhone,
+      smsStatus: "skipped_disabled",
+      correlationId,
+      leadId: leadResult.leadId,
+    });
 
     await recordSmsAction({
       accountId: account.accountId,
@@ -324,6 +351,7 @@ export async function handleMissedCall(input: {
       callerPhone,
       smsStatus: "repeat_call",
       correlationId,
+      leadId: leadResult.leadId,
     });
     await recordSmsAction({
       accountId: account.accountId,
@@ -360,6 +388,7 @@ export async function handleMissedCall(input: {
       callerPhone,
       smsStatus: "skipped_opt_out",
       correlationId,
+      leadId: leadResult.leadId,
     });
     await recordSmsAction({
       accountId: account.accountId,
@@ -497,6 +526,7 @@ export async function handleMissedCall(input: {
         callerPhone,
         smsStatus: "sent",
         correlationId,
+        leadId: leadResult.leadId,
       });
 
       return finish({
@@ -518,6 +548,7 @@ export async function handleMissedCall(input: {
       callerPhone,
       smsStatus: "sent",
       correlationId,
+      leadId: leadResult.leadId,
     });
 
     return finish({ inserted: true, becameLive: leadResult.becameLive, smsStatus: "sent" as const, twilioMessageSid: message.sid });
@@ -576,6 +607,7 @@ export async function handleMissedCall(input: {
       callerPhone,
       smsStatus: "failed",
       correlationId,
+      leadId: leadResult.leadId,
     });
     return finish({ inserted: true, becameLive: leadResult.becameLive, smsStatus: "failed" as const, smsError: message });
   }
