@@ -551,7 +551,7 @@ The release record update is documentation-only and may be committed after the d
 
 ## 19. Step 5 implementation and verification
 
-Implemented locally on `codex/known-contacts` after confirming Vercel production deployment `dpl_AsEzYPeB5pJMKEZApGFcoNLCZXsZ` is **READY** and serves the branch's then-current commit `03f71714584b8cd6bcc92e25e8a11eba57452a05` at both Relay domains. Step 5 has not been pushed or deployed by this implementation step. It needs no database migration because it uses the Step 2 APIs and Step 4 projections already deployed.
+Implemented and pushed on `codex/known-contacts` after confirming Vercel production deployment `dpl_AsEzYPeB5pJMKEZApGFcoNLCZXsZ` is **READY** and serves the branch's prior commit `03f71714584b8cd6bcc92e25e8a11eba57452a05` at both Relay domains. Step 5 commit `bc973663730ef6d02eb22c0de214022769575c69` built successfully as Vercel Preview `dpl_6kuSSw8PbmE7NMY9ruY4TsbxusqA`; it has not been promoted to production. It needs no database migration because it uses the Step 2 APIs and Step 4 projections already deployed.
 
 ### Owner controls
 
