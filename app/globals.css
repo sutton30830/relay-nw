@@ -4395,6 +4395,8 @@ code {
 .contact-heading, .contact-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .contact-heading h2 { margin: 0 0 8px; font-size: 22px; }
 .contact-heading .btn, .contact-row .btn { flex-shrink: 0; }
+.contact-heading__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.contact-preferences__collapsed-summary { color: var(--muted); }
 .contact-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .contact-search { display: flex; align-items: flex-end; gap: 12px; margin: 20px 0; }
 .contact-search .form-field { flex: 1; margin: 0; min-width: 0; }
