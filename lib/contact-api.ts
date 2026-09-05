@@ -12,8 +12,7 @@ export function privateAuthResponse(response: Response) {
 export function contactApiError(error: unknown) {
   return privateContactResponse({ error: error instanceof ContactError ? error.message : "Contact storage is unavailable" }, error instanceof ContactError ? error.status : 503);
 }
-export async function readContactBody(request: Request, fields: readonly string[]) {
-  const maxBytes = 16 * 1024;
+export async function readContactBody(request: Request, fields: readonly string[], maxBytes = 16 * 1024) {
   if (Number(request.headers.get("content-length")) > maxBytes) throw new ContactError(413, "Contact request is too large");
   const reader = request.body?.getReader();
   if (!reader) throw new ContactError(400, "Invalid request body");

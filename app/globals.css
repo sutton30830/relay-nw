@@ -7658,3 +7658,9 @@ code {
   .ops-inline-control .btn { width: 100%; }
   .ops-workspace-facts { grid-template-columns: 1fr; }
 }
+
+.contact-import-column { display: flex; flex-wrap: wrap; gap: 0.75rem; padding: 0.5rem 0; overflow-wrap: anywhere; }
+.contact-import-column strong { flex: 1 1 12rem; }
+.contact-editor input[type="file"] { max-width: 100%; }
+.contact-editor .contact-list li { overflow-wrap: anywhere; }
+.contact-editor > fieldset > .btn { margin-top: 0.75rem; margin-right: 0.5rem; }

@@ -1,0 +1,14 @@
+BEGIN:VCARD
+VERSION:3.0
+N:Doe;Jane;;;
+FN:Jane Doe
+item1.TEL;type=CELL;type=VOICE;type=pref:+1 (206) 555-0101
+item2.TEL;type=WORK:+44 20 7946
+ 0018
+NOTE:Ignored private information
+END:VCARD
+BEGIN:VCARD
+VERSION:4.0
+FN:Smith\, Pat\; Jr.
+TEL;VALUE=uri:tel:+12065550102
+END:VCARD

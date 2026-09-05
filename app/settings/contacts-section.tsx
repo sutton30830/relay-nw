@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { contactRequest, type ContactDetails } from "@/lib/contact-client";
 import { ContactEditor } from "./_components/contact-editor";
 
+import { ContactImporter } from "./_components/contact-importer";
+
 const PAGE_SIZE = 20;
 export function ContactsSection({ readOnly }: { readOnly: boolean }) {
   const router = useRouter();
@@ -18,6 +20,7 @@ export function ContactsSection({ readOnly }: { readOnly: boolean }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [edit, setEdit] = useState<ContactDetails | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
@@ -64,8 +67,9 @@ export function ContactsSection({ readOnly }: { readOnly: boolean }) {
 
   return <section id="contacts" className="panel settings-section contacts-section" aria-labelledby="contacts-heading">
     <div className="contact-heading"><div><h2 id="contacts-heading" ref={heading} tabIndex={-1}>Contacts</h2><p className="settings-section__meta">Save numbers you recognize to turn off automatic missed-call texts. Calls still reach your inbox unless you mark the contact Personal.</p></div>
-      {!readOnly ? <button className="btn btn-secondary btn-sm" type="button" disabled={Boolean(edit) || busy} aria-expanded={adding} onClick={() => { setAdding(!adding); setSaveError(""); }}>Add contact</button> : null}</div>
+      {!readOnly ? <button className="btn btn-secondary btn-sm" type="button" disabled={Boolean(edit) || busy || importOpen} aria-expanded={adding} onClick={() => { setAdding(!adding); setSaveError(""); }}>Add contact</button> : null}</div>
     <p className="settings-section__meta"><Link href="/leads?filter=personal">View Personal calls</Link>{readOnly ? " · View-only access. An owner or admin can manage contacts." : " · Removing a contact keeps call and message history."}</p>
+    {!readOnly && !adding && !edit ? <ContactImporter onOpenChange={setImportOpen} onChanged={() => { setRevision((value) => value + 1); router.refresh(); }} /> : null}
     {notice ? <p className="contact-notice" role="status">{notice}</p> : null}
     {adding && !readOnly ? <form className="contact-editor" aria-label="Add contact" onSubmit={(event) => { event.preventDefault(); void add(); }}>
       <fieldset disabled={busy}><label className="form-field"><span>Phone number</span><input autoFocus required type="tel" className="field" maxLength={100} value={phone} placeholder="(206) 555-0101" onChange={(event) => setPhone(event.target.value)} /><span className="form-field__hint">For numbers outside the US or Canada, include + and the country code. No extensions.</span></label>
@@ -83,7 +87,7 @@ export function ContactsSection({ readOnly }: { readOnly: boolean }) {
         <p className="settings-section__meta">{total === 0 ? search ? "No contacts match this search." : "No saved contacts yet." : `${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, total)} of ${total} contacts`}</p>
         <ul className="contact-list">{rows.map((contact) => <li key={contact.id}>
           <div className="contact-row"><div><strong>{contact.display_name || contact.phone}</strong>{contact.display_name ? <span className="contact-phone">{contact.phone}</span> : null}<span className="contact-meta">{contact.classification === "unclassified" ? "Unclassified" : contact.classification === "personal" ? "Personal" : "Customer"} · Automatic texts {contact.auto_sms_policy === "standard" ? "eligible" : "off"}</span></div>
-            {!readOnly ? <button className="btn btn-secondary btn-sm" type="button" disabled={Boolean(edit) || adding} onClick={() => { setEdit(contact); setNotice(""); }} aria-label={`Edit ${contact.display_name || contact.phone}`}>Edit</button> : null}</div>
+            {!readOnly ? <button className="btn btn-secondary btn-sm" type="button" disabled={Boolean(edit) || adding || importOpen} onClick={() => { setEdit(contact); setNotice(""); }} aria-label={`Edit ${contact.display_name || contact.phone}`}>Edit</button> : null}</div>
           {edit?.id === contact.id && !readOnly ? <ContactEditor key={`${edit.id}:${edit.version}`} contact={edit} onCancel={() => { setEdit(null); heading.current?.focus(); }} onSaved={(saved) => refresh(saved ? "Contact updated. Retained calls now follow its classification; past text outcomes are unchanged." : "Contact removed. Future calls follow ordinary texting rules; no past texts will be sent.")} onStale={() => refresh("Reloaded current contacts. Review the latest preferences before editing again.")} /> : null}
         </li>)}</ul>
         {total > PAGE_SIZE ? <nav className="contact-actions" aria-label="Contact pages"><button className="btn btn-secondary btn-sm" disabled={page === 0 || Boolean(edit) || adding} onClick={() => setPage(page - 1)}>Previous contacts</button><span>Page {page + 1} of {Math.ceil(total / PAGE_SIZE)}</span><button className="btn btn-secondary btn-sm" disabled={(page + 1) * PAGE_SIZE >= total || Boolean(edit) || adding} onClick={() => setPage(page + 1)}>Next contacts</button></nav> : null}

@@ -24,10 +24,9 @@ Sentry.init({
   replaysOnErrorSampleRate: 1.0,
 
   dataCollection: {
-    // To disable sending user data and HTTP bodies, uncomment the lines below. For more info visit:
-    // https://docs.sentry.io/platforms/javascript/guides/nextjs/configuration/options/#dataCollection
-    // userInfo: false,
-    // httpBodies: [],
+    // Contact imports and other private payloads must stay out of diagnostics.
+    httpBodies: [],
+    databaseQueryData: false,
   },
 });
 

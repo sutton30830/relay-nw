@@ -1,0 +1,5 @@
+Name,Given Name,Family Name,Phone 1 - Type,Phone 1 - Value,Phone 2 - Type,Phone 2 - Value,Notes
+"Doe, Jane",Jane,Doe,Mobile,(206) 555-0101,Work,+44 20 7946 0018,"A quoted ""note""
+with another line"
+Jane duplicate,Jane,,Mobile,+12065550101,,,
+Bad extension,,,Mobile,2065550102 ext 9,,,
