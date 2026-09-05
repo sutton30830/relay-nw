@@ -7664,3 +7664,5 @@ code {
 .contact-editor input[type="file"] { max-width: 100%; }
 .contact-editor .contact-list li { overflow-wrap: anywhere; }
 .contact-editor > fieldset > .btn { margin-top: 0.75rem; margin-right: 0.5rem; }
+
+.contact-texting-preference { border-top: 1px solid var(--border, #dedbd2); padding-top: 1rem; display: grid; gap: 0.5rem; }
