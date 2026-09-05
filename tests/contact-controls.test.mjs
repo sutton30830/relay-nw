@@ -65,7 +65,7 @@ test("Settings and lead controls expose role-safe, recoverable interaction state
   assert.match(settings, /Retry loading contacts/); assert.match(settings, /page \* PAGE_SIZE >= result\.total/);
   assert.match(editor, /classification === "customer"/); assert.match(editor, /Send an automatic text after a missed call/);
   assert.match(editor, /role="alert"/); assert.match(editor, /Reload current contact/);
-  assert.match(controls, /Edit contact preferences/); assert.match(controls, /Turn off automatic texts/); assert.match(controls, /Mark as personal/);
+  assert.match(controls, /Edit contact preferences/); assert.match(controls, /Turn on automatic texts/); assert.match(controls, /Turn off automatic texts/); assert.match(controls, /Mark as business/); assert.match(controls, /Mark as personal/);
   assert.match(controls, /aria-expanded=\{editing\}/);
   
   
